@@ -1,0 +1,153 @@
+﻿Issue Type,Summary,Description,Epic Name,Epic Link,Labels,Priority
+Epic,Sprint 0 — Get the engine running,,Sprint 0 — Get the engine running,,setup,High
+Story,S0-1 Create the project skeleton,"Folder structure named after the business, database running locally, build passes. ArchUnit rules that fail on a layer violation.
+
+Prompt for Claude Code: see S0-1 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 0 — Get the engine running,"skeleton,architecture",Highest
+Story,"S0-2 Accounts, OTP and login","Sign up, verify phone by SMS code, log in. Phone verification is the only thing that activates an account.
+
+Prompt for Claude Code: see S0-2 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 0 — Get the engine running,"identity,FR-ACC",High
+Story,S0-3 Three empty apps that build,"Customer app, venue dashboard, admin panel. Routing and empty screens. Arabic RTL toggle works.
+
+Prompt for Claude Code: see S0-3 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 0 — Get the engine running,frontend,High
+Epic,Sprint 1 — The room calendar,,Sprint 1 — The room calendar,,inventory,High
+Story,"S1-1 Venues, rooms and prices","Areas, venues, venue accounts, rooms and tables, and what each costs.
+
+Prompt for Claude Code: see S1-1 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 1 — The room calendar,"venue,resource,pricing,FR-VEN",High
+Story,S1-2 Opening hours,"Weekly hours per venue, closing after midnight, daylight saving handled.
+
+Prompt for Claude Code: see S1-2 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 1 — The room calendar,"venue,FR-VEN-17,FR-VEN-21",High
+Story,S1-3 The reservation calendar,"THE most important ticket. One table, one database rule: two bookings can never overlap on one room.
+
+Prompt for Claude Code: see S1-3 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 1 — The room calendar,"inventory,FR-AVL-08,critical",Highest
+Story,S1-4 The is-this-room-free check,"One function, eight checks in a fixed order, used by every flow. Never a second one.
+
+Prompt for Claude Code: see S1-4 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 1 — The room calendar,"availability,FR-AVL-01,FR-AVL-02",Highest
+Story,S1-5 The stress test,"50 simultaneous bookings at one slot. Exactly one wins.
+
+Prompt for Claude Code: see S1-5 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 1 — The room calendar,"testing,FR-AVL-08",High
+Story,S1-6 Next available at,"The soonest free slot shown on a venue card. Venue list under one second.
+
+Prompt for Claude Code: see S1-6 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 1 — The room calendar,"availability,FR-DIS-04",Medium
+Epic,Sprint 2 — Book a room end to end,,Sprint 2 — Book a room end to end,,booking,High
+Story,S2-1 Create a booking,"The customer submits. The system checks 20 things before saying yes.
+
+Prompt for Claude Code: see S2-1 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 2 — Book a room end to end,"booking,FR-BOK-11",Highest
+Story,S2-2 The 10-minute timer,"The venue has 10 minutes. If they do not answer, the request expires by itself.
+
+Prompt for Claude Code: see S2-2 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 2 — Book a room end to end,"scheduling,FR-BOK-13,NFR-04",Highest
+Story,S2-3 Venue accepts or rejects,"Accept, reject with a mandatory reason, reject after expiry.
+
+Prompt for Claude Code: see S2-3 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 2 — Book a room end to end,"booking,FR-BOK-14,FR-BOK-17",High
+Story,S2-4 Walk-in bookings,"The venue types in a customer who walked in. Always carries a business date.
+
+Prompt for Claude Code: see S2-4 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 2 — Book a room end to end,"booking,FR-MAN",High
+Story,S2-5 Notifications,"Push, SMS and email that never fire for something that did not happen.
+
+Prompt for Claude Code: see S2-5 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 2 — Book a room end to end,"notification,FR-NTF-12",High
+Story,S2-6 Customer app - find and book,"Area, activity, venues, room, time, book. My Bookings with three tabs.
+
+Prompt for Claude Code: see S2-6 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 2 — Book a room end to end,"frontend,customer",High
+Story,S2-7 Venue dashboard - incoming requests,"New requests appear within a second with a live countdown.
+
+Prompt for Claude Code: see S2-7 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 2 — Book a room end to end,"frontend,venue",High
+Epic,Sprint 3 — Slow venues and attendance,,Sprint 3 — Slow venues and attendance,,recovery,High
+Story,S3-1 Late Confirm,"The venue missed the 10 minutes but can still revive the booking until its start time.
+
+Prompt for Claude Code: see S3-1 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 3 — Slow venues and attendance,"lateconfirm,FR-LCF",Highest
+Story,"S3-2 Check-in, late, no-show","The venue records whether the customer turned up. Exact time windows.
+
+Prompt for Claude Code: see S3-2 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 3 — Slow venues and attendance,"attendance,FR-ATT",High
+Story,S3-3 Bookings start and finish by themselves,"No one presses anything. A booking can never stall past its start time.
+
+Prompt for Claude Code: see S3-3 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 3 — Slow venues and attendance,"booking,FR-BOK-24,FR-BOK-26",High
+Story,S3-4 Customer app - booking status and Late Confirm,"Full history, live countdown, accept and decline.
+
+Prompt for Claude Code: see S3-4 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 3 — Slow venues and attendance,"frontend,customer",High
+Epic,"Sprint 4 — No-shows, bans and rewards",,"Sprint 4 — No-shows, bans and rewards",,trust,High
+Story,S4-1 The trust log,"Every outcome written to a log that is never edited. Everything else is replayed from it.
+
+Prompt for Claude Code: see S4-1 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,"Sprint 4 — No-shows, bans and rewards","trust,FR-TRS,critical",Highest
+Story,S4-2 Bans and verified players,"Three no-shows in a row is a 7-day ban. Ten completed bookings is a verified player.
+
+Prompt for Claude Code: see S4-2 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,"Sprint 4 — No-shows, bans and rewards","trust,FR-TRS-13,FR-ACC-11",High
+Story,"S4-3 Points, referrals, wallet","200 points for a completed booking, 1000 for a referral. Balance never goes negative.
+
+Prompt for Claude Code: see S4-3 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,"Sprint 4 — No-shows, bans and rewards","loyalty,FR-PTS",High
+Story,"S4-4 Customer app - standing, points, referrals","Progress, points, referral code, ban if any.
+
+Prompt for Claude Code: see S4-4 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,"Sprint 4 — No-shows, bans and rewards","frontend,customer",Medium
+Epic,Sprint 5 — Running the venue,,Sprint 5 — Running the venue,,operations,High
+Story,S5-1 Maintenance and closures,"A room out for repair, a venue closed for a day, and the threshold that escalates to the owner.
+
+Prompt for Claude Code: see S5-1 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 5 — Running the venue,"operations,FR-OPS-01,FR-OPS-03",High
+Story,S5-2 Emergencies,"A console dies mid-session. Everything affected is cancelled at once, or nothing is.
+
+Prompt for Claude Code: see S5-2 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 5 — Running the venue,"operations,FR-OPS-06,NFR-03,critical",Highest
+Story,S5-3 Owner review,"A room that keeps breaking is locked until the owner signs it off.
+
+Prompt for Claude Code: see S5-3 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 5 — Running the venue,"operations,FR-OPS-26",High
+Story,S5-4 Pausing timers during an emergency,"The 10-minute clock stops and resumes where it left off. Two separate 30-minute caps.
+
+Prompt for Claude Code: see S5-4 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 5 — Running the venue,"scheduling,FR-OPS-34,FR-OPS-40",High
+Story,S5-5 Disabling a venue account,"Cut off the dashboard without pretending the venue closed. Protect the customer from an unfair no-show.
+
+Prompt for Claude Code: see S5-5 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 5 — Running the venue,"venue,FR-VEN-09,FR-ATT-16",High
+Story,S5-6 Venue dashboard - operations screens,"Declare an emergency, schedule maintenance, close for a day, change hours. Always preview what will be cancelled.
+
+Prompt for Claude Code: see S5-6 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 5 — Running the venue,"frontend,venue",High
+Epic,Sprint 6 — Tournaments,,Sprint 6 — Tournaments,,tournament,High
+Story,S6-1 Tournament lifecycle,"Create, hold rooms, players join, checkpoint one hour before the start confirms or cancels.
+
+Prompt for Claude Code: see S6-1 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 6 — Tournaments,"tournament,FR-TRN",High
+Story,S6-2 Tournament screens,"Discover a public tournament, join by invite code, see whether it is confirmed.
+
+Prompt for Claude Code: see S6-2 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,Sprint 6 — Tournaments,"frontend,tournament",Medium
+Epic,"Sprint 7 — Reviews, admin, launch",,"Sprint 7 — Reviews, admin, launch",,launch,High
+Story,S7-1 Reviews,"One review per customer per venue. A removed review is never restorable. 30-day cooldown.
+
+Prompt for Claude Code: see S7-1 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,"Sprint 7 — Reviews, admin, launch","review,FR-REV",Medium
+Story,S7-2 Admin panel,"Onboard a venue, fix a wrong no-show, moderate a review, change the global fee. Each with a reason and an audit record.
+
+Prompt for Claude Code: see S7-2 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,"Sprint 7 — Reviews, admin, launch","admin,FR-ADM",High
+Story,S7-3 Arabic right-to-left pass,"Every dashboard screen reads correctly in Arabic, stored text unchanged.
+
+Prompt for Claude Code: see S7-3 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,"Sprint 7 — Reviews, admin, launch","frontend,i18n,NFR-33",High
+Story,S7-4 Monitoring and the launch checklist,"The ten launch checks pass as an automated suite. Restore from backup once and time it.
+
+Prompt for Claude Code: see S7-4 in BUILD-PLAN.md at the repo root.
+Definition of Done: CLAUDE.md section 7.",,"Sprint 7 — Reviews, admin, launch","observability,launch",Highest
