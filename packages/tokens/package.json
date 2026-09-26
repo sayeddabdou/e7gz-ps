@@ -1,0 +1,10 @@
+{
+  "name": "@e7gz/tokens",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo \"not set up yet — see E7-18\"",
+    "lint": "echo \"not set up yet — see E7-18\"",
+    "typecheck": "echo \"not set up yet — see E7-18\""
+  }
+}

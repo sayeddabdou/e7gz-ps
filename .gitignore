@@ -1,0 +1,59 @@
+# build
+build/
+out/
+target/
+bin/
+*.class
+*.jar
+!**/gradle/wrapper/gradle-wrapper.jar
+.gradle/
+
+# node
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+.pnpm-store/
+
+# react native / expo
+apps/customer/ios/Pods/
+apps/customer/android/.gradle/
+apps/customer/android/app/build/
+.expo/
+web-build/
+
+# ide
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# secrets — never commit any of these
+.env
+.env.*
+!.env.example
+*.pem
+*.p8
+*.p12
+*.keystore
+google-services.json
+GoogleService-Info.plist
+application-local.yml
+application-prod.yml
+
+# local infra
+docker/data/
+pgdata/
+minio-data/
+
+# generated (packages/api-client/openapi.json IS committed — see E7-11)
+generated/
+packages/api-client/src/generated/
+
+# AI context bundles (tools/ai-context/bundle.mjs output)
+.ai-context/
+
+# test output
+test-results/
+coverage/

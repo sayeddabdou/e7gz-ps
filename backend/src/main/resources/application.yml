@@ -1,0 +1,9 @@
+spring:
+  application:
+    name: e7gz-backend
+  # No database yet — DataSource and Flyway are wired in E7-10 (remove these excludes there).
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration
+      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration

@@ -1,0 +1,10 @@
+{
+  "name": "@e7gz/customer",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo \"not set up yet — see E7-20\"",
+    "lint": "echo \"not set up yet — see E7-20\"",
+    "typecheck": "echo \"not set up yet — see E7-20\""
+  }
+}

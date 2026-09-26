@@ -1,0 +1,2159 @@
+{
+ "E7-9": {
+  "id": "S0-P1",
+  "title": "Project skeleton and folder structure",
+  "owner": "Sayed",
+  "what": "Create every folder and empty placeholder file, make the backend build, push to GitHub. Everyone pulls this before starting.",
+  "read": [
+   "CLAUDE.md",
+   "arch 03 §1–§2 (modules, dependency direction)",
+   "arch 01 §8.1 (stack)"
+  ],
+  "steps": [
+   "Initialise Git at the repo root (keep docs/ as is) and push to the team GitHub repository with main protected (PR + 1 review + green CI).",
+   "Create the monorepo layout from CLAUDE.md: backend/ (Gradle, Java 21, Spring Boot 3.x), apps/customer, apps/venue-dashboard, apps/admin-web, packages/tokens, packages/api-client (pnpm workspaces).",
+   "Create one Java package per module listed in arch 03 §1 (ps.e7gz.identity … ps.e7gz.messaging), each with api/ and internal/ sub-packages and a package-info.java stating its owned tables.",
+   "Add ArchUnit rules: modules may only call another module through its api package; no cycles; domain code never imports web code.",
+   "Two Spring profiles: api and worker (same image)."
+  ],
+  "done": [
+   "./gradlew check passes on an empty project with the ArchUnit rules active.",
+   "A deliberately illegal cross-module import makes the build fail (prove it in a test)."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/E7gzApplication.java",
+   "backend/src/test/java/ps/e7gz/architecture/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S0-P1 — \"Project skeleton and folder structure\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- CLAUDE.md\n- arch 03 §1–§2 (modules, dependency direction)\n- arch 01 §8.1 (stack)\n\nDo:\n1. Initialise Git at the repo root (keep docs/ as is) and push to the team GitHub repository with main protected (PR + 1 review + green CI).\n2. Create the monorepo layout from CLAUDE.md: backend/ (Gradle, Java 21, Spring Boot 3.x), apps/customer, apps/venue-dashboard, apps/admin-web, packages/tokens, packages/api-client (pnpm workspaces).\n3. Create one Java package per module listed in arch 03 §1 (ps.e7gz.identity … ps.e7gz.messaging), each with api/ and internal/ sub-packages and a package-info.java stating its owned tables.\n4. Add ArchUnit rules: modules may only call another module through its api package; no cycles; domain code never imports web code.\n5. Two Spring profiles: api and worker (same image).\n\nDone when (write these as tests first where possible):\n- ./gradlew check passes on an empty project with the ArchUnit rules active.\n- A deliberately illegal cross-module import makes the build fail (prove it in a test).\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-10": {
+  "id": "S0-P2",
+  "title": "Local environment and database baseline",
+  "owner": "Sayed",
+  "what": "Run the database, file storage and email locally with Docker, and load our finished database into the app.",
+  "read": [
+   "CLAUDE.md (Database section)",
+   "arch 04 §5–§6",
+   "docs/04-erd/physical/E7GZ-PS-v1.1.27-CHANGE-REPORT.md"
+  ],
+  "steps": [
+   "docker-compose.yml: PostgreSQL 16 with postgis + btree_gist, MinIO, MailHog.",
+   "Copy docs/04-erd/physical/V1__e7gz_ps_baseline_v1_1_27.sql to backend/src/main/resources/db/migration/V1__baseline.sql unchanged, and the security baseline as a Flyway repeatable R__security_baseline.sql.",
+   "Flyway runs as e7gz_migrator; the app connects as e7gz_app_runtime (api) or e7gz_admin_runtime (admin endpoints) — two datasources.",
+   "Testcontainers base class (PostGIS image) that applies the migrations once per test run.",
+   "Port the three shell test scripts from docs/04-erd/physical into a JUnit suite (or run them from a CI job) so the DB contract is checked on every build."
+  ],
+  "done": [
+   "docker compose up + ./gradlew bootRun starts the app against a migrated DB.",
+   "The DB behaviour/tournament/privilege checks run green in CI."
+  ],
+  "folders": [
+   "backend/src/main/resources/db/migration/",
+   "backend/src/main/resources/application*.yml",
+   "backend/src/test/java/ps/e7gz/support/",
+   "tools/db-tests/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S0-P2 — \"Local environment and database baseline\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- CLAUDE.md (Database section)\n- arch 04 §5–§6\n- docs/04-erd/physical/E7GZ-PS-v1.1.27-CHANGE-REPORT.md\n\nDo:\n1. docker-compose.yml: PostgreSQL 16 with postgis + btree_gist, MinIO, MailHog.\n2. Copy docs/04-erd/physical/V1__e7gz_ps_baseline_v1_1_27.sql to backend/src/main/resources/db/migration/V1__baseline.sql unchanged, and the security baseline as a Flyway repeatable R__security_baseline.sql.\n3. Flyway runs as e7gz_migrator; the app connects as e7gz_app_runtime (api) or e7gz_admin_runtime (admin endpoints) — two datasources.\n4. Testcontainers base class (PostGIS image) that applies the migrations once per test run.\n5. Port the three shell test scripts from docs/04-erd/physical into a JUnit suite (or run them from a CI job) so the DB contract is checked on every build.\n\nDone when (write these as tests first where possible):\n- docker compose up + ./gradlew bootRun starts the app against a migrated DB.\n- The DB behaviour/tournament/privilege checks run green in CI.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-11": {
+  "id": "S0-P3",
+  "title": "CI pipeline and OpenAPI → TypeScript client",
+  "owner": "Sayed",
+  "what": "Automatic checks on every pull request, and a generated API client the three apps use.",
+  "read": [
+   "arch 09 §1",
+   "ADR-012 in arch 02"
+  ],
+  "steps": [
+   "GitHub Actions: backend unit + integration (Testcontainers) + ArchUnit; frontends lint + typecheck + build.",
+   "springdoc generates OpenAPI 3.1 at build time into packages/api-client/openapi.json; generate a typed TS client (openapi-typescript + a small fetch wrapper) into packages/api-client.",
+   "CI fails if the committed openapi.json is out of date.",
+   "Add a mock server script (Prism) so the apps can run against the contract before the backend exists: pnpm mock."
+  ],
+  "done": [
+   "A PR with a new endpoint regenerates the TS client; the apps compile against it.",
+   "pnpm mock serves the current contract."
+  ],
+  "folders": [
+   ".github/workflows/",
+   "packages/api-client/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S0-P3 — \"CI pipeline and OpenAPI → TypeScript client\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 09 §1\n- ADR-012 in arch 02\n\nDo:\n1. GitHub Actions: backend unit + integration (Testcontainers) + ArchUnit; frontends lint + typecheck + build.\n2. springdoc generates OpenAPI 3.1 at build time into packages/api-client/openapi.json; generate a typed TS client (openapi-typescript + a small fetch wrapper) into packages/api-client.\n3. CI fails if the committed openapi.json is out of date.\n4. Add a mock server script (Prism) so the apps can run against the contract before the backend exists: pnpm mock.\n\nDone when (write these as tests first where possible):\n- A PR with a new endpoint regenerates the TS client; the apps compile against it.\n- pnpm mock serves the current contract.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-12": {
+  "id": "S0-P4",
+  "title": "Cross-cutting: clock, money, correlation ID, error envelope",
+  "owner": "Sayed",
+  "what": "Shared basics: one clock for time, one money type, a request ID in every log, and one error format.",
+  "read": [
+   "arch 08 §8 (clock)",
+   "arch 09 §1.3–§1.5 (envelope, status codes, error enum)",
+   "NFR-25, NFR-32"
+  ],
+  "steps": [
+   "Injectable java.time.Clock bean; ArchUnit bans Instant.now()/LocalDateTime.now()/System.currentTimeMillis() outside the clock adapter.",
+   "Money value type on BigDecimal (scale 2, HALF_UP, EGP); ArchUnit bans float/double in domain packages.",
+   "Correlation-ID filter: accept/generate X-Correlation-Id, put it in MDC, return it, pass it to audit and outbox.",
+   "Response envelope and ApiErrorCode enum exactly as arch 09 §1.5; global exception handler.",
+   "DB exception mapping: SQLSTATE 23P01 → typed conflict, 40001 → retry signal, guard RAISE EXCEPTION → ApiErrorCode by the mapping paragraph in arch 09."
+  ],
+  "done": [
+   "Tests prove each ban rule fires.",
+   "A guard exception from the DB reaches the client as the documented error code."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/common/clock/",
+   "backend/src/main/java/ps/e7gz/common/money/",
+   "backend/src/main/java/ps/e7gz/common/error/",
+   "backend/src/main/java/ps/e7gz/common/web/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S0-P4 — \"Cross-cutting: clock, money, correlation ID, error envelope\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 08 §8 (clock)\n- arch 09 §1.3–§1.5 (envelope, status codes, error enum)\n- NFR-25, NFR-32\n\nDo:\n1. Injectable java.time.Clock bean; ArchUnit bans Instant.now()/LocalDateTime.now()/System.currentTimeMillis() outside the clock adapter.\n2. Money value type on BigDecimal (scale 2, HALF_UP, EGP); ArchUnit bans float/double in domain packages.\n3. Correlation-ID filter: accept/generate X-Correlation-Id, put it in MDC, return it, pass it to audit and outbox.\n4. Response envelope and ApiErrorCode enum exactly as arch 09 §1.5; global exception handler.\n5. DB exception mapping: SQLSTATE 23P01 → typed conflict, 40001 → retry signal, guard RAISE EXCEPTION → ApiErrorCode by the mapping paragraph in arch 09.\n\nDone when (write these as tests first where possible):\n- Tests prove each ban rule fires.\n- A guard exception from the DB reaches the client as the documented error code.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-13": {
+  "id": "S0-P5",
+  "title": "Customer registration and phone OTP",
+  "owner": "Sayed",
+  "what": "Customers sign up and verify their phone with an SMS code.",
+  "read": [
+   "arch 10 §2",
+   "FRS 4.1 (FR-ACC-01…06)",
+   "Spec v5 §7.3 (OTP)",
+   "iam.user_account, iam.otp_challenge in arch 04 §9"
+  ],
+  "steps": [
+   "POST register, send OTP, verify OTP, resend — per arch 09 §3.1.",
+   "Argon2id password hashing. OTP stored hashed; the DB already enforces 5-min validity, 5 attempts, 60 s resend, 5/hour/destination and supersede — map its errors, do not re-implement them.",
+   "SMS adapter interface with a dev implementation that logs the code; real provider behind configuration.",
+   "phone_verified is the marketplace activation gate; email never activates."
+  ],
+  "done": [
+   "Integration tests cover each OTP limit returning the right error code.",
+   "An unverified user cannot reach booking endpoints (403 with the right code)."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/identity/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S0-P5 — \"Customer registration and phone OTP\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 10 §2\n- FRS 4.1 (FR-ACC-01…06)\n- Spec v5 §7.3 (OTP)\n- iam.user_account, iam.otp_challenge in arch 04 §9\n\nDo:\n1. POST register, send OTP, verify OTP, resend — per arch 09 §3.1.\n2. Argon2id password hashing. OTP stored hashed; the DB already enforces 5-min validity, 5 attempts, 60 s resend, 5/hour/destination and supersede — map its errors, do not re-implement them.\n3. SMS adapter interface with a dev implementation that logs the code; real provider behind configuration.\n4. phone_verified is the marketplace activation gate; email never activates.\n\nDone when (write these as tests first where possible):\n- Integration tests cover each OTP limit returning the right error code.\n- An unverified user cannot reach booking endpoints (403 with the right code).\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-14": {
+  "id": "S0-P6",
+  "title": "Login, JWT and refresh rotation for three audiences",
+  "owner": "Sayed",
+  "what": "Log in for customers, venues and admins; keep users signed in safely.",
+  "read": [
+   "arch 10 §2",
+   "arch 09 §2"
+  ],
+  "steps": [
+   "Customer, Venue Account and Admin login endpoints under their route groups (/api/v1/customer|venue|admin).",
+   "Short-lived JWT access token + rotating refresh token stored hashed in iam.auth_refresh_token; reuse of a rotated token revokes the family.",
+   "Rate limits via iam.security_rate_limit_counter (values approved in arch 01 §14 A4).",
+   "Spring Security config: each route group accepts only its own principal type."
+  ],
+  "done": [
+   "Tests: token rotation, reuse detection, cross-audience token rejected, rate limit hit."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/identity/",
+   "backend/src/main/java/ps/e7gz/common/security/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S0-P6 — \"Login, JWT and refresh rotation for three audiences\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 10 §2\n- arch 09 §2\n\nDo:\n1. Customer, Venue Account and Admin login endpoints under their route groups (/api/v1/customer|venue|admin).\n2. Short-lived JWT access token + rotating refresh token stored hashed in iam.auth_refresh_token; reuse of a rotated token revokes the family.\n3. Rate limits via iam.security_rate_limit_counter (values approved in arch 01 §14 A4).\n4. Spring Security config: each route group accepts only its own principal type.\n\nDone when (write these as tests first where possible):\n- Tests: token rotation, reuse detection, cross-audience token rejected, rate limit hit.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-15": {
+  "id": "S0-E1",
+  "title": "Command runner (READ COMMITTED, lock set, retry)",
+  "owner": "Amr",
+  "what": "The one safe way every \"action\" writes to the database (locks, retries).",
+  "read": [
+   "arch 04 §2.1 (command protocol)",
+   "ADR-026",
+   "arch 06 §0–§1 intro"
+  ],
+  "steps": [
+   "A CommandRunner that opens one READ COMMITTED transaction, calls tournament.begin_command(...) or admin.begin_command(...) with the declared lock set, runs the command body, and retries the whole transaction on SQLSTATE 40001 (bounded, jittered).",
+   "Commands declare their lock set (users, venues, resources, tournaments) and eligibility category (ADR-022) up front.",
+   "Expose commandNow() read from the DB command instant; domain code uses it instead of the clock inside commands.",
+   "Guard exceptions bubble up unchanged to the S0-P4 mapper."
+  ],
+  "done": [
+   "Integration test: a changed lock set triggers a retry and then succeeds.",
+   "REPEATABLE READ is refused by the DB and surfaces as a clear error."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/common/command/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S0-E1 — \"Command runner (READ COMMITTED, lock set, retry)\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 04 §2.1 (command protocol)\n- ADR-026\n- arch 06 §0–§1 intro\n\nDo:\n1. A CommandRunner that opens one READ COMMITTED transaction, calls tournament.begin_command(...) or admin.begin_command(...) with the declared lock set, runs the command body, and retries the whole transaction on SQLSTATE 40001 (bounded, jittered).\n2. Commands declare their lock set (users, venues, resources, tournaments) and eligibility category (ADR-022) up front.\n3. Expose commandNow() read from the DB command instant; domain code uses it instead of the clock inside commands.\n4. Guard exceptions bubble up unchanged to the S0-P4 mapper.\n\nDone when (write these as tests first where possible):\n- Integration test: a changed lock set triggers a retry and then succeeds.\n- REPEATABLE READ is refused by the DB and surfaces as a clear error.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-16": {
+  "id": "S0-E2",
+  "title": "Closed value sets as Java enums, checked against the DB",
+  "owner": "Amr",
+  "what": "All fixed lists (statuses, reasons, codes) as Java enums that must match the database.",
+  "read": [
+   "arch 04 §1 P5",
+   "ADR-016, ADR-027",
+   "arch 01 (three separate enum types)"
+  ],
+  "steps": [
+   "Java enums for every closed list in the model (booking status, reasons, tournament status/reasons, attendance, trust event types, notification codes, etc.).",
+   "Keep reason codes, booking events and API error codes in three separate types; ArchUnit/unit test proves they share no members.",
+   "A test that reads every CHECK (... = ANY (ARRAY[...])) list from pg_constraint and asserts the Java enum has exactly the same members."
+  ],
+  "done": [
+   "Changing a value in Java without the DB (or the reverse) fails the build."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/common/codes/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S0-E2 — \"Closed value sets as Java enums, checked against the DB\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 04 §1 P5\n- ADR-016, ADR-027\n- arch 01 (three separate enum types)\n\nDo:\n1. Java enums for every closed list in the model (booking status, reasons, tournament status/reasons, attendance, trust event types, notification codes, etc.).\n2. Keep reason codes, booking events and API error codes in three separate types; ArchUnit/unit test proves they share no members.\n3. A test that reads every CHECK (... = ANY (ARRAY[...])) list from pg_constraint and asserts the Java enum has exactly the same members.\n\nDone when (write these as tests first where possible):\n- Changing a value in Java without the DB (or the reverse) fails the build.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-17": {
+  "id": "S0-E3",
+  "title": "Audit writer",
+  "owner": "Amr",
+  "what": "Record who did what, when and why, for every important action.",
+  "read": [
+   "arch 10 §8",
+   "audit.audit_event in arch 04 §9",
+   "FR-AUD-01…"
+  ],
+  "steps": [
+   "AuditWriter used inside commands: actor type/id, action, subject, reason, correlation id, redacted payload via an allowlist.",
+   "No update/delete path exists (DB forbids it anyway).",
+   "Helper for tests to assert \"exactly one audit row for this action\"."
+  ],
+  "done": [
+   "Tests: redaction allowlist drops unknown fields; audit row shares the command transaction (rollback removes it)."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/audit/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S0-E3 — \"Audit writer\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 10 §8\n- audit.audit_event in arch 04 §9\n- FR-AUD-01…\n\nDo:\n1. AuditWriter used inside commands: actor type/id, action, subject, reason, correlation id, redacted payload via an allowlist.\n2. No update/delete path exists (DB forbids it anyway).\n3. Helper for tests to assert \"exactly one audit row for this action\".\n\nDone when (write these as tests first where possible):\n- Tests: redaction allowlist drops unknown fields; audit row shares the command transaction (rollback removes it).\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-18": {
+  "id": "S0-C1",
+  "title": "Design tokens package",
+  "owner": "Abdallah",
+  "what": "Pull colours, fonts and spacing from the designs into one shared package.",
+  "read": [
+   "docs/03-design/README.md",
+   "the three .dc.html prototypes"
+  ],
+  "steps": [
+   "Extract colours, typography scale, spacing, radii, shadows from the prototypes into packages/tokens (TS + CSS variables).",
+   "Include RTL-safe spacing helpers (logical properties).",
+   "Export for React (web) and React Native."
+  ],
+  "done": [
+   "All three apps import tokens from one package; no hard-coded colours in app code (lint rule)."
+  ],
+  "folders": [
+   "packages/tokens/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S0-C1 — \"Design tokens package\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- docs/03-design/README.md\n- the three .dc.html prototypes\n\nDo:\n1. Extract colours, typography scale, spacing, radii, shadows from the prototypes into packages/tokens (TS + CSS variables).\n2. Include RTL-safe spacing helpers (logical properties).\n3. Export for React (web) and React Native.\n\nDone when (write these as tests first where possible):\n- All three apps import tokens from one package; no hard-coded colours in app code (lint rule).\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-19": {
+  "id": "S0-C2",
+  "title": "Venue Dashboard and Admin web shells",
+  "owner": "Abdallah",
+  "what": "Empty but running Venue Dashboard (English + Arabic) and Admin website.",
+  "read": [
+   "docs/03-design/README.md",
+   "arch 11 §6 (RTL)",
+   "FR-VEN-40, NFR-33"
+  ],
+  "steps": [
+   "apps/venue-dashboard: React + TS + Vite, router, auth guard, layout shell from the prototype, EN/AR i18n with dir=\"rtl\" switching and CSS logical properties only.",
+   "apps/admin-web: React + TS + Vite, English only, layout shell and navigation for the 20 admin modules (empty pages).",
+   "Both use packages/api-client and can run against pnpm mock."
+  ],
+  "done": [
+   "Both apps build in CI; switching the Dashboard to Arabic mirrors the layout."
+  ],
+  "folders": [
+   "apps/venue-dashboard/src/app/",
+   "apps/venue-dashboard/src/i18n/",
+   "apps/admin-web/src/app/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S0-C2 — \"Venue Dashboard and Admin web shells\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- docs/03-design/README.md\n- arch 11 §6 (RTL)\n- FR-VEN-40, NFR-33\n\nDo:\n1. apps/venue-dashboard: React + TS + Vite, router, auth guard, layout shell from the prototype, EN/AR i18n with dir=\"rtl\" switching and CSS logical properties only.\n2. apps/admin-web: React + TS + Vite, English only, layout shell and navigation for the 20 admin modules (empty pages).\n3. Both use packages/api-client and can run against pnpm mock.\n\nDone when (write these as tests first where possible):\n- Both apps build in CI; switching the Dashboard to Arabic mirrors the layout.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-20": {
+  "id": "S0-C3",
+  "title": "Customer app shell",
+  "owner": "Abdallah",
+  "what": "Empty but running customer mobile app with its tabs.",
+  "read": [
+   "docs/03-design/README.md",
+   "Customer App prototype",
+   "NFR-34"
+  ],
+  "steps": [
+   "apps/customer: React Native + TypeScript (Expo managed workflow), navigation matching the prototype tabs, i18n-ready (English strings in resource files only).",
+   "API client from packages/api-client with token storage (secure store) and refresh handling.",
+   "Runs against pnpm mock."
+  ],
+  "done": [
+   "App starts on Android emulator and iOS simulator (or Expo Go) and shows the tab shell."
+  ],
+  "folders": [
+   "apps/customer/src/app/",
+   "apps/customer/src/i18n/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S0-C3 — \"Customer app shell\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- docs/03-design/README.md\n- Customer App prototype\n- NFR-34\n\nDo:\n1. apps/customer: React Native + TypeScript (Expo managed workflow), navigation matching the prototype tabs, i18n-ready (English strings in resource files only).\n2. API client from packages/api-client with token storage (secure store) and refresh handling.\n3. Runs against pnpm mock.\n\nDone when (write these as tests first where possible):\n- App starts on Android emulator and iOS simulator (or Expo Go) and shows the tab shell.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-21": {
+  "id": "S0-C4",
+  "title": "Auth screens on all three surfaces",
+  "owner": "Abdallah",
+  "what": "Sign-up, OTP and login screens on the app, dashboard and admin.",
+  "read": [
+   "arch 09 §2, §3.1",
+   "FRS 4.1",
+   "Customer App prototype auth screens"
+  ],
+  "steps": [
+   "Customer: register, OTP verify/resend with countdown, login, logout.",
+   "Venue Dashboard: venue login. Admin: admin login.",
+   "Show backend error codes through one error-to-message map (never hard-code rule text)."
+  ],
+  "done": [
+   "Flows work against the mock, then against the real backend once S0-P5/P6 merge."
+  ],
+  "folders": [
+   "apps/customer/src/features/auth/",
+   "apps/venue-dashboard/src/features/auth/",
+   "apps/admin-web/src/features/auth/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S0-C4 — \"Auth screens on all three surfaces\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 09 §2, §3.1\n- FRS 4.1\n- Customer App prototype auth screens\n\nDo:\n1. Customer: register, OTP verify/resend with countdown, login, logout.\n2. Venue Dashboard: venue login. Admin: admin login.\n3. Show backend error codes through one error-to-message map (never hard-code rule text).\n\nDone when (write these as tests first where possible):\n- Flows work against the mock, then against the real backend once S0-P5/P6 merge.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-22": {
+  "id": "S1-P0",
+  "title": "Sprint 1 API contract",
+  "owner": "Sayed",
+  "what": "Add all Sprint 1 API endpoints as empty stubs by day 2 so screens can start.",
+  "read": [
+   "arch 09 §3.2, §4.2, §5",
+   "arch 03 (Venue, Resource, Pricing, Availability)"
+  ],
+  "steps": [
+   "Day 1–2: add controller interfaces + request/response DTOs (separate per route group) for every Sprint 1 endpoint, returning 501.",
+   "Regenerate openapi.json and the TS client; post the PR to both teammates for review."
+  ],
+  "done": [
+   "Merged by day 2 so Clients can build against the mock while Engine/Platform implement."
+  ],
+  "folders": [
+   "packages/api-client/openapi.json"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S1-P0 — \"Sprint 1 API contract\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 09 §3.2, §4.2, §5\n- arch 03 (Venue, Resource, Pricing, Availability)\n\nDo:\n1. Day 1–2: add controller interfaces + request/response DTOs (separate per route group) for every Sprint 1 endpoint, returning 501.\n2. Regenerate openapi.json and the TS client; post the PR to both teammates for review.\n\nDone when (write these as tests first where possible):\n- Merged by day 2 so Clients can build against the mock while Engine/Platform implement.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-23": {
+  "id": "S1-P1",
+  "title": "Areas, venues and marketplace status",
+  "owner": "Sayed",
+  "what": "Admin creates areas and venues and moves a venue live, paused or closed.",
+  "read": [
+   "geo.area, venue.venue in arch 04 §9",
+   "FR-VEN-47",
+   "arch 01 §14 A9",
+   "arch 12 §2 (object storage)"
+  ],
+  "steps": [
+   "Admin API: areas (create, deactivate — DB refuses if venues are ACTIVE/SUSPENDED), venues (create in ONBOARDING, edit profile, location as PostGIS point).",
+   "Marketplace status changes ONBOARDING → ACTIVE/INACTIVE/SUSPENDED and between the three; never back to ONBOARDING (DB enforces; map the error).",
+   "Venue images to MinIO/S3 with signed GET URLs."
+  ],
+  "done": [
+   "Tests for each allowed/forbidden status change and area deactivation refusal."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/geography/",
+   "backend/src/main/java/ps/e7gz/venue/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S1-P1 — \"Areas, venues and marketplace status\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- geo.area, venue.venue in arch 04 §9\n- FR-VEN-47\n- arch 01 §14 A9\n- arch 12 §2 (object storage)\n\nDo:\n1. Admin API: areas (create, deactivate — DB refuses if venues are ACTIVE/SUSPENDED), venues (create in ONBOARDING, edit profile, location as PostGIS point).\n2. Marketplace status changes ONBOARDING → ACTIVE/INACTIVE/SUSPENDED and between the three; never back to ONBOARDING (DB enforces; map the error).\n3. Venue images to MinIO/S3 with signed GET URLs.\n\nDone when (write these as tests first where possible):\n- Tests for each allowed/forbidden status change and area deactivation refusal.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-24": {
+  "id": "S1-P2",
+  "title": "Venue account and Owner Password",
+  "owner": "Sayed",
+  "what": "Venue login account and the Owner Password that protects sensitive actions.",
+  "read": [
+   "arch 10 §3 (Owner Password)",
+   "ADR on Owner Password in arch 02",
+   "iam.venue_account, iam.venue_owner_secret"
+  ],
+  "steps": [
+   "Admin creates the venue account; venue login already exists (S0-P6).",
+   "Owner Password: Argon2id hash in iam.venue_owner_secret, set/change with version bump.",
+   "@OwnerProtected annotation: protected actions carry the password in the command body, verified inside the action transaction; never cached; successes/failures audited and rate-limited.",
+   "Architecture test that reads the FRS §2.4 protected/unprotected list as data and checks the annotations (risk I3)."
+  ],
+  "done": [
+   "Tests: wrong password audited + rate limited; no session \"unlock\" exists."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/venue/ (venue account)",
+   "backend/src/main/java/ps/e7gz/common/security/owner/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S1-P2 — \"Venue account and Owner Password\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 10 §3 (Owner Password)\n- ADR on Owner Password in arch 02\n- iam.venue_account, iam.venue_owner_secret\n\nDo:\n1. Admin creates the venue account; venue login already exists (S0-P6).\n2. Owner Password: Argon2id hash in iam.venue_owner_secret, set/change with version bump.\n3. @OwnerProtected annotation: protected actions carry the password in the command body, verified inside the action transaction; never cached; successes/failures audited and rate-limited.\n4. Architecture test that reads the FRS §2.4 protected/unprotected list as data and checks the annotations (risk I3).\n\nDone when (write these as tests first where possible):\n- Tests: wrong password audited + rate limited; no session \"unlock\" exists.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-25": {
+  "id": "S1-P3",
+  "title": "Opening hours and operating sessions (DST)",
+  "owner": "Sayed",
+  "what": "Weekly opening hours turned into real open sessions, correct across clock changes.",
+  "read": [
+   "ADR-009",
+   "venue.venue_opening_template, venue_opening_day, operating_session",
+   "arch 04 §4"
+  ],
+  "steps": [
+   "Weekly template + per-day overrides; generator creates operating_session rows (local_start/local_end + IANA timezone → tstzrange) for the booking horizon (deployment setting, default 120 days — A2).",
+   "Handle non-existent start, ambiguous repeat, 23/25-hour days; ex_session_no_overlap rejects overlaps.",
+   "Referenced sessions are immutable (DB guard) — regenerate only unreferenced ones."
+  ],
+  "done": [
+   "DST test cases pass; overlapping session insert fails."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/venue/ (opening hours, sessions)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S1-P3 — \"Opening hours and operating sessions (DST)\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- ADR-009\n- venue.venue_opening_template, venue_opening_day, operating_session\n- arch 04 §4\n\nDo:\n1. Weekly template + per-day overrides; generator creates operating_session rows (local_start/local_end + IANA timezone → tstzrange) for the booking horizon (deployment setting, default 120 days — A2).\n2. Handle non-existent start, ambiguous repeat, 23/25-hour days; ex_session_no_overlap rejects overlaps.\n3. Referenced sessions are immutable (DB guard) — regenerate only unreferenced ones.\n\nDone when (write these as tests first where possible):\n- DST test cases pass; overlapping session insert fails.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-26": {
+  "id": "S1-P4",
+  "title": "Resources, activities and state changes",
+  "owner": "Sayed",
+  "what": "Rooms/consoles of a venue, their status, and a history of every change.",
+  "read": [
+   "resource.resource, resource_state_change, venue.venue_activity",
+   "arch 04 §9.4"
+  ],
+  "steps": [
+   "Venue API for resources with both independent status columns, console iff PlayStation, activity types.",
+   "Every status change writes resource_state_change (append-only).",
+   "Owner Password where FRS §2.4 requires it."
+  ],
+  "done": [
+   "Tests for ck_console_iff_playstation and state-change history."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/resource/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S1-P4 — \"Resources, activities and state changes\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- resource.resource, resource_state_change, venue.venue_activity\n- arch 04 §9.4\n\nDo:\n1. Venue API for resources with both independent status columns, console iff PlayStation, activity types.\n2. Every status change writes resource_state_change (append-only).\n3. Owner Password where FRS §2.4 requires it.\n\nDone when (write these as tests first where possible):\n- Tests for ck_console_iff_playstation and state-change history.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-27": {
+  "id": "S1-P5",
+  "title": "Pricing and rounding",
+  "owner": "Sayed",
+  "what": "Prices per hour and the exact rounding rule.",
+  "read": [
+   "pricing.venue_default_price, resource_price_override",
+   "ADR-017",
+   "NFR-25"
+  ],
+  "steps": [
+   "Venue default prices and per-resource overrides; console change clears overrides (DB trigger).",
+   "PriceCalculator: round(hourly × minutes / 60, 2) HALF_UP per line item using Money."
+  ],
+  "done": [
+   "Property test over the formula; matches the DB CHECK on booking rows."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/pricing/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S1-P5 — \"Pricing and rounding\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- pricing.venue_default_price, resource_price_override\n- ADR-017\n- NFR-25\n\nDo:\n1. Venue default prices and per-resource overrides; console change clears overrides (DB trigger).\n2. PriceCalculator: round(hourly × minutes / 60, 2) HALF_UP per line item using Money.\n\nDone when (write these as tests first where possible):\n- Property test over the formula; matches the DB CHECK on booking rows.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-28": {
+  "id": "S1-P6",
+  "title": "Seed data generator",
+  "owner": "Sayed",
+  "what": "One command that fills the database with realistic test data.",
+  "read": [
+   "arch 11 §3"
+  ],
+  "steps": [
+   "A dev seed (a few venues in two areas, accounts, users, sessions, prices) and a perf seed (launch-city volume ×10) runnable by one command.",
+   "Shared test fixture builders (Java) that all lanes use: aVenue(), aResource(), aUser().verified(), etc."
+  ],
+  "done": [
+   "./gradlew seedDev and seedPerf work on a fresh DB; fixtures used by at least one test in each lane."
+  ],
+  "folders": [
+   "backend/src/seed/",
+   "backend/src/test/java/ps/e7gz/support/fixtures/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S1-P6 — \"Seed data generator\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 11 §3\n\nDo:\n1. A dev seed (a few venues in two areas, accounts, users, sessions, prices) and a perf seed (launch-city volume ×10) runnable by one command.\n2. Shared test fixture builders (Java) that all lanes use: aVenue(), aResource(), aUser().verified(), etc.\n\nDone when (write these as tests first where possible):\n- ./gradlew seedDev and seedPerf work on a fresh DB; fixtures used by at least one test in each lane.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-29": {
+  "id": "S1-E1",
+  "title": "Reservation ledger",
+  "owner": "Amr",
+  "what": "The room calendar: hold a time slot and make double-booking impossible.",
+  "read": [
+   "arch 05 §3",
+   "ADR-003",
+   "inventory.resource_reservation"
+  ],
+  "steps": [
+   "Repository with explicit SQL for create / release (one-way release, actual_reservation_release_at) — no truncation of planned_range.",
+   "Translate 23P01 from ex_no_double_booking into a typed SlotTaken failure.",
+   "Seed test data with SQL fixtures so this does not wait for Platform venue APIs."
+  ],
+  "done": [
+   "Test: two overlapping inserts from two transactions — exactly one commits."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/inventory/ledger/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S1-E1 — \"Reservation ledger\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 05 §3\n- ADR-003\n- inventory.resource_reservation\n\nDo:\n1. Repository with explicit SQL for create / release (one-way release, actual_reservation_release_at) — no truncation of planned_range.\n2. Translate 23P01 from ex_no_double_booking into a typed SlotTaken failure.\n3. Seed test data with SQL fixtures so this does not wait for Platform venue APIs.\n\nDone when (write these as tests first where possible):\n- Test: two overlapping inserts from two transactions — exactly one commits.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-30": {
+  "id": "S1-E2",
+  "title": "isFree: the eight ordered checks",
+  "owner": "Amr",
+  "what": "The single \"is this room free?\" check with its 8 steps in order.",
+  "read": [
+   "arch 05 §2, §2.2",
+   "01 §15 rule 1 (single canonical predicate)"
+  ],
+  "steps": [
+   "AvailabilityQuery.isFree implementing the eight checks in order, returning PredicateResult with the failing check index.",
+   "One implementation only; an ArchUnit/test \"predicate singularity\" proves only one class constructs the checks."
+  ],
+  "done": [
+   "EC-AVAI-002 and EC-AVAI-004 from the roadmap Phase 1 exit criteria pass."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/inventory/availability/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S1-E2 — \"isFree: the eight ordered checks\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 05 §2, §2.2\n- 01 §15 rule 1 (single canonical predicate)\n\nDo:\n1. AvailabilityQuery.isFree implementing the eight checks in order, returning PredicateResult with the failing check index.\n2. One implementation only; an ArchUnit/test \"predicate singularity\" proves only one class constructs the checks.\n\nDone when (write these as tests first where possible):\n- EC-AVAI-002 and EC-AVAI-004 from the roadmap Phase 1 exit criteria pass.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-31": {
+  "id": "S1-E3",
+  "title": "Business date",
+  "owner": "Amr",
+  "what": "Which business day a booking belongs to (even after midnight).",
+  "read": [
+   "arch 04 §4.3",
+   "FR-AVL-14"
+  ],
+  "steps": [
+   "BusinessDate resolver for in-session and out-of-hours cases (e.g. manual booking at 3 AM for a venue closing at 2 AM)."
+  ],
+  "done": [
+   "Table-driven tests including DST days."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/inventory/availability/ (BusinessDate)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S1-E3 — \"Business date\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 04 §4.3\n- FR-AVL-14\n\nDo:\n1. BusinessDate resolver for in-session and out-of-hours cases (e.g. manual booking at 3 AM for a venue closing at 2 AM).\n\nDone when (write these as tests first where possible):\n- Table-driven tests including DST days.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-32": {
+  "id": "S1-E4",
+  "title": "Concurrency harness and invariant sweep",
+  "owner": "Amr",
+  "what": "A test that fires many bookings at once, and a nightly health check.",
+  "read": [
+   "arch 11 §4",
+   "roadmap §10"
+  ],
+  "steps": [
+   "A reusable harness: N threads race the same slot → exactly 1 success, N−1 clean failures, 0 partial rows.",
+   "Nightly invariant sweep job (worker profile): overlapping active reservations, terminal rows without reason, etc.; raises an admin alert on violation."
+  ],
+  "done": [
+   "Harness runs in CI against every inventory change."
+  ],
+  "folders": [
+   "backend/src/test/java/ps/e7gz/concurrency/",
+   "backend/src/main/java/ps/e7gz/inventory/sweep/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S1-E4 — \"Concurrency harness and invariant sweep\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 11 §4\n- roadmap §10\n\nDo:\n1. A reusable harness: N threads race the same slot → exactly 1 success, N−1 clean failures, 0 partial rows.\n2. Nightly invariant sweep job (worker profile): overlapping active reservations, terminal rows without reason, etc.; raises an admin alert on violation.\n\nDone when (write these as tests first where possible):\n- Harness runs in CI against every inventory change.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-33": {
+  "id": "S1-E5",
+  "title": "Nearest Availability projection",
+  "owner": "Amr",
+  "what": "Pre-compute \"next available time\" for every venue so lists are fast.",
+  "read": [
+   "arch 05 §5",
+   "arch 08 §7 (projection worker)",
+   "inventory.venue_activity_availability"
+  ],
+  "steps": [
+   "Algorithm for next available start per venue per activity.",
+   "Projection worker refreshes rows on inventory-affecting events; a rebuild command recomputes everything."
+  ],
+  "done": [
+   "Projection equals a from-scratch computation on seeded data."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/inventory/availability/ (projection)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S1-E5 — \"Nearest Availability projection\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 05 §5\n- arch 08 §7 (projection worker)\n- inventory.venue_activity_availability\n\nDo:\n1. Algorithm for next available start per venue per activity.\n2. Projection worker refreshes rows on inventory-affecting events; a rebuild command recomputes everything.\n\nDone when (write these as tests first where possible):\n- Projection equals a from-scratch computation on seeded data.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-34": {
+  "id": "S1-E6",
+  "title": "Discovery API",
+  "owner": "Amr",
+  "what": "The venue list: nearest first, filters, next available time.",
+  "read": [
+   "arch 09 §3.2",
+   "ADR-019 (PostGIS KNN)",
+   "NFR-11"
+  ],
+  "steps": [
+   "Venue list with filters (area, activity), KNN distance ordering, Nearest Availability from the projection; venue detail.",
+   "Customer DTOs only expose customer-visible fields."
+  ],
+  "done": [
+   "p95 < 1 s on the perf seed (S1-P6) — test recorded in CI as a non-blocking report."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/inventory/availability/web/ (discovery)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S1-E6 — \"Discovery API\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 09 §3.2\n- ADR-019 (PostGIS KNN)\n- NFR-11\n\nDo:\n1. Venue list with filters (area, activity), KNN distance ordering, Nearest Availability from the projection; venue detail.\n2. Customer DTOs only expose customer-visible fields.\n\nDone when (write these as tests first where possible):\n- p95 < 1 s on the perf seed (S1-P6) — test recorded in CI as a non-blocking report.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-35": {
+  "id": "S1-C1",
+  "title": "Dashboard: venue setup screens",
+  "owner": "Abdallah",
+  "what": "Dashboard screens to set up venue profile, hours, rooms and prices.",
+  "read": [
+   "Venue Dashboard prototype",
+   "arch 09 §4.2"
+  ],
+  "steps": [
+   "Venue profile, opening hours (template + day overrides), resources, prices, Owner Password prompt component (reusable).",
+   "Built against the mock first; switch to the real API as tasks merge."
+  ],
+  "done": [
+   "EN and AR layouts reviewed."
+  ],
+  "folders": [
+   "apps/venue-dashboard/src/features/setup/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S1-C1 — \"Dashboard: venue setup screens\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Venue Dashboard prototype\n- arch 09 §4.2\n\nDo:\n1. Venue profile, opening hours (template + day overrides), resources, prices, Owner Password prompt component (reusable).\n2. Built against the mock first; switch to the real API as tasks merge.\n\nDone when (write these as tests first where possible):\n- EN and AR layouts reviewed.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-36": {
+  "id": "S1-C2",
+  "title": "Dashboard: availability schedule",
+  "owner": "Abdallah",
+  "what": "Dashboard grid showing each room's bookings through the day.",
+  "read": [
+   "Venue Dashboard prototype (schedule)"
+  ],
+  "steps": [
+   "Resource × time grid for a business date showing reservations, blocks and free time; date navigation."
+  ],
+  "done": [
+   "Works in RTL; data from the contract."
+  ],
+  "folders": [
+   "apps/venue-dashboard/src/features/schedule/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S1-C2 — \"Dashboard: availability schedule\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Venue Dashboard prototype (schedule)\n\nDo:\n1. Resource × time grid for a business date showing reservations, blocks and free time; date navigation.\n\nDone when (write these as tests first where possible):\n- Works in RTL; data from the contract.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-37": {
+  "id": "S1-C3",
+  "title": "Admin: areas, venues, venue accounts",
+  "owner": "Abdallah",
+  "what": "Admin screens for areas, venues and venue accounts.",
+  "read": [
+   "Platform Admin prototype",
+   "arch 09 §5",
+   "A9 in docs/03-design/README.md"
+  ],
+  "steps": [
+   "Areas list/create/deactivate; venues list/create/edit; marketplace status control that never offers ONBOARDING after leaving it; create venue account."
+  ],
+  "done": [
+   "Errors shown via the error-code map."
+  ],
+  "folders": [
+   "apps/admin-web/src/features/areas/",
+   "apps/admin-web/src/features/venues/",
+   "apps/admin-web/src/features/venue-accounts/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S1-C3 — \"Admin: areas, venues, venue accounts\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Platform Admin prototype\n- arch 09 §5\n- A9 in docs/03-design/README.md\n\nDo:\n1. Areas list/create/deactivate; venues list/create/edit; marketplace status control that never offers ONBOARDING after leaving it; create venue account.\n\nDone when (write these as tests first where possible):\n- Errors shown via the error-code map.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-38": {
+  "id": "S1-C4",
+  "title": "Customer app: discovery, map and venue page",
+  "owner": "Abdallah",
+  "what": "App: list of venues, map, and venue page.",
+  "read": [
+   "Customer App prototype",
+   "arch 09 §3.2"
+  ],
+  "steps": [
+   "Venue list with distance and next-available, map view, filters, venue detail with activities and prices."
+  ],
+  "done": [
+   "Location permission handled; works on the mock then the real API."
+  ],
+  "folders": [
+   "apps/customer/src/features/discovery/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S1-C4 — \"Customer app: discovery, map and venue page\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Customer App prototype\n- arch 09 §3.2\n\nDo:\n1. Venue list with distance and next-available, map view, filters, venue detail with activities and prices.\n\nDone when (write these as tests first where possible):\n- Location permission handled; works on the mock then the real API.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-39": {
+  "id": "S2-P0",
+  "title": "Sprint 2 API contract",
+  "owner": "Sayed",
+  "what": "Add all Sprint 2 API endpoints as stubs by day 2.",
+  "read": [
+   "arch 09 §3.3, §4.1"
+  ],
+  "steps": [
+   "Controller interfaces + DTOs for booking create/cancel/list/detail, venue requests accept/reject, manual booking, device token, venue push subscription, SSE stream; 501 stubs; regenerate client."
+  ],
+  "done": [
+   "Merged by day 2."
+  ],
+  "folders": [
+   "packages/api-client/openapi.json"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S2-P0 — \"Sprint 2 API contract\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 09 §3.3, §4.1\n\nDo:\n1. Controller interfaces + DTOs for booking create/cancel/list/detail, venue requests accept/reject, manual booking, device token, venue push subscription, SSE stream; 501 stubs; regenerate client.\n\nDone when (write these as tests first where possible):\n- Merged by day 2.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-40": {
+  "id": "S2-P1",
+  "title": "Deadline engine (scheduled_job)",
+  "owner": "Sayed",
+  "what": "The timer engine that fires deadlines on time (e.g. 10-minute venue reply).",
+  "read": [
+   "ADR-006",
+   "arch 08 §2.1–§2.4, §9"
+  ],
+  "steps": [
+   "scheduled_job repository; lease workers with FOR UPDATE SKIP LOCKED; idempotent handlers keyed by natural keys; rearm/recompute.",
+   "Handler registry so Engine can plug in T1, T4, T5, T6 without touching the engine.",
+   "Runs only in the worker profile."
+  ],
+  "done": [
+   "Tests: two workers never run the same job; a crashed lease is retaken; late firing still produces the boundary-correct outcome."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/scheduling/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S2-P1 — \"Deadline engine (scheduled_job)\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- ADR-006\n- arch 08 §2.1–§2.4, §9\n\nDo:\n1. scheduled_job repository; lease workers with FOR UPDATE SKIP LOCKED; idempotent handlers keyed by natural keys; rearm/recompute.\n2. Handler registry so Engine can plug in T1, T4, T5, T6 without touching the engine.\n3. Runs only in the worker profile.\n\nDone when (write these as tests first where possible):\n- Tests: two workers never run the same job; a crashed lease is retaken; late firing still produces the boundary-correct outcome.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-41": {
+  "id": "S2-P2",
+  "title": "Transactional outbox and dispatcher",
+  "owner": "Sayed",
+  "what": "Send messages only after the action is saved, with retries.",
+  "read": [
+   "ADR-004",
+   "arch 08 §4.1–§4.3"
+  ],
+  "steps": [
+   "Write outbox rows in the command transaction; pg_notify wake; dispatcher with exponential backoff and dead-letter; admin recover.",
+   "Nothing dispatches for a rolled-back transaction."
+  ],
+  "done": [
+   "Tests: rollback → no dispatch; transient failure retried; permanent → dead-letter."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/messaging/ (outbox)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S2-P2 — \"Transactional outbox and dispatcher\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- ADR-004\n- arch 08 §4.1–§4.3\n\nDo:\n1. Write outbox rows in the command transaction; pg_notify wake; dispatcher with exponential backoff and dead-letter; admin recover.\n2. Nothing dispatches for a rolled-back transaction.\n\nDone when (write these as tests first where possible):\n- Tests: rollback → no dispatch; transient failure retried; permanent → dead-letter.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-42": {
+  "id": "S2-P3",
+  "title": "Idempotency on writes",
+  "owner": "Sayed",
+  "what": "Pressing a button twice never creates two bookings.",
+  "read": [
+   "ADR-015",
+   "arch 08 §6"
+  ],
+  "steps": [
+   "Idempotency-Key header on every write in scope; technical.idempotency_begin/complete; same key + same body → same response; different body → error."
+  ],
+  "done": [
+   "Tests for replay and conflict."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/messaging/ (idempotency)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S2-P3 — \"Idempotency on writes\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- ADR-015\n- arch 08 §6\n\nDo:\n1. Idempotency-Key header on every write in scope; technical.idempotency_begin/complete; same key + same body → same response; different body → error.\n\nDone when (write these as tests first where possible):\n- Tests for replay and conflict.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-43": {
+  "id": "S2-P4",
+  "title": "Notifications: catalogue, channels, push and email",
+  "owner": "Sayed",
+  "what": "Notifications: in-app list, phone push, email, and SMS for codes only.",
+  "read": [
+   "arch 08 §4.4–§4.5",
+   "Spec v5 §52",
+   "notification.* tables (86 catalogue codes already seeded)"
+  ],
+  "steps": [
+   "NotificationService.notify(code, recipient, reference, params) validated against the catalogue; creates notification + required deliveries in the same transaction.",
+   "Adapters: FCM (Android + APNs via FCM) for customers, email (MailHog in dev), SMS for OTP only.",
+   "Device token register/revoke API (tokens are revoked, never deleted)."
+  ],
+  "done": [
+   "A catalogued code with missing required channels fails at commit (DB) — test it; push delivered in dev via a fake adapter."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/notification/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S2-P4 — \"Notifications: catalogue, channels, push and email\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 08 §4.4–§4.5\n- Spec v5 §52\n- notification.* tables (86 catalogue codes already seeded)\n\nDo:\n1. NotificationService.notify(code, recipient, reference, params) validated against the catalogue; creates notification + required deliveries in the same transaction.\n2. Adapters: FCM (Android + APNs via FCM) for customers, email (MailHog in dev), SMS for OTP only.\n3. Device token register/revoke API (tokens are revoked, never deleted).\n\nDone when (write these as tests first where possible):\n- A catalogued code with missing required channels fails at commit (DB) — test it; push delivered in dev via a fake adapter.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-44": {
+  "id": "S2-P5",
+  "title": "Venue live channel: SSE + Web Push",
+  "owner": "Sayed",
+  "what": "Live updates on the dashboard, and browser push when it is closed.",
+  "read": [
+   "ADR-014",
+   "arch 08 §5",
+   "arch 01 §14 A6",
+   "notification.venue_push_subscription"
+  ],
+  "steps": [
+   "GET /api/v1/venue/stream (change signals only {type, entityId}); fan-out across replicas with LISTEN/NOTIFY; heartbeat and reconnect.",
+   "Web Push (VAPID) subscribe/revoke API for the Dashboard; send for VENUE_NEW_BOOKING_REQUEST, VENUE_NEW_TOURNAMENT_REQUEST and other venue IN_APP+PUSH codes."
+  ],
+  "done": [
+   "Two API instances: an event on one reaches a stream on the other."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/notification/ (sse, webpush)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S2-P5 — \"Venue live channel: SSE + Web Push\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- ADR-014\n- arch 08 §5\n- arch 01 §14 A6\n- notification.venue_push_subscription\n\nDo:\n1. GET /api/v1/venue/stream (change signals only {type, entityId}); fan-out across replicas with LISTEN/NOTIFY; heartbeat and reconnect.\n2. Web Push (VAPID) subscribe/revoke API for the Dashboard; send for VENUE_NEW_BOOKING_REQUEST, VENUE_NEW_TOURNAMENT_REQUEST and other venue IN_APP+PUSH codes.\n\nDone when (write these as tests first where possible):\n- Two API instances: an event on one reaches a stream on the other.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-45": {
+  "id": "S2-P6",
+  "title": "Boundary test pack scaffold",
+  "owner": "Sayed",
+  "what": "Test tools to set the clock and check timers to the exact second.",
+  "read": [
+   "arch 08 §9",
+   "roadmap Phase 2–3 exit criteria"
+  ],
+  "steps": [
+   "Test utilities: controllable clock + command instant, \"run due jobs at T\", assertions at ±1 second.",
+   "Write the Phase 2 boundary tests as failing (@Disabled with task IDs) so Engine turns them green."
+  ],
+  "done": [
+   "Engine lane uses it in S2-E1/E2."
+  ],
+  "folders": [
+   "backend/src/test/java/ps/e7gz/support/boundary/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S2-P6 — \"Boundary test pack scaffold\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 08 §9\n- roadmap Phase 2–3 exit criteria\n\nDo:\n1. Test utilities: controllable clock + command instant, \"run due jobs at T\", assertions at ±1 second.\n2. Write the Phase 2 boundary tests as failing (@Disabled with task IDs) so Engine turns them green.\n\nDone when (write these as tests first where possible):\n- Engine lane uses it in S2-E1/E2.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-46": {
+  "id": "S2-E1",
+  "title": "Online booking creation (O1)",
+  "owner": "Amr",
+  "what": "A customer books a room online (20 checks), the venue gets the request.",
+  "read": [
+   "arch 06 §1.3 (20 conditions)",
+   "FRS 4.4",
+   "Spec v5 §21–§23"
+  ],
+  "steps": [
+   "CreateBookingCommand: the 20 named conditions in one ordered list, each citing its source, with a count assertion (risk I2).",
+   "Reservation + booking in one command; venue response deadline job (T1); fee snapshot from config.effective_numeric.",
+   "Outbox: BOOKING_CREATED (customer), VENUE_NEW_BOOKING_REQUEST (venue)."
+  ],
+  "done": [
+   "Boundary: submit at startAt−15:00 ok, −14:59 refused; sessionEnd−11 min ok, −9 min refused."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/booking/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S2-E1 — \"Online booking creation (O1)\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 06 §1.3 (20 conditions)\n- FRS 4.4\n- Spec v5 §21–§23\n\nDo:\n1. CreateBookingCommand: the 20 named conditions in one ordered list, each citing its source, with a count assertion (risk I2).\n2. Reservation + booking in one command; venue response deadline job (T1); fee snapshot from config.effective_numeric.\n3. Outbox: BOOKING_CREATED (customer), VENUE_NEW_BOOKING_REQUEST (venue).\n\nDone when (write these as tests first where possible):\n- Boundary: submit at startAt−15:00 ok, −14:59 refused; sessionEnd−11 min ok, −9 min refused.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-47": {
+  "id": "S2-E2",
+  "title": "Venue accept / reject / expiry (O2)",
+  "owner": "Amr",
+  "what": "The venue accepts or rejects within 10 minutes, or the request expires.",
+  "read": [
+   "arch 06 §2.1",
+   "FR-BOK-13…16"
+  ],
+  "steps": [
+   "Accept, reject, reject-after-expiry, response expiry (T1 handler), FR-BOK-16 operational-cause branch.",
+   "A SUSPENDED venue can still accept a PENDING booking created before suspension."
+  ],
+  "done": [
+   "Accept at expiresAt−1 s succeeds; at the boundary expiry wins."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/booking/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S2-E2 — \"Venue accept / reject / expiry (O2)\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 06 §2.1\n- FR-BOK-13…16\n\nDo:\n1. Accept, reject, reject-after-expiry, response expiry (T1 handler), FR-BOK-16 operational-cause branch.\n2. A SUSPENDED venue can still accept a PENDING booking created before suspension.\n\nDone when (write these as tests first where possible):\n- Accept at expiresAt−1 s succeeds; at the boundary expiry wins.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-48": {
+  "id": "S2-E3",
+  "title": "Walk-in / manual booking (O4)",
+  "owner": "Amr",
+  "what": "The venue adds a walk-in booking.",
+  "read": [
+   "arch 06 §1.4 (15 conditions)",
+   "FRS manual booking"
+  ],
+  "steps": [
+   "ManualBookingCommand with its own 15-condition predicate; business date for out-of-hours."
+  ],
+  "done": [
+   "Manual booking at 3 AM for a venue closing at 2 AM succeeds with a businessDate."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/booking/ (manual)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S2-E3 — \"Walk-in / manual booking (O4)\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 06 §1.4 (15 conditions)\n- FRS manual booking\n\nDo:\n1. ManualBookingCommand with its own 15-condition predicate; business date for out-of-hours.\n\nDone when (write these as tests first where possible):\n- Manual booking at 3 AM for a venue closing at 2 AM succeeds with a businessDate.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-49": {
+  "id": "S2-E4",
+  "title": "Cancellation, customer buckets, contact visibility",
+  "owner": "Amr",
+  "what": "Customer cancels; booking lists; hide the phone number when not allowed.",
+  "read": [
+   "arch 06 §1.5",
+   "arch 10 §5.1",
+   "NFR-18"
+  ],
+  "steps": [
+   "Customer cancel (before Start only); release reservation; notifications.",
+   "Customer booking list buckets; venue booking list; contact-visibility resolver — field absent (not masked) when not allowed."
+  ],
+  "done": [
+   "Contact redaction tested in every retention case; integrity sweep clean after a seeded run; J1 and J8 end-to-end tests."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/booking/ (cancel, projections, visibility)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S2-E4 — \"Cancellation, customer buckets, contact visibility\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 06 §1.5\n- arch 10 §5.1\n- NFR-18\n\nDo:\n1. Customer cancel (before Start only); release reservation; notifications.\n2. Customer booking list buckets; venue booking list; contact-visibility resolver — field absent (not masked) when not allowed.\n\nDone when (write these as tests first where possible):\n- Contact redaction tested in every retention case; integrity sweep clean after a seeded run; J1 and J8 end-to-end tests.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-50": {
+  "id": "S2-C1",
+  "title": "Customer app: book a room",
+  "owner": "Abdallah",
+  "what": "App: choose time and duration, see the price, book, wait for the venue.",
+  "read": [
+   "Customer App prototype booking flow",
+   "arch 09 §3.3"
+  ],
+  "steps": [
+   "Choose activity, resource type, date/time, duration; price from API; submit with Idempotency-Key; pending screen with venue response countdown."
+  ],
+  "done": [
+   "Error codes shown via the map; double-tap does not create two bookings."
+  ],
+  "folders": [
+   "apps/customer/src/features/booking/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S2-C1 — \"Customer app: book a room\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Customer App prototype booking flow\n- arch 09 §3.3\n\nDo:\n1. Choose activity, resource type, date/time, duration; price from API; submit with Idempotency-Key; pending screen with venue response countdown.\n\nDone when (write these as tests first where possible):\n- Error codes shown via the map; double-tap does not create two bookings.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-51": {
+  "id": "S2-C2",
+  "title": "Customer app: My Bookings and push",
+  "owner": "Abdallah",
+  "what": "App: My Bookings, cancel, and receive push notifications.",
+  "read": [
+   "Customer App prototype My Bookings",
+   "arch 06 §1.5"
+  ],
+  "steps": [
+   "Buckets exactly as the API returns them; detail; cancel; register device token for push; notification inbox list."
+  ],
+  "done": [
+   "Push received on a device in dev."
+  ],
+  "folders": [
+   "apps/customer/src/features/my-bookings/",
+   "apps/customer/src/features/notifications/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S2-C2 — \"Customer app: My Bookings and push\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Customer App prototype My Bookings\n- arch 06 §1.5\n\nDo:\n1. Buckets exactly as the API returns them; detail; cancel; register device token for push; notification inbox list.\n\nDone when (write these as tests first where possible):\n- Push received on a device in dev.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-52": {
+  "id": "S2-C3",
+  "title": "Dashboard: live requests with sound and Web Push",
+  "owner": "Abdallah",
+  "what": "Dashboard: new requests appear live with a sound, accept or reject.",
+  "read": [
+   "arch 08 §5",
+   "A6 in docs/03-design/README.md"
+  ],
+  "steps": [
+   "SSE client with reconnect; new request list with countdown; accept/reject; audible alert on every new booking/tournament request; Web Push subscription and service worker for when the Dashboard is closed."
+  ],
+  "done": [
+   "Alert plays once per new request; works in AR."
+  ],
+  "folders": [
+   "apps/venue-dashboard/src/features/requests/",
+   "apps/venue-dashboard/public/ (service worker, alert sound)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S2-C3 — \"Dashboard: live requests with sound and Web Push\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 08 §5\n- A6 in docs/03-design/README.md\n\nDo:\n1. SSE client with reconnect; new request list with countdown; accept/reject; audible alert on every new booking/tournament request; Web Push subscription and service worker for when the Dashboard is closed.\n\nDone when (write these as tests first where possible):\n- Alert plays once per new request; works in AR.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-53": {
+  "id": "S2-C4",
+  "title": "Dashboard: walk-ins and today view",
+  "owner": "Abdallah",
+  "what": "Dashboard: add walk-ins and see today's bookings.",
+  "read": [
+   "Venue Dashboard prototype"
+  ],
+  "steps": [
+   "Manual booking form; today's bookings by resource; booking detail with contact only when the API returns it."
+  ],
+  "done": [
+   "RTL checked."
+  ],
+  "folders": [
+   "apps/venue-dashboard/src/features/today/",
+   "apps/venue-dashboard/src/features/walk-in/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S2-C4 — \"Dashboard: walk-ins and today view\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Venue Dashboard prototype\n\nDo:\n1. Manual booking form; today's bookings by resource; booking detail with contact only when the API returns it.\n\nDone when (write these as tests first where possible):\n- RTL checked.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-54": {
+  "id": "S3-P0",
+  "title": "Sprint 3 API contract",
+  "owner": "Sayed",
+  "what": "Add all Sprint 3 API endpoints as stubs by day 2.",
+  "read": [
+   "arch 09 §3.3, §4.1"
+  ],
+  "steps": [
+   "Stubs + DTOs for Late Confirm, attendance actions, profile/account endpoints; regenerate client."
+  ],
+  "done": [
+   "Merged by day 2."
+  ],
+  "folders": [
+   "packages/api-client/openapi.json"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S3-P0 — \"Sprint 3 API contract\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 09 §3.3, §4.1\n\nDo:\n1. Stubs + DTOs for Late Confirm, attendance actions, profile/account endpoints; regenerate client.\n\nDone when (write these as tests first where possible):\n- Merged by day 2.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-55": {
+  "id": "S3-P1",
+  "title": "Booking and attendance notifications",
+  "owner": "Sayed",
+  "what": "Send the right notification for every booking and attendance event.",
+  "read": [
+   "Spec v5 §52.2",
+   "arch 08 §4.5 (copy rules)"
+  ],
+  "steps": [
+   "Wire every customer booking/Late Confirm/attendance code listed in §52.2 to the correct trigger; EN message templates in the apps (backend sends codes + params only).",
+   "Copy-rule tests from arch 08 §4.5."
+  ],
+  "done": [
+   "Each code has a test proving it is emitted exactly once for its event."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/notification/ (triggers)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S3-P1 — \"Booking and attendance notifications\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Spec v5 §52.2\n- arch 08 §4.5 (copy rules)\n\nDo:\n1. Wire every customer booking/Late Confirm/attendance code listed in §52.2 to the correct trigger; EN message templates in the apps (backend sends codes + params only).\n2. Copy-rule tests from arch 08 §4.5.\n\nDone when (write these as tests first where possible):\n- Each code has a test proving it is emitted exactly once for its event.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-56": {
+  "id": "S3-P2",
+  "title": "Admin alerts",
+  "owner": "Sayed",
+  "what": "Alerts to the admin when something is seriously wrong.",
+  "read": [
+   "admin.admin_alert",
+   "arch 12 §6",
+   "arch 11 §5.4"
+  ],
+  "steps": [
+   "Raise/acknowledge admin alerts; severity; admin API list/ack; used by integrity errors and the invariant sweep."
+  ],
+  "done": [
+   "SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR produces an alert with the full payload."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/admin/ (alerts)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S3-P2 — \"Admin alerts\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- admin.admin_alert\n- arch 12 §6\n- arch 11 §5.4\n\nDo:\n1. Raise/acknowledge admin alerts; severity; admin API list/ack; used by integrity errors and the invariant sweep.\n\nDone when (write these as tests first where possible):\n- SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR produces an alert with the full payload.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-57": {
+  "id": "S3-P3",
+  "title": "Profile and account management",
+  "owner": "Sayed",
+  "what": "Edit profile, change username, phone, email, reset password.",
+  "read": [
+   "FRS 4.1",
+   "Spec v5 §7.5 (username cooldown)"
+  ],
+  "steps": [
+   "Edit full name, username (30-day cooldown enforced by DB), phone change with OTP, email change, password reset via OTP; PASSWORD_RESET / PHONE_CHANGED / EMAIL_CHANGED notifications."
+  ],
+  "done": [
+   "Cooldown error mapped; tokens revoked on password reset."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/identity/ (profile)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S3-P3 — \"Profile and account management\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- FRS 4.1\n- Spec v5 §7.5 (username cooldown)\n\nDo:\n1. Edit full name, username (30-day cooldown enforced by DB), phone change with OTP, email change, password reset via OTP; PASSWORD_RESET / PHONE_CHANGED / EMAIL_CHANGED notifications.\n\nDone when (write these as tests first where possible):\n- Cooldown error mapped; tokens revoked on password reset.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-58": {
+  "id": "S3-E1",
+  "title": "Late Confirm (O3)",
+  "owner": "Amr",
+  "what": "Late Confirm: the venue offers a late slot, the customer accepts in time.",
+  "read": [
+   "arch 06 §2.2",
+   "arch 08 §2.6",
+   "arch 10 §5.2",
+   "FRS 4.5"
+  ],
+  "steps": [
+   "Initiate, accept, decline, timeout; T2 and T3; warning job only when the window > 60 s; neutral venue-facing failure shaping."
+  ],
+  "done": [
+   "7:59 PM initiation → exactly 60 s and no warning; 7:50 PM → 5 min and one warning; a customer at 4 commitments: blocked, no hold, venue message reveals nothing."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/booking/lateconfirm/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S3-E1 — \"Late Confirm (O3)\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 06 §2.2\n- arch 08 §2.6\n- arch 10 §5.2\n- FRS 4.5\n\nDo:\n1. Initiate, accept, decline, timeout; T2 and T3; warning job only when the window > 60 s; neutral venue-facing failure shaping.\n\nDone when (write these as tests first where possible):\n- 7:59 PM initiation → exactly 60 s and no warning; 7:50 PM → 5 min and one warning; a customer at 4 commitments: blocked, no hold, venue message reveals nothing.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-59": {
+  "id": "S3-E2",
+  "title": "Check-in, late present, no-show (O13)",
+  "owner": "Amr",
+  "what": "Check-in, \"arrived late\", and no-show.",
+  "read": [
+   "arch 07 §7",
+   "FRS 4.6"
+  ],
+  "steps": [
+   "Check-in window, Mark Present — Late, no-show; release reservation at the no-show instant; attendance_record rules."
+  ],
+  "done": [
+   "Check-in at +14:59 ok, +15:00 refused and Late Present offered; Late-Present cannot become no-show."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/attendance/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S3-E2 — \"Check-in, late present, no-show (O13)\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 07 §7\n- FRS 4.6\n\nDo:\n1. Check-in window, Mark Present — Late, no-show; release reservation at the no-show instant; attendance_record rules.\n\nDone when (write these as tests first where possible):\n- Check-in at +14:59 ok, +15:00 refused and Late Present offered; Late-Present cannot become no-show.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-60": {
+  "id": "S3-E3",
+  "title": "Start-time revalidation (O11)",
+  "owner": "Amr",
+  "what": "Re-check everything at start time and cancel with the right reason if needed.",
+  "read": [
+   "arch 05 §7",
+   "arch 12 §6.2"
+  ],
+  "steps": [
+   "At Start: revalidate, apply the seven-level reason priority, SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR + admin alert when inventory contradicts state."
+  ],
+  "done": [
+   "Forcing a resource DISABLED behind the predicate produces the integrity error + alert."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/booking/ (start revalidation)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S3-E3 — \"Start-time revalidation (O11)\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 05 §7\n- arch 12 §6.2\n\nDo:\n1. At Start: revalidate, apply the seven-level reason priority, SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR + admin alert when inventory contradicts state.\n\nDone when (write these as tests first where possible):\n- Forcing a resource DISABLED behind the predicate produces the integrity error + alert.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-61": {
+  "id": "S3-E4",
+  "title": "Completion and attendance defaults (O12)",
+  "owner": "Amr",
+  "what": "Finish bookings automatically and set the final attendance result.",
+  "read": [
+   "arch 07 §7.3"
+  ],
+  "steps": [
+   "Completion job; the eight attendance-default rules; ATTENDANCE_UNCONFIRMED path with no points.",
+   "Enable all four timer boundary tests (±1 s) and journeys J2–J5."
+  ],
+  "done": [
+   "Boundary pack green."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/attendance/ (completion)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S3-E4 — \"Completion and attendance defaults (O12)\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 07 §7.3\n\nDo:\n1. Completion job; the eight attendance-default rules; ATTENDANCE_UNCONFIRMED path with no points.\n2. Enable all four timer boundary tests (±1 s) and journeys J2–J5.\n\nDone when (write these as tests first where possible):\n- Boundary pack green.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-62": {
+  "id": "S3-C1",
+  "title": "Customer app: Late Confirm and status",
+  "owner": "Abdallah",
+  "what": "App: Late Confirm screen with countdown and booking status timeline.",
+  "read": [
+   "Customer App prototype (Late Confirm copy placement)"
+  ],
+  "steps": [
+   "Late Confirm received screen with exact countdown, accept/decline, expired states; booking status timeline."
+  ],
+  "done": [
+   "Countdown driven by server expires_at, not device time."
+  ],
+  "folders": [
+   "apps/customer/src/features/late-confirm/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S3-C1 — \"Customer app: Late Confirm and status\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Customer App prototype (Late Confirm copy placement)\n\nDo:\n1. Late Confirm received screen with exact countdown, accept/decline, expired states; booking status timeline.\n\nDone when (write these as tests first where possible):\n- Countdown driven by server expires_at, not device time.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-63": {
+  "id": "S3-C2",
+  "title": "Dashboard: attendance and Late Confirm",
+  "owner": "Abdallah",
+  "what": "Dashboard: check-in, late, no-show and Late Confirm buttons.",
+  "read": [
+   "Venue Dashboard prototype"
+  ],
+  "steps": [
+   "Check-in, Mark Present — Late, no-show actions with their windows; initiate Late Confirm; neutral failure message."
+  ],
+  "done": [
+   "Actions disabled outside windows returned by the API."
+  ],
+  "folders": [
+   "apps/venue-dashboard/src/features/attendance/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S3-C2 — \"Dashboard: attendance and Late Confirm\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Venue Dashboard prototype\n\nDo:\n1. Check-in, Mark Present — Late, no-show actions with their windows; initiate Late Confirm; neutral failure message.\n\nDone when (write these as tests first where possible):\n- Actions disabled outside windows returned by the API.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-64": {
+  "id": "S3-C3",
+  "title": "Customer app: profile and account",
+  "owner": "Abdallah",
+  "what": "App: profile and account screens.",
+  "read": [
+   "Customer App prototype profile"
+  ],
+  "steps": [
+   "Profile edit, username change with cooldown message, phone/email change with OTP, password reset."
+  ],
+  "done": [
+   "All error codes mapped."
+  ],
+  "folders": [
+   "apps/customer/src/features/profile/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S3-C3 — \"Customer app: profile and account\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Customer App prototype profile\n\nDo:\n1. Profile edit, username change with cooldown message, phone/email change with OTP, password reset.\n\nDone when (write these as tests first where possible):\n- All error codes mapped.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-65": {
+  "id": "S4-P0",
+  "title": "Sprint 4 API contract",
+  "owner": "Sayed",
+  "what": "Add all Sprint 4 API endpoints as stubs by day 2.",
+  "read": [
+   "arch 09 §3.4, §5"
+  ],
+  "steps": [
+   "Stubs + DTOs for standing, points, wallet, referrals, admin trust/ban/VP/points/config endpoints; regenerate client."
+  ],
+  "done": [
+   "Merged by day 2."
+  ],
+  "folders": [
+   "packages/api-client/openapi.json"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S4-P0 — \"Sprint 4 API contract\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 09 §3.4, §5\n\nDo:\n1. Stubs + DTOs for standing, points, wallet, referrals, admin trust/ban/VP/points/config endpoints; regenerate client.\n\nDone when (write these as tests first where possible):\n- Merged by day 2.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-66": {
+  "id": "S4-P1",
+  "title": "Loyalty ledgers and fee treatment",
+  "owner": "Sayed",
+  "what": "Points and wallet ledgers, and what happens to the booking fee in every case.",
+  "read": [
+   "arch 04 §4.6",
+   "arch 03 §16",
+   "loyalty.* producers"
+  ],
+  "steps": [
+   "Call the loyalty producers (post_points, record_fee_receipt, record_refund, settle_refund); wallet; MIN compensation rule; fee treatment as an exhaustive switch with no default branch."
+  ],
+  "done": [
+   "Every terminal reason maps to a fee treatment (test fails on a new unmapped reason)."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/loyalty/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S4-P1 — \"Loyalty ledgers and fee treatment\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 04 §4.6\n- arch 03 §16\n- loyalty.* producers\n\nDo:\n1. Call the loyalty producers (post_points, record_fee_receipt, record_refund, settle_refund); wallet; MIN compensation rule; fee treatment as an exhaustive switch with no default branch.\n\nDone when (write these as tests first where possible):\n- Every terminal reason maps to a fee treatment (test fails on a new unmapped reason).\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-67": {
+  "id": "S4-P2",
+  "title": "Referrals",
+  "owner": "Sayed",
+  "what": "Invite a friend: referral rewards and reversals.",
+  "read": [
+   "arch 03 §16",
+   "FR-PTS-06"
+  ],
+  "steps": [
+   "Referral code on signup; value read at OTP verification; reward/invalidate via producers."
+  ],
+  "done": [
+   "Reversing +1,000 at 300 points → balance 0 and 700 unrecovered."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/loyalty/ (referral)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S4-P2 — \"Referrals\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 03 §16\n- FR-PTS-06\n\nDo:\n1. Referral code on signup; value read at OTP verification; reward/invalidate via producers.\n\nDone when (write these as tests first where possible):\n- Reversing +1,000 at 300 points → balance 0 and 700 unrecovered.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-68": {
+  "id": "S4-P3",
+  "title": "Configuration service (fees and points)",
+  "owner": "Sayed",
+  "what": "Admin changes the booking fee and points values (from a date onward).",
+  "read": [
+   "ADR-028",
+   "arch 11 (config scope)",
+   "arch 01 §14 A8"
+  ],
+  "steps": [
+   "Read effective values via config.effective_numeric; admin changes via config.change_configuration / loyalty.configure; only fees and points are configurable (A8)."
+  ],
+  "done": [
+   "Changing the booking fee affects only bookings created after the change."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/config/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S4-P3 — \"Configuration service (fees and points)\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- ADR-028\n- arch 11 (config scope)\n- arch 01 §14 A8\n\nDo:\n1. Read effective values via config.effective_numeric; admin changes via config.change_configuration / loyalty.configure; only fees and points are configurable (A8).\n\nDone when (write these as tests first where possible):\n- Changing the booking fee affects only bookings created after the change.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-69": {
+  "id": "S4-E1",
+  "title": "Trust events and replay",
+  "owner": "Amr",
+  "what": "Trust history of every customer, recalculated exactly from events.",
+  "read": [
+   "arch 07 §3",
+   "arch 04 §4.5"
+  ],
+  "steps": [
+   "Emit trust events from attendance outcomes; pure replay and resolveEffectiveOutcomes; as-of queries; replay never writes (prove with a read-only connection)."
+  ],
+  "done": [
+   "Seeded replay reproduces history; reversing a Monday no-show on Friday changes the Monday position."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/trust/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S4-E1 — \"Trust events and replay\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 07 §3\n- arch 04 §4.5\n\nDo:\n1. Emit trust events from attendance outcomes; pure replay and resolveEffectiveOutcomes; as-of queries; replay never writes (prove with a read-only connection).\n\nDone when (write these as tests first where possible):\n- Seeded replay reproduces history; reversing a Monday no-show on Friday changes the Monday position.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-70": {
+  "id": "S4-E2",
+  "title": "Reconciler and attendance corrections",
+  "owner": "Amr",
+  "what": "Fix attendance mistakes and recalculate trust correctly.",
+  "read": [
+   "arch 07 §4"
+  ],
+  "steps": [
+   "Reconciler with the three idempotency keys; correction chains → one effective outcome."
+  ],
+  "done": [
+   "Three chained corrections → exactly one effective outcome; double replay creates nothing twice."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/trust/ (reconciler)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S4-E2 — \"Reconciler and attendance corrections\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 07 §4\n\nDo:\n1. Reconciler with the three idempotency keys; correction chains → one effective outcome.\n\nDone when (write these as tests first where possible):\n- Three chained corrections → exactly one effective outcome; double replay creates nothing twice.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-71": {
+  "id": "S4-E3",
+  "title": "Bans and the ban cascade (O14)",
+  "owner": "Amr",
+  "what": "Temporary bans after repeated no-shows, and their effects.",
+  "read": [
+   "arch 07 §5, §5.4"
+  ],
+  "steps": [
+   "ban_qualification vs ban_instance; one active ban; MAX extension; cascade once via trust producers; BAN notifications."
+  ],
+  "done": [
+   "Second qualification during an active ban → one instance, advanced stage, BAN_EXTENDED."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/trust/ (ban)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S4-E3 — \"Bans and the ban cascade (O14)\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 07 §5, §5.4\n\nDo:\n1. ban_qualification vs ban_instance; one active ban; MAX extension; cascade once via trust producers; BAN notifications.\n\nDone when (write these as tests first where possible):\n- Second qualification during an active ban → one instance, advanced stage, BAN_EXTENDED.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-72": {
+  "id": "S4-E4",
+  "title": "Verified Player",
+  "owner": "Amr",
+  "what": "The Verified Player badge: earning, losing, restoring it.",
+  "read": [
+   "arch 07 §6"
+  ],
+  "steps": [
+   "Qualification, operational status, transitions, admin protection."
+  ],
+  "done": [
+   "Revoke by correction then re-qualify → VERIFIED with two transition IDs and no admin action."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/trust/ (verified player)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S4-E4 — \"Verified Player\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 07 §6\n\nDo:\n1. Qualification, operational status, transitions, admin protection.\n\nDone when (write these as tests first where possible):\n- Revoke by correction then re-qualify → VERIFIED with two transition IDs and no admin action.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-73": {
+  "id": "S4-E5",
+  "title": "Tournament entity (early, for Sprint 5)",
+  "owner": "Amr",
+  "what": "Basic tournament records early, so venue emergencies can handle them.",
+  "read": [
+   "roadmap §7 dependency note",
+   "arch 04 §4.4"
+  ],
+  "steps": [
+   "Repositories/aggregates for tournament, tournament_resource, participants and hold reservation kinds — enough for owner-review and emergency cascades to find and cancel tournaments. No UI."
+  ],
+  "done": [
+   "A test creates a tournament with holds via the aggregate."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/tournament/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S4-E5 — \"Tournament entity (early, for Sprint 5)\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- roadmap §7 dependency note\n- arch 04 §4.4\n\nDo:\n1. Repositories/aggregates for tournament, tournament_resource, participants and hold reservation kinds — enough for owner-review and emergency cascades to find and cancel tournaments. No UI.\n\nDone when (write these as tests first where possible):\n- A test creates a tournament with holds via the aggregate.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-74": {
+  "id": "S4-C1",
+  "title": "Customer app: standing, points, wallet, referrals",
+  "owner": "Abdallah",
+  "what": "App: my standing, points, wallet and referral code.",
+  "read": [
+   "Customer App prototype"
+  ],
+  "steps": [
+   "Account standing (ban, Verified Player), points history, wallet, referral code sharing."
+  ],
+  "done": [
+   "Matches API codes; no rule text hard-coded."
+  ],
+  "folders": [
+   "apps/customer/src/features/rewards/",
+   "apps/customer/src/features/profile/ (standing)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S4-C1 — \"Customer app: standing, points, wallet, referrals\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Customer App prototype\n\nDo:\n1. Account standing (ban, Verified Player), points history, wallet, referral code sharing.\n\nDone when (write these as tests first where possible):\n- Matches API codes; no rule text hard-coded.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-75": {
+  "id": "S4-C2",
+  "title": "Admin: trust, bans, Verified Player, points, configuration",
+  "owner": "Abdallah",
+  "what": "Admin: trust fixes, bans, badges, points, fees.",
+  "read": [
+   "Platform Admin prototype",
+   "arch 09 §5"
+  ],
+  "steps": [
+   "Trust corrections, ban lift, Verified Player actions, points adjustment, fees/points configuration with effective-from display."
+  ],
+  "done": [
+   "Every admin write asks for a reason where the API requires it."
+  ],
+  "folders": [
+   "apps/admin-web/src/features/trust/",
+   "apps/admin-web/src/features/bans/",
+   "apps/admin-web/src/features/verified-players/",
+   "apps/admin-web/src/features/points/",
+   "apps/admin-web/src/features/configuration/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S4-C2 — \"Admin: trust, bans, Verified Player, points, configuration\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Platform Admin prototype\n- arch 09 §5\n\nDo:\n1. Trust corrections, ban lift, Verified Player actions, points adjustment, fees/points configuration with effective-from display.\n\nDone when (write these as tests first where possible):\n- Every admin write asks for a reason where the API requires it.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-76": {
+  "id": "S4-C3",
+  "title": "Dashboard: Arabic RTL review of built modules",
+  "owner": "Abdallah",
+  "what": "Check every dashboard screen in Arabic and fix layout.",
+  "read": [
+   "arch 11 §6",
+   "risk I8"
+  ],
+  "steps": [
+   "Go through every Dashboard screen built so far in AR; fix mirroring, number/date formatting, icons that must not flip."
+  ],
+  "done": [
+   "Screenshot checklist attached to the PR."
+  ],
+  "folders": [
+   "apps/venue-dashboard/src/ (all features)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S4-C3 — \"Dashboard: Arabic RTL review of built modules\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 11 §6\n- risk I8\n\nDo:\n1. Go through every Dashboard screen built so far in AR; fix mirroring, number/date formatting, icons that must not flip.\n\nDone when (write these as tests first where possible):\n- Screenshot checklist attached to the PR.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-77": {
+  "id": "S5-P0",
+  "title": "Sprint 5 API contract",
+  "owner": "Sayed",
+  "what": "Add all Sprint 5 API endpoints as stubs by day 2.",
+  "read": [
+   "arch 09 §4.2, §5"
+  ],
+  "steps": [
+   "Stubs + DTOs for maintenance, closures, emergencies, owner review, account disable; regenerate client."
+  ],
+  "done": [
+   "Merged by day 2."
+  ],
+  "folders": [
+   "packages/api-client/openapi.json"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S5-P0 — \"Sprint 5 API contract\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 09 §4.2, §5\n\nDo:\n1. Stubs + DTOs for maintenance, closures, emergencies, owner review, account disable; regenerate client.\n\nDone when (write these as tests first where possible):\n- Merged by day 2.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-78": {
+  "id": "S5-P1",
+  "title": "Venue account disable (O10) and attendance protection",
+  "owner": "Sayed",
+  "what": "Admin disables a venue account and what happens to its bookings.",
+  "read": [
+   "arch 06 §2.8",
+   "arch 07 §7.5"
+  ],
+  "steps": [
+   "Disable/re-enable with the five per-state effects; restriction intervals; Platform Attendance Protection."
+  ],
+  "done": [
+   "Two disable/re-enable cycles in one session → one protection event and one reset."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/venue/ (account disable)",
+   "backend/src/main/java/ps/e7gz/attendance/ (protection)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S5-P1 — \"Venue account disable (O10) and attendance protection\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 06 §2.8\n- arch 07 §7.5\n\nDo:\n1. Disable/re-enable with the five per-state effects; restriction intervals; Platform Attendance Protection.\n\nDone when (write these as tests first where possible):\n- Two disable/re-enable cycles in one session → one protection event and one reset.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-79": {
+  "id": "S5-P2",
+  "title": "Fault-injection harness and sellable-gap detector",
+  "owner": "Sayed",
+  "what": "Tests that break a process halfway and prove nothing is left half-done.",
+  "read": [
+   "arch 12 §4",
+   "arch 11 §4"
+  ],
+  "steps": [
+   "Inject a failure at each step of a cascade and assert full rollback; add the sellable-gap check to the invariant sweep."
+  ],
+  "done": [
+   "Used by S5-E2 and S5-E4 tests."
+  ],
+  "folders": [
+   "backend/src/test/java/ps/e7gz/faultinjection/",
+   "backend/src/main/java/ps/e7gz/inventory/sweep/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S5-P2 — \"Fault-injection harness and sellable-gap detector\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 12 §4\n- arch 11 §4\n\nDo:\n1. Inject a failure at each step of a cascade and assert full rollback; add the sellable-gap check to the invariant sweep.\n\nDone when (write these as tests first where possible):\n- Used by S5-E2 and S5-E4 tests.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-80": {
+  "id": "S5-P3",
+  "title": "Operational notifications",
+  "owner": "Sayed",
+  "what": "Notifications for emergencies, closures, refunds and admin events.",
+  "read": [
+   "Spec v5 §52.2 (operational), §52.5, §52.6"
+  ],
+  "steps": [
+   "Wire the operational customer codes, venue codes and admin codes (emergencies, owner review, maintenance starting soon, refunds)."
+  ],
+  "done": [
+   "Each code emitted exactly once per event."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/notification/ (triggers)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S5-P3 — \"Operational notifications\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Spec v5 §52.2 (operational), §52.5, §52.6\n\nDo:\n1. Wire the operational customer codes, venue codes and admin codes (emergencies, owner review, maintenance starting soon, refunds).\n\nDone when (write these as tests first where possible):\n- Each code emitted exactly once per event.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-81": {
+  "id": "S5-E1",
+  "title": "Maintenance and closures",
+  "owner": "Amr",
+  "what": "Maintenance windows and venue closures block the calendar.",
+  "read": [
+   "arch 04 §9.7",
+   "ADR-010",
+   "A1 (overlapping maintenance allowed)"
+  ],
+  "steps": [
+   "Maintenance windows in Layer 1 with the range_agg rolling threshold (Owner Password over the threshold); closures in Layer 2."
+  ],
+  "done": [
+   "Splitting a 30-hour maintenance into two windows with a 1-minute gap still demands the Owner Password."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/operations/ (maintenance, closure)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S5-E1 — \"Maintenance and closures\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 04 §9.7\n- ADR-010\n- A1 (overlapping maintenance allowed)\n\nDo:\n1. Maintenance windows in Layer 1 with the range_agg rolling threshold (Owner Password over the threshold); closures in Layer 2.\n\nDone when (write these as tests first where possible):\n- Splitting a 30-hour maintenance into two windows with a 1-minute gap still demands the Owner Password.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-82": {
+  "id": "S5-E2",
+  "title": "Emergencies and cascades (O7/O8)",
+  "owner": "Amr",
+  "what": "Venue or room emergency: cancel or pause affected bookings safely.",
+  "read": [
+   "arch 06 §2.5",
+   "arch 05 §3.1"
+  ],
+  "steps": [
+   "Venue and resource emergencies, status lifecycle incl. conversion, selling blocks (one active row per subject), all-or-nothing cascades."
+  ],
+  "done": [
+   "Fault injection at every step leaves no partial cascade; a resource emergency does not block other resources."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/operations/ (emergency)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S5-E2 — \"Emergencies and cascades (O7/O8)\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 06 §2.5\n- arch 05 §3.1\n\nDo:\n1. Venue and resource emergencies, status lifecycle incl. conversion, selling blocks (one active row per subject), all-or-nothing cascades.\n\nDone when (write these as tests first where possible):\n- Fault injection at every step leaves no partial cascade; a resource emergency does not block other resources.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-83": {
+  "id": "S5-E3",
+  "title": "Timer pause/resume and feasibility",
+  "owner": "Amr",
+  "what": "Pause and resume timers during emergencies (30-minute limits).",
+  "read": [
+   "arch 08 §2.5",
+   "FR-OPS-34…41"
+  ],
+  "steps": [
+   "Pause/resume with the two 30-minute counters; optimistic feasibility test."
+  ],
+  "done": [
+   "12 min venue + 19 min resource pause → cancels at 30 min under the resource reason; feasibility deterministic."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/operations/ (pause)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S5-E3 — \"Timer pause/resume and feasibility\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 08 §2.5\n- FR-OPS-34…41\n\nDo:\n1. Pause/resume with the two 30-minute counters; optimistic feasibility test.\n\nDone when (write these as tests first where possible):\n- 12 min venue + 19 min resource pause → cancels at 30 min under the resource reason; feasibility deterministic.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-84": {
+  "id": "S5-E4",
+  "title": "Owner review cascade (O9)",
+  "owner": "Amr",
+  "what": "Owner review: lock the venue down when limits are exceeded.",
+  "read": [
+   "arch 06 §2.7"
+  ],
+  "steps": [
+   "Owner review entry and cascade (no Owner Password anywhere in it), including tournaments."
+  ],
+  "done": [
+   "END EMERGENCY on an over-threshold resource leaves it unsellable under owner review; J6, J7, J11 pass."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/operations/ (owner review)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S5-E4 — \"Owner review cascade (O9)\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 06 §2.7\n\nDo:\n1. Owner review entry and cascade (no Owner Password anywhere in it), including tournaments.\n\nDone when (write these as tests first where possible):\n- END EMERGENCY on an over-threshold resource leaves it unsellable under owner review; J6, J7, J11 pass.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-85": {
+  "id": "S5-C1",
+  "title": "Dashboard: operations screens",
+  "owner": "Abdallah",
+  "what": "Dashboard: maintenance, closures and emergency screens.",
+  "read": [
+   "Venue Dashboard prototype"
+  ],
+  "steps": [
+   "Maintenance, closures, venue/resource emergency declare/end, owner review banner; Owner Password prompts."
+  ],
+  "done": [
+   "AR checked."
+  ],
+  "folders": [
+   "apps/venue-dashboard/src/features/operations/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S5-C1 — \"Dashboard: operations screens\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Venue Dashboard prototype\n\nDo:\n1. Maintenance, closures, venue/resource emergency declare/end, owner review banner; Owner Password prompts.\n\nDone when (write these as tests first where possible):\n- AR checked.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-86": {
+  "id": "S5-C2",
+  "title": "Admin: owner review, disable, alerts",
+  "owner": "Abdallah",
+  "what": "Admin: owner review, disable venue account, alerts inbox.",
+  "read": [
+   "Platform Admin prototype"
+  ],
+  "steps": [
+   "Owner review queue, venue account disable/enable, emergencies monitor, admin alerts inbox with acknowledge."
+  ],
+  "done": [
+   "Reasons required where the API requires them."
+  ],
+  "folders": [
+   "apps/admin-web/src/features/owner-review/",
+   "apps/admin-web/src/features/venue-accounts/",
+   "apps/admin-web/src/features/emergencies/",
+   "apps/admin-web/src/features/alerts/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S5-C2 — \"Admin: owner review, disable, alerts\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Platform Admin prototype\n\nDo:\n1. Owner review queue, venue account disable/enable, emergencies monitor, admin alerts inbox with acknowledge.\n\nDone when (write these as tests first where possible):\n- Reasons required where the API requires them.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-87": {
+  "id": "S5-C3",
+  "title": "Customer app: operational states",
+  "owner": "Abdallah",
+  "what": "App: show emergency cancellations, pauses and refunds.",
+  "read": [
+   "Spec v5 §52.2 operational codes"
+  ],
+  "steps": [
+   "Show operational cancellations, interruptions, paused timers and refunds using the codes."
+  ],
+  "done": [
+   "Every operational code has a message."
+  ],
+  "folders": [
+   "apps/customer/src/features/my-bookings/ (operational states)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S5-C3 — \"Customer app: operational states\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Spec v5 §52.2 operational codes\n\nDo:\n1. Show operational cancellations, interruptions, paused timers and refunds using the codes.\n\nDone when (write these as tests first where possible):\n- Every operational code has a message.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-88": {
+  "id": "S6-P0",
+  "title": "Sprint 6 API contract",
+  "owner": "Sayed",
+  "what": "Add all Sprint 6 API endpoints as stubs by day 2.",
+  "read": [
+   "arch 09 §3.4, §4"
+  ],
+  "steps": [
+   "Stubs + DTOs for tournaments (customer, venue, admin); regenerate client."
+  ],
+  "done": [
+   "Merged by day 2."
+  ],
+  "folders": [
+   "packages/api-client/openapi.json"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S6-P0 — \"Sprint 6 API contract\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 09 §3.4, §4\n\nDo:\n1. Stubs + DTOs for tournaments (customer, venue, admin); regenerate client.\n\nDone when (write these as tests first where possible):\n- Merged by day 2.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-89": {
+  "id": "S6-P1",
+  "title": "Tournament Owner Password matrix and notifications",
+  "owner": "Sayed",
+  "what": "Owner Password rules and notifications for tournaments.",
+  "read": [
+   "arch 10 §3.2",
+   "Spec v5 §52 tournament codes"
+  ],
+  "steps": [
+   "@OwnerProtected on the tournament actions listed in the matrix; wire tournament notifications and abuse alerts."
+  ],
+  "done": [
+   "Matrix test reads the FRS list as data."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/common/security/owner/",
+   "backend/src/main/java/ps/e7gz/notification/ (triggers)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S6-P1 — \"Tournament Owner Password matrix and notifications\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 10 §3.2\n- Spec v5 §52 tournament codes\n\nDo:\n1. @OwnerProtected on the tournament actions listed in the matrix; wire tournament notifications and abuse alerts.\n\nDone when (write these as tests first where possible):\n- Matrix test reads the FRS list as data.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-90": {
+  "id": "S6-P2",
+  "title": "Tournament reachability and boundary tests",
+  "owner": "Sayed",
+  "what": "Tests proving every tournament outcome can happen and happens in the right order.",
+  "read": [
+   "roadmap Phase 6 exit criteria"
+  ],
+  "steps": [
+   "Exhaustive reachability test for every tournament status/reason; priority test; boundary tests (−1h59m refused, −2h ok)."
+  ],
+  "done": [
+   "Tests written first, turned green by the Engine tasks."
+  ],
+  "folders": [
+   "backend/src/test/java/ps/e7gz/tournament/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S6-P2 — \"Tournament reachability and boundary tests\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- roadmap Phase 6 exit criteria\n\nDo:\n1. Exhaustive reachability test for every tournament status/reason; priority test; boundary tests (−1h59m refused, −2h ok).\n\nDone when (write these as tests first where possible):\n- Tests written first, turned green by the Engine tasks.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-91": {
+  "id": "S6-E1",
+  "title": "Tournament creation and holds (O16 part 1)",
+  "owner": "Amr",
+  "what": "Create a tournament (by a player or a venue) and hold the rooms.",
+  "read": [
+   "arch 06 §3.4",
+   "arch 05 §3.2",
+   "arch 03 §7"
+  ],
+  "steps": [
+   "Player- and venue-hosted creation; cost snapshot; creation fee; Approval Hold → Tournament Hold; one pending request per creator."
+  ],
+  "done": [
+   "A player request against a resource with a confirmed booking fails and the booking is untouched."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/tournament/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S6-E1 — \"Tournament creation and holds (O16 part 1)\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 06 §3.4\n- arch 05 §3.2\n- arch 03 §7\n\nDo:\n1. Player- and venue-hosted creation; cost snapshot; creation fee; Approval Hold → Tournament Hold; one pending request per creator.\n\nDone when (write these as tests first where possible):\n- A player request against a resource with a confirmed booking fails and the booking is untouched.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-92": {
+  "id": "S6-E2",
+  "title": "Approval, rejection, timeout (T7–T9)",
+  "owner": "Amr",
+  "what": "The venue approves or rejects in time; otherwise it is cancelled.",
+  "read": [
+   "FR-TRN-10",
+   "Spec v5 §36.3, §37.2–37.3"
+  ],
+  "steps": [
+   "Approval window MIN(created+10 min, checkpoint), cutoff startAt−2h, REJECTED/VENUE_REJECTED_TOURNAMENT, timeout → CANCELLED/VENUE_DID_NOT_APPROVE_TOURNAMENT_IN_TIME, 5-min retry."
+  ],
+  "done": [
+   "Disabling the account during PENDING_VENUE_APPROVAL frees the creator slot with no cooldown."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/tournament/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S6-E2 — \"Approval, rejection, timeout (T7–T9)\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- FR-TRN-10\n- Spec v5 §36.3, §37.2–37.3\n\nDo:\n1. Approval window MIN(created+10 min, checkpoint), cutoff startAt−2h, REJECTED/VENUE_REJECTED_TOURNAMENT, timeout → CANCELLED/VENUE_DID_NOT_APPROVE_TOURNAMENT_IN_TIME, 5-min retry.\n\nDone when (write these as tests first where possible):\n- Disabling the account during PENDING_VENUE_APPROVAL frees the creator slot with no cooldown.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-93": {
+  "id": "S6-E3",
+  "title": "Join, leave, checkpoint, start, cancel",
+  "owner": "Amr",
+  "what": "Players join and leave; minimum check; start; cancel.",
+  "read": [
+   "arch 06 §3.4, §3.7",
+   "ADR-023"
+  ],
+  "steps": [
+   "Participants, capacity, checkpoint, start, cancellation authority, participant cause reconciler, activeParticipantCount / capacityOccupiedCount."
+  ],
+  "done": [
+   "7 participants at the checkpoint → cancelled and released in the same transaction; BAN-only reserved slot rules pass."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/tournament/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S6-E3 — \"Join, leave, checkpoint, start, cancel\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 06 §3.4, §3.7\n- ADR-023\n\nDo:\n1. Participants, capacity, checkpoint, start, cancellation authority, participant cause reconciler, activeParticipantCount / capacityOccupiedCount.\n\nDone when (write these as tests first where possible):\n- 7 participants at the checkpoint → cancelled and released in the same transaction; BAN-only reserved slot rules pass.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-94": {
+  "id": "S6-E4",
+  "title": "Resource loss, Verified Player cascade, precedence",
+  "owner": "Amr",
+  "what": "Losing rooms, losing a badge, bans and deleted accounts in tournaments.",
+  "read": [
+   "arch 06 §3.5, §3.6",
+   "arch 07 §5.7"
+  ],
+  "steps": [
+   "Resource loss before/during; O15 cascade once per transition; ban/deletion precedence."
+  ],
+  "done": [
+   "Losing 3 of 4 resources continues; losing the 4th cancels; stored cost unchanged; J10 passes."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/tournament/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S6-E4 — \"Resource loss, Verified Player cascade, precedence\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 06 §3.5, §3.6\n- arch 07 §5.7\n\nDo:\n1. Resource loss before/during; O15 cascade once per transition; ban/deletion precedence.\n\nDone when (write these as tests first where possible):\n- Losing 3 of 4 resources continues; losing the 4th cancels; stored cost unchanged; J10 passes.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-95": {
+  "id": "S6-C1",
+  "title": "Customer app: tournaments",
+  "owner": "Abdallah",
+  "what": "App: browse, create, join and leave tournaments.",
+  "read": [
+   "Customer App prototype"
+  ],
+  "steps": [
+   "Browse, create request, join, leave, status and cancellation messages."
+  ],
+  "done": [
+   "Codes mapped."
+  ],
+  "folders": [
+   "apps/customer/src/features/tournaments/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S6-C1 — \"Customer app: tournaments\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Customer App prototype\n\nDo:\n1. Browse, create request, join, leave, status and cancellation messages.\n\nDone when (write these as tests first where possible):\n- Codes mapped.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-96": {
+  "id": "S6-C2",
+  "title": "Dashboard: tournaments",
+  "owner": "Abdallah",
+  "what": "Dashboard: tournament requests with sound, approve/reject, manage.",
+  "read": [
+   "Venue Dashboard prototype"
+  ],
+  "steps": [
+   "Incoming tournament requests with audible alert + approve/reject, venue-hosted creation, participants view."
+  ],
+  "done": [
+   "AR checked."
+  ],
+  "folders": [
+   "apps/venue-dashboard/src/features/tournaments/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S6-C2 — \"Dashboard: tournaments\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Venue Dashboard prototype\n\nDo:\n1. Incoming tournament requests with audible alert + approve/reject, venue-hosted creation, participants view.\n\nDone when (write these as tests first where possible):\n- AR checked.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-97": {
+  "id": "S6-C3",
+  "title": "Admin: tournaments",
+  "owner": "Abdallah",
+  "what": "Admin: tournaments list and cancel.",
+  "read": [
+   "Platform Admin prototype"
+  ],
+  "steps": [
+   "Tournaments list/detail, admin cancel, abuse alerts."
+  ],
+  "done": [
+   "—"
+  ],
+  "folders": [
+   "apps/admin-web/src/features/tournaments/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S6-C3 — \"Admin: tournaments\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Platform Admin prototype\n\nDo:\n1. Tournaments list/detail, admin cancel, abuse alerts.\n\nDone when (write these as tests first where possible):\n- —\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-98": {
+  "id": "S7-P0",
+  "title": "Sprint 7 API contract",
+  "owner": "Sayed",
+  "what": "Add all Sprint 7 API endpoints as stubs by day 2.",
+  "read": [
+   "arch 09 §3.4, §5",
+   "docs/03-design Compliance UI Addendum"
+  ],
+  "steps": [
+   "Stubs + DTOs for reviews, review reports, account deletion, remaining admin modules, reports FR-AUD-11/12; regenerate client."
+  ],
+  "done": [
+   "Merged by day 2."
+  ],
+  "folders": [
+   "packages/api-client/openapi.json"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-P0 — \"Sprint 7 API contract\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 09 §3.4, §5\n- docs/03-design Compliance UI Addendum\n\nDo:\n1. Stubs + DTOs for reviews, review reports, account deletion, remaining admin modules, reports FR-AUD-11/12; regenerate client.\n\nDone when (write these as tests first where possible):\n- Merged by day 2.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-99": {
+  "id": "S7-P1",
+  "title": "Remaining admin modules",
+  "owner": "Sayed",
+  "what": "Finish any admin module still missing (20 in total).",
+  "read": [
+   "arch 09 §5 (20 modules)"
+  ],
+  "steps": [
+   "Check each of the 20 admin modules against arch 09 §5 and implement the missing backend endpoints."
+  ],
+  "done": [
+   "A checklist of the 20 modules in the PR, all ticked."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/admin/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-P1 — \"Remaining admin modules\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 09 §5 (20 modules)\n\nDo:\n1. Check each of the 20 admin modules against arch 09 §5 and implement the missing backend endpoints.\n\nDone when (write these as tests first where possible):\n- A checklist of the 20 modules in the PR, all ticked.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-100": {
+  "id": "S7-P2",
+  "title": "Observability, alerts and abuse signals",
+  "owner": "Sayed",
+  "what": "Monitoring, alert rules and abuse signals.",
+  "read": [
+   "arch 11 §5",
+   "arch 11 §5.6"
+  ],
+  "steps": [
+   "Metrics for every PRD §4.2 metric, Sev-1…3 alert rules, dashboards; abuse-signal pipeline with no write path into Trust/Venue/Booking (ArchUnit test)."
+  ],
+  "done": [
+   "Alert rule fires in a staging drill."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/common/observability/",
+   "infra/monitoring/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-P2 — \"Observability, alerts and abuse signals\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 11 §5\n- arch 11 §5.6\n\nDo:\n1. Metrics for every PRD §4.2 metric, Sev-1…3 alert rules, dashboards; abuse-signal pipeline with no write path into Trust/Venue/Booking (ArchUnit test).\n\nDone when (write these as tests first where possible):\n- Alert rule fires in a staging drill.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-101": {
+  "id": "S7-P3",
+  "title": "Deployment, backup and restore drill",
+  "owner": "Sayed",
+  "what": "Put it online (staging and production), backups and a restore test.",
+  "read": [
+   "arch 12 §1, §3, §4, §5"
+  ],
+  "steps": [
+   "Staging + production on a managed container host (api + worker), managed PostgreSQL 16 with PITR, S3 bucket, secrets; release process; timed restore drill written up."
+  ],
+  "done": [
+   "Restore drill done and timed (launch criterion 10)."
+  ],
+  "folders": [
+   "infra/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-P3 — \"Deployment, backup and restore drill\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 12 §1, §3, §4, §5\n\nDo:\n1. Staging + production on a managed container host (api + worker), managed PostgreSQL 16 with PITR, S3 bucket, secrets; release process; timed restore drill written up.\n\nDone when (write these as tests first where possible):\n- Restore drill done and timed (launch criterion 10).\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-102": {
+  "id": "S7-E1",
+  "title": "Reviews, reporting and moderation",
+  "owner": "Amr",
+  "what": "Reviews: write, edit, report, and admin moderation.",
+  "read": [
+   "ADR-025",
+   "arch 04 §4.7",
+   "PCR-003"
+  ],
+  "steps": [
+   "create/edit/delete own review, report (one open report per reporter), admin moderate/resolve via the review.* producers; rating projection."
+  ],
+  "done": [
+   "Duplicate open report → REVIEW_REPORT_ALREADY_OPEN."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/review/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-E1 — \"Reviews, reporting and moderation\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- ADR-025\n- arch 04 §4.7\n- PCR-003\n\nDo:\n1. create/edit/delete own review, report (one open report per reporter), admin moderate/resolve via the review.* producers; rating projection.\n\nDone when (write these as tests first where possible):\n- Duplicate open report → REVIEW_REPORT_ALREADY_OPEN.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-103": {
+  "id": "S7-E2",
+  "title": "Account deletion and O19",
+  "owner": "Amr",
+  "what": "Customer asks to delete the account; admin completes it.",
+  "read": [
+   "ADR-024",
+   "PCR-002",
+   "arch 10 (anonymisation)"
+  ],
+  "steps": [
+   "Customer request (iam.request_account_deletion); admin completion calls iam.anonymise_user and iam.complete_account_deletion_request; tournament participant precedence."
+  ],
+  "done": [
+   "Deleted account: PII blanked, tokens revoked, reviews removed, participants INELIGIBLE/ACCOUNT_DELETED."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/identity/ (deletion)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-E2 — \"Account deletion and O19\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- ADR-024\n- PCR-002\n- arch 10 (anonymisation)\n\nDo:\n1. Customer request (iam.request_account_deletion); admin completion calls iam.anonymise_user and iam.complete_account_deletion_request; tournament participant precedence.\n\nDone when (write these as tests first where possible):\n- Deleted account: PII blanked, tokens revoked, reviews removed, participants INELIGIBLE/ACCOUNT_DELETED.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-104": {
+  "id": "S7-E3",
+  "title": "Reports FR-AUD-11/12 and metrics",
+  "owner": "Amr",
+  "what": "Admin reports: why bookings end, attendance per venue.",
+  "read": [
+   "arch 13 (FR-AUD-11, FR-AUD-12)",
+   "PRD §4.2"
+  ],
+  "steps": [
+   "Terminal-reason distribution (customer/venue/operational split) and attendance mix + check-in capture rate per venue; admin API."
+  ],
+  "done": [
+   "Numbers match a hand-computed seeded dataset."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/admin/ (reports)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-E3 — \"Reports FR-AUD-11/12 and metrics\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 13 (FR-AUD-11, FR-AUD-12)\n- PRD §4.2\n\nDo:\n1. Terminal-reason distribution (customer/venue/operational split) and attendance mix + check-in capture rate per venue; admin API.\n\nDone when (write these as tests first where possible):\n- Numbers match a hand-computed seeded dataset.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-105": {
+  "id": "S7-E4",
+  "title": "Load test at 10×",
+  "owner": "Amr",
+  "what": "Load test at 10 times the expected traffic.",
+  "read": [
+   "arch 11 §3"
+  ],
+  "steps": [
+   "k6/Gatling scenarios for discovery, booking, accept, Late Confirm at 10× projected peak with the invariant sweep running."
+  ],
+  "done": [
+   "NFR-11/12 met; zero invariant violations."
+  ],
+  "folders": [
+   "tools/load-tests/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-E4 — \"Load test at 10×\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 11 §3\n\nDo:\n1. k6/Gatling scenarios for discovery, booking, accept, Late Confirm at 10× projected peak with the invariant sweep running.\n\nDone when (write these as tests first where possible):\n- NFR-11/12 met; zero invariant violations.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-106": {
+  "id": "S7-C1",
+  "title": "Customer app: reviews, reporting, delete account",
+  "owner": "Abdallah",
+  "what": "App: reviews, report a review, delete account.",
+  "read": [
+   "Compliance UI Addendum (authoritative)"
+  ],
+  "steps": [
+   "Write/edit/delete review, report review, Delete Account flow."
+  ],
+  "done": [
+   "Matches the addendum."
+  ],
+  "folders": [
+   "apps/customer/src/features/reviews/",
+   "apps/customer/src/features/profile/ (delete account)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-C1 — \"Customer app: reviews, reporting, delete account\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Compliance UI Addendum (authoritative)\n\nDo:\n1. Write/edit/delete review, report review, Delete Account flow.\n\nDone when (write these as tests first where possible):\n- Matches the addendum.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-107": {
+  "id": "S7-C2",
+  "title": "Admin: moderation, deletion, reports",
+  "owner": "Abdallah",
+  "what": "Admin: moderate reviews, complete deletions, report screens.",
+  "read": [
+   "Compliance UI Addendum",
+   "A5"
+  ],
+  "steps": [
+   "Review moderation, reports queue, account deletion completion, FR-AUD-11/12 report screens."
+  ],
+  "done": [
+   "—"
+  ],
+  "folders": [
+   "apps/admin-web/src/features/reviews/",
+   "apps/admin-web/src/features/account-deletion/",
+   "apps/admin-web/src/features/reports/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-C2 — \"Admin: moderation, deletion, reports\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Compliance UI Addendum\n- A5\n\nDo:\n1. Review moderation, reports queue, account deletion completion, FR-AUD-11/12 report screens.\n\nDone when (write these as tests first where possible):\n- —\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-108": {
+  "id": "S7-C3",
+  "title": "Dashboard: final RTL pass and reviews view",
+  "owner": "Abdallah",
+  "what": "Final Arabic pass on the dashboard and venue reviews page.",
+  "read": [
+   "arch 11 §6"
+  ],
+  "steps": [
+   "Final AR pass across all modules; venue reviews view; notification sound/push settings."
+  ],
+  "done": [
+   "Screenshot checklist."
+  ],
+  "folders": [
+   "apps/venue-dashboard/src/ (all features)",
+   "apps/venue-dashboard/src/features/reviews/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-C3 — \"Dashboard: final RTL pass and reviews view\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 11 §6\n\nDo:\n1. Final AR pass across all modules; venue reviews view; notification sound/push settings.\n\nDone when (write these as tests first where possible):\n- Screenshot checklist.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-109": {
+  "id": "S7-C4",
+  "title": "Store and web release readiness",
+  "owner": "Abdallah",
+  "what": "Store builds for testers (Play + TestFlight), dashboards online.",
+  "read": [
+   "arch 12 §4"
+  ],
+  "steps": [
+   "App icons/splash, EAS builds, Play internal testing + TestFlight; Dashboard and Admin deployed to staging."
+  ],
+  "done": [
+   "Internal testers can install the app."
+  ],
+  "folders": [
+   "apps/customer/ (app config, assets)",
+   "infra/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-C4 — \"Store and web release readiness\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 12 §4\n\nDo:\n1. App icons/splash, EAS builds, Play internal testing + TestFlight; Dashboard and Admin deployed to staging.\n\nDone when (write these as tests first where possible):\n- Internal testers can install the app.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-110": {
+  "id": "S7-C5",
+  "title": "Launch readiness checklist (PO)",
+  "owner": "Abdallah",
+  "what": "Go through the launch checklist and sign it off.",
+  "read": [
+   "arch 14 §8 (launch readiness bar)",
+   "arch 13"
+  ],
+  "steps": [
+   "Walk the 10 launch criteria; confirm every M requirement in the traceability matrix has a merged task and a passing test; list gaps as new Jira tasks."
+  ],
+  "done": [
+   "Signed-off checklist in docs/."
+  ],
+  "folders": [
+   "docs/launch-readiness.md"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-C5 — \"Launch readiness checklist (PO)\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 14 §8 (launch readiness bar)\n- arch 13\n\nDo:\n1. Walk the 10 launch criteria; confirm every M requirement in the traceability matrix has a merged task and a passing test; list gaps as new Jira tasks.\n\nDone when (write these as tests first where possible):\n- Signed-off checklist in docs/.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ }
+}

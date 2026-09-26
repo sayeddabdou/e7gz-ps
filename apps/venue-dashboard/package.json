@@ -1,0 +1,10 @@
+{
+  "name": "@e7gz/venue-dashboard",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo \"not set up yet — see E7-19\"",
+    "lint": "echo \"not set up yet — see E7-19\"",
+    "typecheck": "echo \"not set up yet — see E7-19\""
+  }
+}

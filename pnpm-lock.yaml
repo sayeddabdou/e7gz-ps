@@ -1,0 +1,19 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .: {}
+
+  apps/admin-web: {}
+
+  apps/customer: {}
+
+  apps/venue-dashboard: {}
+
+  packages/api-client: {}
+
+  packages/tokens: {}

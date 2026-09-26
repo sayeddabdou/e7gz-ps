@@ -1,0 +1,45 @@
+# Lane owners review their folders (DEVELOPER-GUIDE.md §3).
+# Later rules override earlier ones. Sayed = @sayeddabdou.
+
+*                                   @sayeddabdou
+
+# Platform — Sayed
+/backend/src/main/java/ps/e7gz/common/                @sayeddabdou
+/backend/src/main/java/ps/e7gz/identity/              @sayeddabdou
+/backend/src/main/java/ps/e7gz/geography/             @sayeddabdou
+/backend/src/main/java/ps/e7gz/venue/                 @sayeddabdou
+/backend/src/main/java/ps/e7gz/resource/              @sayeddabdou
+/backend/src/main/java/ps/e7gz/pricing/               @sayeddabdou
+/backend/src/main/java/ps/e7gz/scheduling/            @sayeddabdou
+/backend/src/main/java/ps/e7gz/messaging/             @sayeddabdou
+/backend/src/main/java/ps/e7gz/notification/          @sayeddabdou
+/backend/src/main/java/ps/e7gz/loyalty/               @sayeddabdou
+/backend/src/main/java/ps/e7gz/config/                @sayeddabdou
+/backend/src/main/java/ps/e7gz/admin/                 @sayeddabdou
+/backend/src/main/java/ps/e7gz/audit/                 @sayeddabdou
+/backend/build.gradle.kts           @sayeddabdou
+/backend/settings.gradle.kts        @sayeddabdou
+/package.json                       @sayeddabdou
+/pnpm-workspace.yaml                @sayeddabdou
+/.github/                           @sayeddabdou
+/infra/                             @sayeddabdou
+/docker-compose.yml                 @sayeddabdou
+/docs/                              @sayeddabdou
+
+# Engine — Amr
+/backend/src/main/java/ps/e7gz/inventory/             @Amr-Heibaa
+/backend/src/main/java/ps/e7gz/booking/               @Amr-Heibaa
+/backend/src/main/java/ps/e7gz/attendance/            @Amr-Heibaa
+/backend/src/main/java/ps/e7gz/trust/                 @Amr-Heibaa
+/backend/src/main/java/ps/e7gz/tournament/            @Amr-Heibaa
+/backend/src/main/java/ps/e7gz/operations/            @Amr-Heibaa
+/backend/src/main/java/ps/e7gz/review/                @Amr-Heibaa
+
+# Clients — Abdallah
+/apps/                              @abdallahjr111
+/packages/tokens/                   @abdallahjr111
+
+# API contract — author (Sayed) + consumer (Abdallah)
+/packages/api-client/               @sayeddabdou @abdallahjr111
+/backend/src/main/java/ps/e7gz/*/web/                 @sayeddabdou @abdallahjr111
+/backend/src/main/java/ps/e7gz/*/*/web/               @sayeddabdou @abdallahjr111
