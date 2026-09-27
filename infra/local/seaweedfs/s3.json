@@ -1,0 +1,11 @@
+{
+  "identities": [
+    {
+      "name": "e7gz-dev",
+      "credentials": [
+        { "accessKey": "e7gz-dev", "secretKey": "e7gz-dev-secret" }
+      ],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}
