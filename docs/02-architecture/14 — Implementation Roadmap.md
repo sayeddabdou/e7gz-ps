@@ -16,7 +16,7 @@ Not a Product phase. One short block of work that everything else depends on.
 | Task | Output |
 |---|---|
 | Repository, module skeleton, ArchUnit boundary rules | `ps.e7gz.*` packages with enforced dependency direction (`03 §2.1`) |
-| Docker Compose: PostgreSQL 16 + `btree_gist` + `postgis`, MinIO, MailHog | a developer can run everything locally |
+| Docker Compose: PostgreSQL 16 + `btree_gist` + `postgis`, SeaweedFS, Mailpit | a developer can run everything locally |
 | Flyway wiring; `e7gz_app_runtime` and `e7gz_migrator` roles | migration discipline from commit one (`04 §6`) |
 | Injected `Clock`; `Instant.now()` banned by test | boundary tests become possible (`08 §8`) |
 | `BigDecimal`/`NUMERIC` money type; floats banned by test | `NFR-25` |

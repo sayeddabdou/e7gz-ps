@@ -1,1 +1,44 @@
-# Filled by E7-10
+# Local development environment (E7-10, arch 12 §3). Start: docker compose up -d · Stop: docker compose down
+# Wipe the database and start fresh: docker compose down -v
+# All credentials here are for local development only — never reuse them anywhere else.
+
+name: e7gz-ps
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.5          # PostgreSQL 16 with PostGIS available; our init script creates e7gz_ps
+    platform: linux/amd64                  # the image is only built for Intel/AMD; Apple Silicon Macs run it emulated
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"                        # 5433 on the laptop, so an installed PostgreSQL on 5432 does not clash
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/local/postgres/init/20_e7gz.sql:/docker-entrypoint-initdb.d/20_e7gz.sql:ro   # runs after the image's 10_postgis.sh
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d e7gz_ps"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # S3-compatible object storage for venue images (arch 12 §2). Replaces MinIO, whose images are no longer published.
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.47
+    command: server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json -ip=seaweedfs -ip.bind=0.0.0.0
+    ports:
+      - "8333:8333"                        # S3 API  (access key / secret: e7gz-dev / e7gz-dev-secret)
+    volumes:
+      - seaweedfs-data:/data
+      - ./infra/local/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+
+  # Fake mail server: the app sends to SMTP localhost:1025, you read the mail at http://localhost:8025. Replaces MailHog.
+  mailpit:
+    image: axllent/mailpit:v1.31.2
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  pgdata:
+  seaweedfs-data:

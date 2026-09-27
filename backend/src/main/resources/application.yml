@@ -1,9 +1,32 @@
 spring:
   application:
     name: e7gz-backend
-  # No database yet — DataSource and Flyway are wired in E7-10 (remove these excludes there).
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
-      - org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration
-      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
+  # Flyway migrates as the object owner (arch 04 §5–§6). Defaults point at `docker compose` (port 5433).
+  flyway:
+    url: ${E7GZ_DB_URL:jdbc:postgresql://localhost:5433/e7gz_ps}
+    user: ${E7GZ_DB_MIGRATOR_USER:e7gz_migrator}
+    password: ${E7GZ_DB_MIGRATOR_PASSWORD:e7gz_migrator}
+    # V1__baseline.sql is a pgModeler export that assumes it runs as "postgres" (every object is OWNER TO postgres,
+    # and a sequence must share its table's owner). The migrator logs in and acts as postgres for the migration.
+    init-sqls: SET ROLE postgres
+    # Flyway's history table lives in its own schema, apart from the model's 18 schemas and PostGIS in "public".
+    default-schema: flyway
+    create-schemas: true
+
+# The app never connects as the owner. Two runtime connections (arch 04 §5):
+#   app   — e7gz_app_runtime, used by the api and worker profiles (primary DataSource)
+#   admin — e7gz_admin_runtime, used by Platform Admin commands (bean "adminDataSource")
+e7gz:
+  datasource:
+    app:
+      jdbc-url: ${E7GZ_DB_URL:jdbc:postgresql://localhost:5433/e7gz_ps}
+      username: ${E7GZ_DB_APP_USER:e7gz_app_runtime}
+      password: ${E7GZ_DB_APP_PASSWORD:e7gz_app_runtime}
+      pool-name: app
+      maximum-pool-size: 10        # arch 12 §1.4
+    admin:
+      jdbc-url: ${E7GZ_DB_URL:jdbc:postgresql://localhost:5433/e7gz_ps}
+      username: ${E7GZ_DB_ADMIN_USER:e7gz_admin_runtime}
+      password: ${E7GZ_DB_ADMIN_PASSWORD:e7gz_admin_runtime}
+      pool-name: admin
+      maximum-pool-size: 3

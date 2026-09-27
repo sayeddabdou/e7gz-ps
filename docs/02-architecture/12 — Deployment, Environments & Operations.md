@@ -130,12 +130,14 @@ Three environments, fully separated — **separate databases, separate secrets, 
 | Purpose | local build and test | release validation, load and fault injection | live |
 | Runtime | Docker Compose | 1 api + 1 worker | 2 api + 2 worker |
 | PostgreSQL | container | managed, small | managed, HA + standby |
-| Object storage | MinIO container | dedicated bucket | dedicated bucket + versioning |
+| Object storage | SeaweedFS container | dedicated bucket | dedicated bucket + versioning |
 | SMS | **stub** — code written to a log the tests read | provider sandbox | live provider + fallback |
 | Push | stub | FCM test project | FCM production |
-| Email | MailHog | provider sandbox | live provider |
+| Email | Mailpit | provider sandbox | live provider |
 | Data | seeded fixtures | **anonymised** copy or synthetic | real |
 | Payments | none | none | none — deferred (`ADR-018`) |
+
+**Local tools (Product Owner decision, 27 Sep 2026).** Development uses SeaweedFS (S3-compatible) instead of MinIO, whose free Docker images are no longer published, and Mailpit instead of the unmaintained MailHog. Production storage is still any S3-compatible bucket behind the `ObjectStore` port.
 
 **Rules.** No production credential exists outside the production secret store. No real customer phone number or email reaches a non-production environment — staging data is anonymised, which matters because the SMS provider is live-adjacent. Migrations run against staging before production, always.
 

@@ -45,7 +45,7 @@ Modules and the tables they own: arch 03 §1. A module calls another only throug
 ## 4. Commands
 
 ```
-docker compose up -d                 # postgres (postgis), minio, mailhog
+docker compose up -d                 # postgres (postgis) on 5433, seaweedfs (S3), mailpit
 cd backend && ./gradlew check        # unit + integration (Testcontainers) + ArchUnit
 ./gradlew bootRun --args='--spring.profiles.active=api'     # or worker
 pnpm install && pnpm -r build        # all frontends + packages

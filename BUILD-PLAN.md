@@ -247,7 +247,7 @@ Read only these docs for this task:
 - docs/04-erd/physical/E7GZ-PS-v1.1.27-CHANGE-REPORT.md
 
 Do:
-1. docker-compose.yml: PostgreSQL 16 with postgis + btree_gist, MinIO, MailHog.
+1. docker-compose.yml: PostgreSQL 16 with postgis + btree_gist, SeaweedFS, Mailpit.
 2. Copy docs/04-erd/physical/V1__e7gz_ps_baseline_v1_1_27.sql to backend/src/main/resources/db/migration/V1__baseline.sql unchanged, and the security baseline as a Flyway repeatable R__security_baseline.sql.
 3. Flyway runs as e7gz_migrator; the app connects as e7gz_app_runtime (api) or e7gz_admin_runtime (admin endpoints) — two datasources.
 4. Testcontainers base class (PostGIS image) that applies the migrations once per test run.
@@ -597,7 +597,7 @@ Read only these docs for this task:
 Do:
 1. Admin API: areas (create, deactivate — DB refuses if venues are ACTIVE/SUSPENDED), venues (create in ONBOARDING, edit profile, location as PostGIS point).
 2. Marketplace status changes ONBOARDING → ACTIVE/INACTIVE/SUSPENDED and between the three; never back to ONBOARDING (DB enforces; map the error).
-3. Venue images to MinIO/S3 with signed GET URLs.
+3. Venue images to SeaweedFS/S3 with signed GET URLs.
 
 Done when (write these as tests first where possible):
 - Tests for each allowed/forbidden status change and area deactivation refusal.
@@ -1082,7 +1082,7 @@ Read only these docs for this task:
 
 Do:
 1. NotificationService.notify(code, recipient, reference, params) validated against the catalogue; creates notification + required deliveries in the same transaction.
-2. Adapters: FCM (Android + APNs via FCM) for customers, email (MailHog in dev), SMS for OTP only.
+2. Adapters: FCM (Android + APNs via FCM) for customers, email (Mailpit in dev), SMS for OTP only.
 3. Device token register/revoke API (tokens are revoked, never deleted).
 
 Done when (write these as tests first where possible):

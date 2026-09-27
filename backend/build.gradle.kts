@@ -47,4 +47,6 @@ tasks.withType<JavaCompile> {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    // Tests read files outside backend/: the DB init script (infra/) and the DB contract scripts (docs/).
+    systemProperty("e7gz.repoRoot", rootDir.parentFile.absolutePath)
 }
