@@ -2,8 +2,6 @@
 
 E7GZ PS is a marketplace for booking PlayStation / gaming rooms at venues in one city. Customers find a venue and book; venues accept, run check-in and operate; a Platform Admin runs the marketplace. This monorepo holds the Spring Boot backend (`backend/`), the three client apps (`apps/`: customer mobile app, Venue Dashboard, Platform Admin), shared packages (`packages/`) and the full product, architecture, design and database documentation (`docs/`).
 
-**New here? Start with [SETUP.md](SETUP.md)** — step-by-step setup with explanations.
-
 See **[DEVELOPER-GUIDE.md](DEVELOPER-GUIDE.md)** for folders, ownership and workflow, **[BUILD-PLAN.md](BUILD-PLAN.md)** for sprints and task prompts, and **[CLAUDE.md](CLAUDE.md)** for the coding rules.
 
 ## Getting started
