@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "E7GZ PS",
+    "slug": "e7gz-ps",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "platforms": ["ios", "android", "web"],
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    }
+  }
+}

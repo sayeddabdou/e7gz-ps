@@ -2,9 +2,32 @@
   "name": "@e7gz/api-client",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
   "scripts": {
-    "build": "echo \"not set up yet — see E7-11\"",
-    "lint": "echo \"not set up yet — see E7-11\"",
-    "typecheck": "echo \"not set up yet — see E7-11\""
+    "api:gen": "node scripts/api-gen.mjs",
+    "generate": "openapi-typescript openapi.json -o src/generated/schema.ts",
+    "prepare": "openapi-typescript openapi.json -o src/generated/schema.ts",
+    "mock": "node scripts/mock.mjs",
+    "build": "openapi-typescript openapi.json -o src/generated/schema.ts",
+    "typecheck": "openapi-typescript openapi.json -o src/generated/schema.ts && tsc --noEmit",
+    "lint": "eslint .",
+    "test": "node --test \"test/*.test.mjs\"",
+    "test:chain": "node scripts/test-chain.mjs"
+  },
+  "dependencies": {
+    "openapi-fetch": "^0.17.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@stoplight/prism-cli": "5.14.2",
+    "@types/node": "~22.13.17",
+    "eslint": "^10.11.0",
+    "openapi-typescript": "^7.13.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.70.1"
   }
 }

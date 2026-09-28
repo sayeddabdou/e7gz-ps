@@ -2,9 +2,35 @@
   "name": "@e7gz/venue-dashboard",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "build": "echo \"not set up yet — see E7-19\"",
-    "lint": "echo \"not set up yet — see E7-19\"",
-    "typecheck": "echo \"not set up yet — see E7-19\""
+    "dev": "vite",
+    "dev:mock": "cross-env VITE_API_BASE_URL=http://127.0.0.1:4010 VITE_API_ACCESS_TOKEN=mock-access-token vite",
+    "preview": "vite preview",
+    "build": "vite build",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@e7gz/api-client": "workspace:*",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/react": "~19.2.0",
+    "@types/react-dom": "~19.2.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "cross-env": "^10.1.0",
+    "eslint": "^10.11.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "happy-dom": "^20.14.5",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.70.1",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.2"
   }
 }

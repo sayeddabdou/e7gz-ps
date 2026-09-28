@@ -50,3 +50,27 @@ tasks.withType<Test> {
     // Tests read files outside backend/: the DB init script (infra/) and the DB contract scripts (docs/).
     systemProperty("e7gz.repoRoot", rootDir.parentFile.absolutePath)
 }
+
+// The OpenAPI contract (E7-11). packages/api-client/openapi.json is committed and written only by
+// `generateOpenApi` (run through `pnpm api:gen`); `test` only compares it.
+val openApiContract = rootDir.parentFile.resolve("packages/api-client/openapi.json")
+val sampleContract = layout.buildDirectory.file("generated-contracts/sample.openapi.json")
+
+tasks.test {
+    // OpenApiContractTest reads the committed contract, so editing only that file must re-run the tests.
+    inputs.files(openApiContract).withPropertyName("openApiContract").withPathSensitivity(PathSensitivity.RELATIVE)
+    // OpenApiSampleContractTest writes a test-only contract from sample controllers; packages/api-client
+    // generates types from it and mocks it (`test:chain`). CI hands it to that job as an artifact.
+    outputs.file(sampleContract).withPropertyName("sampleContract")
+    systemProperty("e7gz.sampleContract", sampleContract.get().asFile.absolutePath)
+}
+
+tasks.register<Test>("generateOpenApi") {
+    description = "Writes the OpenAPI 3.1 contract to packages/api-client/openapi.json."
+    group = "api"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    filter { includeTestsMatching("ps.e7gz.openapi.OpenApiContractTest.committedContractMatchesTheControllers") }
+    systemProperty("e7gz.openapi.write", "true")
+    outputs.upToDateWhen { false }
+}

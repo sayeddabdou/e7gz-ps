@@ -1,0 +1,5170 @@
+{
+  "components": {
+    "schemas": {
+      "Activity": {
+        "enum": [
+          "PLAYSTATION",
+          "BILLIARDS",
+          "PING_PONG"
+        ],
+        "type": "string"
+      },
+      "AdminArea": {
+        "properties": {
+          "active": {
+            "example": true,
+            "type": "boolean"
+          },
+          "centroid": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GeoPoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "example": "3f6c1d2e-8a4b-4c5d-9e6f-7a8b9c0d1e2f",
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "example": "Nasr City",
+            "type": "string"
+          },
+          "nameAr": {
+            "example": "مدينة نصر",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "active",
+          "centroid",
+          "id",
+          "name",
+          "nameAr"
+        ],
+        "type": "object"
+      },
+      "AdminAreaCreateRequest": {
+        "properties": {
+          "centroid": {
+            "$ref": "#/components/schemas/GeoPoint"
+          },
+          "name": {
+            "example": "Nasr City",
+            "minLength": 1,
+            "type": "string"
+          },
+          "nameAr": {
+            "example": "مدينة نصر",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "AdminAreaUpdateRequest": {
+        "properties": {
+          "centroid": {
+            "$ref": "#/components/schemas/GeoPoint"
+          },
+          "name": {
+            "example": "Nasr City",
+            "type": "string"
+          },
+          "nameAr": {
+            "example": "مدينة نصر",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "AdminVenue": {
+        "properties": {
+          "activities": {
+            "items": {
+              "$ref": "#/components/schemas/Activity"
+            },
+            "type": "array"
+          },
+          "address": {
+            "example": "12 Abbas El Akkad St, Nasr City",
+            "type": "string"
+          },
+          "areaId": {
+            "example": "3f6c1d2e-8a4b-4c5d-9e6f-7a8b9c0d1e2f",
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "example": "7b1f0c9e-2d3a-4e5b-8c6d-9e0f1a2b3c4d",
+            "format": "uuid",
+            "type": "string"
+          },
+          "location": {
+            "$ref": "#/components/schemas/GeoPoint"
+          },
+          "marketplaceStatus": {
+            "$ref": "#/components/schemas/MarketplaceStatus"
+          },
+          "name": {
+            "example": "Level Up Lounge",
+            "type": "string"
+          },
+          "phone": {
+            "example": "+201001234567",
+            "type": "string"
+          },
+          "timezone": {
+            "example": "Africa/Cairo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "activities",
+          "address",
+          "areaId",
+          "id",
+          "location",
+          "marketplaceStatus",
+          "name",
+          "phone",
+          "timezone"
+        ],
+        "type": "object"
+      },
+      "AdminVenueAccount": {
+        "properties": {
+          "accountStatus": {
+            "$ref": "#/components/schemas/VenueAccountStatus"
+          },
+          "id": {
+            "example": "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+            "format": "uuid",
+            "type": "string"
+          },
+          "loginIdentifier": {
+            "example": "levelup.nasrcity",
+            "type": "string"
+          },
+          "venueId": {
+            "example": "7b1f0c9e-2d3a-4e5b-8c6d-9e0f1a2b3c4d",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountStatus",
+          "id",
+          "loginIdentifier",
+          "venueId"
+        ],
+        "type": "object"
+      },
+      "AdminVenueAccountReasonRequest": {
+        "properties": {
+          "reason": {
+            "example": "Owner request",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "type": "object"
+      },
+      "AdminVenueCreateRequest": {
+        "properties": {
+          "activities": {
+            "items": {
+              "$ref": "#/components/schemas/Activity"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "address": {
+            "example": "12 Abbas El Akkad St, Nasr City",
+            "minLength": 1,
+            "type": "string"
+          },
+          "areaId": {
+            "example": "3f6c1d2e-8a4b-4c5d-9e6f-7a8b9c0d1e2f",
+            "format": "uuid",
+            "type": "string"
+          },
+          "location": {
+            "$ref": "#/components/schemas/GeoPoint"
+          },
+          "name": {
+            "example": "Level Up Lounge",
+            "minLength": 1,
+            "type": "string"
+          },
+          "phone": {
+            "example": "+201001234567",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "activities",
+          "address",
+          "areaId",
+          "location",
+          "name",
+          "phone"
+        ],
+        "type": "object"
+      },
+      "AdminVenuePasswordResetRequest": {
+        "properties": {
+          "newPassword": {
+            "format": "password",
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "newPassword"
+        ],
+        "type": "object"
+      },
+      "AdminVenueReasonRequest": {
+        "properties": {
+          "reason": {
+            "example": "Setup verified on site",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "type": "object"
+      },
+      "AdminVenueUpdateRequest": {
+        "properties": {
+          "activities": {
+            "items": {
+              "$ref": "#/components/schemas/Activity"
+            },
+            "type": "array"
+          },
+          "address": {
+            "example": "12 Abbas El Akkad St, Nasr City",
+            "type": "string"
+          },
+          "areaId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "location": {
+            "$ref": "#/components/schemas/GeoPoint"
+          },
+          "name": {
+            "example": "Level Up Lounge",
+            "type": "string"
+          },
+          "phone": {
+            "example": "+201001234567",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ApiErrorCode": {
+        "enum": [
+          "PHONE_VERIFICATION_REQUIRED",
+          "OTP_INVALID",
+          "OTP_EXPIRED",
+          "OTP_ATTEMPTS_EXCEEDED",
+          "OTP_RESEND_TOO_SOON",
+          "OTP_HOURLY_LIMIT_REACHED",
+          "USERNAME_TAKEN",
+          "USERNAME_COOLDOWN_ACTIVE",
+          "ACCOUNT_BANNED_FOR_THIS_ACTION",
+          "BOOKING_LEAD_TIME_TOO_SHORT",
+          "BOOKING_DURATION_INVALID",
+          "COMMITMENT_LIMIT_REACHED",
+          "OVERLAPPING_COMMITMENT",
+          "INTERVAL_NOT_WITHIN_ONE_SESSION",
+          "ONLINE_INTAKE_WINDOW_CLOSED",
+          "VENUE_NOT_ELIGIBLE_FOR_NEW_ACTIVITY",
+          "RESOURCE_NOT_ELIGIBLE",
+          "VENUE_SELLING_BLOCK_ACTIVE",
+          "RESOURCE_SELLING_BLOCK_ACTIVE",
+          "SLOT_NO_LONGER_AVAILABLE",
+          "DEADLINE_PASSED",
+          "CUSTOMER_NOT_ELIGIBLE_FOR_LATE_CONFIRM",
+          "LATE_CONFIRM_RESOURCE_CONFLICT",
+          "LATE_CONFIRM_CUSTOMER_CONFLICT",
+          "MANUAL_BOOKING_PRICING_CONFIGURATION_MISSING",
+          "MANUAL_BOOKING_BACKDATING_NOT_ALLOWED",
+          "CHECK_IN_WINDOW_CLOSED",
+          "LATE_PRESENT_NOT_AVAILABLE",
+          "NO_SHOW_NOT_AVAILABLE",
+          "ATTENDANCE_REVERSAL_REQUIRES_ADMIN",
+          "OWNER_PASSWORD_REQUIRED",
+          "OWNER_PASSWORD_INVALID",
+          "RESOURCE_HAS_BLOCKING_RESERVATIONS",
+          "TOURNAMENT_CONFLICT_BLOCKS_SAVE",
+          "AFFECTED_SET_CHANGED_REFRESH_PREVIEW",
+          "CLOSURE_OVERLAPS_ACTIVE_SESSION",
+          "MAINTENANCE_OVERLAPS_RESERVATION",
+          "EMERGENCY_EXPECTED_END_OUT_OF_SESSION",
+          "EMERGENCY_CANNOT_END_RESOURCE_NOT_OPERATIONAL",
+          "CONVERSION_TARGET_NOT_ALLOWED",
+          "OWNER_REVIEW_RESOLUTION_BLOCKED",
+          "TOURNAMENT_CREATION_CUTOFF_PASSED",
+          "VERIFIED_PLAYER_REQUIRED",
+          "PENDING_TOURNAMENT_REQUEST_EXISTS",
+          "TOURNAMENT_RETRY_COOLDOWN_ACTIVE",
+          "TOURNAMENT_CAPACITY_REACHED",
+          "TOURNAMENT_JOIN_WINDOW_CLOSED",
+          "TOURNAMENT_RESOURCE_CONFLICT",
+          "REVIEW_COOLDOWN_ACTIVE",
+          "REVIEW_REPORT_ALREADY_OPEN",
+          "AREA_HAS_ACTIVE_VENUES",
+          "AREA_INACTIVE",
+          "ACCOUNT_DELETED",
+          "REVIEW_ALREADY_EXISTS",
+          "REVIEW_REMOVED_NOT_RESTORABLE",
+          "IDEMPOTENCY_KEY_REUSED"
+        ],
+        "type": "string"
+      },
+      "ConsoleType": {
+        "enum": [
+          "PS4",
+          "PS5"
+        ],
+        "type": "string"
+      },
+      "Currency": {
+        "enum": [
+          "EGP"
+        ],
+        "type": "string"
+      },
+      "CustomerArea": {
+        "properties": {
+          "id": {
+            "example": "3f6c1d2e-8a4b-4c5d-9e6f-7a8b9c0d1e2f",
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "example": "Nasr City",
+            "type": "string"
+          },
+          "nameAr": {
+            "example": "مدينة نصر",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "nameAr"
+        ],
+        "type": "object"
+      },
+      "CustomerAvailableVenue": {
+        "properties": {
+          "resources": {
+            "items": {
+              "$ref": "#/components/schemas/CustomerVenueResource"
+            },
+            "type": "array"
+          },
+          "venueId": {
+            "example": "7b1f0c9e-2d3a-4e5b-8c6d-9e0f1a2b3c4d",
+            "format": "uuid",
+            "type": "string"
+          },
+          "venueName": {
+            "example": "Level Up Lounge",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resources",
+          "venueId",
+          "venueName"
+        ],
+        "type": "object"
+      },
+      "CustomerOpeningDay": {
+        "properties": {
+          "closed": {
+            "type": "boolean"
+          },
+          "closesAtLocal": {
+            "example": "02:00:00",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "opensAtLocal": {
+            "example": "12:00:00",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "weekday": {
+            "description": "venue.venue_opening_day.weekday: 0 = Monday … 6 = Sunday.",
+            "example": 0,
+            "format": "int32",
+            "maximum": 6,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "closed",
+          "closesAtLocal",
+          "opensAtLocal",
+          "weekday"
+        ],
+        "type": "object"
+      },
+      "CustomerVenueArea": {
+        "properties": {
+          "id": {
+            "example": "3f6c1d2e-8a4b-4c5d-9e6f-7a8b9c0d1e2f",
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "example": "Nasr City",
+            "type": "string"
+          },
+          "nameAr": {
+            "example": "مدينة نصر",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "nameAr"
+        ],
+        "type": "object"
+      },
+      "CustomerVenueCard": {
+        "properties": {
+          "area": {
+            "$ref": "#/components/schemas/CustomerVenueArea"
+          },
+          "averageRating": {
+            "example": 4.6,
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "distanceMeters": {
+            "description": "Metres from the customer; null without a location.",
+            "example": 1250,
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "example": "7b1f0c9e-2d3a-4e5b-8c6d-9e0f1a2b3c4d",
+            "format": "uuid",
+            "type": "string"
+          },
+          "imageUrl": {
+            "example": "https://files.example.test/venues/level-up/1.jpg",
+            "format": "uri",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "example": "Level Up Lounge",
+            "type": "string"
+          },
+          "nearestAvailableAt": {
+            "example": "2026-10-12T18:00:00Z",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reviewCount": {
+            "example": 38,
+            "format": "int32",
+            "type": "integer"
+          },
+          "startingPrice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "area",
+          "averageRating",
+          "distanceMeters",
+          "id",
+          "imageUrl",
+          "name",
+          "nearestAvailableAt",
+          "reviewCount",
+          "startingPrice"
+        ],
+        "type": "object"
+      },
+      "CustomerVenueDetails": {
+        "properties": {
+          "activities": {
+            "items": {
+              "$ref": "#/components/schemas/Activity"
+            },
+            "type": "array"
+          },
+          "address": {
+            "example": "12 Abbas El Akkad St, Nasr City",
+            "type": "string"
+          },
+          "area": {
+            "$ref": "#/components/schemas/CustomerVenueArea"
+          },
+          "averageRating": {
+            "example": 4.6,
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "bookingEnabled": {
+            "description": "False when the venue is not marketplace ACTIVE (FR-DIS-08).",
+            "type": "boolean"
+          },
+          "distanceMeters": {
+            "example": 1250,
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "example": "7b1f0c9e-2d3a-4e5b-8c6d-9e0f1a2b3c4d",
+            "format": "uuid",
+            "type": "string"
+          },
+          "imageUrls": {
+            "items": {
+              "example": "https://files.example.test/venues/level-up/1.jpg",
+              "format": "uri",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "location": {
+            "$ref": "#/components/schemas/GeoPoint"
+          },
+          "name": {
+            "example": "Level Up Lounge",
+            "type": "string"
+          },
+          "nearestAvailableAt": {
+            "example": "2026-10-12T18:00:00Z",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "openNow": {
+            "description": "False shows as Closed Now (FR-DIS-06).",
+            "type": "boolean"
+          },
+          "openingHours": {
+            "items": {
+              "$ref": "#/components/schemas/CustomerOpeningDay"
+            },
+            "type": "array"
+          },
+          "opensAt": {
+            "description": "Start of the next operating session while closed (Opens at …).",
+            "example": "2026-10-12T09:00:00Z",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "prices": {
+            "items": {
+              "$ref": "#/components/schemas/CustomerVenuePrice"
+            },
+            "type": "array"
+          },
+          "resources": {
+            "items": {
+              "$ref": "#/components/schemas/CustomerVenueResource"
+            },
+            "type": "array"
+          },
+          "reviewCount": {
+            "example": 38,
+            "format": "int32",
+            "type": "integer"
+          },
+          "selectedActivity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Activity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "activities",
+          "address",
+          "area",
+          "averageRating",
+          "bookingEnabled",
+          "distanceMeters",
+          "id",
+          "imageUrls",
+          "location",
+          "name",
+          "nearestAvailableAt",
+          "openNow",
+          "openingHours",
+          "opensAt",
+          "prices",
+          "resources",
+          "reviewCount",
+          "selectedActivity"
+        ],
+        "type": "object"
+      },
+      "CustomerVenueMarker": {
+        "properties": {
+          "averageRating": {
+            "example": 4.6,
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "distanceMeters": {
+            "example": 1250,
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "example": "7b1f0c9e-2d3a-4e5b-8c6d-9e0f1a2b3c4d",
+            "format": "uuid",
+            "type": "string"
+          },
+          "location": {
+            "$ref": "#/components/schemas/GeoPoint"
+          },
+          "name": {
+            "example": "Level Up Lounge",
+            "type": "string"
+          },
+          "nearestAvailableAt": {
+            "example": "2026-10-12T18:00:00Z",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reviewCount": {
+            "example": 38,
+            "format": "int32",
+            "type": "integer"
+          },
+          "startingPrice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "averageRating",
+          "distanceMeters",
+          "id",
+          "location",
+          "name",
+          "nearestAvailableAt",
+          "reviewCount",
+          "startingPrice"
+        ],
+        "type": "object"
+      },
+      "CustomerVenuePrice": {
+        "properties": {
+          "consoleType": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConsoleType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hourlyPrice": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "playMode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "consoleType",
+          "hourlyPrice",
+          "playMode"
+        ],
+        "type": "object"
+      },
+      "CustomerVenueResource": {
+        "properties": {
+          "consoleType": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConsoleType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "example": "c2d3e4f5-a6b7-4c8d-9e0f-1a2b3c4d5e6f",
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "example": "Room 1",
+            "type": "string"
+          }
+        },
+        "required": [
+          "consoleType",
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "DataResponseAdminArea": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AdminArea"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "DataResponseAdminVenue": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AdminVenue"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "DataResponseAdminVenueAccount": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AdminVenueAccount"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "DataResponseCustomerVenueDetails": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CustomerVenueDetails"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "DataResponseListAdminArea": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/AdminArea"
+            },
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "DataResponseListCustomerArea": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/CustomerArea"
+            },
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "DataResponseListCustomerAvailableVenue": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/CustomerAvailableVenue"
+            },
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "DataResponseListCustomerVenueMarker": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/CustomerVenueMarker"
+            },
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "DataResponseListVenueResource": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/VenueResource"
+            },
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "DataResponsePageViewAdminVenue": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PageViewAdminVenue"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "DataResponsePageViewCustomerVenueCard": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PageViewCustomerVenueCard"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "DataResponseVenueOpeningHours": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/VenueOpeningHours"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "DataResponseVenueOpeningHoursPreview": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/VenueOpeningHoursPreview"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "DataResponseVenuePricing": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/VenuePricing"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "DataResponseVenueResource": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/VenueResource"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "DataResponseVenueSchedule": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/VenueSchedule"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "ErrorBody": {
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ApiErrorCode"
+          },
+          "details": {
+            "additionalProperties": true,
+            "description": "Machine-readable details; never prose.",
+            "type": "object"
+          },
+          "field": {
+            "description": "The input at fault, when a specific one is.",
+            "example": "startAt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorBody"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "error",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "GeoPoint": {
+        "properties": {
+          "lat": {
+            "example": 30.0561,
+            "format": "double",
+            "maximum": 90,
+            "minimum": -90,
+            "type": "number"
+          },
+          "lng": {
+            "example": 31.3301,
+            "format": "double",
+            "maximum": 180,
+            "minimum": -180,
+            "type": "number"
+          }
+        },
+        "required": [
+          "lat",
+          "lng"
+        ],
+        "type": "object"
+      },
+      "MarketplaceStatus": {
+        "enum": [
+          "ONBOARDING",
+          "ACTIVE",
+          "INACTIVE",
+          "SUSPENDED"
+        ],
+        "type": "string"
+      },
+      "Money": {
+        "properties": {
+          "amount": {
+            "example": "150.00",
+            "pattern": "^\\d+\\.\\d{2}$",
+            "type": "string"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/Currency"
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "type": "object"
+      },
+      "OpeningDayMode": {
+        "enum": [
+          "DEFAULT",
+          "CUSTOM",
+          "CLOSED"
+        ],
+        "type": "string"
+      },
+      "OperationalRestriction": {
+        "enum": [
+          "NONE",
+          "OWNER_REVIEW_REQUIRED"
+        ],
+        "type": "string"
+      },
+      "PageViewAdminVenue": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminVenue"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "example": "eyJvZmZzZXQiOjIwfQ",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object"
+      },
+      "PageViewCustomerVenueCard": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CustomerVenueCard"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "example": "eyJvZmZzZXQiOjIwfQ",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object"
+      },
+      "PlayMode": {
+        "enum": [
+          "SINGLE",
+          "MULTIPLAYER"
+        ],
+        "type": "string"
+      },
+      "ResourceBaseState": {
+        "enum": [
+          "ACTIVE",
+          "DISABLED",
+          "ARCHIVED"
+        ],
+        "type": "string"
+      },
+      "ResponseMeta": {
+        "properties": {
+          "correlationId": {
+            "example": "018f3c2e-7b1a-7c4d-9e2f-0a1b2c3d4e5f",
+            "type": "string"
+          },
+          "serverTime": {
+            "example": "2026-10-12T17:04:11Z",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "correlationId",
+          "serverTime"
+        ],
+        "type": "object"
+      },
+      "ScheduleDisplayState": {
+        "enum": [
+          "FREE",
+          "PENDING",
+          "AWAITING_CUSTOMER_CONFIRMATION",
+          "CONFIRMED",
+          "ACTIVE",
+          "MANUAL",
+          "TOURNAMENT_HOLD",
+          "MAINTENANCE",
+          "CLOSURE"
+        ],
+        "type": "string"
+      },
+      "VenueAccountStatus": {
+        "enum": [
+          "ENABLED",
+          "DISABLED"
+        ],
+        "type": "string"
+      },
+      "VenueAffectedReservation": {
+        "properties": {
+          "bookingId": {
+            "example": "5e6f7a8b-9c0d-4e1f-a2b3-c4d5e6f7a8b9",
+            "format": "uuid",
+            "type": "string"
+          },
+          "endAt": {
+            "example": "2026-10-16T00:00:00Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "protectedCancellation": {
+            "description": "Cancelling it needs the Owner Password (FR-VEN-25).",
+            "type": "boolean"
+          },
+          "resourceId": {
+            "example": "c2d3e4f5-a6b7-4c8d-9e0f-1a2b3c4d5e6f",
+            "format": "uuid",
+            "type": "string"
+          },
+          "startAt": {
+            "example": "2026-10-15T22:00:00Z",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bookingId",
+          "endAt",
+          "protectedCancellation",
+          "resourceId",
+          "startAt"
+        ],
+        "type": "object"
+      },
+      "VenueDefaultPrice": {
+        "properties": {
+          "activity": {
+            "$ref": "#/components/schemas/Activity"
+          },
+          "consoleType": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConsoleType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hourlyPrice": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "playMode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "activity",
+          "consoleType",
+          "hourlyPrice",
+          "playMode"
+        ],
+        "type": "object"
+      },
+      "VenueOpeningDay": {
+        "properties": {
+          "customClose": {
+            "example": "03:00:00",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "customOpen": {
+            "example": "14:00:00",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mode": {
+            "$ref": "#/components/schemas/OpeningDayMode"
+          },
+          "weekday": {
+            "description": "venue.venue_opening_day.weekday: 0 = Monday … 6 = Sunday.",
+            "example": 4,
+            "format": "int32",
+            "maximum": 6,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "customClose",
+          "customOpen",
+          "mode",
+          "weekday"
+        ],
+        "type": "object"
+      },
+      "VenueOpeningHours": {
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/VenueOpeningDay"
+            },
+            "type": "array"
+          },
+          "defaultClose": {
+            "example": "02:00:00",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$",
+            "type": "string"
+          },
+          "defaultFullDay": {
+            "type": "boolean"
+          },
+          "defaultOpen": {
+            "example": "12:00:00",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$",
+            "type": "string"
+          },
+          "timezone": {
+            "example": "Africa/Cairo",
+            "type": "string"
+          },
+          "version": {
+            "example": 3,
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "days",
+          "defaultClose",
+          "defaultFullDay",
+          "defaultOpen",
+          "timezone",
+          "version"
+        ],
+        "type": "object"
+      },
+      "VenueOpeningHoursCommitRequest": {
+        "properties": {
+          "ownerPassword": {
+            "description": "Required only when the preview had protected cancellations (FR-VEN-25).",
+            "format": "password",
+            "type": "string",
+            "writeOnly": true
+          },
+          "previewToken": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "proposal": {
+            "$ref": "#/components/schemas/VenueOpeningHoursProposal"
+          }
+        },
+        "required": [
+          "previewToken",
+          "proposal"
+        ],
+        "type": "object"
+      },
+      "VenueOpeningHoursPreview": {
+        "properties": {
+          "affected": {
+            "items": {
+              "$ref": "#/components/schemas/VenueAffectedReservation"
+            },
+            "type": "array"
+          },
+          "ownerPasswordRequired": {
+            "type": "boolean"
+          },
+          "previewToken": {
+            "description": "Bound to the exact affected set (arch 03 §5).",
+            "example": "b64:9f2c…",
+            "type": "string"
+          }
+        },
+        "required": [
+          "affected",
+          "ownerPasswordRequired",
+          "previewToken"
+        ],
+        "type": "object"
+      },
+      "VenueOpeningHoursPreviewRequest": {
+        "properties": {
+          "proposal": {
+            "$ref": "#/components/schemas/VenueOpeningHoursProposal"
+          }
+        },
+        "required": [
+          "proposal"
+        ],
+        "type": "object"
+      },
+      "VenueOpeningHoursProposal": {
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/VenueOpeningDay"
+            },
+            "type": "array"
+          },
+          "defaultClose": {
+            "example": "02:00:00",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$",
+            "type": "string"
+          },
+          "defaultFullDay": {
+            "type": "boolean"
+          },
+          "defaultOpen": {
+            "example": "12:00:00",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "days",
+          "defaultClose",
+          "defaultFullDay",
+          "defaultOpen"
+        ],
+        "type": "object"
+      },
+      "VenueOwnerPasswordChangeRequest": {
+        "properties": {
+          "current": {
+            "format": "password",
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          },
+          "next": {
+            "format": "password",
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "current",
+          "next"
+        ],
+        "type": "object"
+      },
+      "VenuePricing": {
+        "properties": {
+          "defaults": {
+            "items": {
+              "$ref": "#/components/schemas/VenueDefaultPrice"
+            },
+            "type": "array"
+          },
+          "overrides": {
+            "items": {
+              "$ref": "#/components/schemas/VenueRoomOverride"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "defaults",
+          "overrides"
+        ],
+        "type": "object"
+      },
+      "VenuePricingOwnerPasswordRequest": {
+        "properties": {
+          "ownerPassword": {
+            "format": "password",
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "ownerPassword"
+        ],
+        "type": "object"
+      },
+      "VenuePricingUpdateRequest": {
+        "properties": {
+          "defaults": {
+            "items": {
+              "$ref": "#/components/schemas/VenueDefaultPrice"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "ownerPassword": {
+            "format": "password",
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "defaults",
+          "ownerPassword"
+        ],
+        "type": "object"
+      },
+      "VenueResource": {
+        "properties": {
+          "activity": {
+            "$ref": "#/components/schemas/Activity"
+          },
+          "baseState": {
+            "$ref": "#/components/schemas/ResourceBaseState"
+          },
+          "consoleType": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConsoleType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "example": "c2d3e4f5-a6b7-4c8d-9e0f-1a2b3c4d5e6f",
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "example": "Room 1",
+            "type": "string"
+          },
+          "operationalRestriction": {
+            "$ref": "#/components/schemas/OperationalRestriction"
+          }
+        },
+        "required": [
+          "activity",
+          "baseState",
+          "consoleType",
+          "id",
+          "name",
+          "operationalRestriction"
+        ],
+        "type": "object"
+      },
+      "VenueResourceConsoleRequest": {
+        "properties": {
+          "consoleType": {
+            "$ref": "#/components/schemas/ConsoleType"
+          },
+          "ownerPassword": {
+            "format": "password",
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "consoleType",
+          "ownerPassword"
+        ],
+        "type": "object"
+      },
+      "VenueResourceOwnerPasswordRequest": {
+        "properties": {
+          "ownerPassword": {
+            "format": "password",
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "ownerPassword"
+        ],
+        "type": "object"
+      },
+      "VenueRoomOverride": {
+        "properties": {
+          "consoleType": {
+            "$ref": "#/components/schemas/ConsoleType"
+          },
+          "hourlyPrice": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "playMode": {
+            "$ref": "#/components/schemas/PlayMode"
+          },
+          "resourceId": {
+            "example": "c2d3e4f5-a6b7-4c8d-9e0f-1a2b3c4d5e6f",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "consoleType",
+          "hourlyPrice",
+          "playMode",
+          "resourceId"
+        ],
+        "type": "object"
+      },
+      "VenueRoomOverridePrice": {
+        "properties": {
+          "hourlyPrice": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "playMode": {
+            "$ref": "#/components/schemas/PlayMode"
+          }
+        },
+        "required": [
+          "hourlyPrice",
+          "playMode"
+        ],
+        "type": "object"
+      },
+      "VenueRoomOverrideRequest": {
+        "properties": {
+          "ownerPassword": {
+            "format": "password",
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          },
+          "prices": {
+            "items": {
+              "$ref": "#/components/schemas/VenueRoomOverridePrice"
+            },
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "ownerPassword",
+          "prices"
+        ],
+        "type": "object"
+      },
+      "VenueSchedule": {
+        "properties": {
+          "businessDate": {
+            "example": "2026-10-12",
+            "format": "date",
+            "type": "string"
+          },
+          "resources": {
+            "items": {
+              "$ref": "#/components/schemas/VenueScheduleResource"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "businessDate",
+          "resources"
+        ],
+        "type": "object"
+      },
+      "VenueScheduleResource": {
+        "properties": {
+          "activity": {
+            "$ref": "#/components/schemas/Activity"
+          },
+          "consoleType": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConsoleType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "example": "Room 1",
+            "type": "string"
+          },
+          "resourceId": {
+            "example": "c2d3e4f5-a6b7-4c8d-9e0f-1a2b3c4d5e6f",
+            "format": "uuid",
+            "type": "string"
+          },
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/VenueScheduleSlot"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "activity",
+          "consoleType",
+          "name",
+          "resourceId",
+          "slots"
+        ],
+        "type": "object"
+      },
+      "VenueScheduleSlot": {
+        "properties": {
+          "bookingId": {
+            "description": "The booking behind the span, when there is one.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "endAt": {
+            "example": "2026-10-12T17:00:00Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "startAt": {
+            "example": "2026-10-12T15:00:00Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ScheduleDisplayState"
+          }
+        },
+        "required": [
+          "bookingId",
+          "endAt",
+          "startAt",
+          "state"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "bearerFormat": "JWT",
+        "description": "Access JWT (arch 09 §1.2). Not needed for registration, login, OTP and public discovery.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "E7GZ PS API",
+    "version": "v1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/admin/areas": {
+      "get": {
+        "operationId": "adminListAreas",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseListAdminArea"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "All areas, active and inactive",
+        "tags": [
+          "admin-areas"
+        ]
+      },
+      "post": {
+        "operationId": "adminCreateArea",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminAreaCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseAdminArea"
+                }
+              }
+            },
+            "description": "Created",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create an area (FR-VEN-12)",
+        "tags": [
+          "admin-areas"
+        ]
+      }
+    },
+    "/api/v1/admin/areas/{areaId}": {
+      "patch": {
+        "operationId": "adminUpdateArea",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "areaId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminAreaUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseAdminArea"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Rename an area or move its centroid",
+        "tags": [
+          "admin-areas"
+        ]
+      }
+    },
+    "/api/v1/admin/areas/{areaId}/activate": {
+      "post": {
+        "operationId": "adminActivateArea",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "areaId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseAdminArea"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Activate an area",
+        "tags": [
+          "admin-areas"
+        ]
+      }
+    },
+    "/api/v1/admin/areas/{areaId}/deactivate": {
+      "post": {
+        "operationId": "adminDeactivateArea",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "areaId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseAdminArea"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "AREA_HAS_ACTIVE_VENUES"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: AREA_HAS_ACTIVE_VENUES",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Deactivate an area — refused while any assigned venue is ACTIVE or SUSPENDED (FR-VEN-47)",
+        "tags": [
+          "admin-areas"
+        ]
+      }
+    },
+    "/api/v1/admin/venue-accounts/{venueAccountId}/disable": {
+      "post": {
+        "operationId": "adminDisableVenueAccount",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venueAccountId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminVenueAccountReasonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseAdminVenueAccount"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Disable Dashboard access; marketplace status is untouched (FR-VEN-06, FR-VEN-08)",
+        "tags": [
+          "admin-venue-accounts"
+        ]
+      }
+    },
+    "/api/v1/admin/venue-accounts/{venueAccountId}/enable": {
+      "post": {
+        "operationId": "adminEnableVenueAccount",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venueAccountId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminVenueAccountReasonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseAdminVenueAccount"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Re-enable Dashboard access (FR-ADM-03)",
+        "tags": [
+          "admin-venue-accounts"
+        ]
+      }
+    },
+    "/api/v1/admin/venue-accounts/{venueAccountId}/reset-login-password": {
+      "post": {
+        "description": "The admin chooses the new password and gives it to the venue through support (PO decision, 28 Sep 2026). No temporary password, reset link or forced change. Audited; venue data is kept.",
+        "operationId": "adminResetVenueLoginPassword",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venueAccountId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminVenuePasswordResetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Reset the venue login password (FR-ADM-03)",
+        "tags": [
+          "admin-venue-accounts"
+        ]
+      }
+    },
+    "/api/v1/admin/venue-accounts/{venueAccountId}/reset-owner-password": {
+      "post": {
+        "description": "The admin chooses the new Owner Password and gives it to the venue through support (PO decision, 28 Sep 2026). No temporary password, reset link or forced change. Audited; the venue is notified (FR-ADM-03).",
+        "operationId": "adminResetVenueOwnerPassword",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venueAccountId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminVenuePasswordResetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Reset the Owner Password; the venue is notified (FR-ADM-03, FR-VEN-05)",
+        "tags": [
+          "admin-venue-accounts"
+        ]
+      }
+    },
+    "/api/v1/admin/venues": {
+      "get": {
+        "operationId": "adminListVenues",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponsePageViewAdminVenue"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "All venues, any marketplace status",
+        "tags": [
+          "admin-venues"
+        ]
+      },
+      "post": {
+        "operationId": "adminCreateVenue",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminVenueCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseAdminVenue"
+                }
+              }
+            },
+            "description": "Created",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "AREA_INACTIVE"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: AREA_INACTIVE",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create a venue in ONBOARDING, in an active area (FR-ADM-02, FR-VEN-12)",
+        "tags": [
+          "admin-venues"
+        ]
+      }
+    },
+    "/api/v1/admin/venues/{venueId}": {
+      "patch": {
+        "operationId": "adminUpdateVenue",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venueId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminVenueUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseAdminVenue"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "AREA_INACTIVE"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: AREA_INACTIVE",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Edit venue information; a new area must be active (FR-VEN-12)",
+        "tags": [
+          "admin-venues"
+        ]
+      }
+    },
+    "/api/v1/admin/venues/{venueId}/onboarding/complete": {
+      "post": {
+        "description": "Completing onboarding does not activate the venue (PO decision, 28 Sep 2026). The venue leaves ONBOARDING for INACTIVE — hidden from discovery, Dashboard and manual booking available (FR-VEN-07); the database never lets it return to ONBOARDING. Activation is a separate admin action, not part of this contract yet.",
+        "operationId": "adminCompleteVenueOnboarding",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venueId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminVenueReasonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseAdminVenue"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Complete onboarding: ONBOARDING → INACTIVE, never ACTIVE (FR-ADM-02, FR-VEN-07)",
+        "tags": [
+          "admin-venues"
+        ]
+      }
+    },
+    "/api/v1/customer/areas": {
+      "get": {
+        "operationId": "customerListAreas",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseListCustomerArea"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Active areas (FR-VEN-12)",
+        "tags": [
+          "customer-discovery"
+        ]
+      }
+    },
+    "/api/v1/customer/find-available": {
+      "get": {
+        "operationId": "customerFindAvailable",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "areaId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "activity",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Activity"
+            }
+          },
+          {
+            "description": "Local date (Africa/Cairo).",
+            "in": "query",
+            "name": "date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Local start time (Africa/Cairo).",
+            "example": "18:00:00",
+            "in": "query",
+            "name": "startTime",
+            "required": true,
+            "schema": {
+              "example": "12:00:00",
+              "pattern": "^([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "durationMinutes",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseListCustomerAvailableVenue"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Resources free for the whole requested interval; no price filter (FR-DIS-12)",
+        "tags": [
+          "customer-discovery"
+        ]
+      }
+    },
+    "/api/v1/customer/venues": {
+      "get": {
+        "operationId": "customerListVenues",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "areaId",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "activity",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Activity"
+            }
+          },
+          {
+            "description": "Customer latitude; send with lng.",
+            "in": "query",
+            "name": "lat",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Customer longitude; send with lat.",
+            "in": "query",
+            "name": "lng",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponsePageViewCustomerVenueCard"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Eligible venues; nearest first with a location; a chosen area is a hard filter (FR-DIS-01, FR-DIS-02)",
+        "tags": [
+          "customer-discovery"
+        ]
+      }
+    },
+    "/api/v1/customer/venues/map": {
+      "get": {
+        "operationId": "customerListVenueMarkers",
+        "parameters": [
+          {
+            "description": "Visible map area as minLng,minLat,maxLng,maxLat.",
+            "example": "31.20,29.95,31.45,30.15",
+            "in": "query",
+            "name": "bounds",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "activity",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Activity"
+            }
+          },
+          {
+            "description": "Customer latitude, for distance; send with lng.",
+            "in": "query",
+            "name": "lat",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Customer longitude, for distance; send with lat.",
+            "in": "query",
+            "name": "lng",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseListCustomerVenueMarker"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Map markers under the same eligibility rules as the list (FR-DIS-10)",
+        "tags": [
+          "customer-discovery"
+        ]
+      }
+    },
+    "/api/v1/customer/venues/{venueId}": {
+      "get": {
+        "operationId": "customerGetVenue",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venueId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "activity",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Activity"
+            }
+          },
+          {
+            "description": "Customer latitude, for distance; send with lng.",
+            "in": "query",
+            "name": "lat",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Customer longitude, for distance; send with lat.",
+            "in": "query",
+            "name": "lng",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseCustomerVenueDetails"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Venue details; answers for non-ACTIVE venues too, with bookingEnabled false (FR-DIS-06, FR-DIS-08, FR-DIS-11)",
+        "tags": [
+          "customer-discovery"
+        ]
+      }
+    },
+    "/api/v1/venue/availability": {
+      "get": {
+        "operationId": "venueGetAvailability",
+        "parameters": [
+          {
+            "description": "Business date (arch 04 §4.3).",
+            "in": "query",
+            "name": "date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseVenueSchedule"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Resource × time schedule for one business date (FR-VEN-37)",
+        "tags": [
+          "venue-schedule"
+        ]
+      }
+    },
+    "/api/v1/venue/opening-hours": {
+      "get": {
+        "operationId": "venueGetOpeningHours",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseVenueOpeningHours"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "The weekly template and weekday overrides (FR-VEN-17)",
+        "tags": [
+          "venue-opening-hours"
+        ]
+      }
+    },
+    "/api/v1/venue/opening-hours/commit": {
+      "post": {
+        "operationId": "venueCommitOpeningHours",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VenueOpeningHoursCommitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseVenueOpeningHours"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "AFFECTED_SET_CHANGED_REFRESH_PREVIEW"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: AFFECTED_SET_CHANGED_REFRESH_PREVIEW",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "TOURNAMENT_CONFLICT_BLOCKS_SAVE"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: TOURNAMENT_CONFLICT_BLOCKS_SAVE",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "OWNER_PASSWORD_REQUIRED",
+                                "OWNER_PASSWORD_INVALID"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Steps 6–9: commit all-or-nothing; Owner Password only when protected bookings are cancelled (FR-VEN-23, FR-VEN-25, FR-VEN-26)",
+        "tags": [
+          "venue-opening-hours"
+        ]
+      }
+    },
+    "/api/v1/venue/opening-hours/preview": {
+      "post": {
+        "operationId": "venuePreviewOpeningHours",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VenueOpeningHoursPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseVenueOpeningHoursPreview"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "TOURNAMENT_CONFLICT_BLOCKS_SAVE"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: TOURNAMENT_CONFLICT_BLOCKS_SAVE",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Steps 1–5: validate, block on tournament conflicts, list affected reservations (FR-VEN-23, FR-VEN-27)",
+        "tags": [
+          "venue-opening-hours"
+        ]
+      }
+    },
+    "/api/v1/venue/owner-password": {
+      "post": {
+        "operationId": "venueChangeOwnerPassword",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VenueOwnerPasswordChangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "OWNER_PASSWORD_REQUIRED",
+                                "OWNER_PASSWORD_INVALID"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Change the Owner Password; the old one stops working at once (FR-VEN-46)",
+        "tags": [
+          "venue-owner-password"
+        ]
+      }
+    },
+    "/api/v1/venue/pricing": {
+      "get": {
+        "operationId": "venueGetPricing",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseVenuePricing"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Venue default prices and room overrides",
+        "tags": [
+          "venue-pricing"
+        ]
+      },
+      "put": {
+        "operationId": "venuePutPricing",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VenuePricingUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseVenuePricing"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "OWNER_PASSWORD_REQUIRED",
+                                "OWNER_PASSWORD_INVALID"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Replace the venue default prices — Owner Password (FR-VEN-03)",
+        "tags": [
+          "venue-pricing"
+        ]
+      }
+    },
+    "/api/v1/venue/resources": {
+      "get": {
+        "operationId": "venueListResources",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseListVenueResource"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "The venue's resources with both status columns (FR-VEN-13)",
+        "tags": [
+          "venue-resources"
+        ]
+      }
+    },
+    "/api/v1/venue/resources/{resourceId}": {
+      "get": {
+        "operationId": "venueGetResource",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resourceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseVenueResource"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "One resource",
+        "tags": [
+          "venue-resources"
+        ]
+      }
+    },
+    "/api/v1/venue/resources/{resourceId}/archive": {
+      "post": {
+        "operationId": "venueArchiveResource",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resourceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VenueResourceOwnerPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseVenueResource"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RESOURCE_HAS_BLOCKING_RESERVATIONS"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RESOURCE_HAS_BLOCKING_RESERVATIONS",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "OWNER_PASSWORD_REQUIRED",
+                                "OWNER_PASSWORD_INVALID"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Archive — Owner Password; blocked by any current or future blocking reservation (FR-VEN-03, FR-VEN-14)",
+        "tags": [
+          "venue-resources"
+        ]
+      }
+    },
+    "/api/v1/venue/resources/{resourceId}/console": {
+      "post": {
+        "operationId": "venueChangeResourceConsole",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resourceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VenueResourceConsoleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseVenueResource"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RESOURCE_HAS_BLOCKING_RESERVATIONS"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RESOURCE_HAS_BLOCKING_RESERVATIONS",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "OWNER_PASSWORD_REQUIRED",
+                                "OWNER_PASSWORD_INVALID"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Change console PS4 ↔ PS5 — Owner Password; clears the room's price overrides; blocked by blocking reservations (FR-VEN-14, FR-VEN-15)",
+        "tags": [
+          "venue-resources"
+        ]
+      }
+    },
+    "/api/v1/venue/resources/{resourceId}/disable": {
+      "post": {
+        "operationId": "venueDisableResource",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resourceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VenueResourceOwnerPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseVenueResource"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RESOURCE_HAS_BLOCKING_RESERVATIONS"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RESOURCE_HAS_BLOCKING_RESERVATIONS",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "OWNER_PASSWORD_REQUIRED",
+                                "OWNER_PASSWORD_INVALID"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Disable — Owner Password; blocked by any current or future blocking reservation (FR-VEN-03, FR-VEN-14)",
+        "tags": [
+          "venue-resources"
+        ]
+      }
+    },
+    "/api/v1/venue/resources/{resourceId}/price-override": {
+      "delete": {
+        "operationId": "venueDeleteRoomPriceOverride",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resourceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VenuePricingOwnerPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseVenuePricing"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "OWNER_PASSWORD_REQUIRED",
+                                "OWNER_PASSWORD_INVALID"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Reset a room to the venue default — Owner Password in the body (FR-VEN-03, ADR-011)",
+        "tags": [
+          "venue-pricing"
+        ]
+      },
+      "put": {
+        "operationId": "venuePutRoomPriceOverride",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resourceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VenueRoomOverrideRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseVenuePricing"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "OWNER_PASSWORD_REQUIRED",
+                                "OWNER_PASSWORD_INVALID"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Set a PlayStation room's price override for its console — Owner Password (FR-VEN-03, FR-VEN-43)",
+        "tags": [
+          "venue-pricing"
+        ]
+      }
+    },
+    "/api/v1/venue/resources/{resourceId}/re-enable": {
+      "post": {
+        "operationId": "venueReEnableResource",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resourceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VenueResourceOwnerPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseVenueResource"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "OWNER_PASSWORD_REQUIRED",
+                                "OWNER_PASSWORD_INVALID"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Re-enable — Owner Password (FR-VEN-03)",
+        "tags": [
+          "venue-resources"
+        ]
+      }
+    },
+    "/api/v1/venue/resources/{resourceId}/restore": {
+      "post": {
+        "operationId": "venueRestoreResource",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resourceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VenueResourceOwnerPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseVenueResource"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token. Its error code is not defined yet (arch 09 §1.5; E7-12).",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "OWNER_PASSWORD_REQUIRED",
+                                "OWNER_PASSWORD_INVALID"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Restore — Owner Password (FR-VEN-03)",
+        "tags": [
+          "venue-resources"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ]
+}
