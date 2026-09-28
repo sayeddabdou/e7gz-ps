@@ -1,0 +1,34 @@
+package ps.e7gz.common.command.archfixture;
+
+import java.time.Clock;
+import java.time.Instant;
+import ps.e7gz.common.command.Command;
+import ps.e7gz.common.command.CommandContext;
+import ps.e7gz.common.command.CommandScope;
+import ps.e7gz.common.command.EligibilityCategory;
+import ps.e7gz.common.command.LockSet;
+
+/** Positive control for {@code CommandBoundaryArchitectureTest}: a Command that reads rule time from a Clock. */
+public class ClockCommand implements Command<Instant> {
+
+    private final Clock clock;
+
+    public ClockCommand(Clock clock) {
+        this.clock = clock;
+    }
+
+    @Override
+    public EligibilityCategory eligibilityCategory() {
+        return EligibilityCategory.C_INTERNAL_VENUE_OPERATION;
+    }
+
+    @Override
+    public CommandScope scope() {
+        return CommandScope.shared(LockSet.empty());
+    }
+
+    @Override
+    public Instant execute(CommandContext context) {
+        return clock.instant();
+    }
+}
