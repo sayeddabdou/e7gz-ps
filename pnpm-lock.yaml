@@ -18,6 +18,9 @@ importers:
       '@e7gz/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
+      '@e7gz/tokens':
+        specifier: workspace:*
+        version: link:../../packages/tokens
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -73,6 +76,9 @@ importers:
       '@e7gz/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
+      '@e7gz/tokens':
+        specifier: workspace:*
+        version: link:../../packages/tokens
       '@expo/metro-runtime':
         specifier: ~57.0.16
         version: 57.0.16(@expo/log-box@57.0.4)(expo@57.0.25)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.3(@babel/core@7.29.7)(@react-native/jest-preset@0.86.3(@babel/core@7.29.7)(react@19.2.3))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
@@ -140,6 +146,9 @@ importers:
       '@e7gz/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
+      '@e7gz/tokens':
+        specifier: workspace:*
+        version: link:../../packages/tokens
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -218,7 +227,20 @@ importers:
         specifier: ^8.70.1
         version: 8.70.1(eslint@10.11.0)(typescript@5.9.3)
 
-  packages/tokens: {}
+  packages/tokens:
+    devDependencies:
+      '@eslint/js':
+        specifier: ^10.0.1
+        version: 10.0.1(eslint@10.11.0)
+      eslint:
+        specifier: ^10.11.0
+        version: 10.11.0
+      typescript:
+        specifier: ~5.9.3
+        version: 5.9.3
+      typescript-eslint:
+        specifier: ^8.70.1
+        version: 8.70.1(eslint@10.11.0)(typescript@5.9.3)
 
 packages:
 

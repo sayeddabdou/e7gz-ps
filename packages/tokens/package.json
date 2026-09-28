@@ -2,9 +2,23 @@
   "name": "@e7gz/tokens",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./native": "./src/native.ts",
+    "./web": "./src/web.ts",
+    "./css": "./src/tokens.css"
+  },
   "scripts": {
-    "build": "echo \"not set up yet — see E7-18\"",
-    "lint": "echo \"not set up yet — see E7-18\"",
-    "typecheck": "echo \"not set up yet — see E7-18\""
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-css.mjs",
+    "lint": "eslint src scripts eslint test",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.11.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.70.1"
   }
 }

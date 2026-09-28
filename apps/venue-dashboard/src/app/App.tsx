@@ -1,6 +1,7 @@
 // Minimal Dashboard shell: configuration check, EN/AR switch with dir="rtl", one screen. Routing, the auth guard and
 // the prototype layout are E7-19.
 import { useEffect, useMemo, useState } from "react";
+import { logicalSpacing, webTokens } from "@e7gz/tokens/web";
 import { createDashboardApiClient } from "../api";
 import type { ConfigResult } from "../config";
 import { ResourceList } from "../features/setup/ResourceList";
@@ -19,8 +20,24 @@ export function App({ config, initialLanguage = "en" }: { config: ConfigResult; 
 
   return (
     <MessagesContext.Provider value={t}>
-      <main dir={direction} style={{ paddingInline: "1rem" }}>
-        <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
+      <main
+        dir={direction}
+        style={{
+          ...logicalSpacing.paddingInline(webTokens.spacing["3xl"]),
+          backgroundColor: webTokens.color.surface.venueSubtle,
+          color: webTokens.color.text.venue,
+          fontFamily: webTokens.typography.fontFamily.sans,
+          minHeight: "100vh",
+        }}
+      >
+        <header
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: webTokens.spacing["3xl"],
+          }}
+        >
           <h1>{t.appTitle}</h1>
           <button type="button" onClick={() => setLanguage(language === "en" ? "ar" : "en")}>
             {t.switchLanguage}
