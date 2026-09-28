@@ -2,7 +2,34 @@
 
 Platform Admin — React + TypeScript + Vite, English. Owner: Abdallah (Clients lane).
 
-Not set up yet — the project is created by **E7-19** (do not run create-vite / create-expo-app before that task). Every folder's `index.ts` names the task that fills it.
+## What exists (set up early by E7-11, with the PO's approval)
+
+E7-11 needed a real app compiling against `@e7gz/api-client`, so the minimum was added ahead of E7-19:
+
+| Piece | File |
+|---|---|
+| Vite + React 19 + TS project, ESLint, Vitest (happy-dom) | `package.json`, `vite.config.ts`, `tsconfig.json`, `eslint.config.js`, `index.html` |
+| Configuration from env, no silent default backend | `src/config.ts`, `.env.example` |
+| Shared API client created from that config | `src/api/index.ts` |
+| English strings in one place | `src/i18n/messages.ts` |
+| One working screen: areas from `GET /api/v1/admin/areas`, with loading / success / error | `src/features/areas/AreaList.tsx` (+ test) |
+
+## Commands
+
+```
+pnpm mock                                     # repo root: Prism mock on http://127.0.0.1:4010
+pnpm --filter @e7gz/admin-web dev:mock        # http://localhost:5174 against the mock
+pnpm --filter @e7gz/admin-web lint | typecheck | test | build
+```
+
+Against a real backend: set `VITE_API_BASE_URL` (e.g. `http://localhost:8080`) and run `dev`. Admin login does not exist yet (E7-14 / E7-21), so `VITE_API_ACCESS_TOKEN` is a placeholder the mock accepts and the real backend will not.
+
+## Still to do in E7-19 (not done here)
+
+- The layout shell and navigation for the 20 admin modules (empty pages), and the auth guard.
+- Design tokens (E7-18).
+
+`AreaList` is a starting point for E7-37 (areas list, create, deactivate). Reuse or replace it.
 
 | Folder | Filled by |
 |---|---|

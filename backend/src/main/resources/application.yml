@@ -30,3 +30,11 @@ e7gz:
       password: ${E7GZ_DB_ADMIN_PASSWORD:e7gz_admin_runtime}
       pool-name: admin
       maximum-pool-size: 3
+
+# OpenAPI 3.1 generated from the controllers (ADR-012). Keys sorted so the committed openapi.json diffs cleanly.
+springdoc:
+  api-docs:
+    version: openapi_3_1
+  writer-with-order-by-keys: true
+  # REST + JSON (arch 09): document responses as application/json, not */*.
+  default-produces-media-type: application/json

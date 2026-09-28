@@ -1,3 +1,19 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+# Usage-telemetry install script pulled in by Prism — never run it.
+ignoredBuiltDependencies:
+  - "@scarf/scarf"
+
+# Prism CLI 5.14.2 (the last release that supports Node 22) asks for its sub-packages with "^" ranges, which
+# resolve to 5.15.7+ — and those require Node >= 24.14. Hold only those incompatible versions back to the set
+# prism-cli 5.14.2 was released with (all ">=18.20.1").
+overrides:
+  "@stoplight/prism-core@>=5.15.0": "5.8.0"
+  "@stoplight/prism-http@>=5.15.0": "5.12.0"
+  "@stoplight/prism-http-server@>=5.15.0": "5.12.2"
+
+# Refuse to install any package whose "engines" does not accept the running Node version (root engines: >=22.13.0,
+# the highest minimum in the tree — eslint 10 needs ^22.13.0).
+engineStrict: true

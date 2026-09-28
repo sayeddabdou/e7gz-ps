@@ -3,13 +3,15 @@
   "private": true,
   "packageManager": "pnpm@10.34.5",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13.0"
   },
   "scripts": {
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
-    "api:gen": "echo \"not set up yet — see E7-11\"",
-    "mock": "echo \"not set up yet — see E7-11\""
+    "test": "pnpm -r test",
+    "api:gen": "node packages/api-client/scripts/api-gen.mjs",
+    "mock": "node packages/api-client/scripts/mock.mjs",
+    "test:chain": "node packages/api-client/scripts/test-chain.mjs --backend"
   }
 }
