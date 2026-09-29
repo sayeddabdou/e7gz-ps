@@ -29,7 +29,8 @@ dependencies {
     implementation("org.flywaydb:flyway-core")
     implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:$springdocVersion")
-    runtimeOnly("org.postgresql:postgresql")
+    // Compile scope (E7-12): the API error mapper reads the SQLSTATE and CONSTRAINT diagnostics from PSQLException.
+    implementation("org.postgresql:postgresql")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-testcontainers")

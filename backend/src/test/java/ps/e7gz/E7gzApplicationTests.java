@@ -3,8 +3,11 @@ package ps.e7gz;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.Arrays;
+import java.util.Objects;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationInfo;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -31,7 +34,12 @@ class E7gzApplicationTests extends IntegrationTest {
         assertThat(app.queryForObject(
                 "select count(*) from information_schema.tables where table_schema = 'iam'", Integer.class))
                 .isPositive();
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("1");
+        // Every versioned migration is applied and the current version is the newest one (V1 + later). The repeatable
+        // security baseline is re-applied on every run by design (${flyway:timestamp}), so it always shows as pending.
+        assertThat(Arrays.stream(flyway.info().pending()).filter(m -> m.getVersion() != null)).isEmpty();
+        assertThat(flyway.info().current().getVersion())
+                .isEqualTo(Arrays.stream(flyway.info().all()).map(MigrationInfo::getVersion)
+                        .filter(Objects::nonNull).max(Comparable::compareTo).orElseThrow());
     }
 
     @Test

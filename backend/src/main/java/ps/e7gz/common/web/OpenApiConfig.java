@@ -22,6 +22,7 @@ import io.swagger.v3.oas.models.servers.Server;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +33,7 @@ import org.springdoc.core.customizers.OperationCustomizer;
 import org.springdoc.core.utils.SpringDocUtils;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import ps.e7gz.common.error.ApiErrorCode;
 
 /**
  * The OpenAPI 3.1 document generated from the controllers (ADR-012, arch 09). It is written to
@@ -40,7 +42,8 @@ import org.springframework.context.annotation.Configuration;
  *
  * <p>Conventions every endpoint shares are added here once, not per controller (arch 09 §1.2–§1.4):
  * <ul>
- *   <li>the Bearer scheme, and a 401 on every secured operation;</li>
+ *   <li>the Bearer scheme;</li>
+ *   <li>the general error responses of {@link #addSharedErrors} (400, 401, 403, 404, 429, 500);</li>
  *   <li>the optional {@code X-Correlation-Id} request header, echoed on every response;</li>
  *   <li>the {@code Idempotency-Key} header on every write — optional (CLAUDE.md §5: every write accepts it) unless the
  *       operation declares it itself, which ADR-015's scope requires with {@code @RequestHeader(IDEMPOTENCY_KEY)}; a
@@ -59,6 +62,7 @@ public class OpenApiConfig {
     public static final String IDEMPOTENCY_KEY = "Idempotency-Key";
 
     static final String ERROR_RESPONSE_REF = "#/components/schemas/ErrorResponse";
+    static final String UNEXPECTED_ERROR_RESPONSE_REF = "#/components/schemas/UnexpectedErrorResponse";
 
     static {
         // Venue-local wall-clock times (opening hours) go out as ISO_LOCAL_TIME, e.g. "12:00:00" (no offset, so not the
@@ -90,7 +94,7 @@ public class OpenApiConfig {
             }
             byStatus.forEach((status, codes) -> operation.getResponses().addApiResponse(String.valueOf(status),
                     new ApiResponse()
-                            .description("error.code: " + String.join(" | ", codes))
+                            .description(describe(codes))
                             .content(json(errorWithCodes(codes)))));
             return operation;
         };
@@ -100,9 +104,11 @@ public class OpenApiConfig {
     @Bean
     OpenApiCustomizer sharedConventions() {
         return openApi -> {
-            ResolvedSchema error = ModelConverters.getInstance(true)
-                    .resolveAsResolvedSchema(new AnnotatedType(ErrorResponse.class).resolveAsRef(true));
-            error.referencedSchemas.forEach(openApi.getComponents()::addSchemas);
+            for (Class<?> envelope : List.of(ErrorResponse.class, UnexpectedErrorResponse.class)) {
+                ResolvedSchema resolved = ModelConverters.getInstance(true)
+                        .resolveAsResolvedSchema(new AnnotatedType(envelope).resolveAsRef(true));
+                resolved.referencedSchemas.forEach(openApi.getComponents()::addSchemas);
+            }
             openApi.getComponents().getSchemas().values().forEach(OpenApiConfig::nullableRefsAsAnyOf);
 
             if (openApi.getPaths() == null) {
@@ -117,16 +123,86 @@ public class OpenApiConfig {
                             .description("Accepted on every write; a replay returns the stored response (ADR-015).")
                             .schema(new StringSchema().format("uuid")));
                 }
-                if (operation.getSecurity() != null && !operation.getSecurity().isEmpty()) {
-                    // No body schema: arch 09 §1.5 defines no error code for an unauthenticated request yet (E7-12).
-                    operation.getResponses().addApiResponse("401", new ApiResponse()
-                            .description("Missing or invalid access token. Its error code is not defined yet "
-                                    + "(arch 09 §1.5; E7-12)."));
-                }
+                addSharedErrors(operation);
                 operation.getResponses().values().forEach(response -> response.addHeaderObject(CORRELATION_ID,
                         new Header().schema(new StringSchema())));
             }));
         };
+    }
+
+    /**
+     * The general failures every operation of a kind can return (arch 09 §1.4; codes approved 29 Sep 2026, E7-12):
+     * 400 {@code VALIDATION_FAILED} when it takes input, 401 {@code UNAUTHENTICATED} and 403 {@code FORBIDDEN} when it
+     * is secured, 404 {@code NOT_FOUND} when it addresses a resource by path, 429 {@code RATE_LIMITED} (the general
+     * per-IP limit, arch 09 §6) and 500 carrying only {@code meta}. A status the operation already declares with
+     * {@link ApiError} keeps its codes and gains the general one; any other explicit response is left untouched.
+     */
+    static void addSharedErrors(Operation operation) {
+        boolean secured = operation.getSecurity() != null && !operation.getSecurity().isEmpty();
+        List<Parameter> parameters = operation.getParameters() == null ? List.of() : operation.getParameters();
+        boolean takesInput = operation.getRequestBody() != null || parameters.stream()
+                .anyMatch(p -> !("header".equals(p.getIn()) && CORRELATION_ID.equalsIgnoreCase(p.getName())));
+        boolean addressesResource = parameters.stream().anyMatch(p -> "path".equals(p.getIn()));
+
+        if (takesInput) {
+            addSharedError(operation, 400, ApiErrorCode.VALIDATION_FAILED);
+        }
+        if (secured) {
+            addSharedError(operation, 401, ApiErrorCode.UNAUTHENTICATED);
+            addSharedError(operation, 403, ApiErrorCode.FORBIDDEN);
+        }
+        if (addressesResource) {
+            addSharedError(operation, 404, ApiErrorCode.NOT_FOUND);
+        }
+        addSharedError(operation, 429, ApiErrorCode.RATE_LIMITED);
+        if (operation.getResponses().get("500") == null) {
+            operation.getResponses().addApiResponse("500", new ApiResponse()
+                    .description("Unexpected failure: only the correlation ID, never a code or message.")
+                    .content(json(new JsonSchema().$ref(UNEXPECTED_ERROR_RESPONSE_REF))));
+        }
+    }
+
+    /** Adds {@code code} to the error response for {@code status}, creating it when absent (see above). */
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    static void addSharedError(Operation operation, int status, ApiErrorCode code) {
+        String key = String.valueOf(status);
+        ApiResponse existing = operation.getResponses().get(key);
+        if (existing == null) {
+            Set<String> codes = new LinkedHashSet<>(List.of(code.name()));
+            operation.getResponses().addApiResponse(key, new ApiResponse()
+                    .description(describe(codes)).content(json(errorWithCodes(codes))));
+            return;
+        }
+        Schema narrowed = narrowedCodeSchema(existing);
+        if (narrowed == null) {
+            return; // an explicit response in another shape: never overwritten
+        }
+        List<Object> codes = new ArrayList<>(narrowed.getEnum());
+        if (!codes.contains(code.name())) {
+            codes.add(code.name());
+            narrowed.setEnum(codes);
+            existing.description(describe(codes.stream().map(String::valueOf).toList()));
+        }
+    }
+
+    /** The {@code error.code} schema of a response built by {@link #errorWithCodes}, or null for any other shape. */
+    @SuppressWarnings("rawtypes")
+    private static Schema narrowedCodeSchema(ApiResponse response) {
+        if (response.getContent() == null || response.getContent().get("application/json") == null) {
+            return null;
+        }
+        Schema<?> schema = response.getContent().get("application/json").getSchema();
+        if (schema == null || schema.getAllOf() == null || schema.getAllOf().size() != 2
+                || !ERROR_RESPONSE_REF.equals(schema.getAllOf().get(0).get$ref())) {
+            return null;
+        }
+        Schema error = (Schema) schema.getAllOf().get(1).getProperties().get("error");
+        Schema code = error == null || error.getProperties() == null ? null : (Schema) error.getProperties().get("code");
+        return code == null || code.getEnum() == null ? null : code;
+    }
+
+    private static String describe(Collection<String> codes) {
+        return "error.code: " + String.join(" | ", codes);
     }
 
     /**

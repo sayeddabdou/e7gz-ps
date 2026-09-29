@@ -59,6 +59,41 @@ The test scripts connect with `psql -h /tmp -p 5499 -U postgres`; change the `P=
 | F19 | Login attempts had no place in the security rate-limit table | `iam.security_rate_limit_counter.limiter_type` also accepts `LOGIN` (key = hash of identifier + IP; `action_class` = audience) | Product Owner decision A10, arch 10 §7 |
 | — | Unchecked columns | Non-negative prices; closed actor types; non-blank reasons; code-format checks | — |
 
+- **v1.1.28** (29 Sep 2026, E7-12, approved by the Product Owner as option 1B) — stable identifiers on Product guard exceptions:
+
+| # | Change | Where | Source |
+|---|---|---|---|
+| G01 | A guard that re-asserts a Product rule now carries a stable identifier in the standard PostgreSQL diagnostic field **CONSTRAINT** (`RAISE … USING CONSTRAINT = 'gd_…'`). The API maps the identifier — never the message — to its `ApiErrorCode` (`ps.e7gz.common.error.DatabaseErrorCodes`). Message text, SQLSTATE (`P0001`), signatures, `SECURITY DEFINER`, `search_path`, owner and grants are unchanged. No table, column, index, constraint, trigger or data change. | Flyway `V202609291200__guard_error_identifiers.sql`; `.dbm` block `v1_1_28_guard_error_identifiers` (identical text) | arch 09 §1.5, ADR-026 §4 |
+
+14 functions are restated from their final v1.1.27 definition; 31 raise sites change. Internal invariant raises get no identifier and stay unexpected failures (HTTP 500 + correlation ID).
+
+| Function | Lane | Identifier → API code (HTTP) | Kind |
+|---|---|---|---|
+| `booking.validate_online_booking_intake` | Engine | `gd_online_booking_lead_time` → `BOOKING_LEAD_TIME_TOO_SHORT` (422) · `gd_online_booking_intake_window` → `ONLINE_INTAKE_WINDOW_CLOSED` (422) · `gd_online_booking_area_inactive` → **unmapped by design** (see below) | diagnostic |
+| `booking.validate_booking_creation_venue` | Engine | `gd_online_booking_venue_not_active` → `VENUE_NOT_ELIGIBLE_FOR_NEW_ACTIVITY` (422) · `gd_manual_booking_backdated` → `MANUAL_BOOKING_BACKDATING_NOT_ALLOWED` (422) | diagnostic + branch split |
+| `inventory.guard_resource_reservation_cross_class` | Engine | by `reservation_type`: `gd_reservation_conflict_booking` → `SLOT_NO_LONGER_AVAILABLE` (409) · `_late_confirm` → `LATE_CONFIRM_RESOURCE_CONFLICT` (409) · `_tournament` → `TOURNAMENT_RESOURCE_CONFLICT` (409) · `_maintenance` → `MAINTENANCE_OVERLAPS_RESERVATION` (422) · `_closure` → **unmapped by design** (see below) | diagnostic |
+| `attendance.validate_attendance_action_write` | Engine | `gd_check_in_window` → `CHECK_IN_WINDOW_CLOSED` · `gd_late_present_window` → `LATE_PRESENT_NOT_AVAILABLE` · `gd_no_show_window` → `NO_SHOW_NOT_AVAILABLE` (422) | diagnostic |
+| `tournament.prepare_tournament_insert` | Engine | `gd_tournament_venue_not_active` → `VENUE_NOT_ELIGIBLE_FOR_NEW_ACTIVITY` (422) · `gd_tournament_venue_selling_block` → `VENUE_SELLING_BLOCK_ACTIVE` (422) · `gd_tournament_creation_cutoff` → `TOURNAMENT_CREATION_CUTOFF_PASSED` (422) · `gd_tournament_creator_deleted` → `ACCOUNT_DELETED` (403) · `gd_tournament_creator_unverified` → `PHONE_VERIFICATION_REQUIRED` (403) · `gd_tournament_creator_not_verified_player` → `VERIFIED_PLAYER_REQUIRED` (403) · `gd_tournament_creator_banned` → `ACCOUNT_BANNED_FOR_THIS_ACTION` (403) · `gd_tournament_retry_cooldown` → `TOURNAMENT_RETRY_COOLDOWN_ACTIVE` (422) | diagnostic + branch split |
+| `tournament.guard_tournament_participant` | Engine | `gd_tournament_capacity_full` (both capacity checks) → `TOURNAMENT_CAPACITY_REACHED` (422) | diagnostic |
+| `iam.guard_user_account_update` | Platform | `gd_username_cooldown` → `USERNAME_COOLDOWN_ACTIVE` (422) | diagnostic |
+| `iam.guard_otp_challenge` | Platform | `gd_otp_resend_too_soon` → `OTP_RESEND_TOO_SOON` (429) · `gd_otp_hourly_limit` → `OTP_HOURLY_LIMIT_REACHED` (429) | diagnostic |
+| `geo.guard_area_deactivation` | Platform | `gd_area_has_active_venues` → `AREA_HAS_ACTIVE_VENUES` (422) | diagnostic |
+| `venue.guard_venue_area` | Platform | `gd_venue_area_inactive_assignment`, `gd_venue_area_inactive_status` → `AREA_INACTIVE` (422) | diagnostic |
+| `operations.guard_maintenance_window` | Platform | `gd_maintenance_overlaps_commitment` → `MAINTENANCE_OVERLAPS_RESERVATION` (422) · `gd_maintenance_owner_password_required` (both checks) → `OWNER_PASSWORD_REQUIRED` (423) | diagnostic |
+| `review.create_review` | Platform | `gd_review_author_deleted` → `ACCOUNT_DELETED` (403) · `gd_review_author_unverified` → `PHONE_VERIFICATION_REQUIRED` (403) · `gd_review_already_exists` → `REVIEW_ALREADY_EXISTS` (422) · `gd_review_cooldown` → `REVIEW_COOLDOWN_ACTIVE` (422) | diagnostic + branch split |
+| `review.report_review` | Platform | `gd_review_report_open` → `REVIEW_REPORT_ALREADY_OPEN` (422) | diagnostic |
+| `technical.idempotency_begin` | Platform | `gd_idempotency_key_reused` → `IDEMPOTENCY_KEY_REUSED` (422) | diagnostic |
+
+**Branch splits** (four combined conditions; same place, same conditions, same message, same accepted/rejected writes under three-valued logic): the defect part (row not found, server timestamp missing or in the future) keeps raising **without** an identifier; only the Product-rule part carries one. Where a deleted and an unverified account overlap, *deleted* is checked first — FR-ACC-10 / arch 09 `ACCOUNT_DELETED` applies to any command against an anonymised account.
+
+**Left combined on purpose:** `iam.guard_otp_challenge` "OTP is no longer usable (expired, superseded, consumed or out of attempts)" has no identifier. A consumed or superseded code has no documented `ApiErrorCode`, and the documents set no precedence between expiry and attempts; the verification flow (E7-13) decides the code from the challenge row it has locked. Exclusion/unique constraints already report their names and need no change: `ex_no_double_booking` → `SLOT_NO_LONGER_AVAILABLE`, `ex_customer_no_overlap` → `OVERLAPPING_COMMITMENT`, `ux_user_username_normalized` → `USERNAME_TAKEN`.
+
+**Unmapped by design** (identified, but an HTTP 500 + correlation ID + error log): these two guards cannot be reached by a valid user action, only by a defect in the application decision that runs first under the command's locks; proven against the database in `GuardErrorIdentifiersTest` ("reachability").
+- `gd_online_booking_area_inactive`: an inactive Area never holds an ACTIVE Venue, even when activation and deactivation race (FR-VEN-47). The Online Booking command locks its Venue and checks FR-BOK-11 condition 5 (Venue ACTIVE) before condition 7 (Area ACTIVE, arch 06 §1.3). A booking that passes condition 5 never meets an inactive Area; one that fails it is refused as `VENUE_NOT_ELIGIBLE_FOR_NEW_ACTIVITY` first.
+- `gd_reservation_conflict_closure`: a Closure save locks its Venue and every Resource before it writes CLOSURE rows, so a racing commitment waits and loses as `SLOT_NO_LONGER_AVAILABLE`. A commitment already present must be cancelled (FR-VEN-30), abort the save (`AFFECTED_SET_CHANGED_REFRESH_PREVIEW`, FR-VEN-26) or block it (`TOURNAMENT_CONFLICT_BLOCKS_SAVE`, FR-VEN-32) before any CLOSURE row exists; the identifier cannot tell which was skipped, so no single code is true.
+
+**Review:** the six Engine-lane functions need the Engine owner's review before merge (CLAUDE.md §6).
+
 ## Product Owner decisions (26 Sep 2026)
 
 A1 overlapping Maintenance allowed · A2 booking horizon is a deployment setting, default 120 days · A4 rate-limit table approved · A5 reports FR-AUD-11/12 at launch · A6 venue alerts = live + Web Push + audible alert · A8 configurable = fees and points only · A9 Venue never returns to ONBOARDING · A10 login limits stored as `LOGIN` rate-limit rows · A11 read-only customer wallet screen (PCR-004, no DB change) · review self-reporting allowed, duplicate open reports blocked.
