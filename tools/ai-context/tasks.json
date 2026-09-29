@@ -148,7 +148,12 @@
    "Customer, Venue Account and Admin login endpoints under their route groups (/api/v1/customer|venue|admin).",
    "Short-lived JWT access token + rotating refresh token stored hashed in iam.auth_refresh_token; reuse of a rotated token revokes the family.",
    "Rate limits via iam.security_rate_limit_counter (values approved in arch 01 §14 A4).",
-   "Spring Security config: each route group accepts only its own principal type."
+   "Spring Security config: each route group accepts only its own principal type.",
+   "Carry-forward from E7-13: verify-phone (E7-13) returns 204 now: change it to 200 {accessToken, refreshToken} per arch 09 §2; regenerate OpenAPI and tell the Clients lane (contract change).",
+   "Carry-forward from E7-13: ApiSecurityConfig (common/security) is the E7-13 minimum: build JWT authentication on it; add login/refresh/logout (and E7-57's password reset) to its PUBLIC_POSTS and to OpenApiProductionContractTest.PUBLIC_OPERATIONS.",
+   "Carry-forward from E7-13: Swagger, /v3/api-docs and /actuator/** are denied (401) by ApiSecurityConfig: decide whether any of them should be public.",
+   "Carry-forward from E7-13: Customer login accepts username OR phone: normalise the phone with identity PhoneNumbers.toE164 and verify with the existing Argon2id PasswordEncoder bean (PasswordHashingConfig); do not create a second encoder.",
+   "Carry-forward from E7-13: Unverified customers may log in (FR-ACC-03); marketplace actions are gated by CustomerActivation.requirePhoneVerified inside each command."
   ],
   "done": [
    "Tests: token rotation, reuse detection, cross-audience token rejected, rate limit hit."
@@ -157,7 +162,7 @@
    "backend/src/main/java/ps/e7gz/identity/",
    "backend/src/main/java/ps/e7gz/common/security/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S0-P6 — \"Login, JWT and refresh rotation for three audiences\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 10 §2\n- arch 09 §2\n\nDo:\n1. Customer, Venue Account and Admin login endpoints under their route groups (/api/v1/customer|venue|admin).\n2. Short-lived JWT access token + rotating refresh token stored hashed in iam.auth_refresh_token; reuse of a rotated token revokes the family.\n3. Rate limits via iam.security_rate_limit_counter (values approved in arch 01 §14 A4).\n4. Spring Security config: each route group accepts only its own principal type.\n\nDone when (write these as tests first where possible):\n- Tests: token rotation, reuse detection, cross-audience token rejected, rate limit hit.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S0-P6 — \"Login, JWT and refresh rotation for three audiences\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 10 §2\n- arch 09 §2\n\nDo:\n1. Customer, Venue Account and Admin login endpoints under their route groups (/api/v1/customer|venue|admin).\n2. Short-lived JWT access token + rotating refresh token stored hashed in iam.auth_refresh_token; reuse of a rotated token revokes the family.\n3. Rate limits via iam.security_rate_limit_counter (values approved in arch 01 §14 A4).\n4. Spring Security config: each route group accepts only its own principal type.\n\nDone when (write these as tests first where possible):\n- Tests: token rotation, reuse detection, cross-audience token rejected, rate limit hit.\n\nCarry-forward from E7-13 (do these too):\n- verify-phone (E7-13) returns 204 now: change it to 200 {accessToken, refreshToken} per arch 09 §2; regenerate OpenAPI and tell the Clients lane (contract change).\n- ApiSecurityConfig (common/security) is the E7-13 minimum: build JWT authentication on it; add login/refresh/logout (and E7-57's password reset) to its PUBLIC_POSTS and to OpenApiProductionContractTest.PUBLIC_OPERATIONS.\n- Swagger, /v3/api-docs and /actuator/** are denied (401) by ApiSecurityConfig: decide whether any of them should be public.\n- Customer login accepts username OR phone: normalise the phone with identity PhoneNumbers.toE164 and verify with the existing Argon2id PasswordEncoder bean (PasswordHashingConfig); do not create a second encoder.\n- Unverified customers may log in (FR-ACC-03); marketplace actions are gated by CustomerActivation.requirePhoneVerified inside each command.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-15": {
   "id": "S0-E1",
@@ -750,7 +755,9 @@
   ],
   "steps": [
    "Write outbox rows in the command transaction; pg_notify wake; dispatcher with exponential backoff and dead-letter; admin recover.",
-   "Nothing dispatches for a rolled-back transaction."
+   "Nothing dispatches for a rolled-back transaction.",
+   "Carry-forward from E7-13: Move the OTP SMS from identity CustomerRegistration's direct post-commit call to an outbox row written in the same command transaction and delivered by the dispatcher.",
+   "Carry-forward from E7-13: The OTP code must never be stored in plain text in outbox_event.payload (arch 10 §2.2). Get the PO decision before coding: (a) the row carries only the otp_challenge id and the dispatcher generates the code (needs a schema change: code_hash is immutable after insert), or (b) the code is encrypted in the payload with a secret-store key and cleared after dispatch."
   ],
   "done": [
    "Tests: rollback → no dispatch; transient failure retried; permanent → dead-letter."
@@ -758,7 +765,7 @@
   "folders": [
    "backend/src/main/java/ps/e7gz/messaging/ (outbox)"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S2-P2 — \"Transactional outbox and dispatcher\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- ADR-004\n- arch 08 §4.1–§4.3\n\nDo:\n1. Write outbox rows in the command transaction; pg_notify wake; dispatcher with exponential backoff and dead-letter; admin recover.\n2. Nothing dispatches for a rolled-back transaction.\n\nDone when (write these as tests first where possible):\n- Tests: rollback → no dispatch; transient failure retried; permanent → dead-letter.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S2-P2 — \"Transactional outbox and dispatcher\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- ADR-004\n- arch 08 §4.1–§4.3\n\nDo:\n1. Write outbox rows in the command transaction; pg_notify wake; dispatcher with exponential backoff and dead-letter; admin recover.\n2. Nothing dispatches for a rolled-back transaction.\n\nDone when (write these as tests first where possible):\n- Tests: rollback → no dispatch; transient failure retried; permanent → dead-letter.\n\nCarry-forward from E7-13 (do these too):\n- Move the OTP SMS from identity CustomerRegistration's direct post-commit call to an outbox row written in the same command transaction and delivered by the dispatcher.\n- The OTP code must never be stored in plain text in outbox_event.payload (arch 10 §2.2). Get the PO decision before coding: (a) the row carries only the otp_challenge id and the dispatcher generates the code (needs a schema change: code_hash is immutable after insert), or (b) the code is encrypted in the payload with a secret-store key and cleared after dispatch.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-42": {
   "id": "S2-P3",
@@ -1086,7 +1093,8 @@
    "Spec v5 §7.5 (username cooldown)"
   ],
   "steps": [
-   "Edit full name, username (30-day cooldown enforced by DB), phone change with OTP, email change, password reset via OTP; PASSWORD_RESET / PHONE_CHANGED / EMAIL_CHANGED notifications."
+   "Edit full name, username (30-day cooldown enforced by DB), phone change with OTP, email change, password reset via OTP; PASSWORD_RESET / PHONE_CHANGED / EMAIL_CHANGED notifications.",
+   "Carry-forward from E7-13: Password reset and change use the same rule as registration: identity PasswordPolicy.isAcceptable (VALIDATION RULES §2.1: at least 8 characters, at least one letter and one digit; 400 VALIDATION_FAILED on field password)."
   ],
   "done": [
    "Cooldown error mapped; tokens revoked on password reset."
@@ -1094,7 +1102,7 @@
   "folders": [
    "backend/src/main/java/ps/e7gz/identity/ (profile)"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S3-P3 — \"Profile and account management\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- FRS 4.1\n- Spec v5 §7.5 (username cooldown)\n\nDo:\n1. Edit full name, username (30-day cooldown enforced by DB), phone change with OTP, email change, password reset via OTP; PASSWORD_RESET / PHONE_CHANGED / EMAIL_CHANGED notifications.\n\nDone when (write these as tests first where possible):\n- Cooldown error mapped; tokens revoked on password reset.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S3-P3 — \"Profile and account management\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- FRS 4.1\n- Spec v5 §7.5 (username cooldown)\n\nDo:\n1. Edit full name, username (30-day cooldown enforced by DB), phone change with OTP, email change, password reset via OTP; PASSWORD_RESET / PHONE_CHANGED / EMAIL_CHANGED notifications.\n\nDone when (write these as tests first where possible):\n- Cooldown error mapped; tokens revoked on password reset.\n\nCarry-forward from E7-13 (do these too):\n- Password reset and change use the same rule as registration: identity PasswordPolicy.isAcceptable (VALIDATION RULES §2.1: at least 8 characters, at least one letter and one digit; 400 VALIDATION_FAILED on field password).\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-58": {
   "id": "S3-E1",
@@ -1285,7 +1293,9 @@
    "FR-PTS-06"
   ],
   "steps": [
-   "Referral code on signup; value read at OTP verification; reward/invalidate via producers."
+   "Referral code on signup; value read at OTP verification; reward/invalidate via producers.",
+   "Carry-forward from E7-13: Reward or invalidate the PENDING referral inside the verify-phone transaction (identity VerifyPhoneCommand): loyalty.assert_referral refuses the commit otherwise (\"OTP success must reconcile referral reward/invalidity before commit\").",
+   "Carry-forward from E7-13: The referral code format (8 characters, no look-alike letters; identity ReferralCodes) was chosen in E7-13: confirm it with the PO."
   ],
   "done": [
    "Reversing +1,000 at 300 points → balance 0 and 700 unrecovered."
@@ -1293,7 +1303,7 @@
   "folders": [
    "backend/src/main/java/ps/e7gz/loyalty/ (referral)"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S4-P2 — \"Referrals\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 03 §16\n- FR-PTS-06\n\nDo:\n1. Referral code on signup; value read at OTP verification; reward/invalidate via producers.\n\nDone when (write these as tests first where possible):\n- Reversing +1,000 at 300 points → balance 0 and 700 unrecovered.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S4-P2 — \"Referrals\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 03 §16\n- FR-PTS-06\n\nDo:\n1. Referral code on signup; value read at OTP verification; reward/invalidate via producers.\n\nDone when (write these as tests first where possible):\n- Reversing +1,000 at 300 points → balance 0 and 700 unrecovered.\n\nCarry-forward from E7-13 (do these too):\n- Reward or invalidate the PENDING referral inside the verify-phone transaction (identity VerifyPhoneCommand): loyalty.assert_referral refuses the commit otherwise (\"OTP success must reconcile referral reward/invalidity before commit\").\n- The referral code format (8 characters, no look-alike letters; identity ReferralCodes) was chosen in E7-13: confirm it with the PO.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-68": {
   "id": "S4-P3",
@@ -1963,7 +1973,11 @@
    "arch 12 §1, §3, §4, §5"
   ],
   "steps": [
-   "Staging + production on a managed container host (api + worker), managed PostgreSQL 16 with PITR, S3 bucket, secrets; release process; timed restore drill written up."
+   "Staging + production on a managed container host (api + worker), managed PostgreSQL 16 with PITR, S3 bucket, secrets; release process; timed restore drill written up.",
+   "Carry-forward from E7-13: Put E7GZ_SMS_PROVIDER=sms-misr and all E7GZ_SMS_MISR_* values (username, password, sender token, template token; ENVIRONMENT=LIVE in production only) in the secret store.",
+   "Carry-forward from E7-13: Set a per-IP rate limit on the public auth endpoints (/api/v1/customer/auth/**) at the load balancer (arch 10 §7): it protects the SMS credit from abuse.",
+   "Carry-forward from E7-13: Open the /actuator/health liveness and readiness probes (arch 12 §1) in ApiSecurityConfig; all of /actuator/** is denied now.",
+   "Carry-forward from E7-13: Add a backup SMS provider behind the SmsSender interface (arch 12 §6.5, risk R8)."
   ],
   "done": [
    "Restore drill done and timed (launch criterion 10)."
@@ -1971,7 +1985,7 @@
   "folders": [
    "infra/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S7-P3 — \"Deployment, backup and restore drill\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 12 §1, §3, §4, §5\n\nDo:\n1. Staging + production on a managed container host (api + worker), managed PostgreSQL 16 with PITR, S3 bucket, secrets; release process; timed restore drill written up.\n\nDone when (write these as tests first where possible):\n- Restore drill done and timed (launch criterion 10).\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-P3 — \"Deployment, backup and restore drill\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 12 §1, §3, §4, §5\n\nDo:\n1. Staging + production on a managed container host (api + worker), managed PostgreSQL 16 with PITR, S3 bucket, secrets; release process; timed restore drill written up.\n\nDone when (write these as tests first where possible):\n- Restore drill done and timed (launch criterion 10).\n\nCarry-forward from E7-13 (do these too):\n- Put E7GZ_SMS_PROVIDER=sms-misr and all E7GZ_SMS_MISR_* values (username, password, sender token, template token; ENVIRONMENT=LIVE in production only) in the secret store.\n- Set a per-IP rate limit on the public auth endpoints (/api/v1/customer/auth/**) at the load balancer (arch 10 §7): it protects the SMS credit from abuse.\n- Open the /actuator/health liveness and readiness probes (arch 12 §1) in ApiSecurityConfig; all of /actuator/** is denied now.\n- Add a backup SMS provider behind the SmsSender interface (arch 12 §6.5, risk R8).\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-102": {
   "id": "S7-E1",
@@ -2005,7 +2019,8 @@
    "arch 10 (anonymisation)"
   ],
   "steps": [
-   "Customer request (iam.request_account_deletion); admin completion calls iam.anonymise_user and iam.complete_account_deletion_request; tournament participant precedence."
+   "Customer request (iam.request_account_deletion); admin completion calls iam.anonymise_user and iam.complete_account_deletion_request; tournament participant precedence.",
+   "Carry-forward from E7-13: The ACCOUNT_DELETED branch of identity CustomerActivation is tested only with a fixture row: add an end-to-end test on an account anonymised through iam.anonymise_user."
   ],
   "done": [
    "Deleted account: PII blanked, tokens revoked, reviews removed, participants INELIGIBLE/ACCOUNT_DELETED."
@@ -2013,7 +2028,7 @@
   "folders": [
    "backend/src/main/java/ps/e7gz/identity/ (deletion)"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S7-E2 — \"Account deletion and O19\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- ADR-024\n- PCR-002\n- arch 10 (anonymisation)\n\nDo:\n1. Customer request (iam.request_account_deletion); admin completion calls iam.anonymise_user and iam.complete_account_deletion_request; tournament participant precedence.\n\nDone when (write these as tests first where possible):\n- Deleted account: PII blanked, tokens revoked, reviews removed, participants INELIGIBLE/ACCOUNT_DELETED.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-E2 — \"Account deletion and O19\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- ADR-024\n- PCR-002\n- arch 10 (anonymisation)\n\nDo:\n1. Customer request (iam.request_account_deletion); admin completion calls iam.anonymise_user and iam.complete_account_deletion_request; tournament participant precedence.\n\nDone when (write these as tests first where possible):\n- Deleted account: PII blanked, tokens revoked, reviews removed, participants INELIGIBLE/ACCOUNT_DELETED.\n\nCarry-forward from E7-13 (do these too):\n- The ACCOUNT_DELETED branch of identity CustomerActivation is tested only with a fixture row: add an end-to-end test on an account anonymised through iam.anonymise_user.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-104": {
   "id": "S7-E3",
@@ -2146,7 +2161,10 @@
    "arch 13"
   ],
   "steps": [
-   "Walk the 10 launch criteria; confirm every M requirement in the traceability matrix has a merged task and a passing test; list gaps as new Jira tasks."
+   "Walk the 10 launch criteria; confirm every M requirement in the traceability matrix has a merged task and a passing test; list gaps as new Jira tasks.",
+   "Carry-forward from E7-13: Check the SMS Misr result codes (identity SmsMisrSmsSender.RESULT_CODES, success 4901) against SMS Misr's official API document.",
+   "Carry-forward from E7-13: Confirm with the PO: customer phone numbers are limited to Egyptian mobiles (010/011/012/015; identity PhoneNumbers).",
+   "Carry-forward from E7-13: Confirm with the Engine lane: eligibility category A for the account commands (register, send OTP, verify phone), which have no Venue in scope."
   ],
   "done": [
    "Signed-off checklist in docs/."
@@ -2154,6 +2172,6 @@
   "folders": [
    "docs/launch-readiness.md"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S7-C5 — \"Launch readiness checklist (PO)\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 14 §8 (launch readiness bar)\n- arch 13\n\nDo:\n1. Walk the 10 launch criteria; confirm every M requirement in the traceability matrix has a merged task and a passing test; list gaps as new Jira tasks.\n\nDone when (write these as tests first where possible):\n- Signed-off checklist in docs/.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-C5 — \"Launch readiness checklist (PO)\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 14 §8 (launch readiness bar)\n- arch 13\n\nDo:\n1. Walk the 10 launch criteria; confirm every M requirement in the traceability matrix has a merged task and a passing test; list gaps as new Jira tasks.\n\nDone when (write these as tests first where possible):\n- Signed-off checklist in docs/.\n\nCarry-forward from E7-13 (do these too):\n- Check the SMS Misr result codes (identity SmsMisrSmsSender.RESULT_CODES, success 4901) against SMS Misr's official API document.\n- Confirm with the PO: customer phone numbers are limited to Egyptian mobiles (010/011/012/015; identity PhoneNumbers).\n- Confirm with the Engine lane: eligibility category A for the account commands (register, send OTP, verify phone), which have no Venue in scope.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  }
 }

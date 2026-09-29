@@ -46,11 +46,14 @@ class ArchitectureTest {
     static final ArchRule no_cycles_between_modules =
             slices().assignedFrom(new ModuleSlices()).should().beFreeOfCycles();
 
-    /** (c) {@code web} is HTTP only: nothing in {@code api} or {@code internal} may depend on it. */
+    /**
+     * (c) {@code web} is HTTP only: nothing in {@code api} or {@code internal} may depend on it. Only our own
+     * {@code web} packages: an outbound adapter may use Spring's HTTP client ({@code org.springframework.web.client}).
+     */
     @ArchTest
     static final ArchRule web_is_not_used_by_api_or_internal =
             noClasses().that().resideInAnyPackage("..api..", "..internal..")
-                    .should().dependOnClassesThat().resideInAPackage("..web..");
+                    .should().dependOnClassesThat().resideInAPackage(ROOT + "..web..");
 
     /** (d) The shared kernel never depends on a module. */
     @ArchTest

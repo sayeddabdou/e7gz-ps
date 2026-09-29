@@ -37,6 +37,7 @@ This file isolates validation and eligibility rules from the approved FRS so the
 ## 2.1 Registration / Identity
 - Full Name, Username, Phone, Email and Password are required at registration.
 - Username and Phone are unique; Username comparison is trimmed and case-insensitive.
+- Customer password: at least 8 characters, with at least one letter and at least one digit. Applies wherever a Customer sets a password (registration, reset, change). Product Owner decision, 30 Sep 2026 (E7-13).
 - Phone marketplace verification uses SMS OTP: 5-minute validity, max 5 attempts/code, 60-second resend delay, max 5 sends/hour/destination; new OTP invalidates previous OTP.
 - Username change is blocked inside the 30-day cooldown.
 - Phone/Email change becomes authoritative only after verification of the new value.

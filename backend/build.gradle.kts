@@ -31,6 +31,8 @@ dependencies {
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:$springdocVersion")
     // Compile scope (E7-12): the API error mapper reads the SQLSTATE and CONSTRAINT diagnostics from PSQLException.
     implementation("org.postgresql:postgresql")
+    // E7-13: Spring Security's Argon2PasswordEncoder needs Bouncy Castle (arch 10 §2.2, Argon2id).
+    implementation("org.bouncycastle:bcprov-jdk18on:1.80")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-testcontainers")

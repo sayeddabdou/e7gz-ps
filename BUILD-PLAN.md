@@ -368,6 +368,13 @@ Do:
 Done when (write these as tests first where possible):
 - Tests: token rotation, reuse detection, cross-audience token rejected, rate limit hit.
 
+Carry-forward from E7-13 (do these too):
+- verify-phone (E7-13) returns 204 now: change it to 200 {accessToken, refreshToken} per arch 09 §2; regenerate OpenAPI and tell the Clients lane (contract change).
+- ApiSecurityConfig (common/security) is the E7-13 minimum: build JWT authentication on it; add login/refresh/logout (and E7-57's password reset) to its PUBLIC_POSTS and to OpenApiProductionContractTest.PUBLIC_OPERATIONS.
+- Swagger, /v3/api-docs and /actuator/** are denied (401) by ApiSecurityConfig: decide whether any of them should be public.
+- Customer login accepts username OR phone: normalise the phone with identity PhoneNumbers.toE164 and verify with the existing Argon2id PasswordEncoder bean (PasswordHashingConfig); do not create a second encoder.
+- Unverified customers may log in (FR-ACC-03); marketplace actions are gated by CustomerActivation.requirePhoneVerified inside each command.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -1039,6 +1046,10 @@ Do:
 Done when (write these as tests first where possible):
 - Tests: rollback → no dispatch; transient failure retried; permanent → dead-letter.
 
+Carry-forward from E7-13 (do these too):
+- Move the OTP SMS from identity CustomerRegistration's direct post-commit call to an outbox row written in the same command transaction and delivered by the dispatcher.
+- The OTP code must never be stored in plain text in outbox_event.payload (arch 10 §2.2). Get the PO decision before coding: (a) the row carries only the otp_challenge id and the dispatcher generates the code (needs a schema change: code_hash is immutable after insert), or (b) the code is encrypted in the payload with a secret-store key and cleared after dispatch.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -1420,6 +1431,9 @@ Do:
 Done when (write these as tests first where possible):
 - Cooldown error mapped; tokens revoked on password reset.
 
+Carry-forward from E7-13 (do these too):
+- Password reset and change use the same rule as registration: identity PasswordPolicy.isAcceptable (VALIDATION RULES §2.1: at least 8 characters, at least one letter and one digit; 400 VALIDATION_FAILED on field password).
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -1649,6 +1663,10 @@ Do:
 
 Done when (write these as tests first where possible):
 - Reversing +1,000 at 300 points → balance 0 and 700 unrecovered.
+
+Carry-forward from E7-13 (do these too):
+- Reward or invalidate the PENDING referral inside the verify-phone transaction (identity VerifyPhoneCommand): loyalty.assert_referral refuses the commit otherwise ("OTP success must reconcile referral reward/invalidity before commit").
+- The referral code format (8 characters, no look-alike letters; identity ReferralCodes) was chosen in E7-13: confirm it with the PO.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2420,6 +2438,12 @@ Do:
 Done when (write these as tests first where possible):
 - Restore drill done and timed (launch criterion 10).
 
+Carry-forward from E7-13 (do these too):
+- Put E7GZ_SMS_PROVIDER=sms-misr and all E7GZ_SMS_MISR_* values (username, password, sender token, template token; ENVIRONMENT=LIVE in production only) in the secret store.
+- Set a per-IP rate limit on the public auth endpoints (/api/v1/customer/auth/**) at the load balancer (arch 10 §7): it protects the SMS credit from abuse.
+- Open the /actuator/health liveness and readiness probes (arch 12 §1) in ApiSecurityConfig; all of /actuator/** is denied now.
+- Add a backup SMS provider behind the SmsSender interface (arch 12 §6.5, risk R8).
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2469,6 +2493,9 @@ Do:
 
 Done when (write these as tests first where possible):
 - Deleted account: PII blanked, tokens revoked, reviews removed, participants INELIGIBLE/ACCOUNT_DELETED.
+
+Carry-forward from E7-13 (do these too):
+- The ACCOUNT_DELETED branch of identity CustomerActivation is tested only with a fixture row: add an end-to-end test on an account anonymised through iam.anonymise_user.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2626,6 +2653,11 @@ Do:
 
 Done when (write these as tests first where possible):
 - Signed-off checklist in docs/.
+
+Carry-forward from E7-13 (do these too):
+- Check the SMS Misr result codes (identity SmsMisrSmsSender.RESULT_CODES, success 4901) against SMS Misr's official API document.
+- Confirm with the PO: customer phone numbers are limited to Egyptian mobiles (010/011/012/015; identity PhoneNumbers).
+- Confirm with the Engine lane: eligibility category A for the account commands (register, send OTP, verify phone), which have no Venue in scope.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
