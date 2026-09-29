@@ -97,7 +97,8 @@ test("returns a documented API error as `error`, not as data", async () => {
 
   assert.equal(response.status, 422);
   assert.equal(data, undefined);
-  assert.equal(error?.error.code, "SAMPLE_CLOSED");
+  assert.ok(error && "error" in error, "a coded failure, not the meta-only 500");
+  assert.equal(error.error.code, "SAMPLE_CLOSED");
 });
 
 test("rejects on a network failure instead of resolving as a success, and does not retry", async () => {

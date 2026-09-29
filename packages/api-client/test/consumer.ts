@@ -26,10 +26,12 @@ export async function documentedCallsCompile(): Promise<void> {
     params: { path: { resourceId: "c2d3e4f5-a6b7-4c8d-9e0f-1a2b3c4d5e6f" } },
     body: { ownerPassword: "••••••" },
   });
-  if (disabled.error) {
-    // Only the codes this operation declares (@ApiError), across its error statuses.
+  if (disabled.error && "error" in disabled.error) {
+    // The codes this operation declares (@ApiError) plus the general ones its kind can return (arch 09 §1.5,
+    // E7-12), across its error statuses. A 500 has no `error` at all: only meta.
     expectType<Equal<typeof disabled.error.error.code,
-      "RESOURCE_HAS_BLOCKING_RESERVATIONS" | "OWNER_PASSWORD_REQUIRED" | "OWNER_PASSWORD_INVALID">>();
+      | "RESOURCE_HAS_BLOCKING_RESERVATIONS" | "OWNER_PASSWORD_REQUIRED" | "OWNER_PASSWORD_INVALID"
+      | "VALIDATION_FAILED" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "RATE_LIMITED">>();
   }
 }
 
@@ -47,6 +49,17 @@ expectType<Equal<Disable423["error"]["field"], Schemas["ErrorBody"]["field"]>>()
 
 const meta: Schemas["ResponseMeta"] = { correlationId: "c-1", serverTime: "2026-10-12T17:04:11Z" };
 
+// `field` and `details` are optional, not nullable: the backend omits them when absent, never sends null (E7-12;
+// ErrorEnvelopeHttpTest checks the serialized JSON against openapi.json).
+expectType<Equal<Schemas["ErrorBody"]["field"], string | undefined>>();
+export const aBareCodedErrorMatchesTheContract: Schemas["ErrorResponse"] = { error: { code: "NOT_FOUND" }, meta };
+export const nullIsNotPartOfTheContract: Schemas["ErrorResponse"][] = [
+  // @ts-expect-error — field is optional, not nullable
+  { error: { code: "NOT_FOUND", field: null }, meta },
+  // @ts-expect-error — details is optional, not nullable
+  { error: { code: "NOT_FOUND", details: null }, meta },
+];
+
 export const declaredCodesAreAccepted: Disable423[] = [
   { error: { code: "OWNER_PASSWORD_REQUIRED" }, meta },
   { error: { code: "OWNER_PASSWORD_INVALID", details: { attemptsLeft: 2 } }, meta },
@@ -59,8 +72,10 @@ export const unrelatedCodesAreRejected: Disable423[] = [
   { error: { code: "RESOURCE_HAS_BLOCKING_RESERVATIONS" }, meta },
 ];
 
-// A 401 carries no body schema: its error code is not defined yet (arch 09 §1.5; E7-12).
-expectType<Equal<DisableResponses[401]["content"], never | undefined>>();
+// General failures (arch 09 §1.4–§1.5, E7-12): a secured call's 401 is UNAUTHENTICATED; a 500 carries only meta.
+expectType<Equal<DisableResponses[401]["content"]["application/json"]["error"]["code"], "UNAUTHENTICATED">>();
+expectType<Equal<DisableResponses[500]["content"]["application/json"], Schemas["UnexpectedErrorResponse"]>>();
+expectType<Equal<keyof Schemas["UnexpectedErrorResponse"], "meta">>();
 
 export async function undocumentedCallsDoNotCompile(): Promise<void> {
   // @ts-expect-error — a path that is not in openapi.json

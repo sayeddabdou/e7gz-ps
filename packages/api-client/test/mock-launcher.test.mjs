@@ -46,9 +46,10 @@ test("serves the venue list with a required query parameter and a cursor page", 
     assert.ok(field in card, `venue card has ${field} (FR-DIS-03)`);
   }
 
-  // The contract's own validation: activity is required and must be spelled as the enum.
-  assert.equal((await fetch(`${baseUrl}/api/v1/customer/venues`)).status, 422);
-  assert.equal((await fetch(`${baseUrl}/api/v1/customer/venues?activity=playstation`)).status, 422);
+  // The contract's own validation: activity is required and must be spelled as the enum. The contract documents
+  // 400 VALIDATION_FAILED for a malformed request (arch 09 §1.5, E7-12), so the mock answers 400 like the backend.
+  assert.equal((await fetch(`${baseUrl}/api/v1/customer/venues`)).status, 400);
+  assert.equal((await fetch(`${baseUrl}/api/v1/customer/venues?activity=playstation`)).status, 400);
 });
 
 test("public discovery answers without a token; venue and admin routes need a Bearer header (shape only)", async (t) => {

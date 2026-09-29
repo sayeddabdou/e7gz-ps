@@ -28,6 +28,17 @@ class MigrationFilesTest {
                 .endsWith(docs("E7GZ-PS-security-baseline-v1.1.27.sql"));
     }
 
+    /** v1.1.28 (E7-12): the guard-identifier migration is the model's own block, byte for byte. */
+    @Test
+    void guardIdentifierMigrationIsTheModelsV1128Block() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String open = "<genericsql name=\"v1_1_28_guard_error_identifiers\">\n\t<definition> <![CDATA[\n";
+        int start = model.indexOf(open);
+        assertThat(start).as("v1.1.28 block in the .dbm").isPositive();
+        String block = model.substring(start + open.length(), model.indexOf("]]> </definition>", start));
+        assertThat(classpath("db/migration/V202609291200__guard_error_identifiers.sql")).isEqualTo(block);
+    }
+
     private static String classpath(String resource) throws IOException {
         try (InputStream in = MigrationFilesTest.class.getClassLoader().getResourceAsStream(resource)) {
             assertThat(in).as(resource).isNotNull();

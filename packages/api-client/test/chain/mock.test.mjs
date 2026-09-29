@@ -45,7 +45,8 @@ test("refuses a write without its required Idempotency-Key", async (t) => {
       body: JSON.stringify({ text: "x", status: "OPEN" }),
     });
 
-  assert.equal((await post({})).status, 422);
+  // Missing a required header is a malformed request: 400 VALIDATION_FAILED, as documented (arch 09 §1.5, E7-12).
+  assert.equal((await post({})).status, 400);
   assert.equal((await post({ "Idempotency-Key": "0f4e5c1a-0000-4000-8000-000000000003" })).status, 201);
 });
 

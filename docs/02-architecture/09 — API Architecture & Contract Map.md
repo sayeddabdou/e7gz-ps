@@ -117,7 +117,21 @@ Representative members, each traced:
 | `REVIEW_REMOVED_NOT_RESTORABLE` | 422 | `FR-REV-04` |
 | `IDEMPOTENCY_KEY_REUSED` | 422 | `ADR-015` |
 
+**General codes** — Product Owner decision, 29 Sep 2026 (E7-12). Used only where no more specific code above applies:
+
+| Code | HTTP | Used for |
+|---|---|---|
+| `VALIDATION_FAILED` | 400 | malformed or invalid request (unreadable body, bad parameter, failed validation, unsupported method or media type); `error.field` names the input when exactly one is at fault, otherwise `details.fields` lists them |
+| `UNAUTHENTICATED` | 401 | missing, invalid or expired access token |
+| `FORBIDDEN` | 403 | not permitted for this actor or account state |
+| `NOT_FOUND` | 404 | not found, or not visible to this principal |
+| `RATE_LIMITED` | 429 | a request rate limit of §6 other than the OTP limits, which keep their `OTP_*` codes |
+
+There is **no public code for `500`**: its body is `{ "meta": { "correlationId", "serverTime" } }` only — no code, message, SQL or stack trace.
+
 **Database guard exceptions** (`ADR-026`). The database re-asserts many of these rules. The API layer maps each guard exception to the matching code above (for example the Online intake guard → `ONLINE_INTAKE_WINDOW_CLOSED`, the username guard → `USERNAME_COOLDOWN_ACTIVE`, the OTP guard → the `OTP_*` codes, `ex_no_double_booking` → `SLOT_NO_LONGER_AVAILABLE`). A guard exception the application did not anticipate is a defect: it returns `500` with the correlation ID and raises a Sev-2 alert.
+
+The mapping never reads message text. A Product guard raises SQLSTATE `P0001` with a stable identifier in the PostgreSQL diagnostic field `CONSTRAINT` (`gd_…`, physical model v1.1.28); an exclusion or unique constraint reports its own name with `23P01` / `23505`. The table from identifier to code is `ps.e7gz.common.error.DatabaseErrorCodes`; the full list is in the v1.1.28 section of the physical model change report. SQLSTATE `40001` is retried by the command runner; once its retries are exhausted it is an unexpected `500`, never a slot conflict.
 
 ---
 

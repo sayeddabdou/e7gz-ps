@@ -115,11 +115,16 @@ class OpenApiProductionContractTest extends IntegrationTest {
         operations().forEach((key, operation) -> operation.path("responses").properties().forEach(entry -> {
             JsonNode schema = entry.getValue().path("content").path("application/json").path("schema");
             if (schema.isMissingNode()) {
-                assertThat(entry.getKey()).as(key + " without a body").isIn("204", "401");
+                assertThat(entry.getKey()).as(key + " without a body").isIn("204", "501");
                 return;
             }
             JsonNode resolved = resolve(schema);
-            if (entry.getKey().startsWith("2")) {
+            if (entry.getKey().equals("500")) {
+                // An unexpected failure carries only meta (arch 09 §1.4): no code, no message.
+                assertThat(schema.path("$ref").asText()).as(key).isEqualTo("#/components/schemas/UnexpectedErrorResponse");
+                assertThat(fieldNames(resolved.path("required"))).as(key).containsExactly("meta");
+                assertThat(resolved.path("properties").has("error")).as(key).isFalse();
+            } else if (entry.getKey().startsWith("2")) {
                 assertThat(fieldNames(resolved.path("required"))).as(key).containsExactlyInAnyOrder("data", "meta");
             } else {
                 // The shared envelope, with error.code narrowed to exactly the codes the operation declares.
@@ -135,13 +140,30 @@ class OpenApiProductionContractTest extends IntegrationTest {
     }
 
     @Test
+    void everyOperationDocumentsTheGeneralFailures() {
+        operations().forEach((key, operation) -> {
+            JsonNode responses = operation.path("responses");
+            assertThat(narrowedCodes(responses.path("429"))).as(key).contains("RATE_LIMITED");
+            assertThat(responses.has("500")).as(key).isTrue();
+            if (operation.path("security").toString().contains("bearerAuth")) {
+                assertThat(narrowedCodes(responses.path("401"))).as(key).contains("UNAUTHENTICATED");
+                assertThat(narrowedCodes(responses.path("403"))).as(key).contains("FORBIDDEN");
+            }
+        });
+    }
+
+    @Test
     void declaredErrorCodesAreNarrowedPerStatus() {
         JsonNode responses = operations().get("post /api/v1/venue/resources/{resourceId}/disable").path("responses");
 
         assertThat(narrowedCodes(responses.path("422"))).containsExactly("RESOURCE_HAS_BLOCKING_RESERVATIONS");
         assertThat(narrowedCodes(responses.path("423"))).containsExactly("OWNER_PASSWORD_REQUIRED", "OWNER_PASSWORD_INVALID");
-        // No product code exists for a missing token yet (E7-12): documented without inventing one.
-        assertThat(responses.path("401").has("content")).isFalse();
+        // The general codes approved in E7-12 (arch 09 §1.5) on every secured operation with a path parameter.
+        assertThat(narrowedCodes(responses.path("401"))).containsExactly("UNAUTHENTICATED");
+        assertThat(narrowedCodes(responses.path("403"))).containsExactly("FORBIDDEN");
+        assertThat(narrowedCodes(responses.path("404"))).containsExactly("NOT_FOUND");
+        assertThat(narrowedCodes(responses.path("400"))).containsExactly("VALIDATION_FAILED");
+        assertThat(narrowedCodes(responses.path("429"))).containsExactly("RATE_LIMITED");
         // The envelope keeps its meta and details.
         JsonNode envelope = contract.path("components").path("schemas");
         assertThat(fieldNames(envelope.path("ErrorResponse").path("required"))).containsExactlyInAnyOrder("error", "meta");

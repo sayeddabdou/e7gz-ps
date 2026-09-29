@@ -34,8 +34,10 @@ export async function validCallsCompileWithPreciseTypes(): Promise<void> {
   });
   expectType<Equal<typeof created.data, SampleView | undefined>>();
   expectType<Equal<IsAny<typeof created.error>, false>>();
-  expectType<Equal<typeof created.error, SampleError | undefined>>();
-  if (created.error) {
+  // The explicit 422 in its own shape is kept as declared; the general failures (E7-12: 400, 404, 429 and the
+  // meta-only 500) join it in the error union.
+  expectType<Equal<SampleError extends NonNullable<typeof created.error> ? true : false, true>>();
+  if (created.error && "error" in created.error) {
     const code: string = created.error.error.code;
     void code;
   }

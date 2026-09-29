@@ -31,6 +31,12 @@ e7gz:
       pool-name: admin
       maximum-pool-size: 3
 
+# Every log line carries the correlation ID of its request or job (NFR-32; CorrelationId puts it in the MDC).
+# JSON log output is the observability task's (arch 11 §5.1, E7-100); this only adds the field to the default pattern.
+logging:
+  pattern:
+    level: "%5p [%X{correlationId:-}]"
+
 # OpenAPI 3.1 generated from the controllers (ADR-012). Keys sorted so the committed openapi.json diffs cleanly.
 springdoc:
   api-docs:
