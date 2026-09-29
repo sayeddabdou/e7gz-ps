@@ -1,5 +1,4 @@
-// EN + AR resources for the Dashboard (FR-VEN-40, NFR-33) — only what the current screen needs. The full language
-// resolution (account preference → browser storage → English) is E7-19.
+// EN + AR resources for the Dashboard (FR-VEN-40, NFR-33). Components do not own user-facing copy.
 import { createContext, useContext } from "react";
 
 export type Language = "en" | "ar";
@@ -7,7 +6,25 @@ export type Language = "en" | "ar";
 const en = {
   appTitle: "Venue Dashboard",
   switchLanguage: "العربية",
+  navigationLabel: "Dashboard navigation",
+  authRequiredTitle: "Sign in required",
+  authRequiredDescription: "Sign in to access the venue dashboard.",
   configMissing: "Missing configuration:",
+  navigation: {
+    overview: "Overview",
+    pendingRequests: "Pending Requests",
+    missedRequests: "Missed / Expired Requests",
+    bookings: "Bookings",
+    manualBooking: "Manual Booking",
+    rooms: "Rooms",
+    pricing: "Pricing",
+    schedule: "Schedule",
+    maintenance: "Maintenance & Closures",
+    reviews: "Reviews",
+    tournaments: "Tournaments",
+    bookingHistory: "Booking History",
+    settings: "Settings",
+  },
   resourcesTitle: "Resources",
   loading: "Loading…",
   loadFailed: "Could not load the resources.",
@@ -25,7 +42,25 @@ export type Messages = typeof en;
 const ar: Messages = {
   appTitle: "لوحة تحكم المكان",
   switchLanguage: "English",
+  navigationLabel: "التنقل في لوحة التحكم",
+  authRequiredTitle: "تسجيل الدخول مطلوب",
+  authRequiredDescription: "سجّل الدخول للوصول إلى لوحة تحكم المكان.",
   configMissing: "إعدادات ناقصة:",
+  navigation: {
+    overview: "نظرة عامة",
+    pendingRequests: "طلبات الحجز المعلقة",
+    missedRequests: "طلبات لم يتم الرد عليها",
+    bookings: "الحجوزات",
+    manualBooking: "حجز يدوي",
+    rooms: "الغرف",
+    pricing: "الأسعار",
+    schedule: "الجدول",
+    maintenance: "الصيانة والإغلاقات",
+    reviews: "التقييمات",
+    tournaments: "البطولات",
+    bookingHistory: "سجل الحجوزات",
+    settings: "الإعدادات",
+  },
   resourcesTitle: "الغرف والطاولات",
   loading: "جارٍ التحميل…",
   loadFailed: "تعذّر تحميل الغرف والطاولات.",

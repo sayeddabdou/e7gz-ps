@@ -1,56 +1,193 @@
-// Minimal Dashboard shell: configuration check, EN/AR switch with dir="rtl", one screen. Routing, the auth guard and
-// the prototype layout are E7-19.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { logicalSpacing, webTokens } from "@e7gz/tokens/web";
+import { BrowserRouter, NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { createDashboardApiClient } from "../api";
 import type { ConfigResult } from "../config";
 import { ResourceList } from "../features/setup/ResourceList";
-import { directionOf, messages, MessagesContext, type Language } from "../i18n";
+import { directionOf, messages, MessagesContext, type Language, type Messages } from "../i18n";
 
-export function App({ config, initialLanguage = "en" }: { config: ConfigResult; initialLanguage?: Language }) {
-  const [language, setLanguage] = useState<Language>(initialLanguage);
+const languageStorageKey = "e7gz.venue.language";
+
+const routes = [
+  { path: "/", label: "overview" },
+  { path: "/pending-requests", label: "pendingRequests" },
+  { path: "/missed-requests", label: "missedRequests" },
+  { path: "/bookings", label: "bookings" },
+  { path: "/manual-booking", label: "manualBooking" },
+  { path: "/rooms", label: "rooms" },
+  { path: "/pricing", label: "pricing" },
+  { path: "/schedule", label: "schedule" },
+  { path: "/maintenance", label: "maintenance" },
+  { path: "/reviews", label: "reviews" },
+  { path: "/tournaments", label: "tournaments" },
+  { path: "/booking-history", label: "bookingHistory" },
+  { path: "/settings", label: "settings" },
+] as const satisfies ReadonlyArray<{ path: string; label: keyof Messages["navigation"] }>;
+
+function readStoredLanguage(): Language | undefined {
+  try {
+    const stored = window.localStorage.getItem(languageStorageKey);
+    return stored === "en" || stored === "ar" ? stored : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function saveLanguage(language: Language): void {
+  try {
+    window.localStorage.setItem(languageStorageKey, language);
+  } catch {
+    // The UI still works when storage is unavailable.
+  }
+}
+
+const styles = {
+  frame: {
+    backgroundColor: webTokens.color.surface.venueSubtle,
+    color: webTokens.color.text.venue,
+    fontFamily: webTokens.typography.fontFamily.sans,
+    minHeight: "100vh",
+  },
+  header: {
+    ...logicalSpacing.paddingInline(webTokens.spacing["3xl"]),
+    alignItems: "center",
+    borderBlockEnd: `${webTokens.spacing.hairline}px solid ${webTokens.color.border.venue}`,
+    display: "flex",
+    gap: webTokens.spacing.lg,
+    justifyContent: "space-between",
+    paddingBlock: webTokens.spacing.lg,
+  },
+  brand: { marginBlock: 0 },
+  shell: {
+    display: "grid",
+    gridTemplateColumns: "minmax(13rem, 18rem) minmax(0, 1fr)",
+    minHeight: "calc(100vh - 5rem)",
+  },
+  sidebar: {
+    ...logicalSpacing.paddingInline(webTokens.spacing.lg),
+    borderInlineEnd: `${webTokens.spacing.hairline}px solid ${webTokens.color.border.venue}`,
+    paddingBlock: webTokens.spacing.xl,
+    textAlign: "start",
+  },
+  navigation: { display: "grid", gap: webTokens.spacing.xs },
+  navigationLink: {
+    borderRadius: webTokens.radius.md,
+    color: "inherit",
+    paddingBlock: webTokens.spacing.sm,
+    paddingInline: webTokens.spacing.md,
+    textDecoration: "none",
+  },
+  navigationLinkActive: { backgroundColor: webTokens.color.surface.selected },
+  content: {
+    ...logicalSpacing.paddingInline(webTokens.spacing["3xl"]),
+    paddingBlock: webTokens.spacing["3xl"],
+  },
+  alert: {
+    ...logicalSpacing.paddingInline(webTokens.spacing["3xl"]),
+    paddingBlock: webTokens.spacing["3xl"],
+  },
+} satisfies Record<string, CSSProperties>;
+
+function ProtectedShell({
+  config,
+  direction,
+  t,
+}: {
+  config: Extract<ConfigResult, { ok: true }>;
+  direction: "ltr" | "rtl";
+  t: Messages;
+}) {
+  const api = useMemo(() => createDashboardApiClient(config.config), [config]);
+
+  return (
+    <main dir={direction} style={styles.shell}>
+      <aside data-testid="venue-sidebar" style={styles.sidebar}>
+        <nav aria-label={t.navigationLabel} style={styles.navigation}>
+          {routes.map((route) => (
+            <NavLink
+              key={route.path}
+              end={route.path === "/"}
+              style={({ isActive }) => ({
+                ...styles.navigationLink,
+                ...(isActive ? styles.navigationLinkActive : undefined),
+              })}
+              to={route.path}
+            >
+              {t.navigation[route.label]}
+            </NavLink>
+          ))}
+        </nav>
+      </aside>
+      <section style={styles.content}>
+        <Routes>
+          {routes.map((route) => (
+            <Route
+              key={route.path}
+              path={route.path}
+              element={
+                route.path === "/rooms" ? (
+                  <ResourceList api={api} />
+                ) : (
+                  <h2>{t.navigation[route.label]}</h2>
+                )
+              }
+            />
+          ))}
+          <Route path="*" element={<Navigate replace to="/" />} />
+        </Routes>
+      </section>
+    </main>
+  );
+}
+
+export function App({
+  config,
+  preferredLanguage,
+}: {
+  config: ConfigResult;
+  preferredLanguage?: Language;
+}) {
+  const [language, setLanguage] = useState<Language>(() => preferredLanguage ?? readStoredLanguage() ?? "en");
   const t = messages[language];
   const direction = directionOf(language);
-  const api = useMemo(() => (config.ok ? createDashboardApiClient(config.config) : undefined), [config]);
 
   useEffect(() => {
     document.documentElement.lang = language;
     document.documentElement.dir = direction;
   }, [language, direction]);
 
+  const toggleLanguage = () => {
+    const nextLanguage = language === "en" ? "ar" : "en";
+    setLanguage(nextLanguage);
+    saveLanguage(nextLanguage);
+  };
+
   return (
     <MessagesContext.Provider value={t}>
-      <main
-        dir={direction}
-        style={{
-          ...logicalSpacing.paddingInline(webTokens.spacing["3xl"]),
-          backgroundColor: webTokens.color.surface.venueSubtle,
-          color: webTokens.color.text.venue,
-          fontFamily: webTokens.typography.fontFamily.sans,
-          minHeight: "100vh",
-        }}
-      >
-        <header
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: webTokens.spacing["3xl"],
-          }}
-        >
-          <h1>{t.appTitle}</h1>
-          <button type="button" onClick={() => setLanguage(language === "en" ? "ar" : "en")}>
-            {t.switchLanguage}
-          </button>
-        </header>
-        {api ? (
-          <ResourceList api={api} />
-        ) : (
-          <p role="alert">
-            {t.configMissing} <code>{config.ok ? "" : config.missing.join(", ")}</code>
-          </p>
-        )}
-      </main>
+      <BrowserRouter>
+        <div dir={direction} style={styles.frame}>
+          <header style={styles.header}>
+            <h1 style={styles.brand}>{t.appTitle}</h1>
+            <button type="button" onClick={toggleLanguage}>
+              {t.switchLanguage}
+            </button>
+          </header>
+          {!config.ok ? (
+            <main dir={direction} style={styles.alert}>
+              <p role="alert">
+                {t.configMissing} <code>{config.missing.join(", ")}</code>
+              </p>
+            </main>
+          ) : !config.config.accessToken ? (
+            <main dir={direction} style={styles.alert}>
+              <h2>{t.authRequiredTitle}</h2>
+              <p>{t.authRequiredDescription}</p>
+            </main>
+          ) : (
+            <ProtectedShell config={config} direction={direction} t={t} />
+          )}
+        </div>
+      </BrowserRouter>
     </MessagesContext.Provider>
   );
 }
