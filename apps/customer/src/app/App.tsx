@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { type ComponentProps, useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { DefaultTheme, NavigationContainer } from "@react-navigation/native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -19,6 +20,7 @@ type RootTabs = {
 };
 
 const Tab = createBottomTabNavigator<RootTabs>();
+type TabIconName = ComponentProps<typeof Ionicons>["name"];
 
 const navigationTheme = {
   ...DefaultTheme,
@@ -52,6 +54,26 @@ function BookingsScreen() {
 function ProfileScreen() {
   return <Screen title={t.tabs.profile} />;
 }
+
+function tabIcon(
+  testID: string,
+  active: TabIconName,
+  inactive: TabIconName,
+) {
+  return ({ color, focused, size }: { color: string; focused: boolean; size: number }) => (
+    <Ionicons
+      testID={testID}
+      name={focused ? active : inactive}
+      color={color}
+      size={size}
+    />
+  );
+}
+
+const homeIcon = tabIcon("tab-icon-home", "home", "home-outline");
+const tournamentsIcon = tabIcon("tab-icon-tournaments", "trophy", "trophy-outline");
+const bookingsIcon = tabIcon("tab-icon-bookings", "calendar", "calendar-outline");
+const profileIcon = tabIcon("tab-icon-profile", "person", "person-outline");
 
 function HomeScreen({ api }: { api: ApiClient }) {
   return (
@@ -108,24 +130,40 @@ export function App({
           >
             <Tab.Screen
               name="home"
-              options={{ tabBarLabel: t.tabs.home, title: t.tabs.home }}
+              options={{
+                tabBarIcon: homeIcon,
+                tabBarLabel: t.tabs.home,
+                title: t.tabs.home,
+              }}
             >
               {() => <HomeScreen api={api} />}
             </Tab.Screen>
             <Tab.Screen
               name="tournaments"
               component={TournamentsScreen}
-              options={{ tabBarLabel: t.tabs.tournaments, title: t.tabs.tournaments }}
+              options={{
+                tabBarIcon: tournamentsIcon,
+                tabBarLabel: t.tabs.tournaments,
+                title: t.tabs.tournaments,
+              }}
             />
             <Tab.Screen
               name="bookings"
               component={BookingsScreen}
-              options={{ tabBarLabel: t.tabs.bookings, title: t.tabs.bookings }}
+              options={{
+                tabBarIcon: bookingsIcon,
+                tabBarLabel: t.tabs.bookings,
+                title: t.tabs.bookings,
+              }}
             />
             <Tab.Screen
               name="profile"
               component={ProfileScreen}
-              options={{ tabBarLabel: t.tabs.profile, title: t.tabs.profile }}
+              options={{
+                tabBarIcon: profileIcon,
+                tabBarLabel: t.tabs.profile,
+                title: t.tabs.profile,
+              }}
             />
           </Tab.Navigator>
         </NavigationContainer>

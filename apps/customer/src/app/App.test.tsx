@@ -23,6 +23,10 @@ describe("Customer app shell", () => {
     expect(screen.getByText("Tournaments")).toBeTruthy();
     expect(screen.getByText("Bookings")).toBeTruthy();
     expect(screen.getByText("Profile")).toBeTruthy();
+    expect(screen.getAllByTestId("tab-icon-home").length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId("tab-icon-tournaments").length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId("tab-icon-bookings").length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId("tab-icon-profile").length).toBeGreaterThan(0);
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
   });
 
