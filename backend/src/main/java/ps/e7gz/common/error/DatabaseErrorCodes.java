@@ -104,7 +104,8 @@ public final class DatabaseErrorCodes {
                     "ex_no_double_booking", ApiErrorCode.SLOT_NO_LONGER_AVAILABLE,      // arch 09 §1.5, FR-AVL-11
                     "ex_customer_no_overlap", ApiErrorCode.OVERLAPPING_COMMITMENT),     // FR-BOK-04
             UNIQUE_VIOLATION, Map.of(
-                    "ux_user_username_normalized", ApiErrorCode.USERNAME_TAKEN));       // FR-ACC-06
+                    "ux_user_username_normalized", ApiErrorCode.USERNAME_TAKEN,         // FR-ACC-06
+                    "uq_user_account_phone_e164", ApiErrorCode.PHONE_TAKEN));           // FR-ACC-01
 
     private DatabaseErrorCodes() {
     }

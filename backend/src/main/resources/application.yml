@@ -30,6 +30,16 @@ e7gz:
       password: ${E7GZ_DB_ADMIN_PASSWORD:e7gz_admin_runtime}
       pool-name: admin
       maximum-pool-size: 3
+  # Phone OTP by SMS (Spec v5 §7.3). "log" writes the code to the log (local only); deployed environments set
+  # E7GZ_SMS_PROVIDER=sms-misr and the SMS Misr account from the secret store (arch 12 §3). Never commit credentials.
+  sms:
+    provider: ${E7GZ_SMS_PROVIDER:log}
+    sms-misr:
+      environment: ${E7GZ_SMS_MISR_ENVIRONMENT:TEST}   # LIVE sends real SMS; production only
+      username: ${E7GZ_SMS_MISR_USERNAME:}
+      password: ${E7GZ_SMS_MISR_PASSWORD:}
+      sender: ${E7GZ_SMS_MISR_SENDER_TOKEN:}
+      template: ${E7GZ_SMS_MISR_TEMPLATE_TOKEN:}
 
 # Every log line carries the correlation ID of its request or job (NFR-32; CorrelationId puts it in the MDC).
 # JSON log output is the observability task's (arch 11 §5.1, E7-100); this only adds the field to the default pattern.

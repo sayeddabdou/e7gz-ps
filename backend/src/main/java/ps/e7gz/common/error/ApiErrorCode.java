@@ -24,6 +24,8 @@ public enum ApiErrorCode {
     OTP_HOURLY_LIMIT_REACHED(429),
     USERNAME_TAKEN(422),
     USERNAME_COOLDOWN_ACTIVE(422),
+    /** FR-ACC-01: Phone is unique. Product Owner decision of 30 Sep 2026 (E7-13), recorded in arch 09 §1.5. */
+    PHONE_TAKEN(422),
     ACCOUNT_BANNED_FOR_THIS_ACTION(403),
     BOOKING_LEAD_TIME_TOO_SHORT(422),
     BOOKING_DURATION_INVALID(422),
