@@ -1,2 +1,4 @@
-// Filled by E7-20 (Customer app shell).
-export {};
+import { en } from "./en";
+
+export const messages = { en } as const;
+export type Messages = typeof en;
