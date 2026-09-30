@@ -1,38 +1,201 @@
-// Minimal app shell: configuration check and one screen. Tab navigation from the prototype, token storage and refresh
-// are E7-20.
-import { useMemo } from "react";
-import { SafeAreaView, StyleSheet, Text } from "react-native";
+import { type ComponentProps, useMemo } from "react";
+import { StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { DefaultTheme, NavigationContainer } from "@react-navigation/native";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { nativeLogicalSpacing, nativeTokens } from "@e7gz/tokens/native";
-import { createCustomerApiClient } from "../api";
+import { createCustomerApiClient, type ApiClient, type RefreshAccessToken } from "../api";
+import { createSecureTokenStore, type TokenStore } from "../auth/tokenStore";
 import type { ConfigResult } from "../config";
 import { AreaList } from "../features/discovery/AreaList";
 import { en as t } from "../i18n/en";
 
-export function App({ config }: { config: ConfigResult }) {
-  const api = useMemo(() => (config.ok ? createCustomerApiClient(config.config) : undefined), [config]);
+type RootTabs = {
+  home: undefined;
+  tournaments: undefined;
+  bookings: undefined;
+  profile: undefined;
+};
+
+const Tab = createBottomTabNavigator<RootTabs>();
+type TabIconName = ComponentProps<typeof Ionicons>["name"];
+
+const navigationTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: nativeTokens.color.brand.primary,
+    background: nativeTokens.color.surface.canvas,
+    card: nativeTokens.color.surface.raised,
+    text: nativeTokens.color.text.customer,
+    border: nativeTokens.color.border.customer,
+    notification: nativeTokens.color.feedback.danger,
+  },
+};
+
+function Screen({ title }: { title: string }) {
+  return (
+    <SafeAreaView edges={["top"]} style={styles.screen}>
+      <Text accessibilityRole="header" style={styles.title}>{title}</Text>
+    </SafeAreaView>
+  );
+}
+
+function TournamentsScreen() {
+  return <Screen title={t.tabs.tournaments} />;
+}
+
+function BookingsScreen() {
+  return <Screen title={t.tabs.bookings} />;
+}
+
+function ProfileScreen() {
+  return <Screen title={t.tabs.profile} />;
+}
+
+function tabIcon(
+  testID: string,
+  active: TabIconName,
+  inactive: TabIconName,
+) {
+  return ({ color, focused, size }: { color: string; focused: boolean; size: number }) => (
+    <Ionicons
+      testID={testID}
+      name={focused ? active : inactive}
+      color={color}
+      size={size}
+    />
+  );
+}
+
+const homeIcon = tabIcon("tab-icon-home", "home", "home-outline");
+const tournamentsIcon = tabIcon("tab-icon-tournaments", "trophy", "trophy-outline");
+const bookingsIcon = tabIcon("tab-icon-bookings", "calendar", "calendar-outline");
+const profileIcon = tabIcon("tab-icon-profile", "person", "person-outline");
+
+function HomeScreen({ api }: { api: ApiClient }) {
+  return (
+    <SafeAreaView edges={["top"]} style={styles.screen}>
+      <Text accessibilityRole="header" style={styles.title}>{t.appTitle}</Text>
+      <AreaList api={api} />
+    </SafeAreaView>
+  );
+}
+
+export function App({
+  config,
+  tokenStore,
+  refreshAccessToken,
+}: {
+  config: ConfigResult;
+  tokenStore?: TokenStore;
+  refreshAccessToken?: RefreshAccessToken;
+}) {
+  const secureTokens = useMemo(() => tokenStore ?? createSecureTokenStore(), [tokenStore]);
+  const api = useMemo(
+    () => config.ok
+      ? createCustomerApiClient(config.config, {
+          tokenStore: secureTokens,
+          ...(refreshAccessToken ? { refresh: refreshAccessToken } : {}),
+        })
+      : undefined,
+    [config, refreshAccessToken, secureTokens],
+  );
+
+  if (!config.ok || !api) {
+    return (
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.screen}>
+          <Text accessibilityRole="alert">{`${t.configMissing} ${config.ok ? "" : config.missing.join(", ")}`}</Text>
+          <StatusBar style="auto" />
+        </SafeAreaView>
+      </SafeAreaProvider>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.root}>
-      <Text accessibilityRole="header" style={styles.title}>{t.appTitle}</Text>
-      {api ? (
-        <AreaList api={api} />
-      ) : (
-        <Text accessibilityRole="alert">{`${t.configMissing} ${config.ok ? "" : config.missing.join(", ")}`}</Text>
-      )}
-      <StatusBar style="auto" />
-    </SafeAreaView>
+    <SafeAreaProvider>
+      <View style={styles.root}>
+        <NavigationContainer theme={navigationTheme}>
+          <Tab.Navigator
+            screenOptions={{
+              headerShown: false,
+              tabBarActiveTintColor: nativeTokens.color.brand.primary,
+              tabBarInactiveTintColor: nativeTokens.color.text.subtle,
+              tabBarStyle: styles.tabBar,
+              tabBarLabelStyle: styles.tabLabel,
+            }}
+          >
+            <Tab.Screen
+              name="home"
+              options={{
+                tabBarIcon: homeIcon,
+                tabBarLabel: t.tabs.home,
+                title: t.tabs.home,
+              }}
+            >
+              {() => <HomeScreen api={api} />}
+            </Tab.Screen>
+            <Tab.Screen
+              name="tournaments"
+              component={TournamentsScreen}
+              options={{
+                tabBarIcon: tournamentsIcon,
+                tabBarLabel: t.tabs.tournaments,
+                title: t.tabs.tournaments,
+              }}
+            />
+            <Tab.Screen
+              name="bookings"
+              component={BookingsScreen}
+              options={{
+                tabBarIcon: bookingsIcon,
+                tabBarLabel: t.tabs.bookings,
+                title: t.tabs.bookings,
+              }}
+            />
+            <Tab.Screen
+              name="profile"
+              component={ProfileScreen}
+              options={{
+                tabBarIcon: profileIcon,
+                tabBarLabel: t.tabs.profile,
+                title: t.tabs.profile,
+              }}
+            />
+          </Tab.Navigator>
+        </NavigationContainer>
+        <StatusBar style="auto" />
+      </View>
+    </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    backgroundColor: nativeTokens.color.surface.canvas,
+  },
+  screen: {
+    flex: 1,
     backgroundColor: nativeTokens.color.surface.raised,
     ...nativeLogicalSpacing.paddingInline(nativeTokens.spacing["5xl"]),
+    paddingTop: nativeTokens.spacing["3xl"],
   },
   title: {
     color: nativeTokens.color.text.customer,
     fontSize: nativeTokens.typography.fontSize.heading,
+    fontWeight: nativeTokens.typography.fontWeight.extrabold,
+    marginBottom: nativeTokens.spacing["3xl"],
+  },
+  tabBar: {
+    backgroundColor: nativeTokens.color.surface.raised,
+    borderTopColor: nativeTokens.color.border.subtle,
+  },
+  tabLabel: {
+    fontSize: nativeTokens.typography.fontSize.caption,
+    fontWeight: nativeTokens.typography.fontWeight.bold,
   },
 });

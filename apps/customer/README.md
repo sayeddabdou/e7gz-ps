@@ -2,7 +2,7 @@
 
 Customer app — React Native + TypeScript (Expo SDK 57). Owner: Abdallah (Clients lane).
 
-## What exists (set up early by E7-11, with the PO's approval)
+## What exists
 
 E7-11 needed a real app compiling against `@e7gz/api-client`, so the minimum was added ahead of E7-20:
 
@@ -10,9 +10,10 @@ E7-11 needed a real app compiling against `@e7gz/api-client`, so the minimum was
 |---|---|
 | Expo managed project (SDK 57, React Native 0.86, react-native-web), ESLint, Jest (`jest-expo`) | `package.json`, `app.json`, `index.ts`, `tsconfig.json`, `eslint.config.js` |
 | Configuration from `EXPO_PUBLIC_API_BASE_URL`, no silent default backend | `src/config.ts`, `.env.example` |
-| Shared API client created from that config | `src/api/index.ts` |
+| Shared API client with secure token storage and one-shot refresh handling | `src/api/index.ts`, `src/auth/tokenStore.ts` |
 | English strings in a resource file | `src/i18n/en.ts` |
 | One working screen: active areas from the public `GET /api/v1/customer/areas`, with loading / success / error | `src/features/discovery/AreaList.tsx` (+ test) |
+| Bottom-tab shell matching the prototype: Home, Tournaments, Bookings, Profile | `src/app/App.tsx` (+ test) |
 
 ## Commands
 
@@ -33,11 +34,9 @@ pnpm --filter @e7gz/customer lint | typecheck | test | build   # build = expo ex
 
 For the Android emulator or a phone, set the variable yourself, for example `EXPO_PUBLIC_API_BASE_URL=http://10.0.2.2:4010 pnpm --filter @e7gz/customer start`. For a local backend, use the same hosts on port 8080.
 
-## Still to do in E7-20 (not done here)
-
-- Tab navigation matching the prototype.
-- Token storage in secure store and refresh handling. The client already accepts `getAccessToken`.
-- The E7-20 acceptance check: the app starts on an Android emulator and an iOS simulator (or Expo Go) and shows the tab shell. Only the web runtime was verified so far.
+The API contract does not define the customer refresh endpoint yet. E7-21 supplies the
+`refreshAccessToken` callback when it adds authentication; the transport already guarantees one
+retry only and clears secure credentials when refresh or that retry fails.
 
 `AreaList` is a starting point for the area filter of discovery (E7-38).
 

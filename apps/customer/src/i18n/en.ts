@@ -1,6 +1,12 @@
 // English strings (NFR-34: resource files only, never in components).
 export const en = {
   appTitle: "E7GZ PS",
+  tabs: {
+    home: "Home",
+    tournaments: "Tournaments",
+    bookings: "Bookings",
+    profile: "Profile",
+  },
   configMissing: "Missing configuration:",
   areasTitle: "Areas",
   loading: "Loading…",
