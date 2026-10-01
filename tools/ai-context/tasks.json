@@ -314,7 +314,9 @@
   "read": [
    "arch 09 §2, §3.1",
    "FRS 4.1",
-   "Customer App prototype auth screens"
+   "Customer App prototype auth screens",
+   "FRS F-01 (registration and phone verification)",
+   "FRS §3.1, §3.2, §3.3 (what each surface must have)"
   ],
   "steps": [
    "Customer: register, OTP verify/resend with countdown, login, logout.",
@@ -323,7 +325,8 @@
    "Carry-forward from Sprint 0 review: Venue Dashboard and Admin web: use the cookie session that E7-22 adds (PO decision 2 Oct 2026, Sprint 0 review S-4). The refresh token is an HttpOnly cookie the page never reads. Keep the access token in memory only, never in localStorage, sessionStorage or IndexedDB. On page load call refresh with credentials: 'include' to restore the session; logout calls the logout endpoint. Send the CSRF header E7-22 defines on refresh/logout.",
    "Carry-forward from Sprint 0 review: Remove the placeholder token: delete VITE_API_ACCESS_TOKEN and AppConfig.accessToken from apps/venue-dashboard and apps/admin-web (config.ts, .env.example, tests). Vite builds every VITE_* value into the public JS bundle (Sprint 0 review S-12).",
    "Carry-forward from Sprint 0 review: Customer app: unchanged. Tokens stay in the JSON body and in SecureStore.",
-   "Carry-forward from Sprint 0 review: Raise the timeout of the customer test 'Customer app shell › shows the four prototype tabs': it hit the 5 s Jest limit when CI was busy (Sprint 0 review)."
+   "Carry-forward from Sprint 0 review: Raise the timeout of the customer test 'Customer app shell › shows the four prototype tabs': it hit the 5 s Jest limit when CI was busy (Sprint 0 review).",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "Flows work against the mock, then against the real backend once S0-P5/P6 merge."
@@ -333,7 +336,7 @@
    "apps/venue-dashboard/src/features/auth/",
    "apps/admin-web/src/features/auth/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S0-C4 — \"Auth screens on all three surfaces\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 09 §2, §3.1\n- FRS 4.1\n- Customer App prototype auth screens\n\nDo:\n1. Customer: register, OTP verify/resend with countdown, login, logout.\n2. Venue Dashboard: venue login. Admin: admin login.\n3. Show backend error codes through one error-to-message map (never hard-code rule text).\n\nDone when (write these as tests first where possible):\n- Flows work against the mock, then against the real backend once S0-P5/P6 merge.\n\nCarry-forward from the Sprint 0 review (do these too):\n- Venue Dashboard and Admin web: use the cookie session that E7-22 adds (PO decision 2 Oct 2026, Sprint 0 review S-4). The refresh token is an HttpOnly cookie the page never reads. Keep the access token in memory only, never in localStorage, sessionStorage or IndexedDB. On page load call refresh with credentials: 'include' to restore the session; logout calls the logout endpoint. Send the CSRF header E7-22 defines on refresh/logout.\n- Remove the placeholder token: delete VITE_API_ACCESS_TOKEN and AppConfig.accessToken from apps/venue-dashboard and apps/admin-web (config.ts, .env.example, tests). Vite builds every VITE_* value into the public JS bundle (Sprint 0 review S-12).\n- Customer app: unchanged. Tokens stay in the JSON body and in SecureStore.\n- Raise the timeout of the customer test 'Customer app shell › shows the four prototype tabs': it hit the 5 s Jest limit when CI was busy (Sprint 0 review).\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S0-C4 — \"Auth screens on all three surfaces\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 09 §2, §3.1\n- FRS 4.1\n- Customer App prototype auth screens\n- FRS F-01 (registration and phone verification)\n- FRS §3.1, §3.2, §3.3 (what each surface must have)\n\nDo:\n1. Customer: register, OTP verify/resend with countdown, login, logout.\n2. Venue Dashboard: venue login. Admin: admin login.\n3. Show backend error codes through one error-to-message map (never hard-code rule text).\n\nDone when (write these as tests first where possible):\n- Flows work against the mock, then against the real backend once S0-P5/P6 merge.\n\nCarry-forward from the Sprint 0 review (do these too):\n- Venue Dashboard and Admin web: use the cookie session that E7-22 adds (PO decision 2 Oct 2026, Sprint 0 review S-4). The refresh token is an HttpOnly cookie the page never reads. Keep the access token in memory only, never in localStorage, sessionStorage or IndexedDB. On page load call refresh with credentials: 'include' to restore the session; logout calls the logout endpoint. Send the CSRF header E7-22 defines on refresh/logout.\n- Remove the placeholder token: delete VITE_API_ACCESS_TOKEN and AppConfig.accessToken from apps/venue-dashboard and apps/admin-web (config.ts, .env.example, tests). Vite builds every VITE_* value into the public JS bundle (Sprint 0 review S-12).\n- Customer app: unchanged. Tokens stay in the JSON body and in SecureStore.\n- Raise the timeout of the customer test 'Customer app shell › shows the four prototype tabs': it hit the 5 s Jest limit when CI was busy (Sprint 0 review).\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Dashboard screens in English and Arabic (RTL); Admin English only; Customer English via i18n files.\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-22": {
   "id": "S1-P0",
@@ -640,11 +643,17 @@
   "what": "Dashboard screens to set up venue profile, hours, rooms and prices.",
   "read": [
    "Venue Dashboard prototype",
-   "arch 09 §4.2"
+   "arch 09 §4.2",
+   "FRS §3.2 (Venue Dashboard)",
+   "FRS F-17 (Opening Hours change)",
+   "FRS §4.8 (Venue model, configuration and Dashboard)",
+   "FRS §2.4 (Owner Password authorization)",
+   "arch 09 §4.3 (Owner Password body convention)"
   ],
   "steps": [
    "Venue profile, opening hours (template + day overrides), resources, prices, Owner Password prompt component (reusable).",
-   "Built against the mock first; switch to the real API as tasks merge."
+   "Built against the mock first; switch to the real API as tasks merge.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "EN and AR layouts reviewed."
@@ -652,7 +661,7 @@
   "folders": [
    "apps/venue-dashboard/src/features/setup/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S1-C1 — \"Dashboard: venue setup screens\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Venue Dashboard prototype\n- arch 09 §4.2\n\nDo:\n1. Venue profile, opening hours (template + day overrides), resources, prices, Owner Password prompt component (reusable).\n2. Built against the mock first; switch to the real API as tasks merge.\n\nDone when (write these as tests first where possible):\n- EN and AR layouts reviewed.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S1-C1 — \"Dashboard: venue setup screens\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Venue Dashboard prototype\n- arch 09 §4.2\n- FRS §3.2 (Venue Dashboard)\n- FRS F-17 (Opening Hours change)\n- FRS §4.8 (Venue model, configuration and Dashboard)\n- FRS §2.4 (Owner Password authorization)\n- arch 09 §4.3 (Owner Password body convention)\n\nDo:\n1. Venue profile, opening hours (template + day overrides), resources, prices, Owner Password prompt component (reusable).\n2. Built against the mock first; switch to the real API as tasks merge.\n\nDone when (write these as tests first where possible):\n- EN and AR layouts reviewed.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Every screen you add works in English and Arabic (RTL, CSS logical properties only).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-36": {
   "id": "S1-C2",
@@ -660,10 +669,15 @@
   "owner": "Abdallah",
   "what": "Dashboard grid showing each room's bookings through the day.",
   "read": [
-   "Venue Dashboard prototype (schedule)"
+   "Venue Dashboard prototype (schedule)",
+   "FRS §3.2 (Venue Dashboard)",
+   "FRS §4.3 (Availability and Inventory)",
+   "FRS §4.8 (Venue model, configuration and Dashboard)",
+   "arch 09 §4.1–§4.2"
   ],
   "steps": [
-   "Resource × time grid for a business date showing reservations, blocks and free time; date navigation."
+   "Resource × time grid for a business date showing reservations, blocks and free time; date navigation.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "Works in RTL; data from the contract."
@@ -671,7 +685,7 @@
   "folders": [
    "apps/venue-dashboard/src/features/schedule/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S1-C2 — \"Dashboard: availability schedule\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Venue Dashboard prototype (schedule)\n\nDo:\n1. Resource × time grid for a business date showing reservations, blocks and free time; date navigation.\n\nDone when (write these as tests first where possible):\n- Works in RTL; data from the contract.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S1-C2 — \"Dashboard: availability schedule\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Venue Dashboard prototype (schedule)\n- FRS §3.2 (Venue Dashboard)\n- FRS §4.3 (Availability and Inventory)\n- FRS §4.8 (Venue model, configuration and Dashboard)\n- arch 09 §4.1–§4.2\n\nDo:\n1. Resource × time grid for a business date showing reservations, blocks and free time; date navigation.\n\nDone when (write these as tests first where possible):\n- Works in RTL; data from the contract.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Every screen you add works in English and Arabic (RTL, CSS logical properties only).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-37": {
   "id": "S1-C3",
@@ -681,10 +695,16 @@
   "read": [
    "Platform Admin prototype",
    "arch 09 §5",
-   "A9 in docs/03-design/README.md"
+   "A9 in docs/03-design/README.md",
+   "FRS §3.3 (Platform Admin)",
+   "FRS F-23 (Venue Account Disable), F-37 (admin correction and marketplace control)",
+   "FRS §4.8 (Venue model)",
+   "FRS §4.14 (Platform Admin)",
+   "FRS §2.10 (actor / action authorization)"
   ],
   "steps": [
-   "Areas list/create/deactivate; venues list/create/edit; marketplace status control that never offers ONBOARDING after leaving it; create venue account."
+   "Areas list/create/deactivate; venues list/create/edit; marketplace status control that never offers ONBOARDING after leaving it; create venue account.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "Errors shown via the error-code map."
@@ -694,7 +714,7 @@
    "apps/admin-web/src/features/venues/",
    "apps/admin-web/src/features/venue-accounts/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S1-C3 — \"Admin: areas, venues, venue accounts\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Platform Admin prototype\n- arch 09 §5\n- A9 in docs/03-design/README.md\n\nDo:\n1. Areas list/create/deactivate; venues list/create/edit; marketplace status control that never offers ONBOARDING after leaving it; create venue account.\n\nDone when (write these as tests first where possible):\n- Errors shown via the error-code map.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S1-C3 — \"Admin: areas, venues, venue accounts\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Platform Admin prototype\n- arch 09 §5\n- A9 in docs/03-design/README.md\n- FRS §3.3 (Platform Admin)\n- FRS F-23 (Venue Account Disable), F-37 (admin correction and marketplace control)\n- FRS §4.8 (Venue model)\n- FRS §4.14 (Platform Admin)\n- FRS §2.10 (actor / action authorization)\n\nDo:\n1. Areas list/create/deactivate; venues list/create/edit; marketplace status control that never offers ONBOARDING after leaving it; create venue account.\n\nDone when (write these as tests first where possible):\n- Errors shown via the error-code map.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Platform Admin is English only (FRS §3.3).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-38": {
   "id": "S1-C4",
@@ -703,10 +723,14 @@
   "what": "App: list of venues, map, and venue page.",
   "read": [
    "Customer App prototype",
-   "arch 09 §3.2"
+   "arch 09 §3.2",
+   "FRS §3.1 (Customer Mobile App)",
+   "FRS F-02 (discovery and venue details), F-03 (Find Available)",
+   "FRS §4.2 (Discovery and Browsing)"
   ],
   "steps": [
-   "Venue list with distance and next-available, map view, filters, venue detail with activities and prices."
+   "Venue list with distance and next-available, map view, filters, venue detail with activities and prices.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "Location permission handled; works on the mock then the real API."
@@ -714,7 +738,7 @@
   "folders": [
    "apps/customer/src/features/discovery/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S1-C4 — \"Customer app: discovery, map and venue page\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Customer App prototype\n- arch 09 §3.2\n\nDo:\n1. Venue list with distance and next-available, map view, filters, venue detail with activities and prices.\n\nDone when (write these as tests first where possible):\n- Location permission handled; works on the mock then the real API.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S1-C4 — \"Customer app: discovery, map and venue page\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Customer App prototype\n- arch 09 §3.2\n- FRS §3.1 (Customer Mobile App)\n- FRS F-02 (discovery and venue details), F-03 (Find Available)\n- FRS §4.2 (Discovery and Browsing)\n\nDo:\n1. Venue list with distance and next-available, map view, filters, venue detail with activities and prices.\n\nDone when (write these as tests first where possible):\n- Location permission handled; works on the mock then the real API.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Customer app is English at launch, all text in the i18n resource files (FRS §3.1).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-39": {
   "id": "S2-P0",
@@ -962,10 +986,15 @@
   "what": "App: choose time and duration, see the price, book, wait for the venue.",
   "read": [
    "Customer App prototype booking flow",
-   "arch 09 §3.3"
+   "arch 09 §3.3",
+   "FRS §3.1 (Customer Mobile App)",
+   "FRS F-04 (create online booking)",
+   "FRS §4.4 (Online Booking Lifecycle)",
+   "FRS §2.11 (customer capability matrix by account state)"
   ],
   "steps": [
-   "Choose activity, resource type, date/time, duration; price from API; submit with Idempotency-Key; pending screen with venue response countdown."
+   "Choose activity, resource type, date/time, duration; price from API; submit with Idempotency-Key; pending screen with venue response countdown.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "Error codes shown via the map; double-tap does not create two bookings."
@@ -973,7 +1002,7 @@
   "folders": [
    "apps/customer/src/features/booking/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S2-C1 — \"Customer app: book a room\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Customer App prototype booking flow\n- arch 09 §3.3\n\nDo:\n1. Choose activity, resource type, date/time, duration; price from API; submit with Idempotency-Key; pending screen with venue response countdown.\n\nDone when (write these as tests first where possible):\n- Error codes shown via the map; double-tap does not create two bookings.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S2-C1 — \"Customer app: book a room\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Customer App prototype booking flow\n- arch 09 §3.3\n- FRS §3.1 (Customer Mobile App)\n- FRS F-04 (create online booking)\n- FRS §4.4 (Online Booking Lifecycle)\n- FRS §2.11 (customer capability matrix by account state)\n\nDo:\n1. Choose activity, resource type, date/time, duration; price from API; submit with Idempotency-Key; pending screen with venue response countdown.\n\nDone when (write these as tests first where possible):\n- Error codes shown via the map; double-tap does not create two bookings.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Customer app is English at launch, all text in the i18n resource files (FRS §3.1).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-51": {
   "id": "S2-C2",
@@ -982,10 +1011,17 @@
   "what": "App: My Bookings, cancel, and receive push notifications.",
   "read": [
    "Customer App prototype My Bookings",
-   "arch 06 §1.5"
+   "arch 06 §1.5",
+   "FRS §3.1 (Customer Mobile App)",
+   "FRS F-05…F-08, F-10 (venue response, expiry, customer cancellation)",
+   "FRS §4.4 (Online Booking Lifecycle)",
+   "FRS §2.12 (notification matrix)",
+   "FRS §4.15 (Notifications)",
+   "arch 09 §3.3"
   ],
   "steps": [
-   "Buckets exactly as the API returns them; detail; cancel; register device token for push; notification inbox list."
+   "Buckets exactly as the API returns them; detail; cancel; register device token for push; notification inbox list.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "Push received on a device in dev."
@@ -994,7 +1030,7 @@
    "apps/customer/src/features/my-bookings/",
    "apps/customer/src/features/notifications/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S2-C2 — \"Customer app: My Bookings and push\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Customer App prototype My Bookings\n- arch 06 §1.5\n\nDo:\n1. Buckets exactly as the API returns them; detail; cancel; register device token for push; notification inbox list.\n\nDone when (write these as tests first where possible):\n- Push received on a device in dev.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S2-C2 — \"Customer app: My Bookings and push\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Customer App prototype My Bookings\n- arch 06 §1.5\n- FRS §3.1 (Customer Mobile App)\n- FRS F-05…F-08, F-10 (venue response, expiry, customer cancellation)\n- FRS §4.4 (Online Booking Lifecycle)\n- FRS §2.12 (notification matrix)\n- FRS §4.15 (Notifications)\n- arch 09 §3.3\n\nDo:\n1. Buckets exactly as the API returns them; detail; cancel; register device token for push; notification inbox list.\n\nDone when (write these as tests first where possible):\n- Push received on a device in dev.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Customer app is English at launch, all text in the i18n resource files (FRS §3.1).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-52": {
   "id": "S2-C3",
@@ -1003,10 +1039,15 @@
   "what": "Dashboard: new requests appear live with a sound, accept or reject.",
   "read": [
    "arch 08 §5",
-   "A6 in docs/03-design/README.md"
+   "A6 in docs/03-design/README.md",
+   "FRS §3.2 (Venue Dashboard)",
+   "FRS F-05…F-08 (accept, reject, expiry, reject after expiry)",
+   "FRS §4.4 (Online Booking Lifecycle)",
+   "arch 09 §4.1"
   ],
   "steps": [
-   "SSE client with reconnect; new request list with countdown; accept/reject; audible alert on every new booking/tournament request; Web Push subscription and service worker for when the Dashboard is closed."
+   "SSE client with reconnect; new request list with countdown; accept/reject; audible alert on every new booking/tournament request; Web Push subscription and service worker for when the Dashboard is closed.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "Alert plays once per new request; works in AR."
@@ -1015,7 +1056,7 @@
    "apps/venue-dashboard/src/features/requests/",
    "apps/venue-dashboard/public/ (service worker, alert sound)"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S2-C3 — \"Dashboard: live requests with sound and Web Push\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 08 §5\n- A6 in docs/03-design/README.md\n\nDo:\n1. SSE client with reconnect; new request list with countdown; accept/reject; audible alert on every new booking/tournament request; Web Push subscription and service worker for when the Dashboard is closed.\n\nDone when (write these as tests first where possible):\n- Alert plays once per new request; works in AR.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S2-C3 — \"Dashboard: live requests with sound and Web Push\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 08 §5\n- A6 in docs/03-design/README.md\n- FRS §3.2 (Venue Dashboard)\n- FRS F-05…F-08 (accept, reject, expiry, reject after expiry)\n- FRS §4.4 (Online Booking Lifecycle)\n- arch 09 §4.1\n\nDo:\n1. SSE client with reconnect; new request list with countdown; accept/reject; audible alert on every new booking/tournament request; Web Push subscription and service worker for when the Dashboard is closed.\n\nDone when (write these as tests first where possible):\n- Alert plays once per new request; works in AR.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Every screen you add works in English and Arabic (RTL, CSS logical properties only).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-53": {
   "id": "S2-C4",
@@ -1023,10 +1064,15 @@
   "owner": "Abdallah",
   "what": "Dashboard: add walk-ins and see today's bookings.",
   "read": [
-   "Venue Dashboard prototype"
+   "Venue Dashboard prototype",
+   "FRS §3.2 (Venue Dashboard)",
+   "FRS F-16 (Manual Booking)",
+   "FRS §4.7 (Manual Booking)",
+   "arch 09 §4.1"
   ],
   "steps": [
-   "Manual booking form; today's bookings by resource; booking detail with contact only when the API returns it."
+   "Manual booking form; today's bookings by resource; booking detail with contact only when the API returns it.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "RTL checked."
@@ -1035,7 +1081,7 @@
    "apps/venue-dashboard/src/features/today/",
    "apps/venue-dashboard/src/features/walk-in/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S2-C4 — \"Dashboard: walk-ins and today view\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Venue Dashboard prototype\n\nDo:\n1. Manual booking form; today's bookings by resource; booking detail with contact only when the API returns it.\n\nDone when (write these as tests first where possible):\n- RTL checked.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S2-C4 — \"Dashboard: walk-ins and today view\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Venue Dashboard prototype\n- FRS §3.2 (Venue Dashboard)\n- FRS F-16 (Manual Booking)\n- FRS §4.7 (Manual Booking)\n- arch 09 §4.1\n\nDo:\n1. Manual booking form; today's bookings by resource; booking detail with contact only when the API returns it.\n\nDone when (write these as tests first where possible):\n- RTL checked.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Every screen you add works in English and Arabic (RTL, CSS logical properties only).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-54": {
   "id": "S3-P0",
@@ -1214,10 +1260,16 @@
   "owner": "Abdallah",
   "what": "App: Late Confirm screen with countdown and booking status timeline.",
   "read": [
-   "Customer App prototype (Late Confirm copy placement)"
+   "Customer App prototype (Late Confirm copy placement)",
+   "FRS §3.1 (Customer Mobile App)",
+   "FRS F-09 (Late Confirmation)",
+   "FRS §4.5 (Late Confirmation)",
+   "FRS §2.5 (timer and boundary matrix)",
+   "arch 09 §3.3"
   ],
   "steps": [
-   "Late Confirm received screen with exact countdown, accept/decline, expired states; booking status timeline."
+   "Late Confirm received screen with exact countdown, accept/decline, expired states; booking status timeline.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "Countdown driven by server expires_at, not device time."
@@ -1225,7 +1277,7 @@
   "folders": [
    "apps/customer/src/features/late-confirm/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S3-C1 — \"Customer app: Late Confirm and status\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Customer App prototype (Late Confirm copy placement)\n\nDo:\n1. Late Confirm received screen with exact countdown, accept/decline, expired states; booking status timeline.\n\nDone when (write these as tests first where possible):\n- Countdown driven by server expires_at, not device time.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S3-C1 — \"Customer app: Late Confirm and status\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Customer App prototype (Late Confirm copy placement)\n- FRS §3.1 (Customer Mobile App)\n- FRS F-09 (Late Confirmation)\n- FRS §4.5 (Late Confirmation)\n- FRS §2.5 (timer and boundary matrix)\n- arch 09 §3.3\n\nDo:\n1. Late Confirm received screen with exact countdown, accept/decline, expired states; booking status timeline.\n\nDone when (write these as tests first where possible):\n- Countdown driven by server expires_at, not device time.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Customer app is English at launch, all text in the i18n resource files (FRS §3.1).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-63": {
   "id": "S3-C2",
@@ -1233,10 +1285,16 @@
   "owner": "Abdallah",
   "what": "Dashboard: check-in, late, no-show and Late Confirm buttons.",
   "read": [
-   "Venue Dashboard prototype"
+   "Venue Dashboard prototype",
+   "FRS §3.2 (Venue Dashboard)",
+   "FRS F-09, F-12, F-13, F-14 (Late Confirmation, check-in, Present — Late, no-show)",
+   "FRS §4.5, §4.6 (Late Confirmation; Attendance)",
+   "FRS §2.5 (timer and boundary matrix)",
+   "arch 09 §4.1"
   ],
   "steps": [
-   "Check-in, Mark Present — Late, no-show actions with their windows; initiate Late Confirm; neutral failure message."
+   "Check-in, Mark Present — Late, no-show actions with their windows; initiate Late Confirm; neutral failure message.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "Actions disabled outside windows returned by the API."
@@ -1244,7 +1302,7 @@
   "folders": [
    "apps/venue-dashboard/src/features/attendance/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S3-C2 — \"Dashboard: attendance and Late Confirm\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Venue Dashboard prototype\n\nDo:\n1. Check-in, Mark Present — Late, no-show actions with their windows; initiate Late Confirm; neutral failure message.\n\nDone when (write these as tests first where possible):\n- Actions disabled outside windows returned by the API.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S3-C2 — \"Dashboard: attendance and Late Confirm\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Venue Dashboard prototype\n- FRS §3.2 (Venue Dashboard)\n- FRS F-09, F-12, F-13, F-14 (Late Confirmation, check-in, Present — Late, no-show)\n- FRS §4.5, §4.6 (Late Confirmation; Attendance)\n- FRS §2.5 (timer and boundary matrix)\n- arch 09 §4.1\n\nDo:\n1. Check-in, Mark Present — Late, no-show actions with their windows; initiate Late Confirm; neutral failure message.\n\nDone when (write these as tests first where possible):\n- Actions disabled outside windows returned by the API.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Every screen you add works in English and Arabic (RTL, CSS logical properties only).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-64": {
   "id": "S3-C3",
@@ -1252,10 +1310,14 @@
   "owner": "Abdallah",
   "what": "App: profile and account screens.",
   "read": [
-   "Customer App prototype profile"
+   "Customer App prototype profile",
+   "FRS §3.1 (Customer Mobile App)",
+   "FRS §4.1 (Accounts, Identity and Verification)",
+   "arch 09 §3.1"
   ],
   "steps": [
-   "Profile edit, username change with cooldown message, phone/email change with OTP, password reset."
+   "Profile edit, username change with cooldown message, phone/email change with OTP, password reset.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "All error codes mapped."
@@ -1263,7 +1325,7 @@
   "folders": [
    "apps/customer/src/features/profile/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S3-C3 — \"Customer app: profile and account\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Customer App prototype profile\n\nDo:\n1. Profile edit, username change with cooldown message, phone/email change with OTP, password reset.\n\nDone when (write these as tests first where possible):\n- All error codes mapped.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S3-C3 — \"Customer app: profile and account\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Customer App prototype profile\n- FRS §3.1 (Customer Mobile App)\n- FRS §4.1 (Accounts, Identity and Verification)\n- arch 09 §3.1\n\nDo:\n1. Profile edit, username change with cooldown message, phone/email change with OTP, password reset.\n\nDone when (write these as tests first where possible):\n- All error codes mapped.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Customer app is English at launch, all text in the i18n resource files (FRS §3.1).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-65": {
   "id": "S4-P0",
@@ -1451,10 +1513,17 @@
   "owner": "Abdallah",
   "what": "App: my standing, points, wallet and referral code.",
   "read": [
-   "Customer App prototype"
+   "Customer App prototype",
+   "PCR-004 (Customer Wallet Screen: a read-only wallet IS shown at launch; it overrides FRS §3.1 'hidden-at-launch Wallet')",
+   "FRS §3.1 (Customer Mobile App)",
+   "FRS F-32…F-35 (bans, Verified Player, points, referrals)",
+   "FRS §4.11, §4.12 (Trust and bans; Points, Referrals, Wallet and Fees)",
+   "FRS §2.11 (customer capability matrix)",
+   "arch 09 §3.4"
   ],
   "steps": [
-   "Account standing (ban, Verified Player), points history, wallet, referral code sharing."
+   "Account standing (ban, Verified Player), points history, wallet, referral code sharing.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "Matches API codes; no rule text hard-coded."
@@ -1463,7 +1532,7 @@
    "apps/customer/src/features/rewards/",
    "apps/customer/src/features/profile/ (standing)"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S4-C1 — \"Customer app: standing, points, wallet, referrals\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Customer App prototype\n\nDo:\n1. Account standing (ban, Verified Player), points history, wallet, referral code sharing.\n\nDone when (write these as tests first where possible):\n- Matches API codes; no rule text hard-coded.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S4-C1 — \"Customer app: standing, points, wallet, referrals\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Customer App prototype\n- PCR-004 (Customer Wallet Screen: a read-only wallet IS shown at launch; it overrides FRS §3.1 'hidden-at-launch Wallet')\n- FRS §3.1 (Customer Mobile App)\n- FRS F-32…F-35 (bans, Verified Player, points, referrals)\n- FRS §4.11, §4.12 (Trust and bans; Points, Referrals, Wallet and Fees)\n- FRS §2.11 (customer capability matrix)\n- arch 09 §3.4\n\nDo:\n1. Account standing (ban, Verified Player), points history, wallet, referral code sharing.\n\nDone when (write these as tests first where possible):\n- Matches API codes; no rule text hard-coded.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Customer app is English at launch, all text in the i18n resource files (FRS §3.1).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-75": {
   "id": "S4-C2",
@@ -1472,10 +1541,15 @@
   "what": "Admin: trust fixes, bans, badges, points, fees.",
   "read": [
    "Platform Admin prototype",
-   "arch 09 §5"
+   "arch 09 §5",
+   "FRS §3.3 (Platform Admin)",
+   "FRS F-30…F-35 (trust replay, attendance correction, bans, Verified Player, points, referrals)",
+   "FRS §4.11, §4.12, §4.14",
+   "FRS §2.10 (actor / action authorization)"
   ],
   "steps": [
-   "Trust corrections, ban lift, Verified Player actions, points adjustment, fees/points configuration with effective-from display."
+   "Trust corrections, ban lift, Verified Player actions, points adjustment, fees/points configuration with effective-from display.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "Every admin write asks for a reason where the API requires it."
@@ -1487,7 +1561,7 @@
    "apps/admin-web/src/features/points/",
    "apps/admin-web/src/features/configuration/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S4-C2 — \"Admin: trust, bans, Verified Player, points, configuration\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Platform Admin prototype\n- arch 09 §5\n\nDo:\n1. Trust corrections, ban lift, Verified Player actions, points adjustment, fees/points configuration with effective-from display.\n\nDone when (write these as tests first where possible):\n- Every admin write asks for a reason where the API requires it.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S4-C2 — \"Admin: trust, bans, Verified Player, points, configuration\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Platform Admin prototype\n- arch 09 §5\n- FRS §3.3 (Platform Admin)\n- FRS F-30…F-35 (trust replay, attendance correction, bans, Verified Player, points, referrals)\n- FRS §4.11, §4.12, §4.14\n- FRS §2.10 (actor / action authorization)\n\nDo:\n1. Trust corrections, ban lift, Verified Player actions, points adjustment, fees/points configuration with effective-from display.\n\nDone when (write these as tests first where possible):\n- Every admin write asks for a reason where the API requires it.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Platform Admin is English only (FRS §3.3).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-76": {
   "id": "S4-C3",
@@ -1675,10 +1749,16 @@
   "owner": "Abdallah",
   "what": "Dashboard: maintenance, closures and emergency screens.",
   "read": [
-   "Venue Dashboard prototype"
+   "Venue Dashboard prototype",
+   "FRS §3.2 (Venue Dashboard)",
+   "FRS F-18…F-21 (maintenance, venue emergency, resource outage, timer pause/resume)",
+   "FRS §4.9 (Maintenance, Emergencies and Operational Restrictions)",
+   "FRS §2.4 (Owner Password authorization)",
+   "arch 09 §4.2, §4.3"
   ],
   "steps": [
-   "Maintenance, closures, venue/resource emergency declare/end, owner review banner; Owner Password prompts."
+   "Maintenance, closures, venue/resource emergency declare/end, owner review banner; Owner Password prompts.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "AR checked."
@@ -1686,7 +1766,7 @@
   "folders": [
    "apps/venue-dashboard/src/features/operations/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S5-C1 — \"Dashboard: operations screens\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Venue Dashboard prototype\n\nDo:\n1. Maintenance, closures, venue/resource emergency declare/end, owner review banner; Owner Password prompts.\n\nDone when (write these as tests first where possible):\n- AR checked.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S5-C1 — \"Dashboard: operations screens\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Venue Dashboard prototype\n- FRS §3.2 (Venue Dashboard)\n- FRS F-18…F-21 (maintenance, venue emergency, resource outage, timer pause/resume)\n- FRS §4.9 (Maintenance, Emergencies and Operational Restrictions)\n- FRS §2.4 (Owner Password authorization)\n- arch 09 §4.2, §4.3\n\nDo:\n1. Maintenance, closures, venue/resource emergency declare/end, owner review banner; Owner Password prompts.\n\nDone when (write these as tests first where possible):\n- AR checked.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Every screen you add works in English and Arabic (RTL, CSS logical properties only).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-86": {
   "id": "S5-C2",
@@ -1694,10 +1774,15 @@
   "owner": "Abdallah",
   "what": "Admin: owner review, disable venue account, alerts inbox.",
   "read": [
-   "Platform Admin prototype"
+   "Platform Admin prototype",
+   "FRS §3.3 (Platform Admin)",
+   "FRS F-22, F-23, F-24 (owner review, venue account disable, attendance protection)",
+   "FRS §4.9, §4.14",
+   "arch 09 §5"
   ],
   "steps": [
-   "Owner review queue, venue account disable/enable, emergencies monitor, admin alerts inbox with acknowledge."
+   "Owner review queue, venue account disable/enable, emergencies monitor, admin alerts inbox with acknowledge.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "Reasons required where the API requires them."
@@ -1708,7 +1793,7 @@
    "apps/admin-web/src/features/emergencies/",
    "apps/admin-web/src/features/alerts/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S5-C2 — \"Admin: owner review, disable, alerts\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Platform Admin prototype\n\nDo:\n1. Owner review queue, venue account disable/enable, emergencies monitor, admin alerts inbox with acknowledge.\n\nDone when (write these as tests first where possible):\n- Reasons required where the API requires them.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S5-C2 — \"Admin: owner review, disable, alerts\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Platform Admin prototype\n- FRS §3.3 (Platform Admin)\n- FRS F-22, F-23, F-24 (owner review, venue account disable, attendance protection)\n- FRS §4.9, §4.14\n- arch 09 §5\n\nDo:\n1. Owner review queue, venue account disable/enable, emergencies monitor, admin alerts inbox with acknowledge.\n\nDone when (write these as tests first where possible):\n- Reasons required where the API requires them.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Platform Admin is English only (FRS §3.3).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-87": {
   "id": "S5-C3",
@@ -1716,10 +1801,16 @@
   "owner": "Abdallah",
   "what": "App: show emergency cancellations, pauses and refunds.",
   "read": [
-   "Spec v5 §52.2 operational codes"
+   "Spec v5 §52.2 operational codes",
+   "FRS §3.1 (Customer Mobile App)",
+   "FRS F-19, F-20, F-21 (emergencies and timer pause as the customer sees them)",
+   "FRS §4.9 (Operational Restrictions)",
+   "FRS §2.12 (notification matrix)",
+   "arch 09 §3.3"
   ],
   "steps": [
-   "Show operational cancellations, interruptions, paused timers and refunds using the codes."
+   "Show operational cancellations, interruptions, paused timers and refunds using the codes.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "Every operational code has a message."
@@ -1727,7 +1818,7 @@
   "folders": [
    "apps/customer/src/features/my-bookings/ (operational states)"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S5-C3 — \"Customer app: operational states\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Spec v5 §52.2 operational codes\n\nDo:\n1. Show operational cancellations, interruptions, paused timers and refunds using the codes.\n\nDone when (write these as tests first where possible):\n- Every operational code has a message.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S5-C3 — \"Customer app: operational states\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Spec v5 §52.2 operational codes\n- FRS §3.1 (Customer Mobile App)\n- FRS F-19, F-20, F-21 (emergencies and timer pause as the customer sees them)\n- FRS §4.9 (Operational Restrictions)\n- FRS §2.12 (notification matrix)\n- arch 09 §3.3\n\nDo:\n1. Show operational cancellations, interruptions, paused timers and refunds using the codes.\n\nDone when (write these as tests first where possible):\n- Every operational code has a message.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Customer app is English at launch, all text in the i18n resource files (FRS §3.1).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-88": {
   "id": "S6-P0",
@@ -1875,10 +1966,17 @@
   "owner": "Abdallah",
   "what": "App: browse, create, join and leave tournaments.",
   "read": [
-   "Customer App prototype"
+   "Customer App prototype",
+   "PCR-001 (participant ineligibility cause and capacity reservation)",
+   "FRS §3.1 (Customer Mobile App)",
+   "FRS F-25, F-27, F-28, F-29 (player-hosted tournament, checkpoint, start/completion, interruption)",
+   "FRS §4.10 (Tournaments)",
+   "FRS §2.2 (tournament transition matrix)",
+   "arch 09 §3.4"
   ],
   "steps": [
-   "Browse, create request, join, leave, status and cancellation messages."
+   "Browse, create request, join, leave, status and cancellation messages.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "Codes mapped."
@@ -1886,7 +1984,7 @@
   "folders": [
    "apps/customer/src/features/tournaments/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S6-C1 — \"Customer app: tournaments\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Customer App prototype\n\nDo:\n1. Browse, create request, join, leave, status and cancellation messages.\n\nDone when (write these as tests first where possible):\n- Codes mapped.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S6-C1 — \"Customer app: tournaments\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Customer App prototype\n- PCR-001 (participant ineligibility cause and capacity reservation)\n- FRS §3.1 (Customer Mobile App)\n- FRS F-25, F-27, F-28, F-29 (player-hosted tournament, checkpoint, start/completion, interruption)\n- FRS §4.10 (Tournaments)\n- FRS §2.2 (tournament transition matrix)\n- arch 09 §3.4\n\nDo:\n1. Browse, create request, join, leave, status and cancellation messages.\n\nDone when (write these as tests first where possible):\n- Codes mapped.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Customer app is English at launch, all text in the i18n resource files (FRS §3.1).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-96": {
   "id": "S6-C2",
@@ -1894,10 +1992,17 @@
   "owner": "Abdallah",
   "what": "Dashboard: tournament requests with sound, approve/reject, manage.",
   "read": [
-   "Venue Dashboard prototype"
+   "Venue Dashboard prototype",
+   "PCR-001 (participant ineligibility cause and capacity reservation)",
+   "FRS §3.2 (Venue Dashboard)",
+   "FRS F-25…F-29 (tournaments)",
+   "FRS §4.10 (Tournaments)",
+   "FRS §2.4 (Owner Password authorization)",
+   "arch 09 §4.1–§4.3"
   ],
   "steps": [
-   "Incoming tournament requests with audible alert + approve/reject, venue-hosted creation, participants view."
+   "Incoming tournament requests with audible alert + approve/reject, venue-hosted creation, participants view.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "AR checked."
@@ -1905,7 +2010,7 @@
   "folders": [
    "apps/venue-dashboard/src/features/tournaments/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S6-C2 — \"Dashboard: tournaments\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Venue Dashboard prototype\n\nDo:\n1. Incoming tournament requests with audible alert + approve/reject, venue-hosted creation, participants view.\n\nDone when (write these as tests first where possible):\n- AR checked.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S6-C2 — \"Dashboard: tournaments\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Venue Dashboard prototype\n- PCR-001 (participant ineligibility cause and capacity reservation)\n- FRS §3.2 (Venue Dashboard)\n- FRS F-25…F-29 (tournaments)\n- FRS §4.10 (Tournaments)\n- FRS §2.4 (Owner Password authorization)\n- arch 09 §4.1–§4.3\n\nDo:\n1. Incoming tournament requests with audible alert + approve/reject, venue-hosted creation, participants view.\n\nDone when (write these as tests first where possible):\n- AR checked.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Every screen you add works in English and Arabic (RTL, CSS logical properties only).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-97": {
   "id": "S6-C3",
@@ -1913,10 +2018,15 @@
   "owner": "Abdallah",
   "what": "Admin: tournaments list and cancel.",
   "read": [
-   "Platform Admin prototype"
+   "Platform Admin prototype",
+   "PCR-001 (participant ineligibility cause and capacity reservation)",
+   "FRS §3.3 (Platform Admin)",
+   "FRS §4.10 (Tournaments)",
+   "arch 09 §5"
   ],
   "steps": [
-   "Tournaments list/detail, admin cancel, abuse alerts."
+   "Tournaments list/detail, admin cancel, abuse alerts.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "—"
@@ -1924,7 +2034,7 @@
   "folders": [
    "apps/admin-web/src/features/tournaments/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S6-C3 — \"Admin: tournaments\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Platform Admin prototype\n\nDo:\n1. Tournaments list/detail, admin cancel, abuse alerts.\n\nDone when (write these as tests first where possible):\n- —\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S6-C3 — \"Admin: tournaments\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Platform Admin prototype\n- PCR-001 (participant ineligibility cause and capacity reservation)\n- FRS §3.3 (Platform Admin)\n- FRS §4.10 (Tournaments)\n- arch 09 §5\n\nDo:\n1. Tournaments list/detail, admin cancel, abuse alerts.\n\nDone when (write these as tests first where possible):\n- —\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Platform Admin is English only (FRS §3.3).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-98": {
   "id": "S7-P0",
@@ -2104,10 +2214,16 @@
   "owner": "Abdallah",
   "what": "App: reviews, report a review, delete account.",
   "read": [
-   "Compliance UI Addendum (authoritative)"
+   "Compliance UI Addendum (authoritative)",
+   "PCR-002 (Customer-Initiated Account Deletion)",
+   "PCR-003 (Customer Reporting of Reviews)",
+   "FRS F-01A (account deletion), F-36 (reviews)",
+   "FRS §4.13 (Reviews)",
+   "arch 09 §3.4"
   ],
   "steps": [
-   "Write/edit/delete review, report review, Delete Account flow."
+   "Write/edit/delete review, report review, Delete Account flow.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "Matches the addendum."
@@ -2116,7 +2232,7 @@
    "apps/customer/src/features/reviews/",
    "apps/customer/src/features/profile/ (delete account)"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S7-C1 — \"Customer app: reviews, reporting, delete account\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Compliance UI Addendum (authoritative)\n\nDo:\n1. Write/edit/delete review, report review, Delete Account flow.\n\nDone when (write these as tests first where possible):\n- Matches the addendum.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-C1 — \"Customer app: reviews, reporting, delete account\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Compliance UI Addendum (authoritative)\n- PCR-002 (Customer-Initiated Account Deletion)\n- PCR-003 (Customer Reporting of Reviews)\n- FRS F-01A (account deletion), F-36 (reviews)\n- FRS §4.13 (Reviews)\n- arch 09 §3.4\n\nDo:\n1. Write/edit/delete review, report review, Delete Account flow.\n\nDone when (write these as tests first where possible):\n- Matches the addendum.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Customer app is English at launch, all text in the i18n resource files (FRS §3.1).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-107": {
   "id": "S7-C2",
@@ -2125,10 +2241,16 @@
   "what": "Admin: moderate reviews, complete deletions, report screens.",
   "read": [
    "Compliance UI Addendum",
-   "A5"
+   "A5",
+   "PCR-002 (Customer-Initiated Account Deletion)",
+   "PCR-003 (Customer Reporting of Reviews)",
+   "FRS §3.3 (Platform Admin)",
+   "FRS §4.13, §4.16 (Reviews; Audit and Reporting, FR-AUD-11/12)",
+   "arch 09 §5"
   ],
   "steps": [
-   "Review moderation, reports queue, account deletion completion, FR-AUD-11/12 report screens."
+   "Review moderation, reports queue, account deletion completion, FR-AUD-11/12 report screens.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "—"
@@ -2138,7 +2260,7 @@
    "apps/admin-web/src/features/account-deletion/",
    "apps/admin-web/src/features/reports/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S7-C2 — \"Admin: moderation, deletion, reports\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Compliance UI Addendum\n- A5\n\nDo:\n1. Review moderation, reports queue, account deletion completion, FR-AUD-11/12 report screens.\n\nDone when (write these as tests first where possible):\n- —\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-C2 — \"Admin: moderation, deletion, reports\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Compliance UI Addendum\n- A5\n- PCR-002 (Customer-Initiated Account Deletion)\n- PCR-003 (Customer Reporting of Reviews)\n- FRS §3.3 (Platform Admin)\n- FRS §4.13, §4.16 (Reviews; Audit and Reporting, FR-AUD-11/12)\n- arch 09 §5\n\nDo:\n1. Review moderation, reports queue, account deletion completion, FR-AUD-11/12 report screens.\n\nDone when (write these as tests first where possible):\n- —\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Platform Admin is English only (FRS §3.3).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-108": {
   "id": "S7-C3",
@@ -2146,10 +2268,13 @@
   "owner": "Abdallah",
   "what": "Final Arabic pass on the dashboard and venue reviews page.",
   "read": [
-   "arch 11 §6"
+   "arch 11 §6",
+   "FRS §3.2 (Venue Dashboard: reviews are view-only)",
+   "FRS §4.13 (Reviews)"
   ],
   "steps": [
-   "Final AR pass across all modules; venue reviews view; notification sound/push settings."
+   "Final AR pass across all modules; venue reviews view; notification sound/push settings.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
   ],
   "done": [
    "Screenshot checklist."
@@ -2158,7 +2283,7 @@
    "apps/venue-dashboard/src/ (all features)",
    "apps/venue-dashboard/src/features/reviews/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S7-C3 — \"Dashboard: final RTL pass and reviews view\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 11 §6\n\nDo:\n1. Final AR pass across all modules; venue reviews view; notification sound/push settings.\n\nDone when (write these as tests first where possible):\n- Screenshot checklist.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-C3 — \"Dashboard: final RTL pass and reviews view\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 11 §6\n- FRS §3.2 (Venue Dashboard: reviews are view-only)\n- FRS §4.13 (Reviews)\n\nDo:\n1. Final AR pass across all modules; venue reviews view; notification sound/push settings.\n\nDone when (write these as tests first where possible):\n- Screenshot checklist.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-004) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Every screen you add works in English and Arabic (RTL, CSS logical properties only).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-109": {
   "id": "S7-C4",
