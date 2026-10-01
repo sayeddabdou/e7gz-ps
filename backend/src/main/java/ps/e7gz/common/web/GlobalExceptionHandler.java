@@ -22,7 +22,11 @@ import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.MissingPathVariableException;
+import org.springframework.web.bind.MissingRequestCookieException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MissingRequestValueException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
@@ -147,9 +151,17 @@ public class GlobalExceptionHandler {
         return validationFailed(List.of(e.getName()));
     }
 
+    /** A required parameter, header, path variable or cookie is absent: the field names it, as for an invalid one. */
     @ExceptionHandler(MissingRequestValueException.class)
     ResponseEntity<Object> missingValue(MissingRequestValueException e) {
-        return responses.coded(ApiErrorCode.VALIDATION_FAILED, null, Map.of());
+        String field = switch (e) {
+            case MissingServletRequestParameterException p -> p.getParameterName();
+            case MissingRequestHeaderException h -> h.getHeaderName();
+            case MissingPathVariableException v -> v.getVariableName();
+            case MissingRequestCookieException c -> c.getCookieName();
+            default -> null;
+        };
+        return responses.coded(ApiErrorCode.VALIDATION_FAILED, field, Map.of());
     }
 
     @ExceptionHandler({HttpMessageNotReadableException.class, HttpMediaTypeException.class,
