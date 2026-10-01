@@ -59,6 +59,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.context.WebApplicationContext;
@@ -198,7 +199,16 @@ class ErrorEnvelopeHttpTest extends IntegrationTest {
         assertThat(mismatch.status()).isEqualTo(400);
         assertThat(mismatch.body().path("error").path("field").asText()).isEqualTo("count");
 
-        assertThat(code(call(get(BASE + "/param")))).isEqualTo("VALIDATION_FAILED");
+        // A missing required input names itself in error.field, like an invalid one (arch 09 section 1.3).
+        Response missingParam = call(get(BASE + "/param"));
+        assertThat(missingParam.status()).isEqualTo(400);
+        assertThat(code(missingParam)).isEqualTo("VALIDATION_FAILED");
+        assertThat(missingParam.body().path("error").path("field").asText()).isEqualTo("count");
+        assertMatchesContract(missingParam.body(), "ErrorResponse");
+
+        Response missingHeader = call(get(BASE + "/header"));
+        assertThat(missingHeader.status()).isEqualTo(400);
+        assertThat(missingHeader.body().path("error").path("field").asText()).isEqualTo("X-Probe");
         assertThat(call(post(BASE + "/ok")).status()).as("method not supported").isEqualTo(400);
     }
 
@@ -549,6 +559,10 @@ class ErrorEnvelopeHttpTest extends IntegrationTest {
 
         @GetMapping("/param")
         void param(@RequestParam int count) {
+        }
+
+        @GetMapping("/header")
+        void header(@RequestHeader("X-Probe") String probe) {
         }
 
         @GetMapping("/boom")
