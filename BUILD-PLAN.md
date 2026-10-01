@@ -558,6 +558,12 @@ Do:
 Done when (write these as tests first where possible):
 - Flows work against the mock, then against the real backend once S0-P5/P6 merge.
 
+Carry-forward from the Sprint 0 review (do these too):
+- Venue Dashboard and Admin web: use the cookie session that E7-22 adds (PO decision 2 Oct 2026, Sprint 0 review S-4). The refresh token is an HttpOnly cookie the page never reads. Keep the access token in memory only, never in localStorage, sessionStorage or IndexedDB. On page load call refresh with credentials: 'include' to restore the session; logout calls the logout endpoint. Send the CSRF header E7-22 defines on refresh/logout.
+- Remove the placeholder token: delete VITE_API_ACCESS_TOKEN and AppConfig.accessToken from apps/venue-dashboard and apps/admin-web (config.ts, .env.example, tests). Vite builds every VITE_* value into the public JS bundle (Sprint 0 review S-12).
+- Customer app: unchanged. Tokens stay in the JSON body and in SecureStore.
+- Raise the timeout of the customer test 'Customer app shell › shows the four prototype tabs': it hit the 5 s Jest limit when CI was busy (Sprint 0 review).
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -581,6 +587,14 @@ Do:
 
 Done when (write these as tests first where possible):
 - Merged by day 2 so Clients can build against the mock while Engine/Platform implement.
+
+Carry-forward from the Sprint 0 review (do these too):
+- Most of Sprint 1's contract already exists: E7-11 added the 34 Sprint 1 operations as 501 stubs (packages/api-client/SPRINT-1-CONTRACT.md). Check what is missing against arch 09 instead of redoing it.
+- Web session cookie for VENUE and ADMIN (PO decision 2 Oct 2026, Sprint 0 review S-4): login and refresh put the refresh token in a cookie (HttpOnly; Secure; SameSite=Strict; Path=/api/v1/{venue|admin}/auth; Max-Age = that audience's refresh lifetime). The JSON body returns only accessToken. Refresh and logout read the cookie (no body) and clear it on logout or failure. The CUSTOMER audience is unchanged (JSON body, mobile).
+- CSRF protection for the cookie endpoints: refresh and logout require the request's Origin to be in the allowed list and a custom header (e.g. X-Requested-With: e7gz). Test both refusals.
+- CORS: allow exactly the configured Dashboard and Admin origins (e7gz.security.cors.allowed-origins, from the environment, no wildcard, credentials allowed only for those origins). Mobile customer routes need no CORS.
+- ApiSecurityConfig: add a last SecurityFilterChain that denies every request not matched by the /api/** and docs chains, so a future controller outside /api is never public by accident (Sprint 0 review S-15).
+- This changes the arch 09 section 2 token response for VENUE/ADMIN: regenerate OpenAPI, tell the Clients lane (E7-21), and ask the PO to record the change in arch 09.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -609,6 +623,10 @@ Do:
 Done when (write these as tests first where possible):
 - Tests for each allowed/forbidden status change and area deactivation refusal.
 
+Carry-forward from the Sprint 0 review (do these too):
+- First Platform Admin (bootstrap): add a one-off, audited way to create the first admin (e.g. a command run with the worker profile) that takes the email and reads the password from the secret store or stdin, hashes it with the existing Argon2id PasswordEncoder, and refuses if any admin already exists. Never put a default admin or password in code, config or a migration. (PO decision 2 Oct 2026: no admin MFA at launch.)
+- Database rights (PO decision 2 Oct 2026, Sprint 0 review S-6): the public API's role must not be able to write admin accounts. New migration V<yyyyMMddHHmm>__admin_account_grants.sql plus an update to R__security_baseline.sql: revoke INSERT/UPDATE on iam.admin_account (and every other admin-owned table: list them from the .dbm) from e7gz_app_runtime. Move admin login reads (admin/internal/AdminLoginAccounts) to the admin DataSource. Add a test that e7gz_app_runtime cannot INSERT or UPDATE iam.admin_account. This item may update docs/04-erd/physical (.dbm, security baseline, change report) as CLAUDE.md section 5 requires; the PO reviews it.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -635,6 +653,9 @@ Do:
 
 Done when (write these as tests first where possible):
 - Tests: wrong password audited + rate limited; no session "unlock" exists.
+
+Carry-forward from the Sprint 0 review (do these too):
+- Password-hashing overload guard (Sprint 0 review S-2): every Argon2id hash and verify (login, registration, Owner Password, later password reset) uses 64 MiB, so a flood can exhaust memory. Put them all behind one bounded gate in identity (e.g. a Semaphore, permits configurable, default 4 per instance). A request that gets no permit within about 2 s fails with 429 RATE_LIMITED, and nothing is written. Test: permits + 1 concurrent hashes, one is refused.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -1050,6 +1071,10 @@ Carry-forward from E7-13 (do these too):
 - Move the OTP SMS from identity CustomerRegistration's direct post-commit call to an outbox row written in the same command transaction and delivered by the dispatcher.
 - The OTP code must never be stored in plain text in outbox_event.payload (arch 10 §2.2). Get the PO decision before coding: (a) the row carries only the otp_challenge id and the dispatcher generates the code (needs a schema change: code_hash is immutable after insert), or (b) the code is encrypted in the payload with a secret-store key and cleared after dispatch.
 
+Carry-forward from the Sprint 0 review (do these too):
+- SMS 'log' provider safety (Sprint 0 review S-1): today a deploy without E7GZ_SMS_PROVIDER starts normally and writes every OTP to the log. Remove the default ('log') from application.yml and refuse to start when e7gz.sms.provider=log unless the active profile is local or test. Test both cases.
+- LoggingSmsSender: mask the phone number (keep the last 3 digits, arch 10 section 6), even in development.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -1408,6 +1433,11 @@ Do:
 Done when (write these as tests first where possible):
 - SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR produces an alert with the full payload.
 
+Carry-forward from the Sprint 0 review (do these too):
+- Alert on refresh-token reuse: when AuthSessions.refresh detects a reused rotated token (today only log.warn), raise an admin alert (arch 10 section 2.3: 'revokes the entire chain and alerts'). Sprint 0 review S-9.
+- Alert when an account reaches the per-account login limit added by E7-57.
+- Audit Platform Admin and Venue Account login success and failure with the AuditWriter: account id when known, audience and outcome only, never the identifier, the password or the IP in clear. If no alert or audit catalogue code fits, ask the PO before adding one.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -1433,6 +1463,12 @@ Done when (write these as tests first where possible):
 
 Carry-forward from E7-13 (do these too):
 - Password reset and change use the same rule as registration: identity PasswordPolicy.isAcceptable (VALIDATION RULES §2.1: at least 8 characters, at least one letter and one digit; 400 VALIDATION_FAILED on field password).
+
+Carry-forward from the Sprint 0 review (do these too):
+- Replace unverified registrations (PO decision 2 Oct 2026, Sprint 0 review S-3): when someone registers with a phone or username held by an account that was never phone-verified, the old account is replaced (phone and username released, its OTP challenges superseded, its refresh tokens revoked) and the new registration goes ahead. A verified account still returns PHONE_TAKEN / USERNAME_TAKEN. uq_user_account_phone_e164 covers unverified rows today, and anonymisation is an admin-only producer. If this needs a schema or function change, make it a new migration + .dbm + change report for PO review (CLAUDE.md section 5). Test: registering on an unverified phone succeeds, and the old account can no longer log in.
+- Verifying through resend sets a new password: a phone verification that started from /otp/send (by phone, without the registration's own challenge) must include a new password in the same request (PasswordPolicy). It sets the password and revokes every refresh token of that account, so an account someone else created with your phone cannot be kept by them. Contract change: regenerate OpenAPI and tell the Clients lane.
+- Per-account login limit (PO decision 2 Oct 2026, Sprint 0 review S-7): in addition to the existing per (identifier + IP) limit, count failed logins per account across all IPs: 50 failures in 1 hour pause login for that account for 15 minutes (iam.security_rate_limit_counter, limiter_type LOGIN, its own action_class such as CUSTOMER_ACCOUNT / VENUE_ACCOUNT / ADMIN_ACCOUNT, cooldown_until; no schema change, but note the new action_class values in the change report). All three audiences. Fails closed like the existing limiter. E7-56 raises the alert.
+- Password reset and change hash through the Argon2id gate from E7-24.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2416,6 +2452,10 @@ Do:
 Done when (write these as tests first where possible):
 - Alert rule fires in a staging drill.
 
+Carry-forward from the Sprint 0 review (do these too):
+- Log redaction (NFR-21, arch 10 section 6, Sprint 0 review S-10): JSON logs with a field redaction allowlist, plus the required unit test that no field named like a credential (password, token, otp, secret, authorization, ...) survives serialization; phone numbers masked to the last 3 digits.
+- Correlation ID from the internet (Sprint 0 review S-13): today any client's X-Correlation-Id is reused for audit and outbox rows, so an attacker can mix their records into another flow's trail. Generate the ID server-side for every public request and log the client's value as a separate field (or accept it only from the trusted edge).
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2443,6 +2483,13 @@ Carry-forward from E7-13 (do these too):
 - Set a per-IP rate limit on the public auth endpoints (/api/v1/customer/auth/**) at the load balancer (arch 10 §7): it protects the SMS credit from abuse.
 - Open the /actuator/health liveness and readiness probes (arch 12 §1) in ApiSecurityConfig; all of /actuator/** is denied now.
 - Add a backup SMS provider behind the SmsSender interface (arch 12 §6.5, risk R8).
+
+Carry-forward from the Sprint 0 review (do these too):
+- Extend the per-IP rate limit at the load balancer to /api/v1/venue/auth/** and /api/v1/admin/auth/** as well as /api/v1/customer/auth/** (Sprint 0 review S-2).
+- Security headers for the Dashboard and Admin at the CDN/edge (arch 10 section 6, Sprint 0 review S-4): HSTS (max-age at least 1 year, includeSubDomains), Content-Security-Policy (default-src 'self'; connect-src the API origin; frame-ancestors 'none'), X-Content-Type-Options: nosniff, Referrer-Policy: strict-origin-when-cross-origin. HSTS on the API too. Set E7GZ_CORS_ALLOWED_ORIGINS per environment (E7-22).
+- Real client IP (Sprint 0 review S-8): set server.forward-headers-strategy with the load balancer as the only trusted proxy, so request.getRemoteAddr() is the client's IP and a spoofed X-Forwarded-For is ignored. Test it on staging.
+- Do this first, as soon as staging exists (Sprint 0 review S-11): prove the migrations run on the chosen managed PostgreSQL. Flyway uses SET ROLE postgres and V1 creates postgis/btree_gist, but managed databases give no superuser. If ownership must change, raise it with the PO.
+- CI security scanning (Sprint 0 review S-14): Dependabot (Gradle + pnpm), CodeQL (Java + TypeScript), gitleaks secret scan, pnpm audit --prod and a Gradle dependency vulnerability check; fail on high or critical.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2631,6 +2678,9 @@ Do:
 Done when (write these as tests first where possible):
 - Internal testers can install the app.
 
+Carry-forward from the Sprint 0 review (do these too):
+- Release builds (Sprint 0 review S-17): Android usesCleartextTraffic=false, iOS App Transport Security with no exceptions, and an https API base URL only.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2658,6 +2708,9 @@ Carry-forward from E7-13 (do these too):
 - Check the SMS Misr result codes (identity SmsMisrSmsSender.RESULT_CODES, success 4901) against SMS Misr's official API document.
 - Confirm with the PO: customer phone numbers are limited to Egyptian mobiles (010/011/012/015; identity PhoneNumbers).
 - Confirm with the Engine lane: eligibility category A for the account commands (register, send OTP, verify phone), which have no Venue in scope.
+
+Carry-forward from the Sprint 0 review (do these too):
+- Re-confirm two accepted risks from the Sprint 0 review (PO, 2 Oct 2026): (1) no MFA for Platform Admin at launch (S-5); (2) registration and resend reveal whether a phone is registered, accepted for MVP and slowed by the per-IP limit (S-16).
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
