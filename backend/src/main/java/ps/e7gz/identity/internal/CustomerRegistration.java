@@ -88,18 +88,17 @@ public class CustomerRegistration {
         return challengeId;
     }
 
-    /** Checks the code; on success the account is Account Verified (FR-ACC-02). */
-    public void verifyPhone(UUID challengeId, String code) {
+    /** Checks the code; on success the account is Account Verified (FR-ACC-02). Returns the verified User. */
+    public UUID verifyPhone(UUID challengeId, String code) {
         UUID userId = challengeOwner(challengeId)
                 .orElseThrow(() -> new ApiException(ApiErrorCode.OTP_INVALID, "code"));
-        switch (runner.run(new VerifyPhoneCommand(userId, challengeId, code))) {
-            case VERIFIED -> {
-            }
+        return switch (runner.run(new VerifyPhoneCommand(userId, challengeId, code))) {
+            case VERIFIED -> userId;
             case INVALID -> throw new ApiException(ApiErrorCode.OTP_INVALID, "code");
             case EXPIRED -> throw new ApiException(ApiErrorCode.OTP_EXPIRED, "code");
             case ATTEMPTS_EXCEEDED -> throw new ApiException(ApiErrorCode.OTP_ATTEMPTS_EXCEEDED, "code");
             case ACCOUNT_DELETED -> throw new ApiException(ApiErrorCode.ACCOUNT_DELETED);
-        }
+        };
     }
 
     private static String e164(String phone) {
