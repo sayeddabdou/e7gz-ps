@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Base64;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -176,7 +177,18 @@ class CustomerRegistrationHttpTest extends IntegrationTest {
     void theRightCodeVerifiesThePhone() throws Exception {
         Account a = registered();
 
-        verify(a.challengeId(), a.code()).andExpect(status().isNoContent());
+        JsonNode body = verify(a.challengeId(), a.code()).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString().transform(this::read);
+
+        // E7-14, arch 09 section 2: verification answers 200 {accessToken, refreshToken} - a customer session.
+        String accessToken = body.path("data").path("accessToken").asText();
+        String refreshToken = body.path("data").path("refreshToken").asText();
+        assertThat(body.path("meta").path("correlationId").asText()).isNotEmpty();
+        JsonNode claims = json.readTree(Base64.getUrlDecoder().decode(accessToken.split("\\.")[1]));
+        assertThat(claims.path("sub").asText()).isEqualTo(a.userId().toString());
+        assertThat(claims.path("typ").asText()).isEqualTo("CUSTOMER");
+        assertThat(db.sql("SELECT subject_id FROM iam.auth_refresh_token WHERE token_hash = :hash AND revoked_at IS NULL")
+                .param("hash", Sha256.hex(refreshToken)).query(UUID.class).single()).isEqualTo(a.userId());
 
         Map<String, Object> user = db.sql(
                         "SELECT phone_verified, phone_verified_at, email_verified FROM iam.user_account WHERE id = :id")
@@ -186,6 +198,18 @@ class CustomerRegistrationHttpTest extends IntegrationTest {
         assertThat(user.get("email_verified")).as("email never activates").isEqualTo(false);
         assertThat(db.sql("SELECT consumed_at IS NOT NULL FROM iam.otp_challenge WHERE id = :id")
                 .param("id", a.challengeId()).query(Boolean.class).single()).isTrue();
+    }
+
+    @Test
+    void aFailedVerificationStartsNoSession() throws Exception {
+        Account a = registered();
+
+        verify(a.challengeId(), wrong(a.code()))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.data").doesNotExist());
+
+        assertThat(db.sql("SELECT count(*) FROM iam.auth_refresh_token WHERE subject_id = :id")
+                .param("id", a.userId()).query(Integer.class).single()).isZero();
     }
 
     @Test
@@ -229,7 +253,7 @@ class CustomerRegistrationHttpTest extends IntegrationTest {
     @Test
     void aUsedCodeCannotBeUsedAgain() throws Exception {
         Account a = registered();
-        verify(a.challengeId(), a.code()).andExpect(status().isNoContent());
+        verify(a.challengeId(), a.code()).andExpect(status().isOk());
 
         verify(a.challengeId(), a.code())
                 .andExpect(status().isUnprocessableEntity())
@@ -248,7 +272,7 @@ class CustomerRegistrationHttpTest extends IntegrationTest {
         verify(old, "111111")
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error.code").value("OTP_INVALID"));
-        verify(fresh, sms.lastCode.get(phone)).andExpect(status().isNoContent());
+        verify(fresh, sms.lastCode.get(phone)).andExpect(status().isOk());
     }
 
     @Test
@@ -298,7 +322,7 @@ class CustomerRegistrationHttpTest extends IntegrationTest {
                 .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
 
         Account a = registered();
-        verify(a.challengeId(), a.code()).andExpect(status().isNoContent());
+        verify(a.challengeId(), a.code()).andExpect(status().isOk());
         sendOtp(a.phone())
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
