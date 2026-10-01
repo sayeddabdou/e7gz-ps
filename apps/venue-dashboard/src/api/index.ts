@@ -4,10 +4,14 @@ import type { AppConfig } from "../config";
 
 export type ApiClient = ReturnType<typeof createApiClient>;
 
-export function createDashboardApiClient(config: AppConfig, fetch?: ApiClientOptions["fetch"]): ApiClient {
+export function createDashboardApiClient(
+  config: AppConfig,
+  getAccessToken?: ApiClientOptions["getAccessToken"],
+  fetch?: ApiClientOptions["fetch"],
+): ApiClient {
   return createApiClient({
     baseUrl: config.apiBaseUrl,
-    getAccessToken: () => config.accessToken,
+    ...(getAccessToken ? { getAccessToken } : {}),
     ...(fetch ? { fetch } : {}),
   });
 }

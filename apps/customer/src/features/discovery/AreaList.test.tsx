@@ -56,10 +56,10 @@ describe("AreaList", () => {
 
 describe("config", () => {
   it("requires EXPO_PUBLIC_API_BASE_URL instead of guessing a backend", () => {
-    expect(readConfig(undefined)).toEqual({ ok: false, missing: ["EXPO_PUBLIC_API_BASE_URL"] });
+    expect(readConfig("")).toEqual({ ok: false, missing: ["EXPO_PUBLIC_API_BASE_URL"] });
     expect(readConfig(" http://10.0.2.2:4010 ")).toEqual({ ok: true, config: { apiBaseUrl: "http://10.0.2.2:4010" } });
 
-    render(<App config={readConfig(undefined)} />);
+    render(<App config={readConfig("")} />);
     expect(screen.getByText("Missing configuration: EXPO_PUBLIC_API_BASE_URL")).toBeTruthy();
   });
 });

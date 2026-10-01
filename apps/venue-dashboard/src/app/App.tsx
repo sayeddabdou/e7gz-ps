@@ -4,6 +4,7 @@ import { BrowserRouter, NavLink, Navigate, Route, Routes } from "react-router-do
 import { createDashboardApiClient } from "../api";
 import type { ConfigResult } from "../config";
 import { ResourceList } from "../features/setup/ResourceList";
+import { createVenueSessionApi, VenueLoginScreen, type VenueSessionApi } from "../features/auth";
 import { directionOf, messages, MessagesContext, type Language, type Messages } from "../i18n";
 
 const languageStorageKey = "e7gz.venue.language";
@@ -89,15 +90,27 @@ const styles = {
 } satisfies Record<string, CSSProperties>;
 
 function ProtectedShell({
+  accessToken,
   config,
   direction,
+  onAccessToken,
+  onUnauthenticated,
+  session,
   t,
 }: {
+  accessToken: string;
   config: Extract<ConfigResult, { ok: true }>;
   direction: "ltr" | "rtl";
+  onAccessToken: (accessToken: string) => void;
+  onUnauthenticated: () => void;
+  session: VenueSessionApi;
   t: Messages;
 }) {
-  const api = useMemo(() => createDashboardApiClient(config.config), [config]);
+  const api = useMemo(() => createDashboardApiClient(
+    config.config,
+    () => accessToken,
+    (request) => session.withRefresh(request, onAccessToken, onUnauthenticated),
+  ), [accessToken, config, onAccessToken, onUnauthenticated, session]);
 
   return (
     <main dir={direction} style={styles.shell}>
@@ -148,18 +161,48 @@ export function App({
   preferredLanguage?: Language;
 }) {
   const [language, setLanguage] = useState<Language>(() => preferredLanguage ?? readStoredLanguage() ?? "en");
+  const [accessToken, setAccessToken] = useState<string>();
+  const [restoringSession, setRestoringSession] = useState(config.ok);
+  const [loggingOut, setLoggingOut] = useState(false);
   const t = messages[language];
   const direction = directionOf(language);
+  const apiBaseUrl = config.ok ? config.config.apiBaseUrl : undefined;
+  const session = useMemo(() => apiBaseUrl ? createVenueSessionApi(apiBaseUrl) : undefined, [apiBaseUrl]);
 
   useEffect(() => {
     document.documentElement.lang = language;
     document.documentElement.dir = direction;
   }, [language, direction]);
 
+  useEffect(() => {
+    if (!session) return undefined;
+    let active = true;
+    void session.refresh()
+      .then((result) => {
+        if (active && result.ok) setAccessToken(result.accessToken);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) setRestoringSession(false);
+      });
+    return () => { active = false; };
+  }, [session]);
+
   const toggleLanguage = () => {
     const nextLanguage = language === "en" ? "ar" : "en";
     setLanguage(nextLanguage);
     saveLanguage(nextLanguage);
+  };
+
+  const logout = async () => {
+    if (!session) return;
+    setLoggingOut(true);
+    try {
+      await session.logout();
+    } finally {
+      setAccessToken(undefined);
+      setLoggingOut(false);
+    }
   };
 
   return (
@@ -171,6 +214,7 @@ export function App({
             <button type="button" onClick={toggleLanguage}>
               {t.switchLanguage}
             </button>
+            {accessToken ? <button disabled={loggingOut} type="button" onClick={() => void logout()}>{loggingOut ? t.auth.loggingOut : t.auth.logout}</button> : null}
           </header>
           {!config.ok ? (
             <main dir={direction} style={styles.alert}>
@@ -178,13 +222,20 @@ export function App({
                 {t.configMissing} <code>{config.missing.join(", ")}</code>
               </p>
             </main>
-          ) : !config.config.accessToken ? (
-            <main dir={direction} style={styles.alert}>
-              <h2>{t.authRequiredTitle}</h2>
-              <p>{t.authRequiredDescription}</p>
-            </main>
+          ) : restoringSession ? (
+            <main dir={direction} style={styles.alert}><p role="status">{t.auth.restoring}</p></main>
+          ) : !accessToken ? (
+            <VenueLoginScreen apiBaseUrl={config.config.apiBaseUrl} language={language} onAuthenticated={setAccessToken} />
           ) : (
-            <ProtectedShell config={config} direction={direction} t={t} />
+            <ProtectedShell
+              accessToken={accessToken}
+              config={config}
+              direction={direction}
+              onAccessToken={setAccessToken}
+              onUnauthenticated={() => setAccessToken(undefined)}
+              session={session!}
+              t={t}
+            />
           )}
         </div>
       </BrowserRouter>

@@ -1,9 +1,10 @@
-import { useMemo, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { logicalSpacing, webTokens } from "@e7gz/tokens/web";
 import { BrowserRouter, NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { createAdminApiClient } from "../api";
 import type { ConfigResult } from "../config";
 import { AreaList } from "../features/areas/AreaList";
+import { AdminLoginScreen, createAdminSessionApi, type AdminSessionApi } from "../features/auth";
 import { messages as t } from "../i18n/messages";
 
 const modules = [
@@ -67,8 +68,24 @@ const styles = {
   },
 } satisfies Record<string, CSSProperties>;
 
-function ProtectedShell({ config }: { config: Extract<ConfigResult, { ok: true }> }) {
-  const api = useMemo(() => createAdminApiClient(config.config), [config]);
+function ProtectedShell({
+  accessToken,
+  config,
+  onAccessToken,
+  onUnauthenticated,
+  session,
+}: {
+  accessToken: string;
+  config: Extract<ConfigResult, { ok: true }>;
+  onAccessToken: (accessToken: string) => void;
+  onUnauthenticated: () => void;
+  session: AdminSessionApi;
+}) {
+  const api = useMemo(() => createAdminApiClient(
+    config.config,
+    () => accessToken,
+    (request) => session.withRefresh(request, onAccessToken, onUnauthenticated),
+  ), [accessToken, config, onAccessToken, onUnauthenticated, session]);
 
   return (
     <main style={styles.shell}>
@@ -104,11 +121,43 @@ function ProtectedShell({ config }: { config: Extract<ConfigResult, { ok: true }
 }
 
 export function App({ config }: { config: ConfigResult }) {
+  const [accessToken, setAccessToken] = useState<string>();
+  const [restoringSession, setRestoringSession] = useState(config.ok);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const apiBaseUrl = config.ok ? config.config.apiBaseUrl : undefined;
+  const session = useMemo(() => apiBaseUrl ? createAdminSessionApi(apiBaseUrl) : undefined, [apiBaseUrl]);
+
+  useEffect(() => {
+    if (!session) return undefined;
+    let active = true;
+    void session.refresh()
+      .then((result) => {
+        if (active && result.ok) setAccessToken(result.accessToken);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) setRestoringSession(false);
+      });
+    return () => { active = false; };
+  }, [session]);
+
+  const logout = async () => {
+    if (!session) return;
+    setLoggingOut(true);
+    try {
+      await session.logout();
+    } finally {
+      setAccessToken(undefined);
+      setLoggingOut(false);
+    }
+  };
+
   return (
     <BrowserRouter>
       <div style={styles.frame}>
         <header style={styles.header}>
           <h1 style={styles.brand}>{t.appTitle}</h1>
+          {accessToken ? <button disabled={loggingOut} type="button" onClick={() => void logout()}>{loggingOut ? t.auth.loggingOut : t.auth.logout}</button> : null}
         </header>
         {!config.ok ? (
           <main style={styles.content}>
@@ -116,13 +165,18 @@ export function App({ config }: { config: ConfigResult }) {
               {t.configMissing} <code>{config.missing.join(", ")}</code>
             </p>
           </main>
-        ) : !config.config.accessToken ? (
-          <main style={styles.content}>
-            <h2>{t.authRequiredTitle}</h2>
-            <p>{t.authRequiredDescription}</p>
-          </main>
+        ) : restoringSession ? (
+          <main style={styles.content}><p role="status">{t.auth.restoring}</p></main>
+        ) : !accessToken ? (
+          <AdminLoginScreen apiBaseUrl={config.config.apiBaseUrl} onAuthenticated={setAccessToken} />
         ) : (
-          <ProtectedShell config={config} />
+          <ProtectedShell
+            accessToken={accessToken}
+            config={config}
+            onAccessToken={setAccessToken}
+            onUnauthenticated={() => setAccessToken(undefined)}
+            session={session!}
+          />
         )}
       </div>
     </BrowserRouter>
