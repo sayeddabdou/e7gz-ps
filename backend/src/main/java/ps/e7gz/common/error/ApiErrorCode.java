@@ -76,6 +76,8 @@ public enum ApiErrorCode {
     VENUE_ACCOUNT_ALREADY_EXISTS(422),
     /** FR-VEN-07: the venue's current marketplace status does not allow this change. PO decision 2 Oct 2026 (E7-22). */
     MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED(422),
+    /** FR-ADM-02: an activity removed from a venue still has rooms, prices or availability. PO decision 2 Oct 2026. */
+    VENUE_ACTIVITY_IN_USE(422),
     /** PCR-005: the photo is not JPEG, PNG or WebP, or is too large. PO decision 2 Oct 2026. */
     VENUE_IMAGE_NOT_ACCEPTED(422),
     /** PCR-005: the venue already has the maximum number of visible photos. PO decision 2 Oct 2026. */

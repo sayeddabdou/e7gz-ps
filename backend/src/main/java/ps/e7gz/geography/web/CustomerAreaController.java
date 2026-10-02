@@ -10,7 +10,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import ps.e7gz.common.web.DataResponse;
-import ps.e7gz.common.web.NotImplementedYet;
+import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.geography.internal.Areas;
 
 /** Customer discovery: the active areas (arch 09 §3.2, FR-VEN-12). Public — no access token (§1.2). */
 @RestController
@@ -18,10 +19,19 @@ import ps.e7gz.common.web.NotImplementedYet;
 @Tag(name = "customer-discovery")
 public class CustomerAreaController {
 
+    private final Areas areas;
+    private final ResponseMetaFactory meta;
+
+    public CustomerAreaController(Areas areas, ResponseMetaFactory meta) {
+        this.areas = areas;
+        this.meta = meta;
+    }
+
     @GetMapping
     @Operation(operationId = "customerListAreas", summary = "Active areas (FR-VEN-12)")
     public DataResponse<List<CustomerAreaView>> list() {
-        throw NotImplementedYet.stub();
+        return meta.data(areas.active().stream()
+                .map(area -> new CustomerAreaView(area.id(), area.name(), area.nameAr())).toList());
     }
 
     /** An active area as the customer sees it. Names are stored data, returned as stored (FR-VEN-40). */

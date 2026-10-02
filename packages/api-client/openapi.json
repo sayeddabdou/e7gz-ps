@@ -510,6 +510,7 @@
           "VENUE_LOGIN_IDENTIFIER_TAKEN",
           "VENUE_ACCOUNT_ALREADY_EXISTS",
           "MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED",
+          "VENUE_ACTIVITY_IN_USE",
           "VENUE_IMAGE_NOT_ACCEPTED",
           "VENUE_IMAGE_LIMIT_REACHED",
           "VENUE_IMAGE_NOT_UPLOADED",
@@ -6967,7 +6968,8 @@
                           "properties": {
                             "code": {
                               "enum": [
-                                "AREA_INACTIVE"
+                                "AREA_INACTIVE",
+                                "VENUE_ACTIVITY_IN_USE"
                               ],
                               "type": "string"
                             }
@@ -6987,7 +6989,7 @@
                 }
               }
             },
-            "description": "error.code: AREA_INACTIVE",
+            "description": "error.code: AREA_INACTIVE | VENUE_ACTIVITY_IN_USE",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {
