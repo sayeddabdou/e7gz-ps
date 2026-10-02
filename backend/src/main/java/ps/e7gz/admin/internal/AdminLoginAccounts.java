@@ -3,9 +3,11 @@ package ps.e7gz.admin.internal;
 import java.util.Optional;
 import java.util.UUID;
 import javax.sql.DataSource;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import ps.e7gz.common.codes.AuthSubjectType;
+import ps.e7gz.common.persistence.DataSourceConfig;
 import ps.e7gz.common.security.ActiveSubjectCheck;
 import ps.e7gz.identity.api.LoginAccountDirectory;
 
@@ -13,14 +15,17 @@ import ps.e7gz.identity.api.LoginAccountDirectory;
  * Platform Admin identity ({@code iam.admin_account}) for Identity's login and the per-request access check (arch 10
  * section 2.1, section 2.3). Only an active admin may log in or keep using its tokens. Reads only: passwords are
  * verified and tokens issued by Identity.
+ *
+ * <p>Reads on the admin-runtime connection: the public API's role ({@code e7gz_app_runtime}) cannot read admin
+ * e-mails or password hashes (E7-23, Sprint 0 review S-6).
  */
 @Component
 class AdminLoginAccounts implements LoginAccountDirectory, ActiveSubjectCheck {
 
     private final JdbcClient jdbc;
 
-    AdminLoginAccounts(DataSource appDataSource) {
-        this.jdbc = JdbcClient.create(appDataSource);
+    AdminLoginAccounts(@Qualifier(DataSourceConfig.ADMIN_DATA_SOURCE) DataSource adminDataSource) {
+        this.jdbc = JdbcClient.create(adminDataSource);
     }
 
     @Override

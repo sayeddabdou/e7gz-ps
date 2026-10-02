@@ -20,6 +20,16 @@ public sealed interface CommandScope {
         return new Admin(adminId, correlationId, lockSet);
     }
 
+    /**
+     * The one-off creation of the first Platform Admin (Sprint 0 review S-5, E7-23). No admin exists yet, so
+     * {@code admin.begin_command} cannot run: the transaction opens on the admin-runtime connection, takes a transaction
+     * advisory lock that serialises concurrent bootstraps, and samples the command instant from the database. Use it for
+     * nothing else.
+     */
+    static CommandScope firstAdminBootstrap() {
+        return FirstAdminBootstrap.INSTANCE;
+    }
+
     record Shared(LockSet lockSet) implements CommandScope {
 
         public Shared {
@@ -38,6 +48,16 @@ public sealed interface CommandScope {
                     || !lockSet.newTournaments().isEmpty()) {
                 throw new IllegalArgumentException("admin.begin_command locks only Users and Venues");
             }
+        }
+    }
+
+    /** See {@link #firstAdminBootstrap()}. Locks nothing through {@code begin_command}. */
+    enum FirstAdminBootstrap implements CommandScope {
+        INSTANCE;
+
+        @Override
+        public LockSet lockSet() {
+            return LockSet.empty();
         }
     }
 }

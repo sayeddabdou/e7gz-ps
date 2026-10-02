@@ -4,6 +4,7 @@ import jakarta.servlet.DispatcherType;
 import java.util.Arrays;
 import java.util.stream.Stream;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -40,6 +41,8 @@ import ps.e7gz.common.web.SecurityErrorHandlers;
  * Anything outside {@code /api/**} and the docs paths falls through to a last chain that denies it (Sprint 0 review
  * S-15), so a controller added outside {@code /api} is never public by accident.
  */
+// Only in a servlet web application: the admin-bootstrap profile (E7-23) runs without a web server.
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @Configuration(proxyBeanMethods = false)
 public class ApiSecurityConfig {
 

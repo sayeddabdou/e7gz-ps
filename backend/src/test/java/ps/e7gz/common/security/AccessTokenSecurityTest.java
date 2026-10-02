@@ -76,7 +76,7 @@ class AccessTokenSecurityTest extends IntegrationTest {
         db = JdbcClient.create(appDataSource);
         customerId = TestCustomers.insert(db, false, "x").id();
         venueId = TestAccounts.venue(db, "venue-" + UUID.randomUUID(), "x");
-        adminId = TestAccounts.admin(db, "admin-" + UUID.randomUUID() + "@example.com", "x");
+        adminId = TestAccounts.admin("admin-" + UUID.randomUUID() + "@example.com", "x");
     }
 
     // ------------------------------------------------------------------------------------------------ the token
@@ -167,7 +167,7 @@ class AccessTokenSecurityTest extends IntegrationTest {
     @Test
     void anInactiveAdminIsRefusedAtOnce() throws Exception {
         String token = accessTokens.issue(AuthSubjectType.ADMIN, adminId);
-        TestAccounts.setAdminActive(db, adminId, false);
+        TestAccounts.setAdminActive(adminId, false);
 
         probe(AuthSubjectType.ADMIN, token).andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("UNAUTHENTICATED"));
