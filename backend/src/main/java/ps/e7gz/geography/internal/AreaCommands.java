@@ -62,9 +62,9 @@ final class AreaCommands {
         }
     }
 
-    /** Renames or moves the centroid; a null field is left unchanged. */
-    record Update(UUID adminId, UUID correlationId, UUID areaId, String name, String nameAr, Coordinates centroid)
-            implements Command<Area> {
+    /** Renames or moves the centroid; a null field is left unchanged, the remove flags clear the optional values. */
+    record Update(UUID adminId, UUID correlationId, UUID areaId, String name, String nameAr, boolean removeNameAr,
+                  Coordinates centroid, boolean removeCentroid) implements Command<Area> {
 
         @Override
         public EligibilityCategory eligibilityCategory() {
@@ -81,9 +81,10 @@ final class AreaCommands {
             int updated = context.jdbc().sql("""
                             UPDATE geo.area
                                SET name = COALESCE(:name, name),
-                                   name_ar = COALESCE(:nameAr, name_ar),
+                                   name_ar = %s,
                                    centroid = %s
-                             WHERE id = :id""".formatted(centroid == null ? "centroid" : Coordinates.SQL_POINT))
+                             WHERE id = :id""".formatted(removeNameAr ? "NULL" : "COALESCE(:nameAr, name_ar)",
+                            removeCentroid ? "NULL" : centroid == null ? "centroid" : Coordinates.SQL_POINT))
                     .param("id", areaId).param("name", name).param("nameAr", nameAr)
                     .param("lat", centroid == null ? null : centroid.lat())
                     .param("lng", centroid == null ? null : centroid.lng()).update();

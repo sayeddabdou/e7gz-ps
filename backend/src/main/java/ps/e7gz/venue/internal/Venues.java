@@ -18,6 +18,7 @@ import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.geo.Coordinates;
+import ps.e7gz.common.validation.TextFields;
 import ps.e7gz.geography.api.AreaLookup;
 
 /** Venues for the Platform Admin: onboarding, venue information and marketplace status (FR-ADM-02, FR-VEN-07). */
@@ -103,8 +104,8 @@ public class Venues {
             requireArea(changes.areaId());
         }
         return runner.run(new VenueCommands.Update(adminId, CorrelationId.require(), venueId, changes.areaId(),
-                blankToNull(changes.name()), blankToNull(changes.address()), changes.location(),
-                blankToNull(changes.phone()),
+                TextFields.optional(changes.name(), "name"), TextFields.optional(changes.address(), "address"),
+                changes.location(), TextFields.optional(changes.phone(), "phone"),
                 changes.activities() == null ? null : activities(changes.activities())));
     }
 
@@ -136,10 +137,6 @@ public class Venues {
         if (!areas.exists(areaId)) {
             throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "areaId");
         }
-    }
-
-    private static String blankToNull(String value) {
-        return value == null || value.isBlank() ? null : value.strip();
     }
 
     static String encodeCursor(UUID id) {

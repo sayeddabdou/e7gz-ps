@@ -65,8 +65,9 @@ public class AdminAreaController {
     public DataResponse<AdminAreaView> update(@AuthenticationPrincipal AuthenticatedSubject admin,
                                               @PathVariable UUID areaId, @Valid @RequestBody AdminAreaUpdateRequest request) {
         GeoPoint c = request.centroid();
-        return meta.data(AdminAreaView.of(areas.update(admin.id(), areaId, request.name(), request.nameAr(),
-                c == null ? null : c.toCoordinates())));
+        return meta.data(AdminAreaView.of(areas.update(admin.id(), areaId, new Areas.AreaChanges(request.name(),
+                request.nameAr(), Boolean.TRUE.equals(request.removeNameAr()), c == null ? null : c.toCoordinates(),
+                Boolean.TRUE.equals(request.removeCentroid())))));
     }
 
     @PostMapping("/{areaId}/activate")
@@ -107,11 +108,16 @@ public class AdminAreaController {
             @Valid GeoPoint centroid) {
     }
 
-    /** Only the fields sent change. */
+    /**
+     * Only the fields sent change. A field that is sent must not be blank. {@code removeNameAr} / {@code removeCentroid}
+     * clear the optional values; sending a value together with its remove flag is {@code VALIDATION_FAILED}.
+     */
     @Schema(name = "AdminAreaUpdateRequest")
     public record AdminAreaUpdateRequest(
             @Schema(example = "Nasr City") String name,
             @Schema(example = "مدينة نصر") String nameAr,
-            @Valid GeoPoint centroid) {
+            @Valid GeoPoint centroid,
+            @Schema(description = "true removes the Arabic name", example = "false") Boolean removeNameAr,
+            @Schema(description = "true removes the centroid", example = "false") Boolean removeCentroid) {
     }
 }

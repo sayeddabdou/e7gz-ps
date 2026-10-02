@@ -641,7 +641,7 @@ Read only these docs for this task:
 
 Do:
 1. Admin API: areas (create, deactivate — DB refuses if venues are ACTIVE/SUSPENDED), venues (create in ONBOARDING, edit profile, location as PostGIS point).
-2. Marketplace status changes ONBOARDING → ACTIVE/INACTIVE/SUSPENDED and between the three; never back to ONBOARDING (DB enforces; map the error).
+2. Marketplace status changes: complete onboarding moves ONBOARDING → INACTIVE and is the only status action while ONBOARDING (PO decisions 28 Sep and 2 Oct 2026); after that ACTIVE / INACTIVE / SUSPENDED switch freely; never back to ONBOARDING (DB enforces; map the error).
 3. Venue images to SeaweedFS/S3 with signed GET URLs.
 
 Done when (write these as tests first where possible):
@@ -651,7 +651,7 @@ Done when (write these as tests first where possible):
 
 Carry-forward from the Sprint 0 review (do these too):
 - First Platform Admin (bootstrap): add a one-off, audited way to create the first admin (e.g. a command run with the worker profile) that takes the email and reads the password from the secret store or stdin, hashes it with the existing Argon2id PasswordEncoder, and refuses if any admin already exists. Never put a default admin or password in code, config or a migration. (PO decision 2 Oct 2026: no admin MFA at launch.)
-- Database rights (PO decision 2 Oct 2026, Sprint 0 review S-6): the public API's role must not be able to write admin accounts. New migration V<yyyyMMddHHmm>__admin_account_grants.sql plus an update to R__security_baseline.sql: revoke INSERT/UPDATE on iam.admin_account (and every other admin-owned table: list them from the .dbm) from e7gz_app_runtime. Move admin login reads (admin/internal/AdminLoginAccounts) to the admin DataSource. Add a test that e7gz_app_runtime cannot INSERT or UPDATE iam.admin_account. This item may update docs/04-erd/physical (.dbm, security baseline, change report) as CLAUDE.md section 5 requires; the PO reviews it.
+- Database rights (PO decision 2 Oct 2026, Sprint 0 review S-6): the public API's role must not be able to write admin accounts. Put the grant change in R__security_baseline.sql (and its docs copy), not a separate migration, because the baseline re-applies every grant after each migration (PO decision 2 Oct 2026, PR #15): revoke INSERT/UPDATE on iam.admin_account (and every other admin-owned table: list them from the .dbm) from e7gz_app_runtime. Move admin login reads (admin/internal/AdminLoginAccounts) to the admin DataSource. Add a test that e7gz_app_runtime cannot INSERT or UPDATE iam.admin_account. This item may update docs/04-erd/physical (.dbm, security baseline, change report) as CLAUDE.md section 5 requires; the PO reviews it.
 
 Carry-forward from E7-22 (do these too):
 - Contract from E7-22 (packages/api-client/SPRINT-1-CONTRACT.md section 4, arch 09 section 5): implement GET /admin/venues/{venueId} ({venue, venueAccount or null}) and POST /admin/venues/{venueId}/activate, /deactivate, /suspend with {reason}. onboarding/complete is ONBOARDING -> INACTIVE only.

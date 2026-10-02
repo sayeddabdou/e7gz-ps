@@ -112,6 +112,16 @@
           "nameAr": {
             "example": "مدينة نصر",
             "type": "string"
+          },
+          "removeCentroid": {
+            "description": "true removes the centroid",
+            "example": false,
+            "type": "boolean"
+          },
+          "removeNameAr": {
+            "description": "true removes the Arabic name",
+            "example": false,
+            "type": "boolean"
           }
         },
         "type": "object"

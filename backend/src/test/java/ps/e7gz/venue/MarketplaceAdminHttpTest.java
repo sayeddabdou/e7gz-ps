@@ -140,6 +140,47 @@ class MarketplaceAdminHttpTest extends IntegrationTest {
     }
 
     @Test
+    void anAreasArabicNameAndCentroidCanBeRemoved() throws Exception {
+        UUID area = data(call(post("/api/v1/admin/areas"), Map.of(
+                "name", "Area " + UUID.randomUUID(), "nameAr", "منطقة", "centroid", Map.of("lat", LAT, "lng", LNG)))
+                .andExpect(status().isCreated())).path("id").traverse(json).readValueAs(UUID.class);
+
+        JsonNode cleared = data(call(patch("/api/v1/admin/areas/" + area),
+                Map.of("removeNameAr", true, "removeCentroid", true)).andExpect(status().isOk()));
+
+        assertThat(cleared.path("nameAr").isNull()).isTrue();
+        assertThat(cleared.path("centroid").isNull()).isTrue();
+    }
+
+    @Test
+    void aValueTogetherWithItsRemoveFlagIsRefused() throws Exception {
+        UUID area = area(true);
+        call(patch("/api/v1/admin/areas/" + area), Map.of("nameAr", "x", "removeNameAr", true))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("removeNameAr"));
+        call(patch("/api/v1/admin/areas/" + area),
+                Map.of("centroid", Map.of("lat", LAT, "lng", LNG), "removeCentroid", true))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("removeCentroid"));
+    }
+
+    /** A field that is sent must not be blank: "" is a client mistake, not "leave it unchanged". */
+    @Test
+    void blankTextOnAnEditIsRefusedAndChangesNothing() throws Exception {
+        UUID area = area(true);
+        call(patch("/api/v1/admin/areas/" + area), Map.of("name", " "))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("name"));
+
+        UUID venue = venue(area, "ONBOARDING");
+        for (String field : List.of("name", "address", "phone")) {
+            call(patch("/api/v1/admin/venues/" + venue), Map.of(field, ""))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"))
+                    .andExpect(jsonPath("$.error.field").value(field));
+        }
+        assertThat(owner.sql("SELECT name FROM venue.venue WHERE id = :id").param("id", venue)
+                .query(String.class).single()).isEqualTo("Venue " + venue);
+    }
+
+    @Test
     void anUnknownAreaIsNotFound() throws Exception {
         call(post("/api/v1/admin/areas/" + UUID.randomUUID() + "/deactivate"), null)
                 .andExpect(status().isNotFound()).andExpect(jsonPath("$.error.code").value("NOT_FOUND"));

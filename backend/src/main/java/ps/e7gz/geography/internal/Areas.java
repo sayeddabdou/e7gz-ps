@@ -8,7 +8,10 @@ import org.springframework.stereotype.Service;
 import ps.e7gz.audit.api.AuditWriter;
 import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.correlation.CorrelationId;
+import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.geo.Coordinates;
+import ps.e7gz.common.validation.TextFields;
 import ps.e7gz.geography.api.AreaLookup;
 
 /** Areas for the Platform Admin and for customer discovery (FR-VEN-12, FR-VEN-47; arch 09 sections 3.2 and 5). */
@@ -43,20 +46,28 @@ public class Areas implements AreaLookup {
     }
 
     public Area create(UUID adminId, String name, String nameAr, Coordinates centroid) {
-        return runner.run(new AreaCommands.Create(adminId, CorrelationId.require(), name.strip(), blankToNull(nameAr),
-                centroid));
+        return runner.run(new AreaCommands.Create(adminId, CorrelationId.require(), name.strip(),
+                TextFields.optional(nameAr, "nameAr"), centroid));
     }
 
-    public Area update(UUID adminId, UUID areaId, String name, String nameAr, Coordinates centroid) {
-        return runner.run(new AreaCommands.Update(adminId, CorrelationId.require(), areaId, blankToNull(name),
-                blankToNull(nameAr), centroid));
+    /** What an area edit changes; null means unchanged, the remove flags clear the optional values. */
+    public record AreaChanges(String name, String nameAr, boolean removeNameAr, Coordinates centroid,
+                              boolean removeCentroid) {
+    }
+
+    public Area update(UUID adminId, UUID areaId, AreaChanges changes) {
+        if (changes.removeNameAr() && changes.nameAr() != null) {
+            throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "removeNameAr");
+        }
+        if (changes.removeCentroid() && changes.centroid() != null) {
+            throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "removeCentroid");
+        }
+        return runner.run(new AreaCommands.Update(adminId, CorrelationId.require(), areaId,
+                TextFields.optional(changes.name(), "name"), TextFields.optional(changes.nameAr(), "nameAr"),
+                changes.removeNameAr(), changes.centroid(), changes.removeCentroid()));
     }
 
     public Area setActive(UUID adminId, UUID areaId, boolean active) {
         return runner.run(new AreaCommands.SetActive(adminId, CorrelationId.require(), areaId, active, audit));
-    }
-
-    private static String blankToNull(String value) {
-        return value == null || value.isBlank() ? null : value.strip();
     }
 }

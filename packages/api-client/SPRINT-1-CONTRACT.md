@@ -129,3 +129,4 @@ No API change: venue create/edit still sends `location: {lat, lng}`. The Platfor
 - An unknown `areaId` in a venue body is `VALIDATION_FAILED` with `error.field = areaId`; an inactive one is `AREA_INACTIVE`.
 - Area `activate` / `deactivate` on an area already in that state changes nothing (200, no audit row).
 - Audited: venue status changes (reason, previous and new status) and area activate/deactivate. Area and venue create/edit are not audited.
+- `PATCH /admin/areas/{id}` and `PATCH /admin/venues/{id}`: a field left out is unchanged; a text field that is sent must not be blank (`VALIDATION_FAILED`, `error.field` = that field). An area's optional values are cleared with `removeNameAr: true` / `removeCentroid: true`; sending a value together with its remove flag is `VALIDATION_FAILED` on the flag.
