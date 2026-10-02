@@ -133,3 +133,10 @@ No API change: venue create/edit still sends `location: {lat, lng}`. The Platfor
 - Area names are unique (trimmed, case-insensitive): create or rename to a taken name is `AREA_NAME_TAKEN` (422). Area name / Arabic name and venue name / address are at most 200 characters.
 - Venue `phone` accepts an Egyptian mobile (010/011/012/015) or landline written with `0`, `20`, `+20` or `0020` (spaces, dashes and brackets ignored) and is stored and returned as E.164 (`+20…`); anything else is `VALIDATION_FAILED` on `phone`.
 - `GET /admin/venues` is ordered newest first (creation time, then id), so editing a venue never moves it between cursor pages.
+
+### 5.4 PO decisions, 3 Oct 2026
+
+- `Idempotency-Key` is required only on booking-, commitment- and money/points-moving writes (arch 09 §1.2); admin area and venue writes do not take it.
+- The admin may edit an ACTIVE venue's address, pin or area while bookings exist; customers see the new details, no notification at launch.
+- Venue names need not be unique (branches of a chain); area names are unique.
+- Venue photos: signed view links last 1 hour, upload links 10 minutes; customers get resized copies without GPS/EXIF (see PCR-005).

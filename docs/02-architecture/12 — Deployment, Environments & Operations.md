@@ -111,9 +111,13 @@ HikariCP, sized so that **(api replicas × pool) + (worker replicas × pool) + h
 | Use | **venue images only** (`FR-ADM-02`); nothing transactional |
 | Provider | any S3-compatible bucket, behind the `ObjectStore` port |
 | Upload | signed `PUT` issued by the API after validating content type and size; the client uploads directly, then calls `confirm`, which checks the stored object and sets `uploaded_at` (PCR-005, arch 09 §4.2 / §5). Unconfirmed photos are never shown |
-| Download | signed `GET` with a short TTL, served through the CDN |
+| Download | signed `GET`, valid **1 hour**; at launch straight from storage, the CDN added in E7-101 (PO decision 3 Oct 2026). Customers get only the processed copies (below) |
 | Keys | `venues/{venueId}/{imageId}.{ext}` — opaque, non-enumerable |
 | Metadata | `venue_image` rows in PostgreSQL; the bucket holds bytes only |
+| Upload link | signed `PUT`, valid **10 minutes** (PO decision 3 Oct 2026) |
+| Processing | a worker job makes a small (venue card) and a medium (Venue Details) copy and removes GPS/EXIF metadata; originals are kept (PO decision 3 Oct 2026) |
+| Clean-up | a nightly job removes uploads not confirmed within 24 hours (never shown) |
+| Buckets | created automatically for local development (E7-23 PR 3); staging and production in E7-101 |
 | Retention | originals retained; removing a photo (Platform Admin, or the venue with the Owner Password — PCR-005) sets `removed_at` and hides it; it is audited and never hard-deleted |
 | Backup | versioning enabled; cross-region replication where the provider offers it |
 

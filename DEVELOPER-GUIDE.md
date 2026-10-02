@@ -323,7 +323,7 @@ Jira statuses: **To Do → In Progress → Done**. A task is *In Progress* from 
 2. **Sayed** protects `main` on GitHub (Settings → Branches: require PR, 1 approval, passing checks) and adds Amr and Abdallah as collaborators.
 3. **Amr and Abdallah** clone once: `git clone <repo-url>`.
 4. From now on nobody commits to `main` directly — every task is its own branch (below).
-5. **Abdallah** sets up his free AI tool once — `AI-HELPERS.md`.
+5. **Abdallah** uses his free AI tool with the context bundle: `node tools/ai-context/bundle.mjs E7-xx` (CLAUDE.md rules + the task in one file).
 
 Visual version with each person's tasks: `team-map.html` (open it in a browser) or the shared Team Map link.
 
@@ -333,7 +333,7 @@ Visual version with each person's tasks: `team-map.html` (open it in a browser) 
 1. Jira: assign yourself, move to In Progress.
 2. git switch main && git pull
    git switch -c E7-46-online-booking            # E7-<key>-<short-name>
-3. Open Claude Code (Sayed, Amr) or Gemini CLI (Abdallah — see AI-HELPERS.md) in the repo root. Paste the task's prompt from Jira.
+3. Open Claude Code (Sayed, Amr) or Gemini CLI (Abdallah — with `node tools/ai-context/bundle.mjs E7-xx`) in the repo root. Paste the task's prompt from Jira.
 4. Let it work. Answer its questions. If it asks a PRODUCT question, ask Sayed — never guess.
 5. Review the diff yourself (git diff main). You must understand every line you push.
 6. Run the checks:  cd backend && ./gradlew check     |    pnpm -r lint typecheck build

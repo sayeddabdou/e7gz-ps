@@ -16,7 +16,7 @@
 3. **Frontend one sprint behind.** Sayed and Amr build the backend of sprint N while Abdallah builds the screens for sprint N−1 on the real, finished API. Each sprint's `P0` task (Sayed) still publishes the endpoints as stubs by day 2, so the contract is fixed early. Changes to a merged contract are announced in the daily sync.
 4. **Tests first** from each task's *Done when*; boundary tests use the shared clock tooling.
 5. **Day 1 of Sprint 0:** Sayed runs S0-P1 (E7-9), pushes the skeleton to GitHub, and the others clone it.
-6. **Abdallah works with free AI tools** — see `AI-HELPERS.md` (Gemini CLI + `AGENTS.md`, or the context bundle for browser chats).
+6. **Abdallah works with free AI tools** — Gemini CLI or a browser chat, with the context bundle `node tools/ai-context/bundle.mjs E7-xx` (CLAUDE.md rules + the task).
 7. **Branch per Jira task, small PRs, one reviewer, green CI** (CLAUDE.md §6). Lanes can be swapped between people — only the Jira assignee changes.
 
 ## How to use a task
@@ -669,6 +669,13 @@ Delivery (PO decision 2 Oct 2026): this task ships as three PRs, merged in order
 - PR 3 (branch E7-23-venue-photos): venue photos — ObjectStore + S3 adapter, the venue_image migration, the admin /images routes.
 - Each PR passes ./gradlew check on its own and is reviewed separately; do one PR at a time, in this order.
 
+PO decisions 3 Oct 2026 — venue photos (PR 3, do these too):
+- Signed upload links last 10 minutes, view links 1 hour (configuration).
+- A worker job makes a small (venue card) and a medium (Venue Details) copy of each confirmed photo and strips GPS/EXIF metadata; customers and the admin list get only these copies; the original is kept.
+- JPEG, PNG and WebP only (web uploads; the browser converts iPhone photos). Customers never upload photos.
+- A nightly job removes uploads not confirmed within 24 hours (object and row state; never shown).
+- No CDN at launch: serve straight from storage with signed links. Create the local bucket automatically (docker compose / app start-up in the local profile); staging and production buckets are E7-101.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -953,6 +960,8 @@ Read only these docs for this task:
 - arch 09 §3.2
 - ADR-019 (PostGIS KNN)
 - NFR-11
+- FR-DIS-03, FR-DIS-09, FR-DIS-11
+- PCR-005 (venue photos)
 
 Do:
 1. Venue list with filters (area, activity), KNN distance ordering, Nearest Availability from the projection; venue detail.
@@ -960,6 +969,10 @@ Do:
 
 Done when (write these as tests first where possible):
 - p95 < 1 s on the perf seed (S1-P6) — test recorded in CI as a non-blocking report.
+
+PO decisions 3 Oct 2026 (do these too):
+- Venue photos (FR-DIS-03, FR-DIS-11, PCR-005): the card imageUrl is the first visible photo's small copy, Venue Details imageUrls are the medium copies in the venue's order; take the signed URLs (valid 1 hour) from the venue module's photo service in venue/api (E7-23). A venue without photos has imageUrl null and imageUrls [].
+- The venue phone is never in a customer discovery or Venue Details response: it opens only when a booking becomes PENDING (FR-DIS-09). Keep it out of every Customer* DTO.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -1008,6 +1021,9 @@ Carry-forward from E7-22 (do these too):
 
 PO decisions 2 Oct 2026 — venue location and photos (do these too):
 - Venue photos section in venue setup (PCR-005). The prototype has no photo screen: build it in the existing Dashboard design (tokens + components), EN + AR. List the photos in order and mark the first one as the venue-card photo. Add: pick a file -> POST /venue/images -> PUT the bytes to uploadUrl -> POST .../confirm with the Owner Password prompt. Reorder: one save with the Owner Password. Remove: Owner Password; say it hides the photo. Show upload progress, failure and retry. Map VENUE_IMAGE_NOT_ACCEPTED, VENUE_IMAGE_LIMIT_REACHED, VENUE_IMAGE_NOT_UPLOADED and OWNER_PASSWORD_INVALID through the error-code map; the server decides the limits (the file picker may filter to JPEG/PNG/WebP). Show images only from the signed URLs the API returns.
+
+PO decisions 3 Oct 2026 (do these too):
+- Error text: write the on-screen text for every new error code you map (English and Arabic) in the error-code map; the Product Owner approves it in your PR. Never take text from the backend.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -1104,6 +1120,9 @@ PO decisions 2 Oct 2026 — venue location and photos (do these too):
 - Venue activities editor: saving sends the full list and replaces the venue's activities (at least one). Map the new code VENUE_ACTIVITY_IN_USE (an activity that still has rooms or prices cannot be removed) and VALIDATION_FAILED on field areaId (unknown area) through the error-code map.
 - Areas and venues API details (PO decisions 2 Oct 2026, E7-23 PR 2): area names are unique - map AREA_NAME_TAKEN; name, Arabic name and address fields are at most 200 characters; the venue phone accepts an Egyptian mobile or landline and comes back as +20... (show VALIDATION_FAILED on phone); the venue list is newest first; an area's Arabic name and centroid are removed with removeNameAr / removeCentroid (PATCH); blank text in an edit is VALIDATION_FAILED on that field.
 
+PO decisions 3 Oct 2026 (do these too):
+- Error text: write the on-screen text for every new error code you map (English) in the error-code map; the Product Owner approves it in your PR. Never take text from the backend.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -1123,6 +1142,7 @@ Read only these docs for this task:
 - FRS §3.1 (Customer Mobile App)
 - FRS F-02 (discovery and venue details), F-03 (Find Available)
 - FRS §4.2 (Discovery and Browsing)
+- FR-DIS-09 (venue phone visibility)
 
 Do:
 1. Venue list with distance and next-available, map view, filters, venue detail with activities and prices.
@@ -1138,6 +1158,10 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 - Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.
 - Customer app is English at launch, all text in the i18n resource files (FRS §3.1).
 - In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.
+
+PO decisions 3 Oct 2026 (do these too):
+- Venue photos: show the card image (imageUrl) on the list and map preview and the gallery (imageUrls) on Venue Details; show a placeholder when there is none. The URLs expire after 1 hour, so reload them with the screen data, never cache them for longer.
+- Never show a venue phone in discovery or Venue Details; it appears only on a booking once it is PENDING (FR-DIS-09).
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2841,6 +2865,10 @@ Carry-forward from the Sprint 0 review (do these too):
 - Real client IP (Sprint 0 review S-8): set server.forward-headers-strategy with the load balancer as the only trusted proxy, so request.getRemoteAddr() is the client's IP and a spoofed X-Forwarded-For is ignored. Test it on staging.
 - Do this first, as soon as staging exists (Sprint 0 review S-11): prove the migrations run on the chosen managed PostgreSQL. Flyway uses SET ROLE postgres and V1 creates postgis/btree_gist, but managed databases give no superuser. If ownership must change, raise it with the PO.
 - CI security scanning (Sprint 0 review S-14): Dependabot (Gradle + pnpm), CodeQL (Java + TypeScript), gitleaks secret scan, pnpm audit --prod and a Gradle dependency vulnerability check; fail on high or critical.
+
+Carry-forward from E7-23 (PO decisions 3 Oct 2026, do these too):
+- Create the venue-photo buckets for staging and production (private, versioning on) and their access keys in the secret store.
+- Put venue photos behind the CDN (arch 12 §2); signed view links stay valid 1 hour.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
