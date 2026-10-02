@@ -663,6 +663,12 @@ PO decisions 2 Oct 2026 — venue location and photos (do these too):
 - Migration (PCR-005): V<yyyyMMddHHmm>__venue_image_upload_and_removal.sql adds uploaded_at and removed_at (timestamptz, nullable) to venue.venue_image; update the .dbm and the change report in docs/04-erd/physical; the PO reviews it.
 - Venue location: store it with ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography (longitude first) and read it back the same way.
 
+Delivery (PO decision 2 Oct 2026): this task ships as three PRs, merged in order:
+- PR 1 (branch E7-23-admin-grants-bootstrap): the Sprint 0 review carry-forward — admin_account grants migration + R__security_baseline update, admin login reads on the admin DataSource, the first-admin bootstrap command (password from stdin, or from an environment variable when there is no terminal).
+- PR 2 (branch E7-23-areas-venues-status): areas, venues with location, marketplace status changes and the E7-22 carry-forward.
+- PR 3 (branch E7-23-venue-photos): venue photos — ObjectStore + S3 adapter, the venue_image migration, the admin /images routes.
+- Each PR passes ./gradlew check on its own and is reviewed separately; do one PR at a time, in this order.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
