@@ -96,6 +96,8 @@ The test scripts connect with `psql -h /tmp -p 5499 -U postgres`; change the `P=
 
 ### v1.1.29 — admin tables closed to the public API's role (E7-23, 2 Oct 2026)
 
+**Reviewed and approved by the Product Owner, 2 Oct 2026:** the grant change, the trigger change (approved for the Engine lane as well), and keeping the grants in the security baseline instead of a versioned migration.
+
 Sprint 0 review S-6, Product Owner decision 2 Oct 2026. Two parts:
 
 1. **Grants** in `E7GZ-PS-security-baseline-v1.1.27.sql` and its Flyway copy `R__security_baseline.sql`. The `.dbm` holds no grants, and the baseline re-applies after every migration, so the revokes live there (a versioned migration would be undone by the next baseline run).
