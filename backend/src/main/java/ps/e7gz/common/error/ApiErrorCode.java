@@ -70,6 +70,8 @@ public enum ApiErrorCode {
     REVIEW_REPORT_ALREADY_OPEN(422),
     AREA_HAS_ACTIVE_VENUES(422),
     AREA_INACTIVE(422),
+    /** FR-VEN-12: another area already has this name (trimmed, case-insensitive). PO decision 2 Oct 2026. */
+    AREA_NAME_TAKEN(422),
     /** FR-ADM-02, FR-VEN-01: another venue account has this login identifier. PO decision 2 Oct 2026 (E7-22). */
     VENUE_LOGIN_IDENTIFIER_TAKEN(422),
     /** FR-VEN-01: the venue already has its one shared account. PO decision 2 Oct 2026 (E7-22). */

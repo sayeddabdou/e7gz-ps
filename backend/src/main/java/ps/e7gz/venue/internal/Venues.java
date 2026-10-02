@@ -19,6 +19,7 @@ import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.geo.Coordinates;
 import ps.e7gz.common.validation.TextFields;
+import ps.e7gz.common.validation.VenuePhones;
 import ps.e7gz.geography.api.AreaLookup;
 
 /** Venues for the Platform Admin: onboarding, venue information and marketplace status (FR-ADM-02, FR-VEN-07). */
@@ -60,16 +61,17 @@ public class Venues {
     }
 
     /**
-     * All venues in any marketplace status, by name. The cursor is the opaque id of the last venue of the previous
-     * page (arch 09 section 1.2).
+     * All venues in any marketplace status, newest first (then by id). The cursor is the opaque id of the last venue of
+     * the previous page (arch 09 section 1.2); creation time never changes, so editing a venue cannot move it between
+     * pages (PO decision 2 Oct 2026).
      */
     public Page list(String cursor, Integer limit) {
         int size = limit == null ? DEFAULT_PAGE_SIZE : limit;
         UUID after = cursor == null || cursor.isBlank() ? null : decodeCursor(cursor);
         List<Venue> rows = jdbc.sql(Venue.SELECT + "\n" + """
                          WHERE CAST(:after AS uuid) IS NULL
-                            OR (v.name, v.id) > (SELECT c.name, c.id FROM venue.venue c WHERE c.id = :after)
-                         ORDER BY v.name, v.id
+                            OR (v.created_at, v.id) < (SELECT c.created_at, c.id FROM venue.venue c WHERE c.id = :after)
+                         ORDER BY v.created_at DESC, v.id DESC
                          LIMIT :limit""")
                 .param("after", after).param("limit", size + 1).query(Venue::map).list();
         boolean more = rows.size() > size;
@@ -94,7 +96,7 @@ public class Venues {
     public Venue create(UUID adminId, NewVenue venue) {
         requireArea(venue.areaId());
         return runner.run(new VenueCommands.Create(adminId, CorrelationId.require(), venue.areaId(),
-                venue.name().strip(), venue.address().strip(), venue.location(), venue.phone().strip(),
+                venue.name().strip(), venue.address().strip(), venue.location(), phone(venue.phone()),
                 activities(venue.activities())));
     }
 
@@ -105,7 +107,7 @@ public class Venues {
         }
         return runner.run(new VenueCommands.Update(adminId, CorrelationId.require(), venueId, changes.areaId(),
                 TextFields.optional(changes.name(), "name"), TextFields.optional(changes.address(), "address"),
-                changes.location(), TextFields.optional(changes.phone(), "phone"),
+                changes.location(), changes.phone() == null ? null : phone(changes.phone()),
                 changes.activities() == null ? null : activities(changes.activities())));
     }
 
@@ -113,6 +115,11 @@ public class Venues {
         requireVenue(venueId);
         return runner.run(new VenueCommands.ChangeStatus(adminId, CorrelationId.require(), venueId, action,
                 reason.strip(), audit));
+    }
+
+    /** The venue phone in E.164 form; anything else is VALIDATION_FAILED on {@code phone}. */
+    private static String phone(String raw) {
+        return VenuePhones.toE164(raw).orElseThrow(() -> new ApiException(ApiErrorCode.VALIDATION_FAILED, "phone"));
     }
 
     /** A venue offers at least one activity (FR-ADM-02 onboarding covers activities). */

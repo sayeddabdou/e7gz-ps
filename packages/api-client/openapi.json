@@ -87,11 +87,14 @@
           },
           "name": {
             "example": "Nasr City",
-            "minLength": 1,
+            "maxLength": 200,
+            "minLength": 0,
             "type": "string"
           },
           "nameAr": {
             "example": "مدينة نصر",
+            "maxLength": 200,
+            "minLength": 0,
             "type": "string"
           }
         },
@@ -107,10 +110,14 @@
           },
           "name": {
             "example": "Nasr City",
+            "maxLength": 200,
+            "minLength": 0,
             "type": "string"
           },
           "nameAr": {
             "example": "مدينة نصر",
+            "maxLength": 200,
+            "minLength": 0,
             "type": "string"
           },
           "removeCentroid": {
@@ -351,7 +358,8 @@
           },
           "address": {
             "example": "12 Abbas El Akkad St, Nasr City",
-            "minLength": 1,
+            "maxLength": 200,
+            "minLength": 0,
             "type": "string"
           },
           "areaId": {
@@ -364,10 +372,12 @@
           },
           "name": {
             "example": "Level Up Lounge",
-            "minLength": 1,
+            "maxLength": 200,
+            "minLength": 0,
             "type": "string"
           },
           "phone": {
+            "description": "Egyptian mobile (010/011/012/015) or landline, with 0, 20, +20 or 0020; stored and returned as +20...",
             "example": "+201001234567",
             "minLength": 1,
             "type": "string"
@@ -442,6 +452,8 @@
           },
           "address": {
             "example": "12 Abbas El Akkad St, Nasr City",
+            "maxLength": 200,
+            "minLength": 0,
             "type": "string"
           },
           "areaId": {
@@ -453,9 +465,12 @@
           },
           "name": {
             "example": "Level Up Lounge",
+            "maxLength": 200,
+            "minLength": 0,
             "type": "string"
           },
           "phone": {
+            "description": "Egyptian mobile (010/011/012/015) or landline, with 0, 20, +20 or 0020; stored and returned as +20...",
             "example": "+201001234567",
             "type": "string"
           }
@@ -517,6 +532,7 @@
           "REVIEW_REPORT_ALREADY_OPEN",
           "AREA_HAS_ACTIVE_VENUES",
           "AREA_INACTIVE",
+          "AREA_NAME_TAKEN",
           "VENUE_LOGIN_IDENTIFIER_TAKEN",
           "VENUE_ACCOUNT_ALREADY_EXISTS",
           "MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED",
@@ -2951,6 +2967,49 @@
               }
             }
           },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "AREA_NAME_TAKEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: AREA_NAME_TAKEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "429": {
             "content": {
               "application/json": {
@@ -3248,6 +3307,49 @@
               }
             },
             "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "AREA_NAME_TAKEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: AREA_NAME_TAKEN",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {
@@ -6148,7 +6250,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "All venues, any marketplace status",
+        "summary": "All venues, any marketplace status, newest first",
         "tags": [
           "admin-venues"
         ]

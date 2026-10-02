@@ -1,5 +1,7 @@
 package ps.e7gz.venue.internal;
 
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -73,12 +75,13 @@ final class VenueCommands {
             UUID id = UUID.randomUUID();
             context.jdbc().sql("""
                             INSERT INTO venue.venue (id, area_id, name, address, location, marketplace_status,
-                                                     timezone, phone)
-                            VALUES (:id, :area, :name, :address, %s, 'ONBOARDING', :timezone, :phone)"""
+                                                     timezone, phone, created_at)
+                            VALUES (:id, :area, :name, :address, %s, 'ONBOARDING', :timezone, :phone, :createdAt)"""
                             .formatted(Coordinates.SQL_POINT))
                     .param("id", id).param("area", areaId).param("name", name).param("address", address)
                     .param("lat", location.lat()).param("lng", location.lng()).param("timezone", TIMEZONE)
-                    .param("phone", phone).update();
+                    .param("phone", phone)
+                    .param("createdAt", OffsetDateTime.ofInstant(context.commandNow(), ZoneOffset.UTC)).update();
             replaceActivities(context, id, activities);
             return read(context, id);
         }

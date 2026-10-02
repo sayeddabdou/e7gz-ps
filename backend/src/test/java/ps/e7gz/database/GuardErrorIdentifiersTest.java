@@ -107,11 +107,12 @@ class GuardErrorIdentifiersTest {
         psql("CREATE DATABASE " + UPGRADE_DB + " TEMPLATE template0");
         psql("CREATE DATABASE " + FRESH_DB + " TEMPLATE template0");
 
-        // An existing v1.1.27 database, then upgraded.
+        // An existing v1.1.27 database, then upgraded by exactly this migration (later migrations change the schema on
+        // purpose and are checked by their own tests).
         flyway(UPGRADE_DB).target(MigrationVersion.fromVersion("1")).load().migrate();
         v1State = functionStates(UPGRADE_DB);
         v1Structure = structure(UPGRADE_DB);
-        flyway(UPGRADE_DB).load().migrate();
+        flyway(UPGRADE_DB).target(MigrationVersion.fromVersion("202609291200")).load().migrate();
         upgradedState = functionStates(UPGRADE_DB);
         upgradedStructure = structure(UPGRADE_DB);
 

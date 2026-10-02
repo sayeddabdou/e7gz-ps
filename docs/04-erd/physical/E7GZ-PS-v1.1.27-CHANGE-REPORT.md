@@ -94,6 +94,18 @@ The test scripts connect with `psql -h /tmp -p 5499 -U postgres`; change the `P=
 
 **Review:** the six Engine-lane functions need the Engine owner's review before merge (CLAUDE.md §6).
 
+### v1.1.30 — venue creation time and unique area names (E7-23 PR 2, 2 Oct 2026)
+
+Product Owner decisions from the E7-23 PR 2 review. Modelled in the `.dbm` (column on `venue.venue`, two index objects); Flyway `V202610022000__venue_created_at_area_name_unique.sql`. **For Product Owner review.**
+
+| Object | Change | Why |
+|---|---|---|
+| `venue.venue.created_at` | new `timestamptz NOT NULL DEFAULT clock_timestamp()`; existing rows get the migration instant; the create command writes the command instant | the admin venue list is ordered newest first, then id, so a rename cannot move a venue between cursor pages |
+| `ix_venue_created_at` | btree `(created_at, id)` | that list order |
+| `ux_area_name_normalized` | unique on `lower(btrim(name))` | two areas may not share a name (trimmed, case-insensitive); the API answers `AREA_NAME_TAKEN` |
+
+No trigger, function or grant change: the baseline's table-level grants cover the column, and no trigger on these tables compares whole rows.
+
 ## Product Owner decisions (26 Sep 2026)
 
 A1 overlapping Maintenance allowed · A2 booking horizon is a deployment setting, default 120 days · A4 rate-limit table approved · A5 reports FR-AUD-11/12 at launch · A6 venue alerts = live + Web Push + audible alert · A8 configurable = fees and points only · A9 Venue never returns to ONBOARDING · A10 login limits stored as `LOGIN` rate-limit rows · A11 read-only customer wallet screen (PCR-004, no DB change) · review self-reporting allowed, duplicate open reports blocked.

@@ -52,6 +52,10 @@ public class AdminVenueController {
 
     static final int MAX_TEXT = 200;
 
+    /** Venue phone formats (PO decision 2 Oct 2026, E7-23); stored as E.164. */
+    static final String PHONE_RULE = "Egyptian mobile (010/011/012/015) or landline, with 0, 20, +20 or 0020;"
+            + " stored and returned as +20...";
+
     private final Venues venues;
     private final ResponseMetaFactory meta;
 
@@ -61,7 +65,7 @@ public class AdminVenueController {
     }
 
     @GetMapping
-    @Operation(operationId = "adminListVenues", summary = "All venues, any marketplace status")
+    @Operation(operationId = "adminListVenues", summary = "All venues, any marketplace status, newest first")
     public DataResponse<PageView<AdminVenueView>> list(
             @RequestParam(required = false) String cursor,
             @RequestParam(required = false) @Min(1) @Max(100) Integer limit) {
@@ -196,10 +200,10 @@ public class AdminVenueController {
     @Schema(name = "AdminVenueCreateRequest")
     public record AdminVenueCreateRequest(
             @NotNull @Schema(example = "3f6c1d2e-8a4b-4c5d-9e6f-7a8b9c0d1e2f") UUID areaId,
-            @NotBlank @Schema(example = "Level Up Lounge") String name,
-            @NotBlank @Schema(example = "12 Abbas El Akkad St, Nasr City") String address,
+            @NotBlank @Size(max = MAX_TEXT) @Schema(example = "Level Up Lounge") String name,
+            @NotBlank @Size(max = MAX_TEXT) @Schema(example = "12 Abbas El Akkad St, Nasr City") String address,
             @NotNull @Valid GeoPoint location,
-            @NotBlank @Schema(example = "+201001234567") String phone,
+            @NotBlank @Schema(example = "+201001234567", description = PHONE_RULE) String phone,
             @NotEmpty List<@NotNull Activity> activities) {
     }
 
@@ -207,10 +211,10 @@ public class AdminVenueController {
     @Schema(name = "AdminVenueUpdateRequest")
     public record AdminVenueUpdateRequest(
             UUID areaId,
-            @Schema(example = "Level Up Lounge") String name,
-            @Schema(example = "12 Abbas El Akkad St, Nasr City") String address,
+            @Size(max = MAX_TEXT) @Schema(example = "Level Up Lounge") String name,
+            @Size(max = MAX_TEXT) @Schema(example = "12 Abbas El Akkad St, Nasr City") String address,
             @Valid GeoPoint location,
-            @Schema(example = "+201001234567") String phone,
+            @Schema(example = "+201001234567", description = PHONE_RULE) String phone,
             List<@NotNull Activity> activities) {
     }
 

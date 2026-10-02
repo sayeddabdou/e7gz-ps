@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -36,6 +37,9 @@ import ps.e7gz.geography.internal.Areas;
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class AdminAreaController {
 
+    /** Longest area name, in characters (PO decision 2 Oct 2026, E7-23). */
+    static final int MAX_TEXT = 200;
+
     private final Areas areas;
     private final ResponseMetaFactory meta;
 
@@ -53,6 +57,7 @@ public class AdminAreaController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(operationId = "adminCreateArea", summary = "Create an area (FR-VEN-12)")
+    @ApiError(status = 422, codes = ApiErrorCode.AREA_NAME_TAKEN)
     public DataResponse<AdminAreaView> create(@AuthenticationPrincipal AuthenticatedSubject admin,
                                               @Valid @RequestBody AdminAreaCreateRequest request) {
         GeoPoint c = request.centroid();
@@ -62,6 +67,7 @@ public class AdminAreaController {
 
     @PatchMapping("/{areaId}")
     @Operation(operationId = "adminUpdateArea", summary = "Rename an area or move its centroid")
+    @ApiError(status = 422, codes = ApiErrorCode.AREA_NAME_TAKEN)
     public DataResponse<AdminAreaView> update(@AuthenticationPrincipal AuthenticatedSubject admin,
                                               @PathVariable UUID areaId, @Valid @RequestBody AdminAreaUpdateRequest request) {
         GeoPoint c = request.centroid();
@@ -103,8 +109,8 @@ public class AdminAreaController {
 
     @Schema(name = "AdminAreaCreateRequest")
     public record AdminAreaCreateRequest(
-            @NotBlank @Schema(example = "Nasr City") String name,
-            @Schema(example = "مدينة نصر") String nameAr,
+            @NotBlank @Size(max = MAX_TEXT) @Schema(example = "Nasr City") String name,
+            @Size(max = MAX_TEXT) @Schema(example = "مدينة نصر") String nameAr,
             @Valid GeoPoint centroid) {
     }
 
@@ -114,8 +120,8 @@ public class AdminAreaController {
      */
     @Schema(name = "AdminAreaUpdateRequest")
     public record AdminAreaUpdateRequest(
-            @Schema(example = "Nasr City") String name,
-            @Schema(example = "مدينة نصر") String nameAr,
+            @Size(max = MAX_TEXT) @Schema(example = "Nasr City") String name,
+            @Size(max = MAX_TEXT) @Schema(example = "مدينة نصر") String nameAr,
             @Valid GeoPoint centroid,
             @Schema(description = "true removes the Arabic name", example = "false") Boolean removeNameAr,
             @Schema(description = "true removes the centroid", example = "false") Boolean removeCentroid) {

@@ -114,6 +114,7 @@ Representative members, each traced:
 | `REVIEW_COOLDOWN_ACTIVE` | 422 | `FR-REV-07` |
 | `REVIEW_REPORT_ALREADY_OPEN` | 422 | `FR-REV-11` — one unresolved report per reporter per Review |
 | `AREA_HAS_ACTIVE_VENUES` · `AREA_INACTIVE` | 422 | `FR-VEN-47` |
+| `AREA_NAME_TAKEN` | 422 | `FR-VEN-12` — another area already has this name, trimmed and case-insensitive. Database: `ux_area_name_normalized`. Product Owner decision, 2 Oct 2026 (E7-23) |
 | `VENUE_LOGIN_IDENTIFIER_TAKEN` | 422 | `FR-VEN-01`, `FR-ADM-02` — Product Owner decision, 2 Oct 2026 (E7-22). Database: `ux_venue_login_normalized` |
 | `VENUE_ACCOUNT_ALREADY_EXISTS` | 422 | `FR-VEN-01` — one shared account per venue; Product Owner decision, 2 Oct 2026 (E7-22). Database: `uq_venue_account_venue` |
 | `MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED` | 422 | `FR-VEN-07` — the venue's current status does not allow the change (e.g. completing onboarding twice, or moving to the status it already has); Product Owner decision, 2 Oct 2026 (E7-22) |

@@ -180,6 +180,69 @@ class MarketplaceAdminHttpTest extends IntegrationTest {
                 .query(String.class).single()).isEqualTo("Venue " + venue);
     }
 
+    /** ux_area_name_normalized: names compare trimmed and case-insensitive (PO decision 2 Oct 2026). */
+    @Test
+    void twoAreasCannotShareAName() throws Exception {
+        String name = "Unique " + UUID.randomUUID();
+        call(post("/api/v1/admin/areas"), Map.of("name", name)).andExpect(status().isCreated());
+
+        call(post("/api/v1/admin/areas"), Map.of("name", "  " + name.toUpperCase() + " "))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("AREA_NAME_TAKEN"));
+        call(patch("/api/v1/admin/areas/" + area(true)), Map.of("name", name.toLowerCase()))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("AREA_NAME_TAKEN"));
+    }
+
+    @Test
+    void aVenuePhoneIsAnEgyptianMobileOrLandlineStoredAsE164() throws Exception {
+        UUID area = area(true);
+        Map<String, Object> body = new java.util.HashMap<>(newVenue(area, List.of("PLAYSTATION")));
+        body.put("phone", "010 0123-4567");
+        JsonNode venue = data(call(post("/api/v1/admin/venues"), body).andExpect(status().isCreated()));
+        assertThat(venue.path("phone").asText()).isEqualTo("+201001234567");
+
+        UUID id = UUID.fromString(venue.path("id").asText());
+        call(patch("/api/v1/admin/venues/" + id), Map.of("phone", "(02) 2345 6789"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.phone").value("+20223456789"));
+        call(patch("/api/v1/admin/venues/" + id), Map.of("phone", "03 4876543"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.phone").value("+2034876543"));
+
+        for (String bad : List.of("12345", "+1 202 555 0100", "0109")) {
+            call(patch("/api/v1/admin/venues/" + id), Map.of("phone", bad))
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("phone"));
+        }
+    }
+
+    @Test
+    void venueAndAreaTextIsAtMostTwoHundredCharacters() throws Exception {
+        String tooLong = "x".repeat(201);
+        call(patch("/api/v1/admin/venues/" + venue(area(true), "ONBOARDING")), Map.of("name", tooLong))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("name"));
+        call(post("/api/v1/admin/areas"), Map.of("name", tooLong))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+    }
+
+    /** Newest first by creation time: renaming a venue cannot move it between pages (PO decision 2 Oct 2026). */
+    @Test
+    void renamingAVenueWhilePagingNeitherSkipsNorRepeatsIt() throws Exception {
+        UUID area = area(true);
+        UUID oldest = venue(area, "ONBOARDING");
+        UUID middle = venue(area, "ONBOARDING");
+        UUID newest = venue(area, "ONBOARDING");
+
+        JsonNode first = data(call(get("/api/v1/admin/venues?limit=2"), null).andExpect(status().isOk()));
+        assertThat(List.of(first.path("items").get(0).path("id").asText(), first.path("items").get(1).path("id").asText()))
+                .containsExactly(newest.toString(), middle.toString());
+
+        // Renamed to sort first by name: with name order it would jump back to page 1 and be skipped.
+        call(patch("/api/v1/admin/venues/" + oldest), Map.of("name", "AAA first by name")).andExpect(status().isOk());
+
+        JsonNode second = data(call(get("/api/v1/admin/venues?limit=1&cursor=" + first.path("nextCursor").asText()),
+                null).andExpect(status().isOk()));
+        assertThat(second.path("items").get(0).path("id").asText()).isEqualTo(oldest.toString());
+    }
+
     @Test
     void anUnknownAreaIsNotFound() throws Exception {
         call(post("/api/v1/admin/areas/" + UUID.randomUUID() + "/deactivate"), null)
