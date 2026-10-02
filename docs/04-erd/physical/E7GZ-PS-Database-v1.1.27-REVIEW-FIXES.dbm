@@ -656,6 +656,10 @@ Source/critical constraints:
 		<type name="text" length="0"/>
 		<comment> <![CDATA[counterpart visibility applies — FR-DIS-09]]> </comment>
 	</column>
+	<column name="created_at" not-null="true" default-value="clock_timestamp()">
+		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<comment> <![CDATA[when the Platform Admin created the venue; admin list order — v1.1.30]]> </comment>
+	</column>
 	<constraint name="venue_pk" type="pk-constr" table="venue.venue">
 		<columns names="id" ref-type="src-columns"/>
 	</constraint>
@@ -5868,6 +5872,25 @@ Source/critical constraints:
 		</idxelement>
 		<idxelement use-sorting="true" nulls-first="false" asc-order="false">
 			<column name="issued_at"/>
+		</idxelement>
+</index>
+
+<index name="ix_venue_created_at" table="venue.venue"
+	 concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+	 index-type="btree" factor="90">
+		<idxelement use-sorting="false">
+			<column name="created_at"/>
+		</idxelement>
+		<idxelement use-sorting="false">
+			<column name="id"/>
+		</idxelement>
+</index>
+
+<index name="ux_area_name_normalized" table="geo.area"
+	 concurrent="false" unique="true" fast-update="false" buffering="false" nulls-not-distinct="false"
+	 index-type="btree" factor="90">
+		<idxelement use-sorting="false">
+			<expression> <![CDATA[lower(btrim(name))]]> </expression>
 		</idxelement>
 </index>
 

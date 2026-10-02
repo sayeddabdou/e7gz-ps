@@ -70,12 +70,16 @@ public enum ApiErrorCode {
     REVIEW_REPORT_ALREADY_OPEN(422),
     AREA_HAS_ACTIVE_VENUES(422),
     AREA_INACTIVE(422),
+    /** FR-VEN-12: another area already has this name (trimmed, case-insensitive). PO decision 2 Oct 2026. */
+    AREA_NAME_TAKEN(422),
     /** FR-ADM-02, FR-VEN-01: another venue account has this login identifier. PO decision 2 Oct 2026 (E7-22). */
     VENUE_LOGIN_IDENTIFIER_TAKEN(422),
     /** FR-VEN-01: the venue already has its one shared account. PO decision 2 Oct 2026 (E7-22). */
     VENUE_ACCOUNT_ALREADY_EXISTS(422),
     /** FR-VEN-07: the venue's current marketplace status does not allow this change. PO decision 2 Oct 2026 (E7-22). */
     MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED(422),
+    /** FR-ADM-02: an activity removed from a venue still has rooms, prices or availability. PO decision 2 Oct 2026. */
+    VENUE_ACTIVITY_IN_USE(422),
     /** PCR-005: the photo is not JPEG, PNG or WebP, or is too large. PO decision 2 Oct 2026. */
     VENUE_IMAGE_NOT_ACCEPTED(422),
     /** PCR-005: the venue already has the maximum number of visible photos. PO decision 2 Oct 2026. */

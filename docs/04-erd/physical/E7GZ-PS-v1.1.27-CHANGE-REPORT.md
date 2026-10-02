@@ -112,6 +112,17 @@ Sprint 0 review S-6, Product Owner decision 2 Oct 2026. Two parts:
 - Admin alerts are now written only by SECURITY DEFINER functions: the O11 abuse-signal trigger (part 2) and `admin.acknowledge_alert()` (admin role only).
 - `e7gz_admin_runtime` is unchanged. Admin login and the per-request active-admin check now read on that connection (`AdminLoginAccounts`); the first Platform Admin is created by the audited one-off `admin-bootstrap` profile.
 - Tests: five new checks in `test_privileges_v127.sh`; `AdminAccountPrivilegesTest` (including the trigger now running as its owner) and the `.dbm`/migration identity check in `MigrationFilesTest`.
+### v1.1.30 — venue creation time and unique area names (E7-23 PR 2, 2 Oct 2026)
+
+Product Owner decisions from the E7-23 PR 2 review. Modelled in the `.dbm` (column on `venue.venue`, two index objects); Flyway `V202610022000__venue_created_at_area_name_unique.sql`. **For Product Owner review.**
+
+| Object | Change | Why |
+|---|---|---|
+| `venue.venue.created_at` | new `timestamptz NOT NULL DEFAULT clock_timestamp()`; existing rows get the migration instant; the create command writes the command instant | the admin venue list is ordered newest first, then id, so a rename cannot move a venue between cursor pages |
+| `ix_venue_created_at` | btree `(created_at, id)` | that list order |
+| `ux_area_name_normalized` | unique on `lower(btrim(name))` | two areas may not share a name (trimmed, case-insensitive); the API answers `AREA_NAME_TAKEN` |
+
+No trigger, function or grant change: the baseline's table-level grants cover the column, and no trigger on these tables compares whole rows.
 
 ## Product Owner decisions (26 Sep 2026)
 

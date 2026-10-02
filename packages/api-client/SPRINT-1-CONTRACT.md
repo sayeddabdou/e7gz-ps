@@ -121,3 +121,15 @@ Upload is two steps (arch 12 §2): `POST …/images` `{contentType, sizeBytes}` 
 ### 5.2 Venue location input
 
 No API change: venue create/edit still sends `location: {lat, lng}`. The Platform Admin form uses a map picker plus a coordinate paste box (docs/03-design/README.md, "Decided after the prototypes, 2 Oct 2026").
+
+### 5.3 Areas, venues and marketplace status (E7-23, PO decisions 2 Oct 2026)
+
+- While a venue is ONBOARDING, `POST …/onboarding/complete` (→ INACTIVE) is its only status action; `activate`, `deactivate` and `suspend` answer `MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED` until then. Moving to the status the venue already has is also `MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED`.
+- `PATCH /admin/venues/{id}` with `activities` replaces the venue's list (at least one). Removing an activity that rooms, prices or availability still use is the new `VENUE_ACTIVITY_IN_USE` (422).
+- An unknown `areaId` in a venue body is `VALIDATION_FAILED` with `error.field = areaId`; an inactive one is `AREA_INACTIVE`.
+- Area `activate` / `deactivate` on an area already in that state changes nothing (200, no audit row).
+- Audited: venue status changes (reason, previous and new status) and area activate/deactivate. Area and venue create/edit are not audited.
+- `PATCH /admin/areas/{id}` and `PATCH /admin/venues/{id}`: a field left out is unchanged; a text field that is sent must not be blank (`VALIDATION_FAILED`, `error.field` = that field). An area's optional values are cleared with `removeNameAr: true` / `removeCentroid: true`; sending a value together with its remove flag is `VALIDATION_FAILED` on the flag.
+- Area names are unique (trimmed, case-insensitive): create or rename to a taken name is `AREA_NAME_TAKEN` (422). Area name / Arabic name and venue name / address are at most 200 characters.
+- Venue `phone` accepts an Egyptian mobile (010/011/012/015) or landline written with `0`, `20`, `+20` or `0020` (spaces, dashes and brackets ignored) and is stored and returned as E.164 (`+20…`); anything else is `VALIDATION_FAILED` on `phone`.
+- `GET /admin/venues` is ordered newest first (creation time, then id), so editing a venue never moves it between cursor pages.

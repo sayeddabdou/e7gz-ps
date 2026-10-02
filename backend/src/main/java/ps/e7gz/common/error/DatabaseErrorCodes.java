@@ -19,7 +19,8 @@ import org.postgresql.util.ServerErrorMessage;
  * <ul>
  *   <li>a Product guard raises {@code P0001} with a stable {@code gd_…} identifier in CONSTRAINT (migration
  *       {@code V202609291200__guard_error_identifiers.sql}, physical model v1.1.28);</li>
- *   <li>an exclusion or unique constraint raises {@code 23P01} / {@code 23505} with its own name.</li>
+ *   <li>an exclusion, unique or foreign-key constraint raises {@code 23P01} / {@code 23505} / {@code 23503} with its
+ *       own name.</li>
  * </ul>
  * Anything else — an internal invariant guard (no identifier), an identifier that is deliberately unmapped
  * ({@link #UNMAPPED_GUARDS}), an unknown identifier, or {@code 40001} after {@code CommandRunner}'s retries are
@@ -30,6 +31,7 @@ public final class DatabaseErrorCodes {
     public static final String RAISE_EXCEPTION = "P0001";
     public static final String EXCLUSION_VIOLATION = "23P01";
     public static final String UNIQUE_VIOLATION = "23505";
+    public static final String FOREIGN_KEY_VIOLATION = "23503";
 
     /** Product guard identifier → code. Each entry cites the rule the guard re-asserts. */
     static final Map<String, ApiErrorCode> GUARDS = Map.ofEntries(
@@ -98,7 +100,7 @@ public final class DatabaseErrorCodes {
     static final Set<String> UNMAPPED_GUARDS = Set.of(
             "gd_online_booking_area_inactive", "gd_reservation_conflict_closure", "gd_reservation_conflict");
 
-    /** Exclusion / unique constraint name → code, per SQLSTATE. */
+    /** Exclusion / unique / foreign-key constraint name → code, per SQLSTATE. */
     static final Map<String, Map<String, ApiErrorCode>> CONSTRAINTS = Map.of(
             EXCLUSION_VIOLATION, Map.of(
                     "ex_no_double_booking", ApiErrorCode.SLOT_NO_LONGER_AVAILABLE,      // arch 09 §1.5, FR-AVL-11
@@ -107,7 +109,13 @@ public final class DatabaseErrorCodes {
                     "ux_user_username_normalized", ApiErrorCode.USERNAME_TAKEN,         // FR-ACC-06
                     "uq_user_account_phone_e164", ApiErrorCode.PHONE_TAKEN,             // FR-ACC-01
                     "ux_venue_login_normalized", ApiErrorCode.VENUE_LOGIN_IDENTIFIER_TAKEN, // FR-VEN-01, E7-22
-                    "uq_venue_account_venue", ApiErrorCode.VENUE_ACCOUNT_ALREADY_EXISTS)); // FR-VEN-01, E7-22
+                    "uq_venue_account_venue", ApiErrorCode.VENUE_ACCOUNT_ALREADY_EXISTS, // FR-VEN-01, E7-22
+                    "ux_area_name_normalized", ApiErrorCode.AREA_NAME_TAKEN),               // FR-VEN-12, E7-23
+            // Removing a venue activity that rooms, prices or availability still reference (PO decision 2 Oct 2026, E7-23)
+            FOREIGN_KEY_VIOLATION, Map.of(
+                    "fk_resource_venue_activity", ApiErrorCode.VENUE_ACTIVITY_IN_USE,
+                    "fk_default_price_venue_activity", ApiErrorCode.VENUE_ACTIVITY_IN_USE,
+                    "fk_venue_activity_availability_venue_activity", ApiErrorCode.VENUE_ACTIVITY_IN_USE));
 
     private DatabaseErrorCodes() {
     }

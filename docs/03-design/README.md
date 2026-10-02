@@ -21,7 +21,7 @@ Never take the following from a prototype: status names, reason codes, timer val
 
 - **Venue Dashboard alerts:** every new booking request and tournament request shows live, plays an **audible alert**, and is also sent as a browser (Web Push) notification when the Dashboard is closed (`02-architecture/01 §14` A6).
 - **Platform Admin reports** "terminal-reason distribution" and "attendance mix and check-in capture rate per venue" (`FR-AUD-11`, `FR-AUD-12`) are in the launch scope and need screens in the Admin reporting area (A5).
-- **Venue marketplace status:** Admin can move a venue out of ONBOARDING to ACTIVE, INACTIVE or SUSPENDED and switch freely between those three; the UI never offers "back to ONBOARDING" (A9). *Narrowed on 28 Sep 2026:* completing onboarding moves the venue to INACTIVE only; activating it is the separate activate action (arch 09 §5).
+- **Venue marketplace status:** Admin can move a venue out of ONBOARDING to ACTIVE, INACTIVE or SUSPENDED and switch freely between those three; the UI never offers "back to ONBOARDING" (A9). *Narrowed on 28 Sep and 2 Oct 2026:* completing onboarding moves the venue to INACTIVE only, and while a venue is ONBOARDING that is its only status action; activate, deactivate and suspend are offered once it has left ONBOARDING (arch 09 §5).
 
 ## Decided after the prototypes (Product Owner, 2 Oct 2026)
 

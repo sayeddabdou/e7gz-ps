@@ -47,8 +47,10 @@ public final class AuditFixtures {
         execute("""
                 INSERT INTO venue.venue(id, area_id, name, address, location, marketplace_status, timezone, phone)
                 VALUES (?, ?, ?, 'address', 'SRID=4326;POINT(31.2 30.0)'::geography, 'ONBOARDING', 'Africa/Cairo',
-                        '+200000000')
+                        '+20223456789')
                 """, venue, area, "venue-" + venue);
+        execute("INSERT INTO venue.venue_activity(id, venue_id, activity) VALUES (?, ?, 'PLAYSTATION')",
+                UUID.randomUUID(), venue);                  // a venue offers at least one activity (E7-23)
         execute("""
                 INSERT INTO iam.venue_account(id, venue_id, login_identifier, password_hash, account_status,
                                               language_preference)

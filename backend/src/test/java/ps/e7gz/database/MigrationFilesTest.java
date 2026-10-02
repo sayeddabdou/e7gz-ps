@@ -50,6 +50,22 @@ class MigrationFilesTest {
         assertThat(classpath("db/migration/V202610021800__admin_alert_trigger_security_definer.sql")).isEqualTo(block);
     }
 
+    /** v1.1.30 (E7-23): what the migration adds is modelled in the .dbm under the same names. */
+    @Test
+    void venueCreatedAtAndUniqueAreaNamesAreInTheModel() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String migration = classpath("db/migration/V202610022000__venue_created_at_area_name_unique.sql");
+        String venueTable = model.substring(model.indexOf("<table name=\"venue\" layers"),
+                model.indexOf("</table>", model.indexOf("<table name=\"venue\" layers")));
+
+        assertThat(venueTable).contains("<column name=\"created_at\" not-null=\"true\" default-value=\"clock_timestamp()\">");
+        assertThat(model).contains("<index name=\"ix_venue_created_at\" table=\"venue.venue\"")
+                .contains("<index name=\"ux_area_name_normalized\" table=\"geo.area\"");
+        assertThat(migration).contains("ADD COLUMN created_at timestamp with time zone NOT NULL DEFAULT clock_timestamp()")
+                .contains("CREATE INDEX ix_venue_created_at ON venue.venue USING btree (created_at, id)")
+                .contains("CREATE UNIQUE INDEX ux_area_name_normalized ON geo.area USING btree (lower(btrim(name)))");
+    }
+
     private static String classpath(String resource) throws IOException {
         try (InputStream in = MigrationFilesTest.class.getClassLoader().getResourceAsStream(resource)) {
             assertThat(in).as(resource).isNotNull();

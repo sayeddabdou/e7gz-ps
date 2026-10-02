@@ -550,6 +550,10 @@ Deactivation guarded: no assigned venue may be ACTIVE or SUSPENDED — FR-VEN-47
 
 - `area_pk` (PK): `PRIMARY KEY (id)`
 
+**Indexes**
+
+- `ux_area_name_normalized`: `CREATE UNIQUE INDEX ux_area_name_normalized USING btree (lower(btrim(name)))` — v1.1.30, names are unique (PO decision 2 Oct 2026)
+
 **Guards** — `tr_127_area_deactivation_guard` → `geo.guard_area_deactivation
 `
 
@@ -603,7 +607,8 @@ Marketplace status and account status are INDEPENDENT — FR-VEN-06.
 | `location` | `geography` | NOT NULL |  | PostGIS KNN — FR-DIS-01/10 |
 | `marketplace_status` | `character varying(80)` | NOT NULL |  | ONBOARDING · ACTIVE · INACTIVE · SUSPENDED |
 | `timezone` | `text` | NOT NULL |  | Africa/Cairo |
-| `phone` | `text` | NOT NULL |  | counterpart visibility applies — FR-DIS-09 |
+| `phone` | `text` | NOT NULL |  | counterpart visibility applies — FR-DIS-09; stored as E.164 (Egyptian mobile or landline, PO decision 2 Oct 2026) |
+| `created_at` | `timestamp with time zone` | NOT NULL | `clock_timestamp()` | v1.1.30 — admin list order (newest first) |
 
 **Constraints**
 
@@ -616,6 +621,7 @@ Marketplace status and account status are INDEPENDENT — FR-VEN-06.
 - `ix_fk_venue_area_id`: `CREATE INDEX ix_fk_venue_area_id USING btree (area_id) WITH (fillfactor='90')`
 - `ix_venue_area_status`: `CREATE INDEX ix_venue_area_status USING btree (area_id, marketplace_status) WITH (fillfactor='90')`
 - `ix_venue_location_gist`: `CREATE INDEX ix_venue_location_gist USING gist (location) WITH (fillfactor='90')`
+- `ix_venue_created_at`: `CREATE INDEX ix_venue_created_at USING btree (created_at, id) WITH (fillfactor='90')` — v1.1.30
 
 **Guards** — `tr_127_venue_area_guard` → `venue.guard_venue_area` · `tr_127_venue_marketplace_transition` → `venue.guard_venue_marketplace_transition
 `
