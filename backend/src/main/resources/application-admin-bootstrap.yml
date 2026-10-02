@@ -1,0 +1,5 @@
+# Profile "admin-bootstrap" (E7-23, Sprint 0 review S-5): creates the first Platform Admin, then the application ends.
+# See ps.e7gz.admin.internal.FirstAdminBootstrapRunner. No web server, no workers.
+spring:
+  main:
+    web-application-type: none

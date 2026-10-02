@@ -46,6 +46,16 @@ BEGIN
    FOREACH qn IN ARRAY deletable     LOOP EXECUTE format('GRANT DELETE ON %s TO %I',qn,r);           END LOOP;
  END LOOP;
 
+ -- v1.1.29 (E7-23; Sprint 0 review S-6, Product Owner decision 2 Oct 2026): the public API's role cannot write the
+ -- Platform Administration tables (arch 03 section 1, module 19) and cannot read admin credentials. It keeps SELECT on
+ -- iam.admin_account (id, is_active) only, which its SECURITY INVOKER triggers read to check an ADMIN actor. Admin
+ -- alerts are written only by SECURITY DEFINER functions (the abuse-signal trigger since migration V202610021800).
+ -- Admin login and every admin write use e7gz_admin_runtime. Revoking the table-level SELECT also clears column grants,
+ -- so the column grant follows it on every run.
+ REVOKE SELECT, INSERT, UPDATE ON iam.admin_account FROM e7gz_app_runtime;
+ GRANT SELECT (id, is_active) ON iam.admin_account TO e7gz_app_runtime;
+ REVOKE INSERT, UPDATE ON admin.admin_alert FROM e7gz_app_runtime;
+
  FOR f, qn IN
    SELECT p.oid::regprocedure, n.nspname||'.'||p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
     WHERE n.nspname = ANY(schemas) AND p.prokind='f'

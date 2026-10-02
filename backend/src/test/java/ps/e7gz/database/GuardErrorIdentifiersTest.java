@@ -152,7 +152,9 @@ class GuardErrorIdentifiersTest {
     void theUpgradeIsRecordedAsASuccessfulMigration() throws SQLException {
         assertThat(query(UPGRADE_DB, "SELECT string_agg(version || ':' || success, ',' ORDER BY installed_rank) "
                 + "FROM flyway.flyway_schema_history WHERE version IS NOT NULL"))
-                .isEqualTo("1:true,202609291200:true");
+                // Later migrations (E7-23 onward) follow; this one must be applied, in order, and nothing may fail.
+                .startsWith("1:true,202609291200:true")
+                .doesNotContain(":false");
     }
 
     // ------------------------------------------------------------------------------------------------ identity
