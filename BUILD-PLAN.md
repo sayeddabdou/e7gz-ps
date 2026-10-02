@@ -1210,6 +1210,9 @@ Do:
 Done when (write these as tests first where possible):
 - Tests: two workers never run the same job; a crashed lease is retaken; late firing still produces the boundary-correct outcome.
 
+Carry-forward from E7-23 (PO decisions 3 Oct 2026, do these too):
+- Move the two venue photo jobs (venue/internal/VenuePhotoJobs: make the small and medium copies, and the nightly clean-up of uploads not confirmed within 24 hours) from their Spring timers onto technical.scheduled_job, keeping the same behaviour and tests; then remove @EnableScheduling from VenuePhotoJobs.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2869,6 +2872,7 @@ Carry-forward from the Sprint 0 review (do these too):
 Carry-forward from E7-23 (PO decisions 3 Oct 2026, do these too):
 - Create the venue-photo buckets for staging and production (private, versioning on) and their access keys in the secret store.
 - Put venue photos behind the CDN (arch 12 §2); signed view links stay valid 1 hour.
+- Configure object storage per environment from the secret store: E7GZ_S3_ENDPOINT, E7GZ_S3_PUBLIC_ENDPOINT (the address browsers and apps reach, used in signed links), E7GZ_S3_REGION, E7GZ_S3_BUCKET, E7GZ_S3_ACCESS_KEY, E7GZ_S3_SECRET_KEY, and E7GZ_S3_CREATE_BUCKET=false; set the bucket CORS rule to the Venue Dashboard and Platform Admin origins (GET, PUT, HEAD). Run at least one worker, which makes the photo copies.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.

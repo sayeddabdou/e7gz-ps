@@ -115,7 +115,7 @@ HikariCP, sized so that **(api replicas × pool) + (worker replicas × pool) + h
 | Keys | `venues/{venueId}/{imageId}.{ext}` — opaque, non-enumerable |
 | Metadata | `venue_image` rows in PostgreSQL; the bucket holds bytes only |
 | Upload link | signed `PUT`, valid **10 minutes** (PO decision 3 Oct 2026) |
-| Processing | a worker job makes a small (venue card) and a medium (Venue Details) copy and removes GPS/EXIF metadata; originals are kept (PO decision 3 Oct 2026) |
+| Processing | a worker job makes a small (venue card) and a medium (Venue Details) copy and removes GPS/EXIF metadata; originals are kept; a PNG copy stays PNG, JPEG and WebP copies are JPEG (PO decisions 3 Oct 2026) |
 | Clean-up | a nightly job removes uploads not confirmed within 24 hours (never shown) |
 | Buckets | created automatically for local development (E7-23 PR 3); staging and production in E7-101 |
 | Retention | originals retained; removing a photo (Platform Admin, or the venue with the Owner Password — PCR-005) sets `removed_at` and hides it; it is audited and never hard-deleted |

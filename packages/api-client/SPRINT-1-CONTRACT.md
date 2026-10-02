@@ -144,11 +144,12 @@ No API change: venue create/edit still sends `location: {lat, lng}`. The Platfor
 
 ### 5.5 Venue photo routes (contract only, E7-23 PR 3 early contract)
 
-Venue `/venue/images…` (filled by E7-24) and admin `/admin/venues/{id}/images…` (filled by E7-23 PR 3) answer 501 until implemented; build against `pnpm mock`.
+Admin `/admin/venues/{id}/images…` work (E7-23 PR 3). Venue `/venue/images…` answer 501 until E7-24; build against `pnpm mock` meanwhile.
 
 - Upload is two steps (arch 12 §2): `POST …/images {contentType, sizeBytes}` → `{image, uploadUrl, uploadExpiresAt}`; `PUT` the file bytes to `uploadUrl` with the same `Content-Type` header (no `Authorization` header); then `POST …/images/{id}/confirm`. Only a confirmed photo is listed or shown.
 - Venue Dashboard: `confirm`, `PUT …/images/order {imageIds}` and `POST …/images/{id}/remove` carry `ownerPassword` in the body (arch 09 §4.3); the admin routes do not.
 - `order` lists every visible photo exactly once; the first is the venue-card photo. A confirmed photo goes last.
 - `remove` hides the photo (204); it is never hard-deleted.
+- The copies are made by the worker profile within about a minute of confirm (run the backend locally with `--spring.profiles.active=api,worker`, or the URLs stay `null`); a PNG copy stays PNG, JPEG and WebP copies are JPEG (PO decision 3 Oct 2026).
 - `smallUrl` (venue card) and `mediumUrl` (Venue Details) are signed links valid until `urlsExpireAt` (1 hour); both are `null` until the resized copies are made, so show a placeholder and reload the list later. Never cache the links past `urlsExpireAt`.
-- Errors: `VENUE_IMAGE_NOT_ACCEPTED` (`error.field` = `contentType` or `sizeBytes`), `VENUE_IMAGE_LIMIT_REACHED` (start or confirm), `VENUE_IMAGE_NOT_UPLOADED` (confirm), `OWNER_PASSWORD_REQUIRED` / `OWNER_PASSWORD_INVALID` (venue writes), `NOT_FOUND` for an unknown or removed photo.
+- Errors: `VENUE_IMAGE_NOT_ACCEPTED` (start: `error.field` = `contentType` or `sizeBytes`; confirm, no field: the picture is over 50 megapixels), `VENUE_IMAGE_LIMIT_REACHED` (start or confirm), `VENUE_IMAGE_NOT_UPLOADED` (confirm), `OWNER_PASSWORD_REQUIRED` / `OWNER_PASSWORD_INVALID` (venue writes), `NOT_FOUND` for an unknown or removed photo.

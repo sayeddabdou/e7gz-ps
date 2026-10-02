@@ -124,6 +124,21 @@ Product Owner decisions from the E7-23 PR 2 review. Modelled in the `.dbm` (colu
 
 No trigger, function or grant change: the baseline's table-level grants cover the column, and no trigger on these tables compares whole rows.
 
+### v1.1.31 — venue photo life cycle (E7-23 PR 3, 3 Oct 2026)
+
+PCR-005 and the Product Owner decisions of 2 and 3 Oct 2026 (including `processed_at`, approved 3 Oct 2026). Modelled in the `.dbm` (four columns and a check on `venue.venue_image`, one index object); Flyway `V202610031200__venue_image_upload_and_removal.sql`. **Reviewed and approved by the Product Owner, 3 Oct 2026**, including `created_at`.
+
+| Object | Change | Why |
+|---|---|---|
+| `venue.venue_image.created_at` | new `timestamptz NOT NULL DEFAULT clock_timestamp()` | when the upload started; the nightly clean-up hides uploads not confirmed within 24 hours |
+| `venue.venue_image.uploaded_at` | new, nullable | confirm checked the stored file; the photo is visible from here (PCR-005) |
+| `venue.venue_image.processed_at` | new, nullable | the small and medium copies without GPS/EXIF exist; customers are shown only these |
+| `venue.venue_image.removed_at` | new, nullable | removal hides the photo; the row and the original are kept (PCR-005) |
+| `ck_venue_image_life_cycle` | `processed_at` needs `uploaded_at`; a confirmed photo has a `sort_order` | the copies are made only from a confirmed photo, and every visible photo has a place in the order |
+| `ix_venue_image_visible` | btree `(venue_id, sort_order)` where confirmed and not removed | the photo lists |
+
+No trigger, function or grant change: the baseline's table-level grants cover the columns. `created_at` is added beyond PCR-005's list because the 24-hour clean-up (PO decision 3 Oct 2026) needs the upload start time.
+
 ## Product Owner decisions (26 Sep 2026)
 
 A1 overlapping Maintenance allowed · A2 booking horizon is a deployment setting, default 120 days · A4 rate-limit table approved · A5 reports FR-AUD-11/12 at launch · A6 venue alerts = live + Web Push + audible alert · A8 configurable = fees and points only · A9 Venue never returns to ONBOARDING · A10 login limits stored as `LOGIN` rate-limit rows · A11 read-only customer wallet screen (PCR-004, no DB change) · review self-reporting allowed, duplicate open reports blocked.

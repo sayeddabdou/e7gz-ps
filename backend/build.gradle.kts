@@ -35,6 +35,14 @@ dependencies {
     implementation("org.postgresql:postgresql")
     // E7-13: Spring Security's Argon2PasswordEncoder needs Bouncy Castle (arch 10 §2.2, Argon2id).
     implementation("org.bouncycastle:bcprov-jdk18on:1.80")
+    // E7-23 PR 3: venue photos in S3-compatible object storage (SeaweedFS locally, arch 12 §2) with signed links.
+    implementation(platform("software.amazon.awssdk:bom:2.55.11"))
+    implementation("software.amazon.awssdk:s3")
+    // E7-23 PR 3: the small and medium copies without GPS/EXIF (PO decision 3 Oct 2026). Thumbnailator applies the EXIF
+    // orientation and writes no metadata; the TwelveMonkeys plugins let ImageIO read WebP and CMYK/odd JPEGs.
+    implementation("net.coobird:thumbnailator:0.4.21")
+    implementation("com.twelvemonkeys.imageio:imageio-webp:3.15.2")
+    implementation("com.twelvemonkeys.imageio:imageio-jpeg:3.15.2")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-testcontainers")

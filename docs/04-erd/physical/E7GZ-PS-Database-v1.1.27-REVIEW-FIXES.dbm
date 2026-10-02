@@ -668,7 +668,7 @@ Source/critical constraints:
 	</constraint>
 </table>
 
-<table name="venue_image" layers="0" collapse-mode="2" max-obj-count="7" z-value="0">
+<table name="venue_image" layers="0" collapse-mode="2" max-obj-count="12" z-value="0">
 	<schema name="venue"/>
 	<role name="postgres"/>
 	<comment> <![CDATA[Venue image metadata; bytes live in S3-compatible object storage. MIME, size and current/removed state are validated in the media adapter/migration.]]> </comment>
@@ -689,11 +689,30 @@ Source/critical constraints:
 	<column name="sort_order">
 		<type name="integer" length="0"/>
 	</column>
+	<column name="created_at" not-null="true" default-value="clock_timestamp()">
+		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<comment> <![CDATA[upload started (signed PUT issued) — v1.1.31]]> </comment>
+	</column>
+	<column name="uploaded_at">
+		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<comment> <![CDATA[confirmed: the stored file was checked; visible from here (PCR-005) — v1.1.31]]> </comment>
+	</column>
+	<column name="processed_at">
+		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<comment> <![CDATA[small and medium copies without GPS/EXIF made; customers see only these — v1.1.31]]> </comment>
+	</column>
+	<column name="removed_at">
+		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<comment> <![CDATA[hidden; row and original kept (PCR-005) — v1.1.31]]> </comment>
+	</column>
 	<constraint name="venue_image_pk" type="pk-constr" table="venue.venue_image">
 		<columns names="id" ref-type="src-columns"/>
 	</constraint>
 	<constraint name="ck_venue_image_content_type" type="ck-constr" table="venue.venue_image">
 			<expression> <![CDATA[content_type IS NULL OR content_type ~ '^image/[a-z0-9.+-]+$']]> </expression>
+	</constraint>
+	<constraint name="ck_venue_image_life_cycle" type="ck-constr" table="venue.venue_image">
+			<expression> <![CDATA[(processed_at IS NULL OR uploaded_at IS NOT NULL) AND (uploaded_at IS NULL OR sort_order IS NOT NULL)]]> </expression>
 	</constraint>
 </table>
 
@@ -5798,6 +5817,18 @@ Source/critical constraints:
 		<idxelement use-sorting="false">
 			<column name="venue_id"/>
 		</idxelement>
+</index>
+
+<index name="ix_venue_image_visible" table="venue.venue_image"
+	 concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+	 index-type="btree" factor="90">
+		<idxelement use-sorting="false">
+			<column name="venue_id"/>
+		</idxelement>
+		<idxelement use-sorting="false">
+			<column name="sort_order"/>
+		</idxelement>
+	<predicate> <![CDATA[uploaded_at IS NOT NULL AND removed_at IS NULL]]> </predicate>
 </index>
 
 <index name="ix_audit_subject" table="audit.audit_event"
