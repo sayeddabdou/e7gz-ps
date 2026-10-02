@@ -140,3 +140,4 @@ No API change: venue create/edit still sends `location: {lat, lng}`. The Platfor
 - The admin may edit an ACTIVE venue's address, pin or area while bookings exist; customers see the new details, no notification at launch.
 - Venue names need not be unique (branches of a chain); area names are unique.
 - Venue photos: signed view links last 1 hour, upload links 10 minutes; customers get resized copies without GPS/EXIF (see PCR-005).
+- Renaming an area changes the name everywhere, including on old bookings (bookings keep the area id, not a copy of its name). PO decision 3 Oct 2026.
