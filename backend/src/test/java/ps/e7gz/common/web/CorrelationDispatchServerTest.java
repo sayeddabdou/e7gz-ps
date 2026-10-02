@@ -36,6 +36,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -230,10 +231,16 @@ class CorrelationDispatchServerTest extends IntegrationTest {
     @TestConfiguration(proxyBeanMethods = false)
     static class Setup {
 
-        /** Stands in for E7-14's chain: one secured path, and the E7-12 envelope writers registered as E7-14 will. */
+        /**
+         * Stands in for E7-14's chain: one secured path, and the E7-12 envelope writers registered as E7-14 will. Scoped
+         * to the probe and ordered before the production chains, whose last one denies every other path (E7-22); the
+         * error dispatch still goes through that last chain, as in production.
+         */
         @Bean
+        @Order(0)
         SecurityFilterChain testChain(HttpSecurity http, SecurityErrorHandlers errors) throws Exception {
-            return http.csrf(AbstractHttpConfigurer::disable)
+            return http.securityMatcher(BASE + "/**")
+                    .csrf(AbstractHttpConfigurer::disable)
                     .authorizeHttpRequests(a -> a.requestMatchers(BASE + "/secure").authenticated().anyRequest().permitAll())
                     .exceptionHandling(e -> e.authenticationEntryPoint(errors.authenticationEntryPoint())
                             .accessDeniedHandler(errors.accessDeniedHandler()))

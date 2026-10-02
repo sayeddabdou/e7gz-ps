@@ -9,11 +9,13 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import ps.e7gz.common.codes.Activity;
 import ps.e7gz.common.codes.ConsoleType;
@@ -38,6 +40,20 @@ public class VenueResourceController {
     @GetMapping
     @Operation(operationId = "venueListResources", summary = "The venue's resources with both status columns (FR-VEN-13)")
     public DataResponse<List<VenueResourceView>> list() {
+        throw NotImplementedYet.stub();
+    }
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    @Operation(operationId = "venueCreateResource",
+            summary = "Add a room or table; the name is assigned (Room n / Pool Table n / Table n, FR-VEN-41)",
+            description = "The venue adds resources from the Dashboard; the admin can also add them during onboarding "
+                    + "(FR-ADM-02; PO decision 2 Oct 2026, E7-22). The server names it with the next number for its "
+                    + "activity (FR-VEN-41). consoleType is required for PLAYSTATION and absent otherwise "
+                    + "(ck_console_iff_playstation). Starts ACTIVE with no operational restriction. Owner "
+                    + "Password required (FRS §2.4 'protected resource configuration'; PO decision 2 Oct 2026).")
+    @ApiError(status = 423, codes = {ApiErrorCode.OWNER_PASSWORD_REQUIRED, ApiErrorCode.OWNER_PASSWORD_INVALID})
+    public DataResponse<VenueResourceView> create(@Valid @RequestBody VenueResourceCreateRequest request) {
         throw NotImplementedYet.stub();
     }
 
@@ -103,6 +119,14 @@ public class VenueResourceController {
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) ConsoleType consoleType,
             @NotNull ResourceBaseState baseState,
             @NotNull OperationalRestriction operationalRestriction) {
+    }
+
+    /** Console type exactly for PlayStation (ck_console_iff_playstation); the name is assigned (FR-VEN-41). */
+    @Schema(name = "VenueResourceCreateRequest")
+    public record VenueResourceCreateRequest(
+            @NotNull Activity activity,
+            @Schema(description = "PS5 or PS4 for PLAYSTATION; absent for BILLIARDS and PING_PONG.") ConsoleType consoleType,
+            @NotBlank @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY) String ownerPassword) {
     }
 
     @Schema(name = "VenueResourceOwnerPasswordRequest")

@@ -31,7 +31,12 @@ public abstract class IntegrationTest {
         registry.add("e7gz.datasource.admin.username", () -> ADMIN_RUNTIME);
         registry.add("e7gz.datasource.admin.password", () -> ADMIN_RUNTIME);
         registry.add("e7gz.security.jwt.secret", () -> TEST_JWT_SECRET);
+        registry.add("e7gz.security.cors.allowed-origins", () -> DASHBOARD_ORIGIN + "," + ADMIN_ORIGIN);
     }
+
+    /** E7-22: the browser origins the tests' Venue Dashboard and Platform Admin run on. */
+    public static final String DASHBOARD_ORIGIN = "https://venue.e7gz.test";
+    public static final String ADMIN_ORIGIN = "https://admin.e7gz.test";
 
     /** E7-14: a test-only HS512 key (65 bytes, Base64). Every context needs one; production reads E7GZ_JWT_SECRET. */
     public static final String TEST_JWT_SECRET = Base64.getEncoder().encodeToString(

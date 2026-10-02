@@ -575,6 +575,17 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 - Dashboard screens in English and Arabic (RTL); Admin English only; Customer English via i18n files.
 - In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.
 
+Carry-forward from E7-22 (do these too; contract in arch 09 section 2 and ADR-029):
+- Venue Dashboard and Admin web: call login, refresh and logout with credentials: 'include'. The refresh token is the HttpOnly cookie e7gz_venue_refresh / e7gz_admin_refresh; the page never reads or stores it.
+- Login and refresh return only { accessToken }. Keep it in memory only (a module variable or React state), never localStorage, sessionStorage or IndexedDB. Remove any web code that stores or reads a refresh token.
+- Refresh and logout send no body and must send the header X-Requested-With: e7gz.
+- On page load call refresh: 200 means still logged in; 401 or 403 means show the login screen.
+- On a 401 from any API call: refresh once (one refresh in flight at a time), then retry the call; if the refresh fails, go to the login screen.
+- Logout: call the logout endpoint, then clear the in-memory token.
+- Local dev: the backend needs E7GZ_CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:5174.
+- Tests: the token is never written to localStorage or sessionStorage; refresh and logout send the header and credentials; page load restores the session.
+- Customer app: unchanged (tokens in the JSON body and SecureStore).
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -638,6 +649,10 @@ Carry-forward from the Sprint 0 review (do these too):
 - First Platform Admin (bootstrap): add a one-off, audited way to create the first admin (e.g. a command run with the worker profile) that takes the email and reads the password from the secret store or stdin, hashes it with the existing Argon2id PasswordEncoder, and refuses if any admin already exists. Never put a default admin or password in code, config or a migration. (PO decision 2 Oct 2026: no admin MFA at launch.)
 - Database rights (PO decision 2 Oct 2026, Sprint 0 review S-6): the public API's role must not be able to write admin accounts. New migration V<yyyyMMddHHmm>__admin_account_grants.sql plus an update to R__security_baseline.sql: revoke INSERT/UPDATE on iam.admin_account (and every other admin-owned table: list them from the .dbm) from e7gz_app_runtime. Move admin login reads (admin/internal/AdminLoginAccounts) to the admin DataSource. Add a test that e7gz_app_runtime cannot INSERT or UPDATE iam.admin_account. This item may update docs/04-erd/physical (.dbm, security baseline, change report) as CLAUDE.md section 5 requires; the PO reviews it.
 
+Carry-forward from E7-22 (do these too):
+- Contract from E7-22 (packages/api-client/SPRINT-1-CONTRACT.md section 4, arch 09 section 5): implement GET /admin/venues/{venueId} ({venue, venueAccount or null}) and POST /admin/venues/{venueId}/activate, /deactivate, /suspend with {reason}. onboarding/complete is ONBOARDING -> INACTIVE only.
+- A change the venue's current status does not allow (completing onboarding when it is not ONBOARDING, or moving to the status it already has) is 422 MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED, decided in Java before the write. ACTIVE or SUSPENDED in an inactive area is AREA_INACTIVE (gd_venue_area_inactive_status, already mapped). Every change is audited with the admin's reason.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -667,6 +682,10 @@ Done when (write these as tests first where possible):
 
 Carry-forward from the Sprint 0 review (do these too):
 - Password-hashing overload guard (Sprint 0 review S-2): every Argon2id hash and verify (login, registration, Owner Password, later password reset) uses 64 MiB, so a flood can exhaust memory. Put them all behind one bounded gate in identity (e.g. a Semaphore, permits configurable, default 4 per instance). A request that gets no permit within about 2 s fails with 429 RATE_LIMITED, and nothing is written. Test: permits + 1 concurrent hashes, one is refused.
+
+Carry-forward from E7-22 (do these too):
+- Contract from E7-22: implement POST /admin/venues/{venueId}/venue-account {loginIdentifier, password, initialOwnerPassword, languagePreference?} -> 201 AdminVenueAccount (ENABLED; language en when absent). Hash both with Argon2id (login password in iam.venue_account, Owner Password in iam.venue_owner_secret); audited; never logged or echoed. DatabaseErrorCodes already maps ux_venue_login_normalized -> VENUE_LOGIN_IDENTIFIER_TAKEN and uq_venue_account_venue -> VENUE_ACCOUNT_ALREADY_EXISTS.
+- Venue login, refresh and logout now use the HttpOnly cookie session (E7-22, ADR-029, arch 09 section 2). Keep it as is.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -718,6 +737,11 @@ Do:
 
 Done when (write these as tests first where possible):
 - Tests for ck_console_iff_playstation and state-change history.
+
+Carry-forward from E7-22 (do these too):
+- Contract from E7-22: implement POST /venue/resources {activity, consoleType?, ownerPassword} (Owner Password required, PO decision 2 Oct 2026) and GET/POST /admin/venues/{venueId}/resources {activity, consoleType?} (admin, no Owner Password). The server assigns the name (FR-VEN-41): Room n / Pool Table n / Table n, n = highest existing number for that venue and activity + 1, archived resources included, so a name is never reused (uq_resource_name). Write the resource_state_change row.
+- There is no PATCH /venue/resources/{id} (PO decision 2 Oct 2026, arch 09 section 4.2): console and state have their own actions.
+- Implement GET /admin/activities (view only, PO decision 2 Oct 2026): the three activities and how many venues offer each (venue.venue_activity). No PATCH.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -952,6 +976,9 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 - Every screen you add works in English and Arabic (RTL, CSS logical properties only).
 - In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.
 
+Carry-forward from E7-22 (do these too):
+- Contract from E7-22: Add room = POST /venue/resources with activity, console (PlayStation only) and the Owner Password prompt. The name is assigned by the server; there is no rename or edit-room screen (no PATCH). Console change and disable/re-enable/archive/restore stay separate actions.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -1024,6 +1051,12 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 - Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.
 - Platform Admin is English only (FRS §3.3).
 - In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.
+
+Carry-forward from E7-22 (do these too):
+- Contract from E7-22 (arch 09 section 5): venue page from GET /admin/venues/{venueId}; marketplace status buttons use POST .../onboarding/complete (ONBOARDING -> INACTIVE), .../activate, .../deactivate, .../suspend, each with a reason; never offer ONBOARDING again.
+- Create venue account form: POST /admin/venues/{venueId}/venue-account (login identifier, password, initial Owner Password, language). Add rooms during onboarding with GET/POST /admin/venues/{venueId}/resources (activity + console for PlayStation; the name is assigned).
+- Activities page is view only: GET /admin/activities (activity + number of venues).
+- Add the new codes to the error-code map: VENUE_LOGIN_IDENTIFIER_TAKEN, VENUE_ACCOUNT_ALREADY_EXISTS, MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.

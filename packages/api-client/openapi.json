@@ -9,6 +9,35 @@
         ],
         "type": "string"
       },
+      "AdminAccessToken": {
+        "properties": {
+          "accessToken": {
+            "description": "Access JWT, 15 minutes; send as Authorization: Bearer. Keep it in memory only, never in localStorage, sessionStorage or IndexedDB.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accessToken"
+        ],
+        "type": "object"
+      },
+      "AdminActivity": {
+        "properties": {
+          "activity": {
+            "$ref": "#/components/schemas/Activity"
+          },
+          "venueCount": {
+            "example": 12,
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "activity",
+          "venueCount"
+        ],
+        "type": "object"
+      },
       "AdminArea": {
         "properties": {
           "active": {
@@ -87,23 +116,6 @@
         },
         "type": "object"
       },
-      "AdminAuthTokens": {
-        "properties": {
-          "accessToken": {
-            "description": "Access JWT, 15 minutes; send as Authorization: Bearer.",
-            "type": "string"
-          },
-          "refreshToken": {
-            "description": "Opaque refresh token, 12 hours; rotated on every refresh.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "accessToken",
-          "refreshToken"
-        ],
-        "type": "object"
-      },
       "AdminLoginRequest": {
         "properties": {
           "email": {
@@ -126,17 +138,65 @@
         ],
         "type": "object"
       },
-      "AdminRefreshTokenRequest": {
+      "AdminResource": {
         "properties": {
-          "refreshToken": {
-            "maxLength": 200,
-            "minLength": 0,
-            "type": "string",
-            "writeOnly": true
+          "activity": {
+            "$ref": "#/components/schemas/Activity"
+          },
+          "baseState": {
+            "$ref": "#/components/schemas/ResourceBaseState"
+          },
+          "consoleType": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConsoleType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "example": "c2d3e4f5-a6b7-4c8d-9e0f-1a2b3c4d5e6f",
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "example": "Room 1",
+            "type": "string"
+          },
+          "operationalRestriction": {
+            "$ref": "#/components/schemas/OperationalRestriction"
+          },
+          "venueId": {
+            "example": "7b1f0c9e-2d3a-4e5b-8c6d-9e0f1a2b3c4d",
+            "format": "uuid",
+            "type": "string"
           }
         },
         "required": [
-          "refreshToken"
+          "activity",
+          "baseState",
+          "consoleType",
+          "id",
+          "name",
+          "operationalRestriction",
+          "venueId"
+        ],
+        "type": "object"
+      },
+      "AdminResourceCreateRequest": {
+        "properties": {
+          "activity": {
+            "$ref": "#/components/schemas/Activity"
+          },
+          "consoleType": {
+            "$ref": "#/components/schemas/ConsoleType",
+            "description": "PS5 or PS4 for PLAYSTATION; absent for BILLIARDS and PING_PONG."
+          }
+        },
+        "required": [
+          "activity"
         ],
         "type": "object"
       },
@@ -222,6 +282,41 @@
         ],
         "type": "object"
       },
+      "AdminVenueAccountCreateRequest": {
+        "properties": {
+          "initialOwnerPassword": {
+            "description": "Sets the first Owner Password (FR-ADM-02); not a check of an existing one.",
+            "format": "password",
+            "maxLength": 200,
+            "minLength": 0,
+            "type": "string",
+            "writeOnly": true
+          },
+          "languagePreference": {
+            "$ref": "#/components/schemas/VenueAccountLanguage",
+            "description": "Dashboard language; en when absent (FR-VEN-40)."
+          },
+          "loginIdentifier": {
+            "example": "levelup.nasrcity",
+            "maxLength": 200,
+            "minLength": 0,
+            "type": "string"
+          },
+          "password": {
+            "format": "password",
+            "maxLength": 200,
+            "minLength": 0,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "initialOwnerPassword",
+          "loginIdentifier",
+          "password"
+        ],
+        "type": "object"
+      },
       "AdminVenueAccountReasonRequest": {
         "properties": {
           "reason": {
@@ -275,6 +370,28 @@
           "location",
           "name",
           "phone"
+        ],
+        "type": "object"
+      },
+      "AdminVenueDetail": {
+        "properties": {
+          "venue": {
+            "$ref": "#/components/schemas/AdminVenue"
+          },
+          "venueAccount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdminVenueAccount"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "venue",
+          "venueAccount"
         ],
         "type": "object"
       },
@@ -390,6 +507,9 @@
           "REVIEW_REPORT_ALREADY_OPEN",
           "AREA_HAS_ACTIVE_VENUES",
           "AREA_INACTIVE",
+          "VENUE_LOGIN_IDENTIFIER_TAKEN",
+          "VENUE_ACCOUNT_ALREADY_EXISTS",
+          "MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED",
           "ACCOUNT_DELETED",
           "REVIEW_ALREADY_EXISTS",
           "REVIEW_REMOVED_NOT_RESTORABLE",
@@ -1029,6 +1149,21 @@
         ],
         "type": "object"
       },
+      "DataResponseAdminAccessToken": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AdminAccessToken"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
       "DataResponseAdminArea": {
         "properties": {
           "data": {
@@ -1044,10 +1179,10 @@
         ],
         "type": "object"
       },
-      "DataResponseAdminAuthTokens": {
+      "DataResponseAdminResource": {
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/AdminAuthTokens"
+            "$ref": "#/components/schemas/AdminResource"
           },
           "meta": {
             "$ref": "#/components/schemas/ResponseMeta"
@@ -1078,6 +1213,21 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/AdminVenueAccount"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "DataResponseAdminVenueDetail": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AdminVenueDetail"
           },
           "meta": {
             "$ref": "#/components/schemas/ResponseMeta"
@@ -1149,11 +1299,47 @@
         ],
         "type": "object"
       },
+      "DataResponseListAdminActivity": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/AdminActivity"
+            },
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
       "DataResponseListAdminArea": {
         "properties": {
           "data": {
             "items": {
               "$ref": "#/components/schemas/AdminArea"
+            },
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "DataResponseListAdminResource": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/AdminResource"
             },
             "type": "array"
           },
@@ -1269,10 +1455,10 @@
         ],
         "type": "object"
       },
-      "DataResponseVenueAuthTokens": {
+      "DataResponseVenueAccessToken": {
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/VenueAuthTokens"
+            "$ref": "#/components/schemas/VenueAccessToken"
           },
           "meta": {
             "$ref": "#/components/schemas/ResponseMeta"
@@ -1562,6 +1748,25 @@
         ],
         "type": "object"
       },
+      "VenueAccessToken": {
+        "properties": {
+          "accessToken": {
+            "description": "Access JWT, 15 minutes; send as Authorization: Bearer. Keep it in memory only, never in localStorage, sessionStorage or IndexedDB.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accessToken"
+        ],
+        "type": "object"
+      },
+      "VenueAccountLanguage": {
+        "enum": [
+          "en",
+          "ar"
+        ],
+        "type": "string"
+      },
       "VenueAccountStatus": {
         "enum": [
           "ENABLED",
@@ -1602,23 +1807,6 @@
           "protectedCancellation",
           "resourceId",
           "startAt"
-        ],
-        "type": "object"
-      },
-      "VenueAuthTokens": {
-        "properties": {
-          "accessToken": {
-            "description": "Access JWT, 15 minutes; send as Authorization: Bearer.",
-            "type": "string"
-          },
-          "refreshToken": {
-            "description": "Opaque refresh token, 7 days; rotated on every refresh.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "accessToken",
-          "refreshToken"
         ],
         "type": "object"
       },
@@ -1925,20 +2113,6 @@
         ],
         "type": "object"
       },
-      "VenueRefreshTokenRequest": {
-        "properties": {
-          "refreshToken": {
-            "maxLength": 200,
-            "minLength": 0,
-            "type": "string",
-            "writeOnly": true
-          }
-        },
-        "required": [
-          "refreshToken"
-        ],
-        "type": "object"
-      },
       "VenueResource": {
         "properties": {
           "activity": {
@@ -1994,6 +2168,28 @@
         },
         "required": [
           "consoleType",
+          "ownerPassword"
+        ],
+        "type": "object"
+      },
+      "VenueResourceCreateRequest": {
+        "properties": {
+          "activity": {
+            "$ref": "#/components/schemas/Activity"
+          },
+          "consoleType": {
+            "$ref": "#/components/schemas/ConsoleType",
+            "description": "PS5 or PS4 for PLAYSTATION; absent for BILLIARDS and PING_PONG."
+          },
+          "ownerPassword": {
+            "format": "password",
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "activity",
           "ownerPassword"
         ],
         "type": "object"
@@ -2182,6 +2378,196 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/admin/activities": {
+      "get": {
+        "operationId": "adminListActivities",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseListAdminActivity"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "The three activities and how many venues offer each (FR-ADM-01; venue.venue_activity)",
+        "tags": [
+          "admin-activities"
+        ]
+      }
+    },
     "/api/v1/admin/areas": {
       "get": {
         "operationId": "adminListAreas",
@@ -3563,6 +3949,7 @@
     },
     "/api/v1/admin/auth/login": {
       "post": {
+        "description": "Browser session (Sprint 0 review S-4): the refresh token (12 hours, rotated on every refresh) is set as an HttpOnly; Secure; SameSite=Strict cookie on Path=/api/v1/admin/auth, which the page never reads. Call with credentials included. Refresh and logout need an allowed Origin and the X-Requested-With header, or they are 403 FORBIDDEN.",
         "operationId": "adminLogin",
         "parameters": [
           {
@@ -3600,12 +3987,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DataResponseAdminAuthTokens"
+                  "$ref": "#/components/schemas/DataResponseAdminAccessToken"
                 }
               }
             },
             "description": "OK",
             "headers": {
+              "Set-Cookie": {
+                "description": "The refresh-token session cookie (a new one on every login and refresh).",
+                "schema": {
+                  "type": "string"
+                },
+                "style": "simple"
+              },
               "X-Correlation-Id": {
                 "schema": {
                   "type": "string"
@@ -3811,8 +4205,26 @@
     },
     "/api/v1/admin/auth/logout": {
       "post": {
+        "description": "Browser session (Sprint 0 review S-4): the refresh token (12 hours, rotated on every refresh) is set as an HttpOnly; Secure; SameSite=Strict cookie on Path=/api/v1/admin/auth, which the page never reads. Call with credentials included. Refresh and logout need an allowed Origin and the X-Requested-With header, or they are 403 FORBIDDEN.",
         "operationId": "adminLogout",
         "parameters": [
+          {
+            "description": "The refresh token, sent by the browser itself.",
+            "in": "cookie",
+            "name": "e7gz_admin_refresh"
+          },
+          {
+            "description": "Proves the Dashboard/Admin page made the call (CSRF check).",
+            "in": "header",
+            "name": "X-Requested-With",
+            "required": true,
+            "schema": {
+              "enum": [
+                "e7gz"
+              ],
+              "type": "string"
+            }
+          },
           {
             "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
             "in": "header",
@@ -3833,20 +4245,17 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AdminRefreshTokenRequest"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "204": {
             "description": "No Content",
             "headers": {
+              "Set-Cookie": {
+                "description": "Clears the cookie.",
+                "schema": {
+                  "type": "string"
+                },
+                "style": "simple"
+              },
               "X-Correlation-Id": {
                 "schema": {
                   "type": "string"
@@ -3889,6 +4298,49 @@
               }
             },
             "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {
@@ -3958,7 +4410,7 @@
             }
           }
         },
-        "summary": "End the session of this refresh token (arch 10 section 2.3)",
+        "summary": "End the session of the cookie's refresh token and clear the cookie (arch 10 section 2.3)",
         "tags": [
           "admin-auth"
         ]
@@ -3966,8 +4418,27 @@
     },
     "/api/v1/admin/auth/refresh": {
       "post": {
+        "description": "Browser session (Sprint 0 review S-4): the refresh token (12 hours, rotated on every refresh) is set as an HttpOnly; Secure; SameSite=Strict cookie on Path=/api/v1/admin/auth, which the page never reads. Call with credentials included. Refresh and logout need an allowed Origin and the X-Requested-With header, or they are 403 FORBIDDEN.",
         "operationId": "adminRefresh",
         "parameters": [
+          {
+            "description": "The refresh token, sent by the browser itself.",
+            "in": "cookie",
+            "name": "e7gz_admin_refresh",
+            "required": true
+          },
+          {
+            "description": "Proves the Dashboard/Admin page made the call (CSRF check).",
+            "in": "header",
+            "name": "X-Requested-With",
+            "required": true,
+            "schema": {
+              "enum": [
+                "e7gz"
+              ],
+              "type": "string"
+            }
+          },
           {
             "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
             "in": "header",
@@ -3988,27 +4459,24 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AdminRefreshTokenRequest"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DataResponseAdminAuthTokens"
+                  "$ref": "#/components/schemas/DataResponseAdminAccessToken"
                 }
               }
             },
             "description": "OK",
             "headers": {
+              "Set-Cookie": {
+                "description": "The refresh-token session cookie (a new one on every login and refresh).",
+                "schema": {
+                  "type": "string"
+                },
+                "style": "simple"
+              },
               "X-Correlation-Id": {
                 "schema": {
                   "type": "string"
@@ -4102,6 +4570,49 @@
               }
             }
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "429": {
             "content": {
               "application/json": {
@@ -4163,7 +4674,7 @@
             }
           }
         },
-        "summary": "Exchange the refresh token for a new pair; the old refresh token stops working (arch 10 section 2.3)",
+        "summary": "Exchange the session cookie's refresh token for a new access token and cookie; the old refresh token stops working (arch 10 section 2.3)",
         "tags": [
           "admin-auth"
         ]
@@ -5924,6 +6435,289 @@
       }
     },
     "/api/v1/admin/venues/{venueId}": {
+      "get": {
+        "operationId": "adminGetVenue",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venueId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseAdminVenueDetail"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NOT_FOUND"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "One venue with its venue account, if created (FR-ADM-02)",
+        "tags": [
+          "admin-venues"
+        ]
+      },
       "patch": {
         "operationId": "adminUpdateVenue",
         "parameters": [
@@ -6271,9 +7065,706 @@
         ]
       }
     },
+    "/api/v1/admin/venues/{venueId}/activate": {
+      "post": {
+        "operationId": "adminActivateVenue",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venueId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminVenueReasonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseAdminVenue"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NOT_FOUND"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED",
+                                "AREA_INACTIVE"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED | AREA_INACTIVE",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Marketplace status → ACTIVE: discoverable and bookable online (FR-VEN-07)",
+        "tags": [
+          "admin-venues"
+        ]
+      }
+    },
+    "/api/v1/admin/venues/{venueId}/deactivate": {
+      "post": {
+        "operationId": "adminDeactivateVenue",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venueId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminVenueReasonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseAdminVenue"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NOT_FOUND"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Marketplace status → INACTIVE: hidden, non-punitive; Dashboard and manual booking stay (FR-VEN-07)",
+        "tags": [
+          "admin-venues"
+        ]
+      }
+    },
     "/api/v1/admin/venues/{venueId}/onboarding/complete": {
       "post": {
-        "description": "Completing onboarding does not activate the venue (PO decision, 28 Sep 2026). The venue leaves ONBOARDING for INACTIVE — hidden from discovery, Dashboard and manual booking available (FR-VEN-07); the database never lets it return to ONBOARDING. Activation is a separate admin action, not part of this contract yet.",
+        "description": "Completing onboarding does not activate the venue (PO decision, 28 Sep 2026). The venue leaves ONBOARDING for INACTIVE — hidden from discovery, Dashboard and manual booking available (FR-VEN-07); the database never lets it return to ONBOARDING. Activation is the separate activate action.",
         "operationId": "adminCompleteVenueOnboarding",
         "parameters": [
           {
@@ -6321,6 +7812,334 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DataResponseAdminVenue"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NOT_FOUND"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Complete onboarding: ONBOARDING → INACTIVE, never ACTIVE (FR-ADM-02, FR-VEN-07)",
+        "tags": [
+          "admin-venues"
+        ]
+      }
+    },
+    "/api/v1/admin/venues/{venueId}/resources": {
+      "get": {
+        "operationId": "adminListVenueResources",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venueId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseListAdminResource"
                 }
               }
             },
@@ -6571,7 +8390,1010 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Complete onboarding: ONBOARDING → INACTIVE, never ACTIVE (FR-ADM-02, FR-VEN-07)",
+        "summary": "The venue's resources with both status columns (FR-VEN-13)",
+        "tags": [
+          "admin-venue-resources"
+        ]
+      },
+      "post": {
+        "description": "consoleType is required for PLAYSTATION and absent otherwise (ck_console_iff_playstation). Starts ACTIVE with no operational restriction.",
+        "operationId": "adminCreateVenueResource",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venueId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminResourceCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseAdminResource"
+                }
+              }
+            },
+            "description": "Created",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NOT_FOUND"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Add a room or table to the venue; the name is assigned (Room n / Pool Table n / Table n, FR-VEN-41)",
+        "tags": [
+          "admin-venue-resources"
+        ]
+      }
+    },
+    "/api/v1/admin/venues/{venueId}/suspend": {
+      "post": {
+        "operationId": "adminSuspendVenue",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venueId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminVenueReasonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseAdminVenue"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NOT_FOUND"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED",
+                                "AREA_INACTIVE"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED | AREA_INACTIVE",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Marketplace status → SUSPENDED: as INACTIVE plus no new marketplace tournaments; administrative and punitive (FR-VEN-07)",
+        "tags": [
+          "admin-venues"
+        ]
+      }
+    },
+    "/api/v1/admin/venues/{venueId}/venue-account": {
+      "post": {
+        "description": "Onboarding is admin-managed, including the account credentials and the initial Owner Password (FR-ADM-02; PO decision 2 Oct 2026, E7-22). One account per venue (uq_venue_account_venue). Both passwords are write-only: never returned, logged or echoed. The account starts ENABLED. Stub until E7-24.",
+        "operationId": "adminCreateVenueAccount",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venueId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminVenueAccountCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseAdminVenueAccount"
+                }
+              }
+            },
+            "description": "Created",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NOT_FOUND"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VENUE_LOGIN_IDENTIFIER_TAKEN",
+                                "VENUE_ACCOUNT_ALREADY_EXISTS"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VENUE_LOGIN_IDENTIFIER_TAKEN | VENUE_ACCOUNT_ALREADY_EXISTS",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create the venue's one shared account with its initial Owner Password (FR-ADM-02, FR-VEN-01)",
         "tags": [
           "admin-venues"
         ]
@@ -8699,6 +11521,7 @@
     },
     "/api/v1/venue/auth/login": {
       "post": {
+        "description": "Browser session (Sprint 0 review S-4): the refresh token (7 days, rotated on every refresh) is set as an HttpOnly; Secure; SameSite=Strict cookie on Path=/api/v1/venue/auth, which the page never reads. Call with credentials included. Refresh and logout need an allowed Origin and the X-Requested-With header, or they are 403 FORBIDDEN.",
         "operationId": "venueLogin",
         "parameters": [
           {
@@ -8736,12 +11559,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DataResponseVenueAuthTokens"
+                  "$ref": "#/components/schemas/DataResponseVenueAccessToken"
                 }
               }
             },
             "description": "OK",
             "headers": {
+              "Set-Cookie": {
+                "description": "The refresh-token session cookie (a new one on every login and refresh).",
+                "schema": {
+                  "type": "string"
+                },
+                "style": "simple"
+              },
               "X-Correlation-Id": {
                 "schema": {
                   "type": "string"
@@ -8947,8 +11777,26 @@
     },
     "/api/v1/venue/auth/logout": {
       "post": {
+        "description": "Browser session (Sprint 0 review S-4): the refresh token (7 days, rotated on every refresh) is set as an HttpOnly; Secure; SameSite=Strict cookie on Path=/api/v1/venue/auth, which the page never reads. Call with credentials included. Refresh and logout need an allowed Origin and the X-Requested-With header, or they are 403 FORBIDDEN.",
         "operationId": "venueLogout",
         "parameters": [
+          {
+            "description": "The refresh token, sent by the browser itself.",
+            "in": "cookie",
+            "name": "e7gz_venue_refresh"
+          },
+          {
+            "description": "Proves the Dashboard/Admin page made the call (CSRF check).",
+            "in": "header",
+            "name": "X-Requested-With",
+            "required": true,
+            "schema": {
+              "enum": [
+                "e7gz"
+              ],
+              "type": "string"
+            }
+          },
           {
             "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
             "in": "header",
@@ -8969,20 +11817,17 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VenueRefreshTokenRequest"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "204": {
             "description": "No Content",
             "headers": {
+              "Set-Cookie": {
+                "description": "Clears the cookie.",
+                "schema": {
+                  "type": "string"
+                },
+                "style": "simple"
+              },
               "X-Correlation-Id": {
                 "schema": {
                   "type": "string"
@@ -9025,6 +11870,49 @@
               }
             },
             "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {
@@ -9094,7 +11982,7 @@
             }
           }
         },
-        "summary": "End the session of this refresh token (arch 10 section 2.3)",
+        "summary": "End the session of the cookie's refresh token and clear the cookie (arch 10 section 2.3)",
         "tags": [
           "venue-auth"
         ]
@@ -9102,8 +11990,27 @@
     },
     "/api/v1/venue/auth/refresh": {
       "post": {
+        "description": "Browser session (Sprint 0 review S-4): the refresh token (7 days, rotated on every refresh) is set as an HttpOnly; Secure; SameSite=Strict cookie on Path=/api/v1/venue/auth, which the page never reads. Call with credentials included. Refresh and logout need an allowed Origin and the X-Requested-With header, or they are 403 FORBIDDEN.",
         "operationId": "venueRefresh",
         "parameters": [
+          {
+            "description": "The refresh token, sent by the browser itself.",
+            "in": "cookie",
+            "name": "e7gz_venue_refresh",
+            "required": true
+          },
+          {
+            "description": "Proves the Dashboard/Admin page made the call (CSRF check).",
+            "in": "header",
+            "name": "X-Requested-With",
+            "required": true,
+            "schema": {
+              "enum": [
+                "e7gz"
+              ],
+              "type": "string"
+            }
+          },
           {
             "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
             "in": "header",
@@ -9124,27 +12031,24 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VenueRefreshTokenRequest"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DataResponseVenueAuthTokens"
+                  "$ref": "#/components/schemas/DataResponseVenueAccessToken"
                 }
               }
             },
             "description": "OK",
             "headers": {
+              "Set-Cookie": {
+                "description": "The refresh-token session cookie (a new one on every login and refresh).",
+                "schema": {
+                  "type": "string"
+                },
+                "style": "simple"
+              },
               "X-Correlation-Id": {
                 "schema": {
                   "type": "string"
@@ -9238,6 +12142,49 @@
               }
             }
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "429": {
             "content": {
               "application/json": {
@@ -9299,7 +12246,7 @@
             }
           }
         },
-        "summary": "Exchange the refresh token for a new pair; the old refresh token stops working (arch 10 section 2.3)",
+        "summary": "Exchange the session cookie's refresh token for a new access token and cookie; the old refresh token stops working (arch 10 section 2.3)",
         "tags": [
           "venue-auth"
         ]
@@ -11377,6 +14324,302 @@
           }
         ],
         "summary": "The venue's resources with both status columns (FR-VEN-13)",
+        "tags": [
+          "venue-resources"
+        ]
+      },
+      "post": {
+        "description": "The venue adds resources from the Dashboard; the admin can also add them during onboarding (FR-ADM-02; PO decision 2 Oct 2026, E7-22). The server names it with the next number for its activity (FR-VEN-41). consoleType is required for PLAYSTATION and absent otherwise (ck_console_iff_playstation). Starts ACTIVE with no operational restriction. Owner Password required (FRS §2.4 'protected resource configuration'; PO decision 2 Oct 2026).",
+        "operationId": "venueCreateResource",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VenueResourceCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseVenueResource"
+                }
+              }
+            },
+            "description": "Created",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "OWNER_PASSWORD_REQUIRED",
+                                "OWNER_PASSWORD_INVALID"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Add a room or table; the name is assigned (Room n / Pool Table n / Table n, FR-VEN-41)",
         "tags": [
           "venue-resources"
         ]

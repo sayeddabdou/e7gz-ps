@@ -15,6 +15,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.context.annotation.Bean;
+import org.springframework.core.annotation.Order;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -52,6 +57,16 @@ class CustomerActivationTest extends IntegrationTest {
         StandInBooking(CommandRunner runner, CustomerActivation activation) {
             this.runner = runner;
             this.activation = activation;
+        }
+
+        /** The stand-in route sits outside /api, which the production chains deny (E7-22); open it for this test. */
+        @Bean
+        @Order(0)
+        SecurityFilterChain standInBookingChain(HttpSecurity http) throws Exception {
+            return http.securityMatcher("/test/e7-13/**")
+                    .csrf(AbstractHttpConfigurer::disable)
+                    .authorizeHttpRequests(a -> a.anyRequest().permitAll())
+                    .build();
         }
 
         @PostMapping("/test/e7-13/customers/{userId}/bookings")

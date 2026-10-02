@@ -1,5 +1,6 @@
 package ps.e7gz.common.security;
 
+import jakarta.servlet.DispatcherType;
 import java.util.Arrays;
 import java.util.stream.Stream;
 import org.springframework.beans.factory.ObjectProvider;
@@ -17,12 +18,15 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
+import org.springframework.web.filter.CorsFilter;
 import ps.e7gz.common.codes.AuthSubjectType;
 import ps.e7gz.common.web.SecurityErrorHandlers;
 
 /**
- * The security chain for {@code /api/**} (arch 09 section 1.1–1.2, arch 10 section 2.3). Stateless: no session, no
- * CSRF, no form login (the API is called with a Bearer token, never a cookie).
+ * The security chain for {@code /api/**} (arch 09 section 1.1–1.2, arch 10 section 2.3). Stateless: no session and no
+ * form login; every route is called with a Bearer token. The one cookie is the Venue / Admin refresh token, read only by
+ * their refresh and logout operations, which check the request's Origin and {@link WebOrigins#CSRF_HEADER} themselves
+ * (E7-22), so Spring's session-based CSRF token is not used.
  *
  * <ul>
  *   <li>Public operations (registration, phone OTP, login, refresh, logout, public discovery) need no token, and a
@@ -31,7 +35,10 @@ import ps.e7gz.common.web.SecurityErrorHandlers;
  *       in the database ({@link SubjectJwtAuthenticationConverter}); otherwise 401 {@code UNAUTHENTICATED}.</li>
  *   <li>Each route group accepts only its own identity type ({@code typ}): a valid token of another type is 403
  *       {@code FORBIDDEN}.</li>
+ *   <li>CORS only on the venue and admin routes, only for the configured web origins ({@link WebOrigins}).</li>
  * </ul>
+ * Anything outside {@code /api/**} and the docs paths falls through to a last chain that denies it (Sprint 0 review
+ * S-15), so a controller added outside {@code /api} is never public by accident.
  */
 @Configuration(proxyBeanMethods = false)
 public class ApiSecurityConfig {
@@ -61,11 +68,14 @@ public class ApiSecurityConfig {
     @Bean
     @Order(1)
     SecurityFilterChain apiSecurityFilterChain(HttpSecurity http, SecurityErrorHandlers errors, JwtDecoder accessTokenDecoder,
-                                               ObjectProvider<ActiveSubjectCheck> activeSubjectChecks) throws Exception {
+                                               ObjectProvider<ActiveSubjectCheck> activeSubjectChecks,
+                                               WebOrigins webOrigins) throws Exception {
         SubjectJwtAuthenticationConverter subjects =
                 new SubjectJwtAuthenticationConverter(activeSubjectChecks.orderedStream());
         return http.securityMatcher("/api/**")
                 .csrf(AbstractHttpConfigurer::disable)
+                .cors(AbstractHttpConfigurer::disable)
+                .addFilterAt(webOrigins.corsFilter(errors.corsProcessor()), CorsFilter.class)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
@@ -124,6 +134,29 @@ public class ApiSecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(a -> a.anyRequest().denyAll())
+                .exceptionHandling(e -> e
+                        .authenticationEntryPoint(errors.authenticationEntryPoint())
+                        .accessDeniedHandler(errors.accessDeniedHandler()))
+                .build();
+    }
+
+    /**
+     * Everything else: denied (401), whatever token is sent (Sprint 0 review S-15). The servlet container's error
+     * dispatch to {@code /error} still passes, so a failure on an allowed route keeps its own status and body.
+     */
+    @Bean
+    @Order(3)
+    SecurityFilterChain denyEverythingElseSecurityFilterChain(HttpSecurity http, SecurityErrorHandlers errors)
+            throws Exception {
+        return http
+                .csrf(AbstractHttpConfigurer::disable)
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .httpBasic(AbstractHttpConfigurer::disable)
+                .formLogin(AbstractHttpConfigurer::disable)
+                .logout(AbstractHttpConfigurer::disable)
+                .authorizeHttpRequests(a -> a
+                        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
+                        .anyRequest().denyAll())
                 .exceptionHandling(e -> e
                         .authenticationEntryPoint(errors.authenticationEntryPoint())
                         .accessDeniedHandler(errors.accessDeniedHandler()))

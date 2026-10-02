@@ -105,7 +105,9 @@ public final class DatabaseErrorCodes {
                     "ex_customer_no_overlap", ApiErrorCode.OVERLAPPING_COMMITMENT),     // FR-BOK-04
             UNIQUE_VIOLATION, Map.of(
                     "ux_user_username_normalized", ApiErrorCode.USERNAME_TAKEN,         // FR-ACC-06
-                    "uq_user_account_phone_e164", ApiErrorCode.PHONE_TAKEN));           // FR-ACC-01
+                    "uq_user_account_phone_e164", ApiErrorCode.PHONE_TAKEN,             // FR-ACC-01
+                    "ux_venue_login_normalized", ApiErrorCode.VENUE_LOGIN_IDENTIFIER_TAKEN, // FR-VEN-01, E7-22
+                    "uq_venue_account_venue", ApiErrorCode.VENUE_ACCOUNT_ALREADY_EXISTS)); // FR-VEN-01, E7-22
 
     private DatabaseErrorCodes() {
     }

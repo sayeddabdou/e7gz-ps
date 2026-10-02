@@ -70,6 +70,12 @@ public enum ApiErrorCode {
     REVIEW_REPORT_ALREADY_OPEN(422),
     AREA_HAS_ACTIVE_VENUES(422),
     AREA_INACTIVE(422),
+    /** FR-ADM-02, FR-VEN-01: another venue account has this login identifier. PO decision 2 Oct 2026 (E7-22). */
+    VENUE_LOGIN_IDENTIFIER_TAKEN(422),
+    /** FR-VEN-01: the venue already has its one shared account. PO decision 2 Oct 2026 (E7-22). */
+    VENUE_ACCOUNT_ALREADY_EXISTS(422),
+    /** FR-VEN-07: the venue's current marketplace status does not allow this change. PO decision 2 Oct 2026 (E7-22). */
+    MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED(422),
     ACCOUNT_DELETED(403),
     REVIEW_ALREADY_EXISTS(422),
     REVIEW_REMOVED_NOT_RESTORABLE(422),
