@@ -1218,6 +1218,8 @@ Carry-forward from the Sprint 0 review (do these too):
 - SMS 'log' provider safety (Sprint 0 review S-1): today a deploy without E7GZ_SMS_PROVIDER starts normally and writes every OTP to the log. Remove the default ('log') from application.yml and refuse to start when e7gz.sms.provider=log unless the active profile is local or test. Test both cases.
 - LoggingSmsSender: mask the phone number (keep the last 3 digits, arch 10 section 6), even in development.
 
+Carry-forward from E7-23 (do these too): publish the two integration events E7-23 could not, because the outbox did not exist yet - VenueMarketplaceStatusChanged {venueId, previousStatus, newStatus} from VenueCommands.ChangeStatus (arch 08 section 3.2), and AreaDeactivated {areaId} from AreaCommands.SetActive when an area is deactivated (arch 03 section 4: availability projection refresh). Write each in the same command transaction; the code marks both places with a comment naming E7-41.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```

@@ -587,7 +587,7 @@ class ErrorEnvelopeHttpTest extends IntegrationTest {
             owner.executeWithoutResult(tx -> {
                 ownerJdbc.update("INSERT INTO geo.area(id,name,is_active) VALUES (?,?,true)", area, "e712-" + area);
                 ownerJdbc.update("INSERT INTO venue.venue(id,area_id,name,address,location,marketplace_status,timezone,phone) "
-                        + "VALUES (?,?,'V','a',ST_GeogFromText('POINT(31 30)'),'ACTIVE','Africa/Cairo','+20')",
+                        + "VALUES (?,?,'V','a',ST_GeogFromText('POINT(31 30)'),'ACTIVE','Africa/Cairo','+20223456789')",
                         UUID.randomUUID(), area);
                 ownerJdbc.update("UPDATE geo.area SET is_active=false WHERE id=?", area);
             });
@@ -624,7 +624,7 @@ class ErrorEnvelopeHttpTest extends IntegrationTest {
                 UUID template = UUID.randomUUID();
                 ownerJdbc.update("INSERT INTO geo.area(id,name,is_active) VALUES (?,?,true)", area, "e712-" + area);
                 ownerJdbc.update("INSERT INTO venue.venue(id,area_id,name,address,location,marketplace_status,timezone,phone) "
-                        + "VALUES (?,?,'V','a',ST_GeogFromText('POINT(31 30)'),'ONBOARDING','Africa/Cairo','+20')", venue, area);
+                        + "VALUES (?,?,'V','a',ST_GeogFromText('POINT(31 30)'),'ONBOARDING','Africa/Cairo','+20223456789')", venue, area);
                 ownerJdbc.update("UPDATE geo.area SET is_active=false WHERE id=?", area);
                 ownerJdbc.update("INSERT INTO venue.venue_opening_template(id,venue_id,default_local_open,default_local_close,"
                         + "default_full_day,version,updated_at) VALUES (?,?,'00:00','00:00',true,0,now())", template, venue);

@@ -7,4 +7,7 @@ public interface AreaLookup {
 
     /** True when the area exists, active or not. Areas are never deleted (FR-VEN-12). */
     boolean exists(UUID areaId);
+
+    /** True when the area exists and is active (arch 03 section 4 {@code AreaQuery.isActive}). */
+    boolean isActive(UUID areaId);
 }

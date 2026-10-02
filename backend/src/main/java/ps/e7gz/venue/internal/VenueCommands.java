@@ -159,6 +159,8 @@ final class VenueCommands {
             MarketplaceStatus target = action.target();
             context.jdbc().sql("UPDATE venue.venue SET marketplace_status = :status WHERE id = :id")
                     .param("status", target.name()).param("id", venueId).update();
+            // arch 08 section 3.2 publishes VenueMarketplaceStatusChanged; the outbox that carries it is E7-41, which adds
+            // the event here, in this transaction.
             audit.write(context, AuditRecord.builder(VenueAuditAction.VENUE_MARKETPLACE_STATUS_CHANGED,
                             AuditActor.admin(adminId), venueId, correlationId)
                     .reason(reason)

@@ -126,6 +126,8 @@ final class AreaCommands {
                 // geo.guard_area_deactivation refuses while a Venue in the area is ACTIVE or SUSPENDED (FR-VEN-47).
                 context.jdbc().sql("UPDATE geo.area SET is_active = :active WHERE id = :id")
                         .param("active", active).param("id", areaId).update();
+                // arch 03 section 4 publishes AreaDeactivated (availability projection refresh); the outbox that carries
+                // it is E7-41, which adds the event here.
                 audit.write(context, AuditRecord.builder(
                         active ? GeographyAuditAction.AREA_ACTIVATED : GeographyAuditAction.AREA_DEACTIVATED,
                         AuditActor.admin(adminId), areaId, correlationId).build());

@@ -34,7 +34,7 @@ final class CommandFixtures {
         UUID id = UUID.randomUUID();
         update(owner, """
                 INSERT INTO venue.venue(id, area_id, name, address, location, marketplace_status, timezone, phone)
-                VALUES (?, ?, ?, 'address', 'SRID=4326;POINT(31.2 30.0)'::geography, 'ONBOARDING', 'Africa/Cairo', '+200000000')
+                VALUES (?, ?, ?, 'address', 'SRID=4326;POINT(31.2 30.0)'::geography, 'ONBOARDING', 'Africa/Cairo', '+20223456789')
                 """, id, areaId, "venue-" + id);
         update(owner, "INSERT INTO venue.venue_activity(id, venue_id, activity) VALUES (?, ?, 'PLAYSTATION')",
                 UUID.randomUUID(), id);

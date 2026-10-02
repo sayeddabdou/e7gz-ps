@@ -45,6 +45,12 @@ public class Areas implements AreaLookup {
                 .query(Boolean.class).single();
     }
 
+    @Override
+    public boolean isActive(UUID areaId) {
+        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM geo.area WHERE id = :id AND is_active)").param("id", areaId)
+                .query(Boolean.class).single();
+    }
+
     public Area create(UUID adminId, String name, String nameAr, Coordinates centroid) {
         return runner.run(new AreaCommands.Create(adminId, CorrelationId.require(), name.strip(),
                 TextFields.optional(nameAr, "nameAr"), centroid));

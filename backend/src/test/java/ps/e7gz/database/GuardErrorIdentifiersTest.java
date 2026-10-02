@@ -225,7 +225,7 @@ class GuardErrorIdentifiersTest {
         assertGuard(failure("UPDATE geo.area SET is_active=false WHERE id='" + AR2 + "'",
                         "INSERT INTO venue.venue(id,area_id,name,address,location,marketplace_status,timezone,phone) VALUES"
                                 + "(gen_random_uuid(),'" + AR2 + "','V9','a',ST_GeogFromText('POINT(31 30)'),'ONBOARDING',"
-                                + "'Africa/Cairo','+209')"),
+                                + "'Africa/Cairo','+20223456789')"),
                 "gd_venue_area_inactive_assignment", ApiErrorCode.AREA_INACTIVE, "Only an ACTIVE Area");
     }
 
@@ -271,7 +271,7 @@ class GuardErrorIdentifiersTest {
         Failure f = failure(
                 "INSERT INTO geo.area(id,name,is_active) VALUES('" + ar3 + "','Z3',true)",
                 "INSERT INTO venue.venue(id,area_id,name,address,location,marketplace_status,timezone,phone) VALUES('" + v3
-                        + "','" + ar3 + "','V3','a',ST_GeogFromText('POINT(31 30)'),'ONBOARDING','Africa/Cairo','+203')",
+                        + "','" + ar3 + "','V3','a',ST_GeogFromText('POINT(31 30)'),'ONBOARDING','Africa/Cairo','+20223456789')",
                 "SET LOCAL session_replication_role = replica",
                 "UPDATE geo.area SET is_active=false WHERE id='" + ar3 + "'",
                 "SET LOCAL session_replication_role = origin",
@@ -582,7 +582,7 @@ class GuardErrorIdentifiersTest {
         String venue = "b7000000-0000-0000-0000-000000000001";
         commit("INSERT INTO geo.area(id,name,is_active) VALUES('" + area + "','Race A',true)",
                 "INSERT INTO venue.venue(id,area_id,name,address,location,marketplace_status,timezone,phone) VALUES('" + venue
-                        + "','" + area + "','Race V','a',ST_GeogFromText('POINT(31 30)'),'ONBOARDING','Africa/Cairo','+2071')");
+                        + "','" + area + "','Race V','a',ST_GeogFromText('POINT(31 30)'),'ONBOARDING','Africa/Cairo','+20223456789')");
 
         // Venue activation first: the Area deactivation waits for it, then sees the ACTIVE Venue.
         try (Connection first = open(); Connection second = open()) {
@@ -648,7 +648,7 @@ class GuardErrorIdentifiersTest {
         String start = "date_trunc('hour', now()) + interval '3 days'";
         String end = start + " + interval '4 hours'";
         commit("INSERT INTO venue.venue(id,area_id,name,address,location,marketplace_status,timezone,phone) VALUES('" + venue
-                        + "','" + AR + "','Closure V','a',ST_GeogFromText('POINT(31 30)'),'ONBOARDING','Africa/Cairo','+2072')",
+                        + "','" + AR + "','Closure V','a',ST_GeogFromText('POINT(31 30)'),'ONBOARDING','Africa/Cairo','+20223456789')",
                 "SET session_replication_role = replica",
                 "INSERT INTO resource.resource(id,venue_id,activity,name,base_state,operational_restriction) VALUES('"
                         + resource + "','" + venue + "','BILLIARDS','Table C','ACTIVE','NONE')",
@@ -958,8 +958,8 @@ class GuardErrorIdentifiersTest {
                     + "VALUES('" + A1 + "','admin@x.com','h','Admin',true)");
             s.execute("INSERT INTO geo.area(id,name,is_active) VALUES('" + AR + "','New Cairo',true),('" + AR2 + "','Maadi',true)");
             s.execute("INSERT INTO venue.venue(id,area_id,name,address,location,marketplace_status,timezone,phone) VALUES "
-                    + "('" + V1 + "','" + AR + "','V1','addr',ST_GeogFromText('POINT(31.4 30.0)'),'ACTIVE','Africa/Cairo','+20200000001'),"
-                    + "('" + V2 + "','" + AR2 + "','V2','addr',ST_GeogFromText('POINT(31.3 29.9)'),'INACTIVE','Africa/Cairo','+20200000002')");
+                    + "('" + V1 + "','" + AR + "','V1','addr',ST_GeogFromText('POINT(31.4 30.0)'),'ACTIVE','Africa/Cairo','+20223456781'),"
+                    + "('" + V2 + "','" + AR2 + "','V2','addr',ST_GeogFromText('POINT(31.3 29.9)'),'INACTIVE','Africa/Cairo','+20223456782')");
             s.execute("INSERT INTO iam.venue_account(id,venue_id,login_identifier,password_hash,account_status,"
                     + "language_preference) VALUES('" + VA1 + "','" + V1 + "','v1','h','ENABLED','en'),"
                     + "('" + VA2 + "','" + V2 + "','v2','h','ENABLED','en')");

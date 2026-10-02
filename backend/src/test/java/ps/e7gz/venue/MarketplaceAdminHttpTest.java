@@ -243,6 +243,31 @@ class MarketplaceAdminHttpTest extends IntegrationTest {
         assertThat(second.path("items").get(0).path("id").asText()).isEqualTo(oldest.toString());
     }
 
+    /** AC-US-ADM-009-03: an ACTIVE venue moves to another active area; then its old area can be deactivated. */
+    @Test
+    void movingAnActiveVenueAwayLetsItsOldAreaBeDeactivated() throws Exception {
+        UUID oldArea = area(true);
+        UUID newArea = area(true);
+        UUID venue = venue(oldArea, "ACTIVE");
+        call(post("/api/v1/admin/areas/" + oldArea + "/deactivate"), null)
+                .andExpect(status().isUnprocessableEntity());
+
+        call(patch("/api/v1/admin/venues/" + venue), Map.of("areaId", newArea))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.areaId").value(newArea.toString()))
+                .andExpect(jsonPath("$.data.marketplaceStatus").value("ACTIVE"));
+        call(post("/api/v1/admin/areas/" + oldArea + "/deactivate"), null)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.active").value(false));
+    }
+
+    /** FR-VEN-12: an ACTIVE venue cannot be moved into an inactive area. */
+    @Test
+    void anActiveVenueCannotMoveIntoAnInactiveArea() throws Exception {
+        UUID venue = venue(area(true), "ACTIVE");
+        call(patch("/api/v1/admin/venues/" + venue), Map.of("areaId", area(false)))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("AREA_INACTIVE"));
+    }
+
     @Test
     void anUnknownAreaIsNotFound() throws Exception {
         call(post("/api/v1/admin/areas/" + UUID.randomUUID() + "/deactivate"), null)
@@ -479,7 +504,7 @@ class MarketplaceAdminHttpTest extends IntegrationTest {
         owner.sql("""
                         INSERT INTO venue.venue (id, area_id, name, address, location, marketplace_status, timezone, phone)
                         VALUES (:id, :area, :name, '12 Test St', 'SRID=4326;POINT(31.2 30.0)'::geography, :status,
-                                'Africa/Cairo', '+200000000')""")
+                                'Africa/Cairo', '+20223456789')""")
                 .param("id", id).param("area", area).param("name", "Venue " + id).param("status", marketplaceStatus)
                 .update();
         owner.sql("INSERT INTO venue.venue_activity (id, venue_id, activity) VALUES (gen_random_uuid(), :id, 'PLAYSTATION')")
