@@ -842,7 +842,8 @@
   "steps": [
    "scheduled_job repository; lease workers with FOR UPDATE SKIP LOCKED; idempotent handlers keyed by natural keys; rearm/recompute.",
    "Handler registry so Engine can plug in T1, T4, T5, T6 without touching the engine.",
-   "Runs only in the worker profile."
+   "Runs only in the worker profile.",
+   "Carry-forward from E7-23 (PO decisions 3 Oct 2026, do these too): Move the two venue photo jobs (venue/internal/VenuePhotoJobs: make the small and medium copies, and the nightly clean-up of uploads not confirmed within 24 hours) from their Spring timers onto technical.scheduled_job, keeping the same behaviour and tests; then remove @EnableScheduling from VenuePhotoJobs."
   ],
   "done": [
    "Tests: two workers never run the same job; a crashed lease is retaken; late firing still produces the boundary-correct outcome."
@@ -850,7 +851,7 @@
   "folders": [
    "backend/src/main/java/ps/e7gz/scheduling/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S2-P1 — \"Deadline engine (scheduled_job)\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- ADR-006\n- arch 08 §2.1–§2.4, §9\n\nDo:\n1. scheduled_job repository; lease workers with FOR UPDATE SKIP LOCKED; idempotent handlers keyed by natural keys; rearm/recompute.\n2. Handler registry so Engine can plug in T1, T4, T5, T6 without touching the engine.\n3. Runs only in the worker profile.\n\nDone when (write these as tests first where possible):\n- Tests: two workers never run the same job; a crashed lease is retaken; late firing still produces the boundary-correct outcome.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S2-P1 — \"Deadline engine (scheduled_job)\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- ADR-006\n- arch 08 §2.1–§2.4, §9\n\nDo:\n1. scheduled_job repository; lease workers with FOR UPDATE SKIP LOCKED; idempotent handlers keyed by natural keys; rearm/recompute.\n2. Handler registry so Engine can plug in T1, T4, T5, T6 without touching the engine.\n3. Runs only in the worker profile.\n\nDone when (write these as tests first where possible):\n- Tests: two workers never run the same job; a crashed lease is retaken; late firing still produces the boundary-correct outcome.\n\nCarry-forward from E7-23 (PO decisions 3 Oct 2026, do these too):\n- Move the two venue photo jobs (venue/internal/VenuePhotoJobs: make the small and medium copies, and the nightly clean-up of uploads not confirmed within 24 hours) from their Spring timers onto technical.scheduled_job, keeping the same behaviour and tests; then remove @EnableScheduling from VenuePhotoJobs.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-41": {
   "id": "S2-P2",

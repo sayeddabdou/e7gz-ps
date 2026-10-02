@@ -126,7 +126,7 @@ No trigger, function or grant change: the baseline's table-level grants cover th
 
 ### v1.1.31 — venue photo life cycle (E7-23 PR 3, 3 Oct 2026)
 
-PCR-005 and the Product Owner decisions of 2 and 3 Oct 2026 (including `processed_at`, approved 3 Oct 2026). Modelled in the `.dbm` (four columns and a check on `venue.venue_image`, one index object); Flyway `V202610031200__venue_image_upload_and_removal.sql`. **For Product Owner review.**
+PCR-005 and the Product Owner decisions of 2 and 3 Oct 2026 (including `processed_at`, approved 3 Oct 2026). Modelled in the `.dbm` (four columns and a check on `venue.venue_image`, one index object); Flyway `V202610031200__venue_image_upload_and_removal.sql`. **Reviewed and approved by the Product Owner, 3 Oct 2026**, including `created_at`.
 
 | Object | Change | Why |
 |---|---|---|

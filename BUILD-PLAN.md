@@ -1210,6 +1210,9 @@ Do:
 Done when (write these as tests first where possible):
 - Tests: two workers never run the same job; a crashed lease is retaken; late firing still produces the boundary-correct outcome.
 
+Carry-forward from E7-23 (PO decisions 3 Oct 2026, do these too):
+- Move the two venue photo jobs (venue/internal/VenuePhotoJobs: make the small and medium copies, and the nightly clean-up of uploads not confirmed within 24 hours) from their Spring timers onto technical.scheduled_job, keeping the same behaviour and tests; then remove @EnableScheduling from VenuePhotoJobs.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
