@@ -104,3 +104,20 @@ Also: a last security chain denies every path outside `/api/**` and the docs pat
 | Q4 | Missing error codes | **Three new codes** (arch 09 §1.5) | `VENUE_LOGIN_IDENTIFIER_TAKEN` and `VENUE_ACCOUNT_ALREADY_EXISTS` (both already mapped from their DB constraints), and `MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED`. All 422. |
 
 The implementing tasks (E7-23, E7-24, E7-26, E7-35, E7-37) carry these as "Carry-forward from E7-22" lines in BUILD-PLAN and `tools/ai-context/tasks.json`.
+
+## 5. Added after E7-22 (PO decisions, 2 Oct 2026)
+
+### 5.1 Venue photos (PCR-005)
+
+Not in `openapi.json` yet: E7-23 adds the admin routes and E7-24 the venue routes, each with its stubs first so the Clients lane can build against `pnpm mock`.
+
+| Endpoint | Owner Password | Implemented by |
+|---|---|---|
+| `GET POST /admin/venues/{venueId}/images` · `POST …/images/{imageId}/confirm` · `PUT …/images/order` `{imageIds}` · `POST …/images/{imageId}/remove` | no | E7-23 |
+| `GET POST /venue/images` · `POST /venue/images/{imageId}/confirm` · `PUT /venue/images/order` · `POST /venue/images/{imageId}/remove` | yes on confirm, order and remove | E7-24 |
+
+Upload is two steps (arch 12 §2): `POST …/images` `{contentType, sizeBytes}` → `{image, uploadUrl, uploadExpiresAt}`; the client PUTs the bytes to `uploadUrl`; `confirm` makes the photo visible. Remove hides the photo (`removed_at`), never hard-deletes it. Limits: JPEG/PNG/WebP, 5 MB, 10 visible photos. New codes (arch 09 §1.5, all 422): `VENUE_IMAGE_NOT_ACCEPTED`, `VENUE_IMAGE_LIMIT_REACHED`, `VENUE_IMAGE_NOT_UPLOADED`. Admin and venue views return each photo with a short-lived signed GET URL.
+
+### 5.2 Venue location input
+
+No API change: venue create/edit still sends `location: {lat, lng}`. The Platform Admin form uses a map picker plus a coordinate paste box (docs/03-design/README.md, "Decided after the prototypes, 2 Oct 2026").

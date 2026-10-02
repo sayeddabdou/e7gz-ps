@@ -4,7 +4,7 @@ E7GZ PS is a marketplace for booking PlayStation / gaming rooms at venues in one
 
 ## 1. Sources of truth (in this order)
 
-1. `docs/01-product/` — Product Specification v5.0 (frozen) › PRD v1.1 › FRS v1.1 › PCR-001/002/003/004 (an approved PCR overrides the FRS lines it amends). Behaviour, status names, reason codes and timers come **only** from here.
+1. `docs/01-product/` — Product Specification v5.0 (frozen) › PRD v1.1 › FRS v1.1 › PCR-001/002/003/004/005 (an approved PCR overrides the FRS lines it amends). Behaviour, status names, reason codes and timers come **only** from here.
 2. `docs/02-architecture/` — the architecture pack (00–14). How to build it. Short name: "arch NN" = `docs/02-architecture/NN — *.md`.
 3. `docs/04-erd/physical/` — the database. The `.dbm` is the authority for every schema/table/column/function name. `V1__…sql` is the baseline migration; the security baseline holds all grants.
 4. `docs/03-design/` — visual reference only. Never take a status, rule, timer or message from a prototype (see its README).

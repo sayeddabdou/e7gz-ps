@@ -110,14 +110,14 @@ HikariCP, sized so that **(api replicas × pool) + (worker replicas × pool) + h
 |---|---|
 | Use | **venue images only** (`FR-ADM-02`); nothing transactional |
 | Provider | any S3-compatible bucket, behind the `ObjectStore` port |
-| Upload | signed `PUT` issued by the API after validating content type and size; the client uploads directly |
+| Upload | signed `PUT` issued by the API after validating content type and size; the client uploads directly, then calls `confirm`, which checks the stored object and sets `uploaded_at` (PCR-005, arch 09 §4.2 / §5). Unconfirmed photos are never shown |
 | Download | signed `GET` with a short TTL, served through the CDN |
 | Keys | `venues/{venueId}/{imageId}.{ext}` — opaque, non-enumerable |
 | Metadata | `venue_image` rows in PostgreSQL; the bucket holds bytes only |
-| Retention | originals retained; deletion is an admin action and is audited |
+| Retention | originals retained; removing a photo (Platform Admin, or the venue with the Owner Password — PCR-005) sets `removed_at` and hides it; it is audited and never hard-deleted |
 | Backup | versioning enabled; cross-region replication where the provider offers it |
 
-Images **persist through onboarding, venue details, edit and navigation** (`FR-ADM-02`) because the metadata row is created at upload and is never tied to a wizard step.
+Images **persist through onboarding, venue details, edit and navigation** (`FR-ADM-02`) because the metadata row is created at upload and is never tied to a wizard step. Limits (PCR-005, configuration): JPEG, PNG or WebP; at most 5 MB each; at most 10 visible photos per venue.
 
 ---
 

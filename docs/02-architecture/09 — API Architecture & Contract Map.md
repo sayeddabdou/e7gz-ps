@@ -117,6 +117,9 @@ Representative members, each traced:
 | `VENUE_LOGIN_IDENTIFIER_TAKEN` | 422 | `FR-VEN-01`, `FR-ADM-02` — Product Owner decision, 2 Oct 2026 (E7-22). Database: `ux_venue_login_normalized` |
 | `VENUE_ACCOUNT_ALREADY_EXISTS` | 422 | `FR-VEN-01` — one shared account per venue; Product Owner decision, 2 Oct 2026 (E7-22). Database: `uq_venue_account_venue` |
 | `MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED` | 422 | `FR-VEN-07` — the venue's current status does not allow the change (e.g. completing onboarding twice, or moving to the status it already has); Product Owner decision, 2 Oct 2026 (E7-22) |
+| `VENUE_IMAGE_NOT_ACCEPTED` | 422 | PCR-005 — the photo is not JPEG, PNG or WebP, or is larger than the configured maximum (5 MB); `error.field` names `contentType` or `sizeBytes`. Product Owner decision, 2 Oct 2026 |
+| `VENUE_IMAGE_LIMIT_REACHED` | 422 | PCR-005 — the venue already has the configured maximum of visible photos (10). Product Owner decision, 2 Oct 2026 |
+| `VENUE_IMAGE_NOT_UPLOADED` | 422 | PCR-005 — confirm was called before the file reached object storage, or the stored file does not match the declared type/size. Product Owner decision, 2 Oct 2026 |
 | `ACCOUNT_DELETED` | 403 | `FR-ACC-10` — any command against an anonymised account |
 | `REVIEW_ALREADY_EXISTS` | 422 | `FR-REV-03` |
 | `REVIEW_REMOVED_NOT_RESTORABLE` | 422 | `FR-REV-04` |
@@ -355,6 +358,13 @@ No `details`, no field, no hint. The real cause — the 4-commitment limit, a ba
 | `GET` | `/venue/reviews` — **view only** | — | `FR-VEN-39` |
 | `GET` `POST` | `/venue/tournaments` · `/{id}/approve` · `/reject` · `/cancel` · `/operational-termination` | conditional | `FR-TRN-21`, `FR-TRN-23`, `FR-TRN-24` |
 | `GET` `PATCH` | `/venue/settings` — incl. language preference | — | `FR-VEN-40` |
+| `GET` | `/venue/images` — visible photos in order, each with a signed GET URL | — | `FR-DIS-03`, PCR-005 |
+| `POST` | `/venue/images` `{contentType, sizeBytes}` → `{image, uploadUrl, uploadExpiresAt}` — signed PUT; nothing is visible yet | — | PCR-005, arch 12 §2 |
+| `POST` | `/venue/images/{id}/confirm` `{ownerPassword}` — the photo becomes visible | **yes** | PCR-005 |
+| `PUT` | `/venue/images/order` `{imageIds, ownerPassword}` | **yes** | PCR-005 |
+| `POST` | `/venue/images/{id}/remove` `{ownerPassword}` — hides it (`removed_at`); never hard-deleted | **yes** | PCR-005 |
+
+**Venue photos** (PCR-005, Product Owner decision, 2 Oct 2026) use a two-step upload (arch 12 §2): the API validates type and size and returns a short-lived signed PUT; the client uploads the bytes directly; `confirm` checks the stored object and makes the photo visible. A photo that is never confirmed is never shown. The Platform Admin routes in §5 work the same way without the Owner Password.
 
 There is **no `PATCH` on a resource** (Product Owner decision, 2 Oct 2026): names are fixed (`FR-VEN-41`), the activity is fixed per resource, and console and state each have their own protected action above.
 
@@ -386,6 +396,7 @@ Rules (`ADR-011`): body, never header. Verified inside the action's transaction.
 | Dashboard | `GET /admin/dashboard` | `FR-ADM-01` |
 | Areas | `GET POST PATCH /admin/areas` · `POST /{id}/activate` · `/deactivate` | `FR-VEN-12`, `FR-VEN-47` |
 | Venues & onboarding | `GET POST PATCH /admin/venues` · `GET /admin/venues/{id}` (with its venue account) · `POST /admin/venues/{id}/onboarding/complete` (ONBOARDING → INACTIVE) · `POST /{id}/activate` · `/deactivate` · `/suspend` `{reason}` · `GET POST /admin/venues/{id}/resources` `{activity, consoleType?}` | `FR-ADM-02`, `FR-VEN-07`, `FR-VEN-41` — status actions and admin resource creation: Product Owner decision, 2 Oct 2026 |
+| Venue photos | `GET POST /admin/venues/{id}/images` · `POST /admin/venues/{id}/images/{imageId}/confirm` · `PUT /admin/venues/{id}/images/order` `{imageIds}` · `POST /admin/venues/{id}/images/{imageId}/remove` — same two-step upload as §4.2, no Owner Password | `FR-ADM-02`, PCR-005 — Product Owner decision, 2 Oct 2026 |
 | Venue accounts | `POST /admin/venues/{id}/venue-account` `{loginIdentifier, password, initialOwnerPassword, languagePreference?}` · `POST /admin/venue-accounts/{id}/disable` · `/enable` · `/reset-login-password` · `/reset-owner-password` | `FR-ADM-02`, `FR-ADM-03`, `FR-VEN-01` |
 | Activities | `GET /admin/activities` — **view only**: the three activities and how many venues offer each; a venue's activities are set on the venue | `FR-ADM-01` — Product Owner decision, 2 Oct 2026 |
 | Users | `GET /admin/users` · `/{id}` · `GET /account-deletion-requests` · `POST /{id}/anonymise` — anonymisation can complete a linked Customer request and executes O19, including Tournament `ACCOUNT_DELETED` precedence | `FR-ADM-04`, `FR-ACC-10`, `FR-TRN-26` |
