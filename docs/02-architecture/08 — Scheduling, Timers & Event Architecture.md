@@ -159,6 +159,7 @@ Internal, architecture-owned, consumed by Notifications, Projections and Alertin
 | Aggregate | Events |
 |---|---|
 | Identity | `UserRegistered` · `PhoneVerified` · `EmailVerified` · `UsernameChanged` · `AccountAnonymised` |
+| Geography | `AreaDeactivated` — arch 03 §4 (availability projection refresh); Product Owner decision, 3 Oct 2026 |
 | Venue | `VenueMarketplaceStatusChanged` · `VenueAccountDisabled` · `VenueAccountEnabled` · `OpeningHoursChanged` · `ClosureCreated` · `OperatingSessionsRegenerated` · `OwnerPasswordChanged` |
 | Resource | `ResourceDisabled` · `ResourceReEnabled` · `ResourceArchived` · `ResourceRestored` · `ResourceConsoleChanged` · `ResourceRestrictionChanged` |
 | Pricing | `VenuePricingChanged` · `RoomOverrideChanged` |
