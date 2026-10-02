@@ -4,6 +4,22 @@ export const messages = {
   navigationLabel: "Admin navigation",
   authRequiredTitle: "Sign in required",
   authRequiredDescription: "Sign in to access platform administration.",
+  auth: {
+    title: "Admin sign in",
+    email: "Email",
+    password: "Password",
+    submit: "Sign in",
+    working: "Signing in…",
+    restoring: "Restoring your session…",
+    logout: "Log out",
+    loggingOut: "Logging out…",
+    errors: {
+      unauthenticated: "The email or password is incorrect.",
+      rateLimited: "Too many attempts. Try again later.",
+      validationFailed: "Check the information and try again.",
+      unexpected: "Something went wrong. Try again.",
+    },
+  },
   configMissing: "Missing configuration:",
   modules: {
     dashboard: "Dashboard",

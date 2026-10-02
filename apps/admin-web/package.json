@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:mock": "cross-env VITE_API_BASE_URL=http://127.0.0.1:4010 VITE_API_ACCESS_TOKEN=mock-access-token vite",
+    "dev:mock": "cross-env VITE_API_BASE_URL=http://127.0.0.1:4010 vite",
     "preview": "vite preview",
     "build": "vite build",
     "lint": "eslint .",

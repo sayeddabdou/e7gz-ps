@@ -1,5 +1,5 @@
-import { type ComponentProps, useMemo } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { type ComponentProps, useEffect, useMemo, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -10,6 +10,8 @@ import { createCustomerApiClient, type ApiClient, type RefreshAccessToken } from
 import { createSecureTokenStore, type TokenStore } from "../auth/tokenStore";
 import type { ConfigResult } from "../config";
 import { AreaList } from "../features/discovery/AreaList";
+import { AuthFlow, createCustomerAuthApi } from "../features/auth";
+import type { CustomerAuthApi } from "../features/auth/api";
 import { en as t } from "../i18n/en";
 
 type RootTabs = {
@@ -51,8 +53,15 @@ function BookingsScreen() {
   return <Screen title={t.tabs.bookings} />;
 }
 
-function ProfileScreen() {
-  return <Screen title={t.tabs.profile} />;
+function ProfileScreen({ onLogout }: { onLogout(): void }) {
+  return (
+    <SafeAreaView edges={["top"]} style={styles.screen}>
+      <Text accessibilityRole="header" style={styles.title}>{t.tabs.profile}</Text>
+      <Pressable accessibilityRole="button" onPress={onLogout} style={styles.logoutButton}>
+        <Text style={styles.logoutText}>{t.auth.logout}</Text>
+      </Pressable>
+    </SafeAreaView>
+  );
 }
 
 function tabIcon(
@@ -88,20 +97,33 @@ export function App({
   config,
   tokenStore,
   refreshAccessToken,
+  authApi,
 }: {
   config: ConfigResult;
   tokenStore?: TokenStore;
   refreshAccessToken?: RefreshAccessToken;
+  authApi?: CustomerAuthApi;
 }) {
   const secureTokens = useMemo(() => tokenStore ?? createSecureTokenStore(), [tokenStore]);
+  const customerAuth = useMemo(
+    () => config.ok ? (authApi ?? createCustomerAuthApi(config.config, secureTokens)) : undefined,
+    [authApi, config, secureTokens],
+  );
+  const [authenticated, setAuthenticated] = useState<boolean>();
+  useEffect(() => {
+    if (!config.ok) return undefined;
+    let active = true;
+    void secureTokens.read().then((tokens) => { if (active) setAuthenticated(Boolean(tokens)); });
+    return () => { active = false; };
+  }, [config, secureTokens]);
   const api = useMemo(
     () => config.ok
       ? createCustomerApiClient(config.config, {
           tokenStore: secureTokens,
-          ...(refreshAccessToken ? { refresh: refreshAccessToken } : {}),
+          ...(refreshAccessToken ? { refresh: refreshAccessToken } : customerAuth ? { refresh: customerAuth.refresh } : {}),
         })
       : undefined,
-    [config, refreshAccessToken, secureTokens],
+    [config, customerAuth, refreshAccessToken, secureTokens],
   );
 
   if (!config.ok || !api) {
@@ -114,6 +136,24 @@ export function App({
       </SafeAreaProvider>
     );
   }
+
+  if (authenticated === undefined) {
+    return <SafeAreaProvider><SafeAreaView style={styles.screen}><Text>{t.loading}</Text></SafeAreaView></SafeAreaProvider>;
+  }
+
+  if (!authenticated && customerAuth) {
+    return (
+      <SafeAreaProvider>
+        <AuthFlow api={customerAuth} tokenStore={secureTokens} onAuthenticated={() => setAuthenticated(true)} />
+        <StatusBar style="auto" />
+      </SafeAreaProvider>
+    );
+  }
+
+  const logout = async () => {
+    await customerAuth?.logout();
+    setAuthenticated(false);
+  };
 
   return (
     <SafeAreaProvider>
@@ -158,13 +198,14 @@ export function App({
             />
             <Tab.Screen
               name="profile"
-              component={ProfileScreen}
               options={{
                 tabBarIcon: profileIcon,
                 tabBarLabel: t.tabs.profile,
                 title: t.tabs.profile,
               }}
-            />
+            >
+              {() => <ProfileScreen onLogout={logout} />}
+            </Tab.Screen>
           </Tab.Navigator>
         </NavigationContainer>
         <StatusBar style="auto" />
@@ -196,6 +237,18 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: nativeTokens.typography.fontSize.caption,
+    fontWeight: nativeTokens.typography.fontWeight.bold,
+  },
+  logoutButton: {
+    alignItems: "center",
+    borderColor: nativeTokens.color.feedback.danger,
+    borderRadius: nativeTokens.radius["2xl"],
+    borderWidth: nativeTokens.spacing.hairline,
+    minHeight: 48,
+    justifyContent: "center",
+  },
+  logoutText: {
+    color: nativeTokens.color.feedback.danger,
     fontWeight: nativeTokens.typography.fontWeight.bold,
   },
 });

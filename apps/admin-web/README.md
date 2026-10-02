@@ -22,12 +22,19 @@ pnpm --filter @e7gz/admin-web dev:mock        # http://localhost:5174 against th
 pnpm --filter @e7gz/admin-web lint | typecheck | test | build
 ```
 
-Against a real backend: set `VITE_API_BASE_URL` (e.g. `http://localhost:8080`) and run `dev`. Admin login does not exist yet (E7-14 / E7-21), so `VITE_API_ACCESS_TOKEN` is a placeholder the mock accepts and the real backend will not.
+Against a real backend: set `VITE_API_BASE_URL` (e.g. `http://localhost:8080`) and run `dev`. Admin authentication uses the backend's HttpOnly refresh cookie; the short-lived access token stays in memory and is never configured or stored by the browser app.
 
-## Still to do in E7-19 (not done here)
+For local cookie-session testing, start the backend with both web origins allowed:
 
-- The layout shell and navigation for the 20 admin modules (empty pages), and the auth guard.
-- Design tokens (E7-18).
+```powershell
+$env:E7GZ_CORS_ALLOWED_ORIGINS="http://localhost:5173,http://localhost:5174"
+```
+
+## Shell foundation
+
+- The layout shell, navigation for the 20 admin modules, and auth guard were added in E7-19.
+- Shared design tokens come from `packages/tokens` (E7-18).
+- E7-21 restores the cookie session on page load and provides login/logout without browser token storage.
 
 `AreaList` is a starting point for E7-37 (areas list, create, deactivate). Reuse or replace it.
 

@@ -7,14 +7,14 @@ import { ResourceList } from "./ResourceList";
 
 afterEach(cleanup);
 
-const config = { apiBaseUrl: "http://127.0.0.1:4010", accessToken: "mock-access-token" };
+const config = { apiBaseUrl: "http://127.0.0.1:4010" };
 const meta = { correlationId: "c-1", serverTime: "2026-10-12T17:04:11Z" };
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
 function renderList(fetch: (request: Request) => Promise<Response>) {
   const requests: Request[] = [];
-  const api = createDashboardApiClient(config, async (request: Request) => {
+  const api = createDashboardApiClient(config, () => "mock-access-token", async (request: Request) => {
     requests.push(request);
     return fetch(request);
   });
