@@ -33,9 +33,10 @@ import ps.e7gz.support.PostgresTestContainer;
 
 /**
  * E7-23, Sprint 0 review S-5: the first-admin bootstrap, on its own freshly migrated database so that
- * {@code iam.admin_account} starts empty (the shared test database already holds other tests' admins).
+ * {@code iam.admin_account} starts empty (the shared test database already holds other tests' admins). The context
+ * starts without a web server, like the {@code admin-bootstrap} profile, so web-only configuration must stay out of it.
  */
-@SpringBootTest
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class FirstAdminBootstrapTest {
 
