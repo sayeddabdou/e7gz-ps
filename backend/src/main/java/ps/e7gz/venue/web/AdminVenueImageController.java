@@ -71,7 +71,8 @@ public class AdminVenueImageController {
     @PostMapping("/{imageId}/confirm")
     @Operation(operationId = "adminConfirmVenueImage",
             summary = "The uploaded photo becomes visible, last in the order (PCR-005)")
-    @ApiError(status = 422, codes = {ApiErrorCode.VENUE_IMAGE_NOT_UPLOADED, ApiErrorCode.VENUE_IMAGE_LIMIT_REACHED})
+    @ApiError(status = 422, codes = {ApiErrorCode.VENUE_IMAGE_NOT_UPLOADED, ApiErrorCode.VENUE_IMAGE_NOT_ACCEPTED,
+            ApiErrorCode.VENUE_IMAGE_LIMIT_REACHED})
     public DataResponse<AdminVenueImageView> confirm(@AuthenticationPrincipal AuthenticatedSubject admin,
             @PathVariable UUID venueId, @PathVariable UUID imageId) {
         return meta.data(AdminVenueImageView.of(photos.confirm(venueId, imageId, actor(admin))));

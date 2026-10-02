@@ -47,7 +47,7 @@ Modules and the tables they own: arch 03 §1. A module calls another only throug
 ```
 docker compose up -d                 # postgres (postgis) on 5433, seaweedfs (S3), mailpit
 cd backend && ./gradlew check        # unit + integration (Testcontainers) + ArchUnit
-./gradlew bootRun --args='--spring.profiles.active=api'     # or worker
+./gradlew bootRun --args='--spring.profiles.active=api'     # or worker; api,worker runs both (venue photo copies need worker)
 ./gradlew bootRun --args='--spring.profiles.active=admin-bootstrap --e7gz.admin-bootstrap.email=… --e7gz.admin-bootstrap.full-name=…'
                                      # one-off: first Platform Admin (password typed, or E7GZ_ADMIN_BOOTSTRAP_PASSWORD)
 pnpm install && pnpm -r build        # all frontends + packages
