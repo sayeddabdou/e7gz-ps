@@ -643,4 +643,17 @@ Launch keys: `booking.fee` = 0, `tournament.creation_fee` = 0, `loyalty.attended
 
 ---
 
+# ADR-029 — Venue Dashboard and Platform Admin keep the refresh token in an HttpOnly cookie
+
+**Status:** ACCEPTED (Product Owner decision, 2 Oct 2026 — Sprint 0 security review S-4; implemented by E7-22)
+**Source:** `Security §2.3`, `Security §1` S6, `09 §2`
+
+**Decision.** For the two browser surfaces (audiences VENUE and ADMIN) login and refresh return only the access token in the body and set the refresh token as an `HttpOnly; Secure; SameSite=Strict` cookie on `/api/v1/{venue|admin}/auth`, lasting the audience's refresh lifetime. Refresh and logout read the cookie (no body), require an allowed `Origin` and `X-Requested-With: e7gz`, and clear the cookie on logout or any refusal. CORS allows exactly the configured web origins, with credentials. The Customer mobile app keeps the token pair in the JSON body and in device secure storage.
+
+**Why.** A 7-day venue token or a 12-hour admin token in `localStorage` turns any XSS into account takeover. An HttpOnly cookie cannot be read by script; `SameSite=Strict` plus the Origin and custom-header check stop cross-site use of it.
+
+**Consequences.** The Dashboard/Admin and the API must share a registrable domain (e.g. `venue.e7gz.ps` and `api.e7gz.ps`) for a `SameSite=Strict` cookie to be sent. Each deployment sets `E7GZ_CORS_ALLOWED_ORIGINS`; empty means no browser origin is allowed. Rotation and reuse detection are unchanged.
+
+---
+
 *End of ADR Log v1.1. Continue to `03 — Domain Module Specification.md`.*

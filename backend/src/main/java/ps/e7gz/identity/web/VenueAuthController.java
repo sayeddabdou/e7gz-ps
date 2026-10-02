@@ -1,9 +1,14 @@
 package ps.e7gz.identity.web;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -16,15 +21,16 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import ps.e7gz.common.codes.AuthSubjectType;
 import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.security.WebOrigins;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
 import ps.e7gz.common.web.ResponseMetaFactory;
-import ps.e7gz.identity.internal.AuthSessions;
 
 /**
  * Venue Dashboard sessions for the one shared venue account (arch 10 section 2.1, FR-VEN-01; arch 09 section 2: same
  * token model as the customer). A DISABLED account cannot log in, and its tokens stop working at once (FR-VEN-08).
- * There is no venue forgot-password flow (FR-ADM-03). Public: no access token.
+ * There is no venue forgot-password flow (FR-ADM-03). Public: no access token. The refresh token travels only in an
+ * HttpOnly cookie, never in a body ({@link WebSessions}, Sprint 0 review S-4, E7-22).
  */
 @RestController
 @RequestMapping("/api/v1/venue/auth")
@@ -33,37 +39,64 @@ public class VenueAuthController {
 
     static final int MAX_TEXT = 200;
 
-    private final AuthSessions sessions;
+    static final String SESSION_COOKIE = "Browser session (Sprint 0 review S-4): the refresh token"
+            + " (7 days, rotated on every refresh) is set as an HttpOnly; Secure; "
+            + "SameSite=Strict cookie on Path=" + WebSessions.VENUE_COOKIE_PATH
+            + ", which the page never reads. Call with credentials included. Refresh and logout need an allowed "
+            + "Origin and the " + WebOrigins.CSRF_HEADER + " header, or they are 403 FORBIDDEN.";
+    static final String COOKIE = "The refresh token, sent by the browser itself.";
+    static final String CSRF = "Proves the Dashboard/Admin page made the call (CSRF check).";
+    static final String SET_COOKIE = "The refresh-token session cookie (a new one on every login and refresh).";
+
+    private final WebSessions sessions;
     private final ResponseMetaFactory meta;
 
-    public VenueAuthController(AuthSessions sessions, ResponseMetaFactory meta) {
+    public VenueAuthController(WebSessions sessions, ResponseMetaFactory meta) {
         this.sessions = sessions;
         this.meta = meta;
     }
 
     @PostMapping("/login")
-    @Operation(operationId = "venueLogin", summary = "Log in to the Venue Dashboard (arch 10 section 2.1, FR-VEN-08)")
+    @Operation(operationId = "venueLogin", summary = "Log in to the Venue Dashboard (arch 10 section 2.1, FR-VEN-08)",
+            description = SESSION_COOKIE)
+    @ApiResponse(responseCode = "200", headers = @Header(name = "Set-Cookie", description = SET_COOKIE,
+            schema = @Schema(type = "string")))
     @ApiError(status = 401, codes = ApiErrorCode.UNAUTHENTICATED)
     @ApiError(status = 403, codes = ApiErrorCode.FORBIDDEN)
-    public DataResponse<VenueAuthTokens> login(@Valid @RequestBody VenueLoginRequest request, HttpServletRequest http) {
-        return meta.data(VenueAuthTokens.of(sessions.login(
-                AuthSubjectType.VENUE, request.loginIdentifier(), request.password(), http.getRemoteAddr())));
+    public DataResponse<VenueAccessToken> login(@Valid @RequestBody VenueLoginRequest request, HttpServletRequest http,
+                                                HttpServletResponse response) {
+        return meta.data(new VenueAccessToken(sessions.login(
+                AuthSubjectType.VENUE, request.loginIdentifier(), request.password(), http, response)));
     }
 
     @PostMapping("/refresh")
     @Operation(operationId = "venueRefresh",
-            summary = "Exchange the refresh token for a new pair; the old refresh token stops working (arch 10 "
-                    + "section 2.3)")
+            summary = "Exchange the session cookie's refresh token for a new access token and cookie; the old refresh "
+                    + "token stops working (arch 10 section 2.3)",
+            description = SESSION_COOKIE)
+    @Parameter(in = ParameterIn.COOKIE, name = WebSessions.VENUE_COOKIE, required = true, description = COOKIE)
+    @Parameter(in = ParameterIn.HEADER, name = WebOrigins.CSRF_HEADER, required = true, description = CSRF,
+            schema = @Schema(type = "string", allowableValues = WebOrigins.CSRF_HEADER_VALUE))
+    @ApiResponse(responseCode = "200", headers = @Header(name = "Set-Cookie", description = SET_COOKIE,
+            schema = @Schema(type = "string")))
     @ApiError(status = 401, codes = ApiErrorCode.UNAUTHENTICATED)
-    public DataResponse<VenueAuthTokens> refresh(@Valid @RequestBody VenueRefreshTokenRequest request) {
-        return meta.data(VenueAuthTokens.of(sessions.refresh(AuthSubjectType.VENUE, request.refreshToken())));
+    @ApiError(status = 403, codes = ApiErrorCode.FORBIDDEN)
+    public DataResponse<VenueAccessToken> refresh(HttpServletRequest http, HttpServletResponse response) {
+        return meta.data(new VenueAccessToken(sessions.refresh(AuthSubjectType.VENUE, http, response)));
     }
 
     @PostMapping("/logout")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @Operation(operationId = "venueLogout", summary = "End the session of this refresh token (arch 10 section 2.3)")
-    public void logout(@Valid @RequestBody VenueRefreshTokenRequest request) {
-        sessions.logout(AuthSubjectType.VENUE, request.refreshToken());
+    @Operation(operationId = "venueLogout", summary = "End the session of the cookie's refresh token and clear the "
+            + "cookie (arch 10 section 2.3)", description = SESSION_COOKIE)
+    @Parameter(in = ParameterIn.COOKIE, name = WebSessions.VENUE_COOKIE, description = COOKIE)
+    @Parameter(in = ParameterIn.HEADER, name = WebOrigins.CSRF_HEADER, required = true, description = CSRF,
+            schema = @Schema(type = "string", allowableValues = WebOrigins.CSRF_HEADER_VALUE))
+    @ApiResponse(responseCode = "204", headers = @Header(name = "Set-Cookie", description = "Clears the cookie.",
+            schema = @Schema(type = "string")))
+    @ApiError(status = 403, codes = ApiErrorCode.FORBIDDEN)
+    public void logout(HttpServletRequest http, HttpServletResponse response) {
+        sessions.logout(AuthSubjectType.VENUE, http, response);
     }
 
     @Schema(name = "VenueLoginRequest")
@@ -78,31 +111,15 @@ public class VenueAuthController {
         }
     }
 
-    /** Refresh and logout. */
-    @Schema(name = "VenueRefreshTokenRequest")
-    public record VenueRefreshTokenRequest(
-            @NotBlank @Size(max = MAX_TEXT) @Schema(accessMode = Schema.AccessMode.WRITE_ONLY) String refreshToken) {
+    /** Sprint 0 review S-4: the refresh token is in the session cookie only, never in the body. */
+    @Schema(name = "VenueAccessToken")
+    public record VenueAccessToken(
+            @NotNull @Schema(description = "Access JWT, 15 minutes; send as Authorization: Bearer. Keep it in memory "
+                    + "only, never in localStorage, sessionStorage or IndexedDB.") String accessToken) {
 
         @Override
         public String toString() {
-            return "VenueRefreshTokenRequest[<redacted>]";
-        }
-    }
-
-    /** Arch 09 section 2: {@code {accessToken, refreshToken}}. */
-    @Schema(name = "VenueAuthTokens")
-    public record VenueAuthTokens(
-            @NotNull @Schema(description = "Access JWT, 15 minutes; send as Authorization: Bearer.") String accessToken,
-            @NotNull @Schema(description = "Opaque refresh token, 7 days; rotated on every refresh.")
-            String refreshToken) {
-
-        static VenueAuthTokens of(AuthSessions.TokenPair tokens) {
-            return new VenueAuthTokens(tokens.accessToken(), tokens.refreshToken());
-        }
-
-        @Override
-        public String toString() {
-            return "VenueAuthTokens[<redacted>]";
+            return "VenueAccessToken[<redacted>]";
         }
     }
 }

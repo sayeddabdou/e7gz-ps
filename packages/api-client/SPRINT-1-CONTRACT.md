@@ -53,8 +53,8 @@ Sources:
 | Item | Owner | Status in this contract |
 |---|---|---|
 | Error codes for generic failures (400/401/403/404/429). Arch 09 §1.5 defines none. | E7-12 | 401 is documented on every secured route with **no body schema**, rather than an invented or borrowed code. No generic 400/404/429 responses are documented yet. A 500 carries only a correlation ID (§1.4) and is not modelled. |
-| The endpoint for the separate activation action, and the other marketplace status changes (INACTIVE ↔ ACTIVE ↔ SUSPENDED). | E7-22 / E7-23 | Not in arch 09 §5, so not added. |
-| Venue account creation, resource creation, `GET /admin/venues/{id}`, `GET PATCH /admin/activities`, `PATCH /venue/resources/{id}` | E7-22 / E7-23 / E7-24 / E7-26 | Listed in arch 09 without request or response fields, or not listed at all. Not added. |
+| The endpoint for the separate activation action, and the other marketplace status changes (INACTIVE ↔ ACTIVE ↔ SUSPENDED). | E7-22 / E7-23 | **Added by E7-22**, see §4. |
+| Venue account creation, resource creation, `GET /admin/venues/{id}`, `GET PATCH /admin/activities`, `PATCH /venue/resources/{id}` | E7-22 / E7-23 / E7-24 / E7-26 | **E7-22** added the first three (§4); activities and resource PATCH are still open (§4.3). |
 | `/venue/settings`, reviews, closures, maintenance, emergencies, tournaments, owner reviews | later sprint contracts | Not Sprint 1. |
 
 No included endpoint depends on an unresolved product decision, so nothing had to be kept apart as a draft.
@@ -64,3 +64,43 @@ No included endpoint depends on an unresolved product decision, so nothing had t
 - **E7-12:** `ApiErrorCode`, `ErrorResponse` and `DataResponse` belong to E7-12 (error envelope). E7-12 adds the exception mapping, the correlation-ID filter and the generic error codes, and should keep these types.
 - **E7-16:** `common/codes/*` enums belong to E7-16. Their spellings are already tested against the database; E7-16 adds the full set.
 - **E7-14:** the Bearer scheme only documents the header. Real authentication, and the Swagger UI exposure policy, are E7-14. The mock checks only that a Bearer header is present; that is not authentication.
+
+## 4. What E7-22 added (2 Oct 2026)
+
+### 4.1 Web session for the Venue Dashboard and Platform Admin (Sprint 0 review S-4, PO decision 2 Oct 2026)
+
+**This changes arch 09 §2 for VENUE and ADMIN.** The PO records it in arch 09. The Customer app does not change.
+
+| Operation | Before | Now |
+|---|---|---|
+| `POST /{venue\|admin}/auth/login` | body `{accessToken, refreshToken}` | body `{accessToken}` (`VenueAccessToken` / `AdminAccessToken`), and a `Set-Cookie` header |
+| `POST /{venue\|admin}/auth/refresh` | body `{refreshToken}` | no body. Reads the cookie and answers like login. Any refusal is 401 and clears the cookie. |
+| `POST /{venue\|admin}/auth/logout` | body `{refreshToken}` | no body. Revokes the cookie's session, clears the cookie, 204. |
+
+- Cookie: `e7gz_venue_refresh` / `e7gz_admin_refresh`, `HttpOnly; Secure; SameSite=Strict; Path=/api/v1/{venue|admin}/auth; Max-Age=` 7 days / 12 hours.
+- CSRF: refresh and logout need **both** an `Origin` from the allowed list **and** `X-Requested-With: e7gz`. Either one missing or wrong is `403 FORBIDDEN`, and nothing changes.
+- CORS: only on `/api/v1/venue/**` and `/api/v1/admin/**`, only for `E7GZ_CORS_ALLOWED_ORIGINS` (exact origins; the app refuses to start on a wildcard or a path), with credentials. Any other origin is `403 FORBIDDEN`. Customer routes have no CORS. Local dev: `E7GZ_CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:5174`.
+- `SameSite=Strict` means the Dashboard/Admin and the API must share a registrable domain (e.g. `venue.e7gz.ps` + `api.e7gz.ps`; `localhost` on any port works). Deployment (E7-101) must keep that.
+- **Clients lane (E7-21):** call login/refresh/logout with `credentials: 'include'`; send `X-Requested-With: e7gz` on refresh and logout; keep the access token in memory only; on page load call refresh to restore the session.
+
+Also: a last security chain denies every path outside `/api/**` and the docs paths (S-15). The container's error dispatch still passes.
+
+### 4.2 Endpoints added (PO decisions 2 Oct 2026)
+
+| Endpoint | Basis | Implemented by |
+|---|---|---|
+| `POST /admin/venues/{venueId}/activate` · `/deactivate` · `/suspend` `{reason}` | FR-VEN-07; arch 03 §5 `setMarketplaceStatus(…, reason)`. One verb per target status (PO). The DB transition guard refuses illegal moves. | E7-23 |
+| `GET /admin/venues/{venueId}` → `{venue, venueAccount \| null}` | arch 09 §5 `GET /admin/venues` (derived) | E7-23 |
+| `POST /admin/venues/{venueId}/venue-account` `{loginIdentifier, password, initialOwnerPassword, languagePreference?}` → 201 `AdminVenueAccount` | FR-ADM-02, FR-VEN-01 (PO: admin creates it). The field is `initialOwnerPassword`, not `ownerPassword`, because it sets the password rather than authorising an action (arch 09 §4.3 reserves `ownerPassword` for that). | E7-24 |
+| `POST /venue/resources` `{activity, consoleType?, ownerPassword}` and `GET POST /admin/venues/{venueId}/resources` `{activity, consoleType?}` | FR-ADM-02 (admin onboarding) + Dashboard (PO: both). No `name`: FR-VEN-41 fixes names, so the server assigns Room n / Pool Table n / Table n. | E7-26 |
+
+### 4.3 PO decisions on the open points (2 Oct 2026), recorded in arch 09
+
+| # | Question | Decision | In the contract |
+|---|---|---|---|
+| Q1 | `PATCH /venue/resources/{id}` | **Dropped.** Names are fixed (FR-VEN-41), the activity is fixed, and console and state have their own actions. | Not in arch 09 §4.2 any more. |
+| Q2 | `GET PATCH /admin/activities` | **View only.** | `GET /admin/activities` → `[{activity, venueCount}]` (E7-26). No PATCH. |
+| Q3 | Owner Password to add a room from the Dashboard | **Yes.** | `POST /venue/resources` needs `ownerPassword`, answers 423. The admin route does not. |
+| Q4 | Missing error codes | **Three new codes** (arch 09 §1.5) | `VENUE_LOGIN_IDENTIFIER_TAKEN` and `VENUE_ACCOUNT_ALREADY_EXISTS` (both already mapped from their DB constraints), and `MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED`. All 422. |
+
+The implementing tasks (E7-23, E7-24, E7-26, E7-35, E7-37) carry these as "Carry-forward from E7-22" lines in BUILD-PLAN and `tools/ai-context/tasks.json`.

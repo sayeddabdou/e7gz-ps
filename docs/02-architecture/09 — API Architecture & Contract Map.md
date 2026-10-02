@@ -2,6 +2,7 @@
 # API ARCHITECTURE & CONTRACT MAP v1.1
 
 **Updated:** 25 September 2026 — names and mechanics aligned to physical model v1.1.27 (`04`, `ADR-026`–`ADR-028`).
+**Updated:** 2 October 2026 — Venue/Admin browser session in an HttpOnly cookie (`§2`, `ADR-029`); Sprint 1 contract decisions (E7-22): venue marketplace status actions, venue account creation, resource creation, Activities view-only, three new error codes (`§1.5`, `§4.2`, `§5`).
 
 **Style.** REST + JSON over HTTPS, base `/api/v1`, OpenAPI 3.1 generated from code, typed TypeScript clients generated for all three surfaces (`ADR-012`).
 
@@ -113,6 +114,9 @@ Representative members, each traced:
 | `REVIEW_COOLDOWN_ACTIVE` | 422 | `FR-REV-07` |
 | `REVIEW_REPORT_ALREADY_OPEN` | 422 | `FR-REV-11` — one unresolved report per reporter per Review |
 | `AREA_HAS_ACTIVE_VENUES` · `AREA_INACTIVE` | 422 | `FR-VEN-47` |
+| `VENUE_LOGIN_IDENTIFIER_TAKEN` | 422 | `FR-VEN-01`, `FR-ADM-02` — Product Owner decision, 2 Oct 2026 (E7-22). Database: `ux_venue_login_normalized` |
+| `VENUE_ACCOUNT_ALREADY_EXISTS` | 422 | `FR-VEN-01` — one shared account per venue; Product Owner decision, 2 Oct 2026 (E7-22). Database: `uq_venue_account_venue` |
+| `MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED` | 422 | `FR-VEN-07` — the venue's current status does not allow the change (e.g. completing onboarding twice, or moving to the status it already has); Product Owner decision, 2 Oct 2026 (E7-22) |
 | `ACCOUNT_DELETED` | 403 | `FR-ACC-10` — any command against an anonymised account |
 | `REVIEW_ALREADY_EXISTS` | 422 | `FR-REV-03` |
 | `REVIEW_REMOVED_NOT_RESTORABLE` | 422 | `FR-REV-04` |
@@ -167,6 +171,19 @@ sequenceDiagram
 **Email verification is a separate track** and never activates an account for marketplace actions (`FR-ACC-02`, `FR-ACC-05`).
 **Password reset** uses verified phone OTP or email verification and does not require the old password (`FR-ACC-09`).
 **Venue and admin** use the same token model; there is **no venue self-service forgot-password flow** (`FR-ADM-03`, `Out-of-Scope §3`).
+
+**Venue Dashboard and Platform Admin run in a browser, so their refresh token travels in a cookie, never in a body** (`ADR-029`, Product Owner decision 2 Oct 2026). The Customer app is unchanged (the flow above).
+
+| Operation | Request | Response |
+|---|---|---|
+| `POST /{venue\|admin}/auth/login` | `{loginIdentifier \| email, password}` | `200 {accessToken}` + `Set-Cookie` |
+| `POST /{venue\|admin}/auth/refresh` | no body; the cookie + CSRF proof | `200 {accessToken}` + rotated `Set-Cookie`; any refusal `401 UNAUTHENTICATED` and the cookie is cleared |
+| `POST /{venue\|admin}/auth/logout` | no body; the cookie + CSRF proof | `204`, session revoked, cookie cleared |
+
+- Cookie `e7gz_venue_refresh` / `e7gz_admin_refresh`: `HttpOnly; Secure; SameSite=Strict; Path=/api/v1/{venue|admin}/auth; Max-Age` = the audience's refresh lifetime (Security `§2.3`).
+- CSRF proof on refresh and logout: an `Origin` in the allowed list **and** `X-Requested-With: e7gz`. Either missing → `403 FORBIDDEN`, nothing changes.
+- CORS only on `/venue/**` and `/admin/**`, only for the configured Dashboard and Admin origins (`E7GZ_CORS_ALLOWED_ORIGINS`, exact origins, no wildcard), with credentials. The customer routes have no CORS.
+- The page keeps the access token in memory only and restores the session on load by calling refresh.
 
 ---
 
@@ -318,7 +335,8 @@ No `details`, no field, no hint. The real cause — the 4-commitment limit, a ba
 
 | Method | Path | Owner Pw | FR |
 |---|---|---|---|
-| `GET` `PATCH` | `/venue/resources` · `/{id}` | conditional | `FR-VEN-13` |
+| `GET` | `/venue/resources` · `/{id}` | — | `FR-VEN-13` |
+| `POST` | `/venue/resources` `{activity, consoleType?, ownerPassword}` — name assigned (Room *n* / Pool Table *n* / Table *n*) | **yes** | `FR-VEN-41`, `FRS §2.4` "protected resource configuration" — Product Owner decision, 2 Oct 2026 |
 | `POST` | `/venue/resources/{id}/disable` · `/re-enable` · `/archive` · `/restore` | **yes** | `FR-VEN-03`, `FR-VEN-14` |
 | `POST` | `/venue/resources/{id}/console` `{consoleType, ownerPassword}` | **yes** | `FR-VEN-15` — clears overrides |
 | `GET` `PUT` | `/venue/pricing` | **yes** on write | `FR-VEN-03`, `FR-VEN-43`, `FR-VEN-44` |
@@ -337,6 +355,8 @@ No `details`, no field, no hint. The real cause — the 4-commitment limit, a ba
 | `GET` | `/venue/reviews` — **view only** | — | `FR-VEN-39` |
 | `GET` `POST` | `/venue/tournaments` · `/{id}/approve` · `/reject` · `/cancel` · `/operational-termination` | conditional | `FR-TRN-21`, `FR-TRN-23`, `FR-TRN-24` |
 | `GET` `PATCH` | `/venue/settings` — incl. language preference | — | `FR-VEN-40` |
+
+There is **no `PATCH` on a resource** (Product Owner decision, 2 Oct 2026): names are fixed (`FR-VEN-41`), the activity is fixed per resource, and console and state each have their own protected action above.
 
 **The two-phase opening-hours change** (`FR-VEN-23`, `FR-VEN-26`) is the only place in the API where a token binds two calls. `preview` returns a `previewToken` derived from a checksum of the exact affected set. `commit` recomputes the set; if it grew, it returns `409 AFFECTED_SET_CHANGED_REFRESH_PREVIEW` with the refreshed preview, and any Owner Password must be re-entered against it. **No booking outside the approved preview may be silently cancelled.**
 
@@ -365,9 +385,9 @@ Rules (`ADR-011`): body, never header. Verified inside the action's transaction.
 |---|---|---|
 | Dashboard | `GET /admin/dashboard` | `FR-ADM-01` |
 | Areas | `GET POST PATCH /admin/areas` · `POST /{id}/activate` · `/deactivate` | `FR-VEN-12`, `FR-VEN-47` |
-| Venues & onboarding | `GET POST PATCH /admin/venues` · `POST /admin/venues/{id}/onboarding/complete` | `FR-ADM-02` |
-| Venue accounts | `POST /admin/venue-accounts/{id}/disable` · `/enable` · `/reset-login-password` · `/reset-owner-password` | `FR-ADM-03` |
-| Activities | `GET PATCH /admin/activities` | `FR-ADM-01` |
+| Venues & onboarding | `GET POST PATCH /admin/venues` · `GET /admin/venues/{id}` (with its venue account) · `POST /admin/venues/{id}/onboarding/complete` (ONBOARDING → INACTIVE) · `POST /{id}/activate` · `/deactivate` · `/suspend` `{reason}` · `GET POST /admin/venues/{id}/resources` `{activity, consoleType?}` | `FR-ADM-02`, `FR-VEN-07`, `FR-VEN-41` — status actions and admin resource creation: Product Owner decision, 2 Oct 2026 |
+| Venue accounts | `POST /admin/venues/{id}/venue-account` `{loginIdentifier, password, initialOwnerPassword, languagePreference?}` · `POST /admin/venue-accounts/{id}/disable` · `/enable` · `/reset-login-password` · `/reset-owner-password` | `FR-ADM-02`, `FR-ADM-03`, `FR-VEN-01` |
+| Activities | `GET /admin/activities` — **view only**: the three activities and how many venues offer each; a venue's activities are set on the venue | `FR-ADM-01` — Product Owner decision, 2 Oct 2026 |
 | Users | `GET /admin/users` · `/{id}` · `GET /account-deletion-requests` · `POST /{id}/anonymise` — anonymisation can complete a linked Customer request and executes O19, including Tournament `ACCOUNT_DELETED` precedence | `FR-ADM-04`, `FR-ACC-10`, `FR-TRN-26` |
 | Verified Players | `GET /admin/verified-players` · `POST /{userId}/suspend` · `/revoke` · `/restore` | `FR-ADM-05`, `FR-ACC-15` |
 | Reviews moderation | `GET /admin/reviews` · `POST /{id}/approve` · `/hide` · `/restore` · `/remove` · `GET /admin/review-reports` · `POST /admin/review-reports/{id}/resolve` | `FR-REV-08`, `FR-REV-11` |

@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.Cookie;
 import java.nio.charset.StandardCharsets;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -44,6 +45,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import ps.e7gz.common.codes.AuthSubjectType;
 import ps.e7gz.common.codes.VenueAccountStatus;
 import ps.e7gz.common.command.Command;
@@ -54,6 +56,7 @@ import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
+import ps.e7gz.common.security.WebOrigins;
 import ps.e7gz.common.security.SubjectProbe;
 import ps.e7gz.identity.api.LoginAccountDirectory;
 import ps.e7gz.support.IntegrationTest;
@@ -190,8 +193,7 @@ class AuthSessionsHttpTest extends IntegrationTest {
     void aDisabledVenueAccountCannotRefreshItsSession() throws Exception {
         String login = "venue-" + UUID.randomUUID();
         UUID venue = TestAccounts.venue(db, login, passwordHash);
-        String refresh = read(login("venue", Map.of("loginIdentifier", login, "password", PASSWORD))
-                .andReturn().getResponse().getContentAsString()).path("data").path("refreshToken").asText();
+        String refresh = refreshCookie(login("venue", Map.of("loginIdentifier", login, "password", PASSWORD)));
 
         TestAccounts.setVenueStatus(db, venue, VenueAccountStatus.DISABLED);
 
@@ -245,10 +247,8 @@ class AuthSessionsHttpTest extends IntegrationTest {
     void reusingARotatedVenueTokenRevokesTheChainEvenAfterTheAccountIsDisabled() throws Exception {
         String login = "venue-" + UUID.randomUUID();
         UUID venue = TestAccounts.venue(db, login, passwordHash);
-        String a = read(login("venue", Map.of("loginIdentifier", login, "password", PASSWORD))
-                .andReturn().getResponse().getContentAsString()).path("data").path("refreshToken").asText();
-        String b = read(refresh("venue", a).andExpect(status().isOk()).andReturn().getResponse().getContentAsString())
-                .path("data").path("refreshToken").asText();
+        String a = refreshCookie(login("venue", Map.of("loginIdentifier", login, "password", PASSWORD)));
+        String b = refreshCookie(refresh("venue", a).andExpect(status().isOk()));
 
         TestAccounts.setVenueStatus(db, venue, VenueAccountStatus.DISABLED);
         refresh("venue", a).andExpect(status().isUnauthorized())
@@ -264,10 +264,8 @@ class AuthSessionsHttpTest extends IntegrationTest {
     void reusingARotatedAdminTokenRevokesTheChainEvenAfterTheAdminIsDeactivated() throws Exception {
         String email = "admin-" + UUID.randomUUID() + "@example.com";
         UUID admin = TestAccounts.admin(db, email, passwordHash);
-        String a = read(login("admin", Map.of("email", email, "password", PASSWORD))
-                .andReturn().getResponse().getContentAsString()).path("data").path("refreshToken").asText();
-        String b = read(refresh("admin", a).andExpect(status().isOk()).andReturn().getResponse().getContentAsString())
-                .path("data").path("refreshToken").asText();
+        String a = refreshCookie(login("admin", Map.of("email", email, "password", PASSWORD)));
+        String b = refreshCookie(refresh("admin", a).andExpect(status().isOk()));
 
         TestAccounts.setAdminActive(db, admin, false);
         refresh("admin", a).andExpect(status().isUnauthorized());
@@ -281,8 +279,7 @@ class AuthSessionsHttpTest extends IntegrationTest {
     void anInactiveAccountsCurrentTokenIsRefusedWithoutIssuingAndWorksAgainOnceReEnabled() throws Exception {
         String login = "venue-" + UUID.randomUUID();
         UUID venue = TestAccounts.venue(db, login, passwordHash);
-        String a = read(login("venue", Map.of("loginIdentifier", login, "password", PASSWORD))
-                .andReturn().getResponse().getContentAsString()).path("data").path("refreshToken").asText();
+        String a = refreshCookie(login("venue", Map.of("loginIdentifier", login, "password", PASSWORD)));
 
         TestAccounts.setVenueStatus(db, venue, VenueAccountStatus.DISABLED);
         refresh("venue", a).andExpect(status().isUnauthorized());
@@ -375,10 +372,8 @@ class AuthSessionsHttpTest extends IntegrationTest {
         TestAccounts.admin(db, admin, passwordHash);
 
         String customerRefresh = customerTokens(c.username()).refresh();
-        String venueRefresh = read(login("venue", Map.of("loginIdentifier", venue, "password", PASSWORD))
-                .andReturn().getResponse().getContentAsString()).path("data").path("refreshToken").asText();
-        String adminRefresh = read(login("admin", Map.of("email", admin, "password", PASSWORD))
-                .andReturn().getResponse().getContentAsString()).path("data").path("refreshToken").asText();
+        String venueRefresh = refreshCookie(login("venue", Map.of("loginIdentifier", venue, "password", PASSWORD)));
+        String adminRefresh = refreshCookie(login("admin", Map.of("email", admin, "password", PASSWORD)));
 
         assertThat(lifetime(customerRefresh)).isEqualTo(Duration.ofDays(30));
         assertThat(lifetime(venueRefresh)).isEqualTo(Duration.ofDays(7));
@@ -536,8 +531,7 @@ class AuthSessionsHttpTest extends IntegrationTest {
     void anotherAudiencesRefreshTokenIsNeitherUsedNorTouched() throws Exception {
         String login = "venue-" + UUID.randomUUID();
         TestAccounts.venue(db, login, passwordHash);
-        String venueRefresh = read(login("venue", Map.of("loginIdentifier", login, "password", PASSWORD))
-                .andReturn().getResponse().getContentAsString()).path("data").path("refreshToken").asText();
+        String venueRefresh = refreshCookie(login("venue", Map.of("loginIdentifier", login, "password", PASSWORD)));
 
         refresh("customer", venueRefresh).andExpect(status().isUnauthorized());
         refresh("admin", venueRefresh).andExpect(status().isUnauthorized());
@@ -687,9 +681,29 @@ class AuthSessionsHttpTest extends IntegrationTest {
         }).contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body)));
     }
 
+    /** Customer: the token in the JSON body. Venue / Admin: the session cookie from their own page (E7-22). */
     private ResultActions refresh(String group, String refreshToken) throws Exception {
+        if (!"customer".equals(group)) {
+            return mvc.perform(webSessionCall(group, "refresh", refreshToken));
+        }
         return mvc.perform(post("/api/v1/" + group + "/auth/refresh").contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of("refreshToken", refreshToken))));
+    }
+
+    static MockHttpServletRequestBuilder webSessionCall(String group, String operation, String refreshToken) {
+        MockHttpServletRequestBuilder call = post("/api/v1/" + group + "/auth/" + operation)
+                .header("Origin", "venue".equals(group) ? DASHBOARD_ORIGIN : ADMIN_ORIGIN)
+                .header(WebOrigins.CSRF_HEADER, WebOrigins.CSRF_HEADER_VALUE);
+        return refreshToken == null ? call : call.cookie(new Cookie("e7gz_" + group + "_refresh", refreshToken));
+    }
+
+    /** The refresh token a venue / admin response set in its session cookie. */
+    static String refreshCookie(ResultActions result) {
+        return result.andReturn().getResponse().getHeaders("Set-Cookie").stream()
+                .filter(c -> c.startsWith("e7gz_"))
+                .map(c -> c.substring(c.indexOf('=') + 1, c.indexOf(';')))
+                .filter(v -> !v.isEmpty())
+                .findFirst().orElseThrow(() -> new AssertionError("no session cookie set"));
     }
 
     private String refreshed(String refreshToken) throws Exception {
@@ -698,6 +712,9 @@ class AuthSessionsHttpTest extends IntegrationTest {
     }
 
     private ResultActions logout(String group, String refreshToken) throws Exception {
+        if (!"customer".equals(group)) {
+            return mvc.perform(webSessionCall(group, "logout", refreshToken));
+        }
         return mvc.perform(post("/api/v1/" + group + "/auth/logout").contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of("refreshToken", refreshToken))));
     }

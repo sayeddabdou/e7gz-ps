@@ -1,5 +1,6 @@
 package ps.e7gz.identity.internal;
 
+import java.time.Duration;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.Optional;
@@ -64,6 +65,11 @@ public class AuthSessions {
         public String toString() {
             return "TokenPair[<redacted>]";
         }
+    }
+
+    /** How long a refresh token of this type lives (arch 10 section 2.3); the web session cookie's Max-Age. */
+    public static Duration refreshLifetime(AuthSubjectType type) {
+        return RefreshTokens.lifetime(type);
     }
 
     /**

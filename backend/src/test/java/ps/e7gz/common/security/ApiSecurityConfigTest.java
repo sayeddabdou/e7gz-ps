@@ -2,6 +2,7 @@ package ps.e7gz.common.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -16,7 +17,8 @@ import ps.e7gz.support.IntegrationTest;
 
 /**
  * E7-13 review, kept by E7-14 - API documentation and operations endpoints stay closed, whatever token is sent; the
- * deployment task opens the health probes (arch 12 section 1).
+ * deployment task opens the health probes (arch 12 section 1). E7-22 (Sprint 0 review S-15): so does every path outside
+ * {@code /api/**} and the docs paths.
  */
 @AutoConfigureMockMvc
 class ApiSecurityConfigTest extends IntegrationTest {
@@ -52,5 +54,19 @@ class ApiSecurityConfigTest extends IntegrationTest {
         // Contract stubs (501) or missing query parameters (400): the point is that security lets them through.
         mvc.perform(get(path)).andExpect(result ->
                 assertThat(result.getResponse().getStatus()).isNotIn(401, 403));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/", "/error", "/index.html", "/internal/anything", "/api", "/apis/v1/customer/areas",
+            "/static/app.js"})
+    void everythingOutsideTheApiIsDeniedWhateverTokenIsSent(String path) throws Exception {
+        String admin = accessTokens.issue(AuthSubjectType.ADMIN, UUID.randomUUID());
+
+        mvc.perform(get(path))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHENTICATED"));
+        mvc.perform(post(path).header("Authorization", "Bearer " + admin))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHENTICATED"));
     }
 }

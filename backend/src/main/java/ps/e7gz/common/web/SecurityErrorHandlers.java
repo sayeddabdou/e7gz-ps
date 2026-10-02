@@ -1,8 +1,14 @@
 package ps.e7gz.common.web;
 
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import org.springframework.http.server.ServerHttpResponse;
+import org.springframework.http.server.ServletServerHttpResponse;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.stereotype.Component;
+import org.springframework.web.cors.CorsProcessor;
+import org.springframework.web.cors.DefaultCorsProcessor;
 import ps.e7gz.common.error.ApiErrorCode;
 
 /**
@@ -31,5 +37,19 @@ public class SecurityErrorHandlers {
     /** Authenticated but not permitted: 403 {@code FORBIDDEN}. */
     public AccessDeniedHandler accessDeniedHandler() {
         return (request, response, failure) -> responses.write(response, ApiErrorCode.FORBIDDEN);
+    }
+
+    /**
+     * Spring's CORS checks, with a refused cross-origin request answered 403 {@code FORBIDDEN} in the envelope instead
+     * of the plain-text "Invalid CORS request" (E7-22).
+     */
+    public CorsProcessor corsProcessor() {
+        return new DefaultCorsProcessor() {
+            @Override
+            protected void rejectRequest(ServerHttpResponse response) throws IOException {
+                HttpServletResponse servlet = ((ServletServerHttpResponse) response).getServletResponse();
+                responses.write(servlet, ApiErrorCode.FORBIDDEN);
+            }
+        };
     }
 }

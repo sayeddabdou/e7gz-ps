@@ -55,7 +55,7 @@ No password, Owner Password or OTP is ever logged, echoed in a response, or plac
 |---|---|---|
 | Type | JWT, `HS512` or `RS256` | opaque 256-bit random |
 | Lifetime | **15 minutes** | **30 days** (customer), **7 days** (venue), **12 hours** (admin) |
-| Storage | client memory / secure storage | hashed in `auth_refresh_token` |
+| Storage | client memory / secure storage | hashed in `auth_refresh_token`; on the client: Customer app secure storage (Keychain/Keystore), Venue Dashboard and Platform Admin an `HttpOnly; Secure; SameSite=Strict` cookie the page cannot read (`ADR-029`) |
 | Claims | `sub`, `typ` (`CUSTOMER`/`VENUE`/`ADMIN`), `jti`, `iat`, `exp`, `ver` | — |
 | Rotation | — | **every use**; the old token is revoked |
 | Reuse detection | — | using a rotated token **revokes the entire chain** and alerts |
@@ -63,6 +63,8 @@ No password, Owner Password or OTP is ever logged, echoed in a response, or plac
 The access token carries **no capability claims** beyond the identity type. Ban state, verification state and venue account status change between token issue and use, so they are read from the database on every request (`FR-ACC-17`, `FR-VEN-08`). A 15-minute token that still says "verified" cannot outlive a ban.
 
 Venue account `DISABLED` invalidates active sessions immediately: the check runs per request, and the SSE stream is closed (`08 §5`).
+
+**Browser sessions** (`ADR-029`, `09 §2`). The Venue Dashboard and Platform Admin never hold the refresh token in script-readable storage: it is a cookie scoped to their `/auth` path, and the access token lives in page memory only. Because the browser attaches the cookie by itself, refresh and logout require an `Origin` from the allowed list **and** the `X-Requested-With: e7gz` header (CSRF). CORS allows exactly the configured Dashboard and Admin origins, with credentials, and nothing on the customer routes. Anything outside `/api/**` is denied by a last security chain.
 
 ## 2.4 OTP (`FR-ACC-04`)
 

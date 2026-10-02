@@ -45,6 +45,11 @@ e7gz:
   security:
     jwt:
       secret: ${E7GZ_JWT_SECRET:}
+    # Browser origins of the Venue Dashboard and Platform Admin (E7-22, Sprint 0 review S-4): CORS with credentials and
+    # the cookie session's refresh/logout accept only these. Comma-separated exact origins, no wildcard. Empty = none.
+    # Local dev: E7GZ_CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:5174
+    cors:
+      allowed-origins: ${E7GZ_CORS_ALLOWED_ORIGINS:}
 
 # Every log line carries the correlation ID of its request or job (NFR-32; CorrelationId puts it in the MDC).
 # JSON log output is the observability task's (arch 11 §5.1, E7-100); this only adds the field to the default pattern.

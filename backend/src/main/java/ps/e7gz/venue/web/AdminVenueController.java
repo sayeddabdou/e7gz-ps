@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import ps.e7gz.common.codes.Activity;
 import ps.e7gz.common.codes.MarketplaceStatus;
+import ps.e7gz.common.codes.VenueAccountLanguage;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
@@ -34,13 +36,15 @@ import ps.e7gz.common.web.PageView;
 
 /**
  * Platform Admin — venues and onboarding (arch 09 §5, arch 03 §5, FR-ADM-02, FR-VEN-06, FR-VEN-07). A new venue starts
- * in ONBOARDING. Stub until E7-23.
+ * in ONBOARDING. Stub until E7-23 (venue account creation: E7-24).
  */
 @RestController
 @RequestMapping("/api/v1/admin/venues")
 @Tag(name = "admin-venues")
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class AdminVenueController {
+
+    static final int MAX_TEXT = 200;
 
     @GetMapping
     @Operation(operationId = "adminListVenues", summary = "All venues, any marketplace status")
@@ -70,10 +74,66 @@ public class AdminVenueController {
             summary = "Complete onboarding: ONBOARDING → INACTIVE, never ACTIVE (FR-ADM-02, FR-VEN-07)",
             description = "Completing onboarding does not activate the venue (PO decision, 28 Sep 2026). The venue "
                     + "leaves ONBOARDING for INACTIVE — hidden from discovery, Dashboard and manual booking available "
-                    + "(FR-VEN-07); the database never lets it return to ONBOARDING. Activation is a separate admin "
-                    + "action, not part of this contract yet.")
+                    + "(FR-VEN-07); the database never lets it return to ONBOARDING. Activation is the separate "
+                    + "activate action.")
+    @ApiError(status = 422, codes = ApiErrorCode.MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED)
     public DataResponse<AdminVenueView> completeOnboarding(
             @PathVariable UUID venueId, @Valid @RequestBody AdminVenueReasonRequest request) {
+        throw NotImplementedYet.stub();
+    }
+
+    @GetMapping("/{venueId}")
+    @Operation(operationId = "adminGetVenue", summary = "One venue with its venue account, if created (FR-ADM-02)")
+    public DataResponse<AdminVenueDetailView> get(@PathVariable UUID venueId) {
+        throw NotImplementedYet.stub();
+    }
+
+    // Marketplace status after onboarding: ACTIVE, INACTIVE and SUSPENDED, in any direction between the three, never
+    // back to ONBOARDING (FR-VEN-07; the database refuses that, tr_127_venue_marketplace_transition). One action per
+    // target status, each with the admin's reason (PO decision 2 Oct 2026, E7-22). A change the current status does not
+    // allow (e.g. completing onboarding twice, or moving to the status the venue already has) is
+    // MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED; ACTIVE or SUSPENDED in an inactive area is AREA_INACTIVE
+    // (gd_venue_area_inactive_status). Stub until E7-23.
+
+    @PostMapping("/{venueId}/activate")
+    @Operation(operationId = "adminActivateVenue",
+            summary = "Marketplace status → ACTIVE: discoverable and bookable online (FR-VEN-07)")
+    @ApiError(status = 422, codes = {ApiErrorCode.MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED, ApiErrorCode.AREA_INACTIVE})
+    public DataResponse<AdminVenueView> activate(
+            @PathVariable UUID venueId, @Valid @RequestBody AdminVenueReasonRequest request) {
+        throw NotImplementedYet.stub();
+    }
+
+    @PostMapping("/{venueId}/deactivate")
+    @Operation(operationId = "adminDeactivateVenue",
+            summary = "Marketplace status → INACTIVE: hidden, non-punitive; Dashboard and manual booking stay (FR-VEN-07)")
+    @ApiError(status = 422, codes = ApiErrorCode.MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED)
+    public DataResponse<AdminVenueView> deactivate(
+            @PathVariable UUID venueId, @Valid @RequestBody AdminVenueReasonRequest request) {
+        throw NotImplementedYet.stub();
+    }
+
+    @PostMapping("/{venueId}/suspend")
+    @Operation(operationId = "adminSuspendVenue",
+            summary = "Marketplace status → SUSPENDED: as INACTIVE plus no new marketplace tournaments; administrative "
+                    + "and punitive (FR-VEN-07)")
+    @ApiError(status = 422, codes = {ApiErrorCode.MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED, ApiErrorCode.AREA_INACTIVE})
+    public DataResponse<AdminVenueView> suspend(
+            @PathVariable UUID venueId, @Valid @RequestBody AdminVenueReasonRequest request) {
+        throw NotImplementedYet.stub();
+    }
+
+    @PostMapping("/{venueId}/venue-account")
+    @ResponseStatus(HttpStatus.CREATED)
+    @Operation(operationId = "adminCreateVenueAccount",
+            summary = "Create the venue's one shared account with its initial Owner Password (FR-ADM-02, FR-VEN-01)",
+            description = "Onboarding is admin-managed, including the account credentials and the initial Owner "
+                    + "Password (FR-ADM-02; PO decision 2 Oct 2026, E7-22). One account per venue "
+                    + "(uq_venue_account_venue). Both passwords are write-only: never returned, logged or echoed. "
+                    + "The account starts ENABLED. Stub until E7-24.")
+    @ApiError(status = 422, codes = {ApiErrorCode.VENUE_LOGIN_IDENTIFIER_TAKEN, ApiErrorCode.VENUE_ACCOUNT_ALREADY_EXISTS})
+    public DataResponse<AdminVenueAccountController.AdminVenueAccountView> createVenueAccount(
+            @PathVariable UUID venueId, @Valid @RequestBody AdminVenueAccountCreateRequest request) {
         throw NotImplementedYet.stub();
     }
 
@@ -115,5 +175,30 @@ public class AdminVenueController {
     /** Status changes carry the admin's reason (arch 03 §5 {@code setMarketplaceStatus(…, reason)}). */
     @Schema(name = "AdminVenueReasonRequest")
     public record AdminVenueReasonRequest(@NotBlank @Schema(example = "Setup verified on site") String reason) {
+    }
+
+    /** One venue for the admin venue page; {@code venueAccount} is null until the account is created. */
+    @Schema(name = "AdminVenueDetail")
+    public record AdminVenueDetailView(
+            @NotNull AdminVenueView venue,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
+            AdminVenueAccountController.AdminVenueAccountView venueAccount) {
+    }
+
+    /** {@code iam.venue_account} and {@code iam.venue_owner_secret}; the server hashes both passwords (Argon2id). */
+    @Schema(name = "AdminVenueAccountCreateRequest")
+    public record AdminVenueAccountCreateRequest(
+            @NotBlank @Size(max = MAX_TEXT) @Schema(example = "levelup.nasrcity") String loginIdentifier,
+            @NotBlank @Size(max = MAX_TEXT) @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY)
+            String password,
+            @NotBlank @Size(max = MAX_TEXT) @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY,
+                    description = "Sets the first Owner Password (FR-ADM-02); not a check of an existing one.")
+            String initialOwnerPassword,
+            @Schema(description = "Dashboard language; en when absent (FR-VEN-40).") VenueAccountLanguage languagePreference) {
+
+        @Override
+        public String toString() {
+            return "AdminVenueAccountCreateRequest[loginIdentifier=" + loginIdentifier + ", <passwords redacted>]";
+        }
     }
 }
