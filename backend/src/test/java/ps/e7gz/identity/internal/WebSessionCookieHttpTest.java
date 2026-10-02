@@ -226,7 +226,7 @@ class WebSessionCookieHttpTest extends IntegrationTest {
 
     private ResultActions adminLogin() throws Exception {
         String email = "admin-" + UUID.randomUUID() + "@example.com";
-        TestAccounts.admin(db, email, passwordHash);
+        TestAccounts.admin(email, passwordHash);
         return login("admin", Map.of("email", email, "password", PASSWORD));
     }
 

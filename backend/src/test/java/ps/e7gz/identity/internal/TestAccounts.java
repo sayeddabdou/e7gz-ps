@@ -1,8 +1,11 @@
 package ps.e7gz.identity.internal;
 
 import java.util.UUID;
+import org.postgresql.Driver;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.datasource.SimpleDriverDataSource;
 import ps.e7gz.common.codes.VenueAccountStatus;
+import ps.e7gz.support.PostgresTestContainer;
 
 /**
  * E7-14 test data: real {@code iam.venue_account} (with its area and ONBOARDING venue) and {@code iam.admin_account}
@@ -39,16 +42,27 @@ public final class TestAccounts {
                 .param("status", status.name()).param("id", account).update();
     }
 
-    /** An active admin. */
-    public static UUID admin(JdbcClient db, String email, String passwordHash) {
+    /**
+     * An active admin, written on the admin-runtime connection: since E7-23 (Sprint 0 review S-6) the public API's role
+     * cannot write {@code iam.admin_account}.
+     */
+    public static UUID admin(String email, String passwordHash) {
         UUID id = UUID.randomUUID();
-        db.sql("INSERT INTO iam.admin_account (id, email, password_hash, full_name) VALUES (:id, :email, :hash, 'Test')")
+        adminRuntime().sql("""
+                        INSERT INTO iam.admin_account (id, email, password_hash, full_name)
+                        VALUES (:id, :email, :hash, 'Test')""")
                 .param("id", id).param("email", email).param("hash", passwordHash).update();
         return id;
     }
 
-    public static void setAdminActive(JdbcClient db, UUID admin, boolean active) {
-        db.sql("UPDATE iam.admin_account SET is_active = :active WHERE id = :id")
+    public static void setAdminActive(UUID admin, boolean active) {
+        adminRuntime().sql("UPDATE iam.admin_account SET is_active = :active WHERE id = :id")
                 .param("active", active).param("id", admin).update();
+    }
+
+    private static JdbcClient adminRuntime() {
+        return JdbcClient.create(new SimpleDriverDataSource(new Driver(),
+                PostgresTestContainer.jdbcUrl(PostgresTestContainer.DATABASE), PostgresTestContainer.ADMIN_RUNTIME,
+                PostgresTestContainer.ADMIN_RUNTIME));
     }
 }

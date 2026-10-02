@@ -249,6 +249,22 @@ class CommandRunnerTest extends IntegrationTest {
         assertThat(seen).containsExactly(adminId, correlationId, seen.get(2), PostgresTestContainer.ADMIN_RUNTIME);
     }
 
+    /** E7-23: no admin exists yet, so no admin.begin_command; admin connection plus the bootstrap advisory lock. */
+    @Test
+    void theFirstAdminBootstrapScopeRunsOnTheAdminConnectionUnderItsAdvisoryLock() {
+        List<Object> seen = runner.run(command(CommandScope.firstAdminBootstrap(), context -> List.of(
+                context.jdbc().sql("SELECT current_user").query(String.class).single(),
+                context.jdbc().sql("""
+                                SELECT count(*) FROM pg_locks
+                                 WHERE locktype = 'advisory' AND pid = pg_backend_pid() AND granted""")
+                        .query(Long.class).single(),
+                context.commandNow())));
+
+        assertThat(seen.get(0)).isEqualTo(PostgresTestContainer.ADMIN_RUNTIME);
+        assertThat(seen.get(1)).isEqualTo(1L);
+        assertThat(seen.get(2)).isNotNull();
+    }
+
     private static String sqlState(Throwable e) {
         for (Throwable t = e; t != null; t = t.getCause()) {
             if (t instanceof SQLException sql) {

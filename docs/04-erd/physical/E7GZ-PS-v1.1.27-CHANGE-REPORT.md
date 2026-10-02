@@ -13,7 +13,7 @@
 | `E7GZ-PS-security-baseline-v1.1.27.sql` | Roles `e7gz_app_runtime` / `e7gz_admin_runtime` and all grants; idempotent; re-run after every migration |
 | `test_behaviour_v127.sh` | 86 behaviour checks of the database rules |
 | `test_tournament_v127.sh` | 22 isolated checks of Tournament approval and Ban-boundary rules |
-| `test_privileges_v127.sh` | 16 checks that the runtime roles can do exactly what they should |
+| `test_privileges_v127.sh` | 21 checks that the runtime roles can do exactly what they should |
 
 ## Build a database
 
@@ -93,6 +93,23 @@ The test scripts connect with `psql -h /tmp -p 5499 -U postgres`; change the `P=
 - `gd_reservation_conflict_closure`: a Closure save locks its Venue and every Resource before it writes CLOSURE rows, so a racing commitment waits and loses as `SLOT_NO_LONGER_AVAILABLE`. A commitment already present must be cancelled (FR-VEN-30), abort the save (`AFFECTED_SET_CHANGED_REFRESH_PREVIEW`, FR-VEN-26) or block it (`TOURNAMENT_CONFLICT_BLOCKS_SAVE`, FR-VEN-32) before any CLOSURE row exists; the identifier cannot tell which was skipped, so no single code is true.
 
 **Review:** the six Engine-lane functions need the Engine owner's review before merge (CLAUDE.md §6).
+
+### v1.1.29 — admin tables closed to the public API's role (E7-23, 2 Oct 2026)
+
+Sprint 0 review S-6, Product Owner decision 2 Oct 2026. Two parts:
+
+1. **Grants** in `E7GZ-PS-security-baseline-v1.1.27.sql` and its Flyway copy `R__security_baseline.sql`. The `.dbm` holds no grants, and the baseline re-applies after every migration, so the revokes live there (a versioned migration would be undone by the next baseline run).
+2. **One function attribute**, `.dbm` block `v1_1_29_admin_alert_trigger_security_definer` = Flyway `V202610021800__admin_alert_trigger_security_definer.sql`: `operations.raise_resource_emergency_tournament_abuse_alert()` becomes SECURITY DEFINER with `search_path = pg_catalog, pg_temp`. Body, signature, owner, grants and trigger unchanged (every name in the body is schema-qualified). Engine-lane trigger: Engine owner's review.
+
+| Table (owner: Platform Administration, arch 03 §1) | `e7gz_app_runtime` before | after |
+|---|---|---|
+| `iam.admin_account` | SELECT, INSERT, UPDATE | SELECT on `(id, is_active)` only |
+| `admin.admin_alert` | SELECT, INSERT, UPDATE | SELECT |
+
+- The kept column grant is what the SECURITY INVOKER triggers read to check an ADMIN actor (`… NOT EXISTS (SELECT 1 FROM iam.admin_account WHERE id = …)`); every function that reads other columns or locks admin rows (`FOR SHARE`) is SECURITY DEFINER.
+- Admin alerts are now written only by SECURITY DEFINER functions: the O11 abuse-signal trigger (part 2) and `admin.acknowledge_alert()` (admin role only).
+- `e7gz_admin_runtime` is unchanged. Admin login and the per-request active-admin check now read on that connection (`AdminLoginAccounts`); the first Platform Admin is created by the audited one-off `admin-bootstrap` profile.
+- Tests: five new checks in `test_privileges_v127.sh`; `AdminAccountPrivilegesTest` (including the trigger now running as its owner) and the `.dbm`/migration identity check in `MigrationFilesTest`.
 
 ## Product Owner decisions (26 Sep 2026)
 

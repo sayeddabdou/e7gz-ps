@@ -45,6 +45,9 @@ public class CommandRunner {
 
     private static final String SERIALIZATION_FAILURE = "40001";
 
+    /** Advisory-lock key that serialises first-admin bootstraps ({@link CommandScope#firstAdminBootstrap()}). */
+    static final String FIRST_ADMIN_BOOTSTRAP_LOCK = "e7gz.first_admin_bootstrap";
+
     private final Pool app;
     private final Pool admin;
     private final CommandRetryProperties retry;
@@ -69,7 +72,9 @@ public class CommandRunner {
             throw new IllegalStateException(name + " must run in its own READ COMMITTED transaction; "
                     + "CommandRunner cannot be called inside another transaction (arch 04 section 2.1)");
         }
-        Pool pool = scope instanceof CommandScope.Admin ? admin : app;
+        boolean onAdminConnection =
+                scope instanceof CommandScope.Admin || scope instanceof CommandScope.FirstAdminBootstrap;
+        Pool pool = onAdminConnection ? admin : app;
 
         for (int attempt = 1; ; attempt++) {
             int thisAttempt = attempt;
@@ -151,6 +156,16 @@ public class CommandRunner {
                         statement.setArray(3, uuids(con, a.lockSet().users()));
                         statement.setArray(4, uuids(con, a.lockSet().venues()));
                         yield instant(statement);
+                    }
+                }
+                case CommandScope.FirstAdminBootstrap bootstrap -> {
+                    try (PreparedStatement statement = con.prepareStatement(
+                            "SELECT pg_advisory_xact_lock(hashtext(?)), clock_timestamp()")) {
+                        statement.setString(1, FIRST_ADMIN_BOOTSTRAP_LOCK);
+                        try (ResultSet rs = statement.executeQuery()) {
+                            rs.next();
+                            yield rs.getObject(2, OffsetDateTime.class).toInstant();
+                        }
                     }
                 }
             });

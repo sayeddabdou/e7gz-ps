@@ -204,11 +204,11 @@ class AuthSessionsHttpTest extends IntegrationTest {
     @Test
     void anInactiveAdminCannotLogIn() throws Exception {
         String email = "admin-" + UUID.randomUUID() + "@example.com";
-        UUID admin = TestAccounts.admin(db, email, passwordHash);
+        UUID admin = TestAccounts.admin(email, passwordHash);
         login("admin", Map.of("email", email, "password", PASSWORD)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.accessToken").isNotEmpty());
 
-        TestAccounts.setAdminActive(db, admin, false);
+        TestAccounts.setAdminActive(admin, false);
 
         login("admin", Map.of("email", email, "password", PASSWORD))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
@@ -219,7 +219,7 @@ class AuthSessionsHttpTest extends IntegrationTest {
         String login = "venue-" + UUID.randomUUID();
         UUID venue = TestAccounts.venue(db, login, passwordHash);
         String email = "admin-" + UUID.randomUUID() + "@example.com";
-        UUID admin = TestAccounts.admin(db, email, passwordHash);
+        UUID admin = TestAccounts.admin(email, passwordHash);
         String venueAccess = read(login("venue", Map.of("loginIdentifier", login, "password", PASSWORD))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString())
                 .path("data").path("accessToken").asText();
@@ -235,7 +235,7 @@ class AuthSessionsHttpTest extends IntegrationTest {
         probe(SubjectProbe.CUSTOMER, adminAccess).andExpect(status().isForbidden());
 
         TestAccounts.setVenueStatus(db, venue, VenueAccountStatus.DISABLED);
-        TestAccounts.setAdminActive(db, admin, false);
+        TestAccounts.setAdminActive(admin, false);
 
         probe(SubjectProbe.VENUE, venueAccess).andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("UNAUTHENTICATED"));
@@ -263,14 +263,14 @@ class AuthSessionsHttpTest extends IntegrationTest {
     @Test
     void reusingARotatedAdminTokenRevokesTheChainEvenAfterTheAdminIsDeactivated() throws Exception {
         String email = "admin-" + UUID.randomUUID() + "@example.com";
-        UUID admin = TestAccounts.admin(db, email, passwordHash);
+        UUID admin = TestAccounts.admin(email, passwordHash);
         String a = refreshCookie(login("admin", Map.of("email", email, "password", PASSWORD)));
         String b = refreshCookie(refresh("admin", a).andExpect(status().isOk()));
 
-        TestAccounts.setAdminActive(db, admin, false);
+        TestAccounts.setAdminActive(admin, false);
         refresh("admin", a).andExpect(status().isUnauthorized());
 
-        TestAccounts.setAdminActive(db, admin, true);
+        TestAccounts.setAdminActive(admin, true);
         refresh("admin", b).andExpect(status().isUnauthorized());
         assertThat(liveSessionsOf(admin)).isZero();
     }
@@ -369,7 +369,7 @@ class AuthSessionsHttpTest extends IntegrationTest {
         String venue = "venue-" + UUID.randomUUID();
         TestAccounts.venue(db, venue, passwordHash);
         String admin = "admin-" + UUID.randomUUID() + "@example.com";
-        TestAccounts.admin(db, admin, passwordHash);
+        TestAccounts.admin(admin, passwordHash);
 
         String customerRefresh = customerTokens(c.username()).refresh();
         String venueRefresh = refreshCookie(login("venue", Map.of("loginIdentifier", venue, "password", PASSWORD)));
@@ -747,9 +747,7 @@ class AuthSessionsHttpTest extends IntegrationTest {
 
     /** O19 anonymisation through its producer, as a Platform Admin command (arch 04 section 2.2). */
     private void anonymise(UUID userId) {
-        UUID adminId = UUID.randomUUID();
-        db.sql("INSERT INTO iam.admin_account (id, email, password_hash, full_name) VALUES (:id, :email, 'x', 'Test')")
-                .param("id", adminId).param("email", "a-" + adminId + "@example.com").update();
+        UUID adminId = TestAccounts.admin("a-" + UUID.randomUUID() + "@example.com", "x");
         runner.run(new AnonymiseUser(adminId, userId));
     }
 

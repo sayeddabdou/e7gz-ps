@@ -39,6 +39,17 @@ class MigrationFilesTest {
         assertThat(classpath("db/migration/V202609291200__guard_error_identifiers.sql")).isEqualTo(block);
     }
 
+    /** v1.1.29 (E7-23): the abuse-alert trigger runs as its owner; the model's own block, byte for byte. */
+    @Test
+    void adminAlertTriggerMigrationIsTheModelsV1129Block() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String open = "<genericsql name=\"v1_1_29_admin_alert_trigger_security_definer\">\n\t<definition> <![CDATA[\n";
+        int start = model.indexOf(open);
+        assertThat(start).as("v1.1.29 block in the .dbm").isPositive();
+        String block = model.substring(start + open.length(), model.indexOf("]]> </definition>", start));
+        assertThat(classpath("db/migration/V202610021800__admin_alert_trigger_security_definer.sql")).isEqualTo(block);
+    }
+
     private static String classpath(String resource) throws IOException {
         try (InputStream in = MigrationFilesTest.class.getClassLoader().getResourceAsStream(resource)) {
             assertThat(in).as(resource).isNotNull();
