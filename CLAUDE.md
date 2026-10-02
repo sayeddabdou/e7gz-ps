@@ -73,7 +73,7 @@ pnpm mock                            # Prism mock server from openapi.json
 **API**
 - Separate DTOs per route group, always (contact visibility and neutral Late Confirm errors depend on it).
 - Errors are codes from the `ApiErrorCode` enum (arch 09 §1.5); clients map codes to text. Never send rule text from the backend.
-- Every write accepts `Idempotency-Key`.
+- `Idempotency-Key` is required on every booking-, commitment- or money/points-moving write (arch 09 §1.2, ADR-015). Other writes (e.g. admin area/venue edits) do not need it (PO decision 3 Oct 2026).
 
 **Clients**
 - No hard-coded colours (use `packages/tokens`), no hard-coded rule text, no status names invented from prototypes.
@@ -86,7 +86,7 @@ pnpm mock                            # Prism mock server from openapi.json
 - **Lanes:** Engine (inventory, booking, late confirm, attendance, trust, tournaments), Platform (foundation, identity, venue setup, pricing, scheduler, outbox, notifications, loyalty, config, ops support, admin APIs, deploy), Clients (three apps). Each lane owns its modules; changing another lane's module needs that owner's review.
 - **Contract first:** each sprint starts with an `Sx-P0` contract task — controller interfaces + DTOs returning 501, merged by day 2. Clients build against `pnpm mock`; backend lanes fill the stubs.
 - **Branches:** `E7-<jira#>-short-name` from `main`. Small PRs (< ~400 lines where possible). One teammate reviews; CI must be green. Squash-merge.
-- **AGENTS.md** is the same rules for other AI tools (Abdallah uses Gemini CLI / free chats — see AI-HELPERS.md). If you change a rule here, change it there too.
+- **Other AI tools** (Abdallah: Gemini CLI or a browser chat) use this file too: `node tools/ai-context/bundle.mjs E7-xx` builds one context file with these rules and the task.
 - **Every task** in Jira has a Claude Code prompt. Paste it, let Claude Code work, then **review the diff yourself** before opening the PR.
 - **Definition of Done:** code + tests (including the task's "done when" items) + OpenAPI regenerated if the API changed + no ArchUnit violations + PR reviewed + Jira moved to Done.
 - Daily 15-min sync: what merged, what is blocked, which contract changed.

@@ -26,10 +26,10 @@ const block = (title, body, lang = '') => `\n\n## ${title}\n\n\`\`\`${lang}\n${b
 
 let out = `# Context for ${key} — ${task.title}\n\n`;
 out += `You are my coding assistant for the E7GZ PS project. Everything you need is below.\n`;
-out += `Rules: follow AGENTS.md; give COMPLETE files with their full path; only touch the folders listed; use only fields that exist in the API contract; if something is unclear or missing, ask me instead of guessing.\n`;
+out += `Rules: follow CLAUDE.md; give COMPLETE files with their full path; only touch the folders listed; use only fields that exist in the API contract; if something is unclear or missing, ask me instead of guessing.\n`;
 out += `First reply: restate the task in 3 lines and list the files you will create or change. Wait for my OK before writing code.\n`;
 
-out += block('AGENTS.md (project rules)', read('AGENTS.md') || '(missing)', 'markdown');
+out += block('CLAUDE.md (project rules)', read('CLAUDE.md') || '(missing)', 'markdown');
 out += `\n\n## The task\n\n**${key} · ${task.title}** — ${task.what}\n\n**Steps**\n${task.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\n\n**Finished when**\n${task.done.map(s => `- ${s}`).join('\n')}\n\n**Write only in**\n${task.folders.map(f => `- ${f}`).join('\n')}\n`;
 
 // API contract: whole file if small, else only the paths that match the task's feature words

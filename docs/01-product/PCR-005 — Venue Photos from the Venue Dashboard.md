@@ -16,7 +16,8 @@ For both:
 
 - Removing a photo **hides** it. The metadata row and the stored original are kept (`removed_at`), and the removal is audited. Nothing is hard-deleted.
 - Photos are shown to customers on the venue card and Venue Details (`FR-DIS-03`, `FR-DIS-11`) in the venue's chosen order. The first photo is the venue-card image.
-- Accepted files: JPEG, PNG or WebP, at most 5 MB each, at most 10 visible photos per venue. These limits are technical defaults held in configuration.
+- Accepted files: JPEG, PNG or WebP, at most 5 MB each, at most 10 visible photos per venue. These limits are technical defaults held in configuration. Photos are uploaded only from the web (Platform Admin, Venue Dashboard); the upload asks the browser for these formats, so iPhone photos arrive as JPEG. Customers never upload photos.
+- **Product Owner decisions, 3 Oct 2026:** after upload a background job makes a small (venue card) and a medium (Venue Details) copy without location or camera metadata (GPS/EXIF); customers see only these copies, the original is kept. Signed links: upload 10 minutes, viewing 1 hour. Uploads not confirmed within 24 hours are cleaned up by a nightly job (they were never shown). At launch photos are served straight from storage with signed links; the CDN comes with the deployment task (E7-101).
 
 ## Rationale
 
