@@ -32,6 +32,12 @@ public abstract class IntegrationTest {
         registry.add("e7gz.datasource.admin.password", () -> ADMIN_RUNTIME);
         registry.add("e7gz.security.jwt.secret", () -> TEST_JWT_SECRET);
         registry.add("e7gz.security.cors.allowed-origins", () -> DASHBOARD_ORIGIN + "," + ADMIN_ORIGIN);
+        // E7-23 PR 3: venue photos in a real S3 server (SeaweedFS, as in docker compose).
+        registry.add("e7gz.object-store.endpoint", () -> ObjectStoreTestContainer.endpoint().toString());
+        registry.add("e7gz.object-store.bucket", () -> ObjectStoreTestContainer.BUCKET);
+        registry.add("e7gz.object-store.access-key", () -> ObjectStoreTestContainer.ACCESS_KEY);
+        registry.add("e7gz.object-store.secret-key", () -> ObjectStoreTestContainer.SECRET_KEY);
+        registry.add("e7gz.object-store.create-bucket", () -> "false");
     }
 
     /** E7-22: the browser origins the tests' Venue Dashboard and Platform Admin run on. */

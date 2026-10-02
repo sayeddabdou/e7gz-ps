@@ -3,3 +3,7 @@
 spring:
   main:
     web-application-type: none
+# A one-off command: it never prepares the photo bucket.
+e7gz:
+  object-store:
+    create-bucket: false

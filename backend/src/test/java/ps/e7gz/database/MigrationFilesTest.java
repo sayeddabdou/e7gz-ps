@@ -66,6 +66,30 @@ class MigrationFilesTest {
                 .contains("CREATE UNIQUE INDEX ux_area_name_normalized ON geo.area USING btree (lower(btrim(name)))");
     }
 
+    /** v1.1.31 (E7-23 PR 3, PCR-005): the photo life-cycle columns, check and index are modelled under the same names. */
+    @Test
+    void venueImageLifeCycleIsInTheModel() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String migration = classpath("db/migration/V202610031200__venue_image_upload_and_removal.sql");
+        int start = model.indexOf("<table name=\"venue_image\" layers");
+        String table = model.substring(start, model.indexOf("</table>", start));
+
+        for (String column : new String[] {"uploaded_at", "processed_at", "removed_at"}) {
+            assertThat(table).contains("<column name=\"" + column + "\">");
+            assertThat(migration).contains("ADD COLUMN " + column + " timestamp with time zone");
+        }
+        assertThat(table).contains("<column name=\"created_at\" not-null=\"true\" default-value=\"clock_timestamp()\">")
+                .contains("<constraint name=\"ck_venue_image_life_cycle\"")
+                .contains("(processed_at IS NULL OR uploaded_at IS NOT NULL) AND (uploaded_at IS NULL OR sort_order IS NOT NULL)");
+        assertThat(model).contains("<index name=\"ix_venue_image_visible\" table=\"venue.venue_image\"")
+                .contains("<predicate> <![CDATA[uploaded_at IS NOT NULL AND removed_at IS NULL]]> </predicate>");
+        assertThat(migration)
+                .contains("ADD COLUMN created_at timestamp with time zone NOT NULL DEFAULT clock_timestamp()")
+                .contains("CHECK ((processed_at IS NULL OR uploaded_at IS NOT NULL) AND (uploaded_at IS NULL OR sort_order IS NOT NULL))")
+                .contains("CREATE INDEX ix_venue_image_visible ON venue.venue_image USING btree (venue_id, sort_order)")
+                .contains("WHERE uploaded_at IS NOT NULL AND removed_at IS NULL");
+    }
+
     private static String classpath(String resource) throws IOException {
         try (InputStream in = MigrationFilesTest.class.getClassLoader().getResourceAsStream(resource)) {
             assertThat(in).as(resource).isNotNull();
