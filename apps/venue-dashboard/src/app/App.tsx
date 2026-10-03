@@ -3,6 +3,7 @@ import { logicalSpacing, webTokens } from "@e7gz/tokens/web";
 import { BrowserRouter, NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { createDashboardApiClient } from "../api";
 import type { ConfigResult } from "../config";
+import { AvailabilitySchedule } from "../features/schedule";
 import { PricingEditor, ResourceList, SettingsPage } from "../features/setup";
 import { createVenueSessionApi, VenueLoginScreen, type VenueSessionApi } from "../features/auth";
 import { directionOf, messages, MessagesContext, type Language, type Messages } from "../i18n";
@@ -144,6 +145,8 @@ function ProtectedShell({
                   <ResourceList api={api} />
                 ) : route.path === "/pricing" ? (
                   <PricingEditor api={api} />
+                ) : route.path === "/schedule" ? (
+                  <AvailabilitySchedule api={api} direction={direction} />
                 ) : route.path === "/settings" ? (
                   <SettingsPage api={api} onLanguagePreference={onLanguagePreference} />
                 ) : (

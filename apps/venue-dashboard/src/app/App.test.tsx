@@ -63,7 +63,7 @@ describe("Venue Dashboard shell", () => {
     const navigation = screen.getByRole("navigation", { name: "Dashboard navigation" });
     fireEvent.click(within(navigation).getByRole("link", { name: "Schedule" }));
 
-    expect(screen.getByRole("heading", { name: "Schedule", level: 2 })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Availability schedule", level: 2 })).toBeTruthy();
     expect(window.location.pathname).toBe("/schedule");
   });
 
