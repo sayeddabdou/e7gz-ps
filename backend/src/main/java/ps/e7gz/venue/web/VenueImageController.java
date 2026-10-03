@@ -57,7 +57,8 @@ public class VenueImageController {
     @PostMapping("/{imageId}/confirm")
     @Operation(operationId = "venueConfirmImage",
             summary = "The uploaded photo becomes visible, last in the order — Owner Password (PCR-005)")
-    @ApiError(status = 422, codes = {ApiErrorCode.VENUE_IMAGE_NOT_UPLOADED, ApiErrorCode.VENUE_IMAGE_LIMIT_REACHED})
+    @ApiError(status = 422, codes = {ApiErrorCode.VENUE_IMAGE_NOT_UPLOADED, ApiErrorCode.VENUE_IMAGE_NOT_ACCEPTED,
+            ApiErrorCode.VENUE_IMAGE_LIMIT_REACHED})
     @ApiError(status = 423, codes = {ApiErrorCode.OWNER_PASSWORD_REQUIRED, ApiErrorCode.OWNER_PASSWORD_INVALID})
     public DataResponse<VenueImageView> confirm(
             @PathVariable UUID imageId, @Valid @RequestBody VenueImageOwnerPasswordRequest request) {

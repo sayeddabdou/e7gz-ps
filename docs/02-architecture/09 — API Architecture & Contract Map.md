@@ -119,7 +119,7 @@ Representative members, each traced:
 | `VENUE_ACCOUNT_ALREADY_EXISTS` | 422 | `FR-VEN-01` — one shared account per venue; Product Owner decision, 2 Oct 2026 (E7-22). Database: `uq_venue_account_venue` |
 | `MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED` | 422 | `FR-VEN-07` — the venue's current status does not allow the change (e.g. completing onboarding twice, or moving to the status it already has); Product Owner decision, 2 Oct 2026 (E7-22) |
 | `VENUE_ACTIVITY_IN_USE` | 422 | `FR-ADM-02` — an activity removed from a venue still has rooms, prices or availability. Database: `fk_resource_venue_activity`, `fk_default_price_venue_activity`, `fk_venue_activity_availability_venue_activity`. Product Owner decision, 2 Oct 2026 (E7-23) |
-| `VENUE_IMAGE_NOT_ACCEPTED` | 422 | PCR-005 — the photo is not JPEG, PNG or WebP, or is larger than the configured maximum (5 MB); `error.field` names `contentType` or `sizeBytes`. Product Owner decision, 2 Oct 2026 |
+| `VENUE_IMAGE_NOT_ACCEPTED` | 422 | PCR-005 — the photo is not JPEG, PNG or WebP, or is larger than the configured maximum (5 MB); `error.field` names `contentType` or `sizeBytes`. Product Owner decision, 2 Oct 2026. Also at confirm, without a field, when the picture is larger than the configured maximum of 50 megapixels (PO decision 3 Oct 2026) |
 | `VENUE_IMAGE_LIMIT_REACHED` | 422 | PCR-005 — the venue already has the configured maximum of visible photos (10). Product Owner decision, 2 Oct 2026 |
 | `VENUE_IMAGE_NOT_UPLOADED` | 422 | PCR-005 — confirm was called before the file reached object storage, or the stored file does not match the declared type/size. Product Owner decision, 2 Oct 2026 |
 | `ACCOUNT_DELETED` | 403 | `FR-ACC-10` — any command against an anonymised account |

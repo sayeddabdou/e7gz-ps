@@ -9380,6 +9380,7 @@
                             "code": {
                               "enum": [
                                 "VENUE_IMAGE_NOT_UPLOADED",
+                                "VENUE_IMAGE_NOT_ACCEPTED",
                                 "VENUE_IMAGE_LIMIT_REACHED"
                               ],
                               "type": "string"
@@ -9400,7 +9401,7 @@
                 }
               }
             },
-            "description": "error.code: VENUE_IMAGE_NOT_UPLOADED | VENUE_IMAGE_LIMIT_REACHED",
+            "description": "error.code: VENUE_IMAGE_NOT_UPLOADED | VENUE_IMAGE_NOT_ACCEPTED | VENUE_IMAGE_LIMIT_REACHED",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {
@@ -15541,6 +15542,7 @@
                             "code": {
                               "enum": [
                                 "VENUE_IMAGE_NOT_UPLOADED",
+                                "VENUE_IMAGE_NOT_ACCEPTED",
                                 "VENUE_IMAGE_LIMIT_REACHED"
                               ],
                               "type": "string"
@@ -15561,7 +15563,7 @@
                 }
               }
             },
-            "description": "error.code: VENUE_IMAGE_NOT_UPLOADED | VENUE_IMAGE_LIMIT_REACHED",
+            "description": "error.code: VENUE_IMAGE_NOT_UPLOADED | VENUE_IMAGE_NOT_ACCEPTED | VENUE_IMAGE_LIMIT_REACHED",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {

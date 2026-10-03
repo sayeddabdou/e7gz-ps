@@ -50,6 +50,24 @@ e7gz:
     # Local dev: E7GZ_CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:5174
     cors:
       allowed-origins: ${E7GZ_CORS_ALLOWED_ORIGINS:}
+  # Venue photos in S3-compatible storage (arch 12 §2, E7-23 PR 3). Defaults are the docker compose SeaweedFS; deployed
+  # environments set the E7GZ_S3_* values from the secret store and E7GZ_S3_CREATE_BUCKET=false (buckets: E7-101).
+  # The public endpoint is what browsers reach in signed links, when it differs from the endpoint the backend calls.
+  object-store:
+    endpoint: ${E7GZ_S3_ENDPOINT:http://localhost:8333}
+    public-endpoint: ${E7GZ_S3_PUBLIC_ENDPOINT:}
+    region: ${E7GZ_S3_REGION:us-east-1}
+    bucket: ${E7GZ_S3_BUCKET:e7gz-venue-photos}
+    access-key: ${E7GZ_S3_ACCESS_KEY:e7gz-dev}
+    secret-key: ${E7GZ_S3_SECRET_KEY:e7gz-dev-secret}
+    create-bucket: ${E7GZ_S3_CREATE_BUCKET:true}
+    allowed-origins: ${E7GZ_CORS_ALLOWED_ORIGINS:}
+  # PCR-005 limits and the PO decisions of 3 Oct 2026; see VenuePhotoProperties for every setting.
+  venue-photos:
+    max-size-bytes: 5242880
+    max-visible: 10
+    upload-link-ttl: 10m
+    view-link-ttl: 1h
 
 # Every log line carries the correlation ID of its request or job (NFR-32; CorrelationId puts it in the MDC).
 # JSON log output is the observability task's (arch 11 §5.1, E7-100); this only adds the field to the default pattern.
