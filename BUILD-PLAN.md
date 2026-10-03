@@ -64,6 +64,7 @@ Venue setup, operating sessions, resources, pricing; reservation ledger, isFree,
 | S1-E4 | E7-32 | Engine | Concurrency harness and invariant sweep | A test that fires many bookings at once, and a nightly health check. | S1-E1 |
 | S1-E5 | E7-33 | Engine | Nearest Availability projection | Pre-compute "next available time" for every venue so lists are fast. | S1-E2 |
 | S1-E6 | E7-34 | Engine | Discovery API | The venue list: nearest first, filters, next available time. | S1-E5, S1-P0 |
+| S1-E7 | E7-112 | Engine | Venue availability schedule API | The backend for the Dashboard schedule: each room's bookings, holds, maintenance and closures for one business day. | S1-E2, S1-E3, S1-P3, S1-P4 |
 
 ### Sprint 2 — Book a room end to end (25 Oct – 5 Nov 2026)
 
@@ -877,6 +878,16 @@ Do:
 Done when (write these as tests first where possible):
 - EC-AVAI-002 and EC-AVAI-004 from the roadmap Phase 1 exit criteria pass.
 
+Carry-forward from the E7-29 review (do these too):
+- ReservationLedger.create (inventory/ledger) turns 23P01 on ex_no_double_booking into SlotTaken (SLOT_NO_LONGER_AVAILABLE) for every reservation type. Only a BOOKING row should become SlotTaken; for LATE_CONFIRM_HOLD, TOURNAMENT_APPROVAL_HOLD and TOURNAMENT_HOLD let the error propagate so the global mapping gives its own code (e.g. LATE_CONFIRM_RESOURCE_CONFLICT). It is rare because tr_10_resource_reservation_cross_class_guard usually refuses first, but check the reservation type before throwing SlotTaken.
+- Test: a 23P01 on ex_no_double_booking for a non-BOOKING row is not SlotTaken.
+
+PO decision 3 Oct 2026 — reads from other modules (Amr's question; do these too):
+- Yes: isFree reads Venue, Resource, Operations and the Reservation Ledger only through small read-only interfaces published in each owner's api package (arch 03; ArchUnit). All SQL stays in the owner module's internal package; Availability holds no SQL on their tables. No new tables, no schema change, no caching (arch 01 §15 rule 1).
+- Keep each interface to what the eight checks need (arch 05 §2.2), for example: venue — venueBlocked(venueId, at) [check 1]; resource — the Resource's venueId, baseState and restriction, and resourceBlocked(resourceId, at) [checks 2–4]; operations — declared emergency interval, maintenance and closure overlaps for a period [checks 5–7]; ledger — hasBlockingOverlap(resourceId, period) on ReservationLedger [check 8]. Every read also accepts the caller's CommandContext so a commit-time check reads on the command's own transaction.
+- Ledger and Operations are Engine (your lane). Venue and Resource are Platform: keep those additions to the api interface + one internal JDBC class each, and ask Sayed to review them; E7-26 (resources) will build on the resource one, so do not add anything else there.
+- Tests: each new read is tested in its owner module against the database; the predicate tests use them, not direct SQL.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -899,6 +910,10 @@ Do:
 
 Done when (write these as tests first where possible):
 - Table-driven tests including DST days.
+
+PO decision 3 Oct 2026 — current business date for the Dashboard (from the E7-36 review; do these too):
+- The business date stays as Product Spec §17.5 defines it (the Operating Day of the session; a night that crosses midnight is one business day — the PO kept this rule). The Dashboard must not guess today's business date from the device clock. Add currentBusinessDate(venueId) to the resolver's api (the command/request instant from the injected Clock, never Instant.now()). Make the date query parameter of GET /api/v1/venue/availability optional in the contract: when absent the server uses currentBusinessDate and returns it in VenueSchedule.businessDate (the stub still answers 501 until the endpoint is implemented). Regenerate OpenAPI (pnpm api:gen) and tell Abdallah (E7-36): the schedule's first load sends no date and navigates from the returned businessDate.
+- Test: at 01:00 Africa/Cairo for a venue open 18:00–02:00, currentBusinessDate is the previous calendar day; at 03:00 (after closing, no session) it is that calendar day.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -979,6 +994,38 @@ Done when (write these as tests first where possible):
 PO decisions 3 Oct 2026 (do these too):
 - Venue photos (FR-DIS-03, FR-DIS-11, PCR-005): the card imageUrl is the first visible photo's small copy, Venue Details imageUrls are the medium copies in the venue's order; take the signed URLs (valid 1 hour) from the venue module's photo service in venue/api (E7-23). A venue without photos has imageUrl null and imageUrls [].
 - The venue phone is never in a customer discovery or Venue Details response: it opens only when a booking becomes PENDING (FR-DIS-09). Keep it out of every Customer* DTO.
+
+Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
+Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
+```
+
+### S1-E7 (E7-112) — Venue availability schedule API
+
+**What this task does:** The backend for the Dashboard schedule: each room's bookings, holds, maintenance and closures for one business day.
+
+Lane: Engine · Depends on: S1-E2, S1-E3, S1-P3, S1-P4
+
+```text
+Read CLAUDE.md first. You are implementing task S1-E7 — "Venue availability schedule API" (Engine lane) of the E7GZ PS build plan.
+
+Read only these docs for this task:
+- arch 09 §4.1 (availability schedule payload)
+- FR-VEN-37
+- arch 05 §2.3 (what blocks)
+- arch 04 §4.3
+- Product Spec §17.5 (businessDate)
+
+Do:
+1. Implement GET /api/v1/venue/availability in inventory/availability/web/VenueAvailabilityController (the stub answers 501): the signed-in venue only, one business date, every non-archived Resource with its slots. Date optional: when absent use currentBusinessDate from E7-31.
+2. Display state per span (FR-VEN-37, only these nine): ledger BOOKING row -> the Booking's status PENDING / CONFIRMED / ACTIVE, or MANUAL when the Booking's source is MANUAL; LATE_CONFIRM_HOLD -> AWAITING_CUSTOMER_CONFIRMATION; TOURNAMENT_APPROVAL_HOLD and TOURNAMENT_HOLD -> TOURNAMENT_HOLD; MAINTENANCE -> MAINTENANCE; CLOSURE -> CLOSURE; time inside an Operating Session with nothing on it -> FREE. Only active ledger rows count (released rows never show). bookingId is set for booking-backed spans only.
+3. PO decision 3 Oct 2026 — hours shown: the grid covers that business date's Operating Sessions (first open to last close). A row of that business date outside the sessions (e.g. a 3 AM manual booking) is still shown and widens the range. A day with no Operating Session returns closed = true and every Resource with no slots.
+4. PO decision 3 Oct 2026 — emergencies: the declared interval of an Emergency Closure (whole venue) or a Resource Emergency Outage (that Resource) shows as CLOSURE. No new display state.
+5. PO decision 3 Oct 2026 — room states: ARCHIVED Resources are left out. DISABLED Resources are listed with their existing spans, but their empty time is not FREE (no slot, so the Dashboard leaves it blank).
+6. Contract change: add closed (boolean, required) to VenueSchedule. Regenerate OpenAPI (pnpm api:gen) and tell Abdallah (E7-36): show a closed-day message when closed = true, and leave gaps without a slot blank.
+7. Reads only through the owner modules' api packages (the E7-30 decision): Venue (Operating Sessions of the business date), Resource (resources, base state), Operations (maintenance, closures, declared emergency intervals), Reservation Ledger (active rows in a range) and Booking (status and source for booking ids). Add a small read-only interface where one is missing; all SQL stays in the owner module. Venue and Resource additions are reviewed by Sayed. Read-only endpoint: no command, no Idempotency-Key.
+
+Done when (write these as tests first where possible):
+- Tests (VenueAvailabilityHttpTest, SQL fixtures): each of the nine display states appears from its source row; a released row does not show; a session crossing midnight shows its 01:00 booking on the previous business date; a 3 AM manual booking widens the range; a closed day returns closed = true; an emergency interval shows as CLOSURE; an archived room is absent and a disabled room has no FREE slot; another venue's data is never returned; no date -> the current business date.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
