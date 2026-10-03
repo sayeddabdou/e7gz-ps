@@ -16,6 +16,8 @@ import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
+import ps.e7gz.common.security.owner.OwnerPasswordNotRequired;
+import ps.e7gz.common.security.owner.OwnerProtected;
 import ps.e7gz.venue.api.VenuePhotos.Actor;
 
 /**
@@ -94,7 +96,11 @@ final class VenuePhotoCommands {
         }
     }
 
-    /** Records the upload; the photo stays hidden until confirmed. Refused when the venue is already at its limit. */
+    /**
+     * Records the upload; the photo stays hidden until confirmed. Refused when the venue is already at its limit. Only
+     * returns a signed PUT link, so no Owner Password (PCR-005; arch 09 §4.2).
+     */
+    @OwnerPasswordNotRequired("VENUE_PHOTO_UPLOAD_START")
     static final class Start extends OnVenue<VenuePhotoRow> {
 
         private final String contentType;
@@ -122,7 +128,11 @@ final class VenuePhotoCommands {
         }
     }
 
-    /** The checked upload becomes visible, last in the order (PCR-005). A visible photo is returned unchanged. */
+    /**
+     * The checked upload becomes visible, last in the order (PCR-005). A visible photo is returned unchanged. The venue
+     * needs the Owner Password (PCR-005 amends FRS §2.4); the Platform Admin does not.
+     */
+    @OwnerProtected("VENUE_PHOTO_ADD")
     static final class Confirm extends OnVenue<VenuePhotoRow> {
 
         private final UUID imageId;
@@ -164,7 +174,8 @@ final class VenuePhotoCommands {
         }
     }
 
-    /** Positions 1…n in the given order; the list must name every visible photo exactly once. */
+    /** Positions 1…n in the given order; the list must name every visible photo exactly once. Venue: Owner Password. */
+    @OwnerProtected("VENUE_PHOTO_REORDER")
     static final class Reorder extends OnVenue<Void> {
 
         private final List<UUID> imageIds;
@@ -194,7 +205,8 @@ final class VenuePhotoCommands {
         }
     }
 
-    /** Hides a visible photo; the row and the stored original stay (PCR-005). */
+    /** Hides a visible photo; the row and the stored original stay (PCR-005). Venue: Owner Password. */
+    @OwnerProtected("VENUE_PHOTO_REMOVE")
     static final class Remove extends OnVenue<Void> {
 
         private final UUID imageId;

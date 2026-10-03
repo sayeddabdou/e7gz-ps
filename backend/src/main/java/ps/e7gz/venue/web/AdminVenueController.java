@@ -32,12 +32,12 @@ import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
 import ps.e7gz.common.web.GeoPoint;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.PageView;
 import ps.e7gz.common.web.ResponseMetaFactory;
 import ps.e7gz.venue.internal.MarketplaceAction;
 import ps.e7gz.venue.internal.Venue;
+import ps.e7gz.venue.internal.VenueAccounts;
 import ps.e7gz.venue.internal.Venues;
 
 /**
@@ -57,10 +57,12 @@ public class AdminVenueController {
             + " stored and returned as +20...";
 
     private final Venues venues;
+    private final VenueAccounts venueAccounts;
     private final ResponseMetaFactory meta;
 
-    public AdminVenueController(Venues venues, ResponseMetaFactory meta) {
+    public AdminVenueController(Venues venues, VenueAccounts venueAccounts, ResponseMetaFactory meta) {
         this.venues = venues;
+        this.venueAccounts = venueAccounts;
         this.meta = meta;
     }
 
@@ -165,11 +167,15 @@ public class AdminVenueController {
             description = "Onboarding is admin-managed, including the account credentials and the initial Owner "
                     + "Password (FR-ADM-02; PO decision 2 Oct 2026, E7-22). One account per venue "
                     + "(uq_venue_account_venue). Both passwords are write-only: never returned, logged or echoed. "
-                    + "The account starts ENABLED. Stub until E7-24.")
+                    + "The account starts ENABLED.")
     @ApiError(status = 422, codes = {ApiErrorCode.VENUE_LOGIN_IDENTIFIER_TAKEN, ApiErrorCode.VENUE_ACCOUNT_ALREADY_EXISTS})
     public DataResponse<AdminVenueAccountController.AdminVenueAccountView> createVenueAccount(
+            @AuthenticationPrincipal AuthenticatedSubject admin,
             @PathVariable UUID venueId, @Valid @RequestBody AdminVenueAccountCreateRequest request) {
-        throw NotImplementedYet.stub();
+        Venues.VenueAccountSummary account = venueAccounts.create(admin.id(), venueId, request.loginIdentifier(),
+                request.password(), request.initialOwnerPassword(), request.languagePreference());
+        return meta.data(new AdminVenueAccountController.AdminVenueAccountView(account.id(), account.venueId(),
+                account.loginIdentifier(), account.status()));
     }
 
     private DataResponse<AdminVenueView> changeStatus(AuthenticatedSubject admin, UUID venueId,
