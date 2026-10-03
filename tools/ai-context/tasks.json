@@ -1310,6 +1310,35 @@
   ],
   "prompt": "Read CLAUDE.md first. You are implementing task S3-E1 — \"Late Confirm (O3)\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 06 §2.2\n- arch 08 §2.6\n- arch 10 §5.2\n- FRS 4.5\n\nDo:\n1. Initiate, accept, decline, timeout; T2 and T3; warning job only when the window > 60 s; neutral venue-facing failure shaping.\n\nDone when (write these as tests first where possible):\n- 7:59 PM initiation → exactly 60 s and no warning; 7:50 PM → 5 min and one warning; a customer at 4 commitments: blocked, no hold, venue message reveals nothing.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
+ "E7-113": {
+  "id": "S3-E5",
+  "title": "Opening-hours change: cancel affected bookings (O5)",
+  "owner": "Amr",
+  "what": "When a venue saves new opening hours, cancel the future bookings the new hours no longer cover, release their holds and tell the customers.",
+  "read": [
+   "FR-VEN-23, FR-VEN-24, FR-VEN-25, FR-VEN-26, FR-VEN-28",
+   "arch 06 §2.4",
+   "arch 03 §5 (impact preview token)",
+   "FRS §2.4 (Owner Password)",
+   "packages/api-client/SPRINT-1-CONTRACT.md §5.7"
+  ],
+  "steps": [
+   "Replace the 501 in OpeningHoursCommands.Commit (venue/internal, E7-25): in the same transaction, cancel every affected Booking with VENUE_OPENING_HOURS_CHANGED and release its ledger row (BOOKING or LATE_CONFIRM_HOLD). Venue must not depend on Booking: declare a port in venue.api (like HoursChangeBookings) and implement it in the Booking module.",
+   "AWAITING bookings (FR-VEN-28): the Late Confirmation timer stops immediately, the hold is released, and the customer is notified explicitly.",
+   "Owner Password (FR-VEN-25, FRS §2.4): required only when the affected set has a CONFIRMED Online or an AWAITING booking. Use a separate @OwnerProtected(\"HOURS_CLOSURE_SAVE_CANCELLING_PROTECTED\") command and flip that matrix row to built=yes. Missing: 423 OWNER_PASSWORD_REQUIRED. Wrong: 423 OWNER_PASSWORD_INVALID, audited.",
+   "Step 9: notify each affected Online customer through the outbox.",
+   "Keep from E7-25: the preview-token check (409 AFFECTED_SET_CHANGED_REFRESH_PREVIEW), the tournament block (422), ACTIVE never cancelled. PO decisions 3 Oct 2026: a Manual Booking made outside opening hours is never affected; a day whose session a booking references keeps its old session row; no audit row or outbox event for the hours change itself."
+  ],
+  "done": [
+   "Tests: pending Online and Manual cancellations alone commit without the Owner Password; a CONFIRMED Online or AWAITING cancellation needs it (423 without it, audited when wrong); the hours, the sessions and all cancellations commit together or not at all; an AWAITING booking's hold is released and its Late Confirm stopped; a booking created after the preview gives 409; one notification per affected Online customer is enqueued."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/booking/ (hours-change cancellation)",
+   "backend/src/main/java/ps/e7gz/booking/lateconfirm/",
+   "backend/src/main/java/ps/e7gz/venue/internal/ (OpeningHoursCommands, reviewed by Sayed)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S3-E5 — \"Opening-hours change: cancel affected bookings (O5)\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- FR-VEN-23, FR-VEN-24, FR-VEN-25, FR-VEN-26, FR-VEN-28\n- arch 06 §2.4\n- arch 03 §5 (impact preview token)\n- FRS §2.4 (Owner Password)\n- packages/api-client/SPRINT-1-CONTRACT.md §5.7\n\nDo:\n1. Replace the 501 in OpeningHoursCommands.Commit (venue/internal, E7-25): in the same transaction, cancel every affected Booking with VENUE_OPENING_HOURS_CHANGED and release its ledger row (BOOKING or LATE_CONFIRM_HOLD). Venue must not depend on Booking: declare a port in venue.api (like HoursChangeBookings) and implement it in the Booking module.\n2. AWAITING bookings (FR-VEN-28): the Late Confirmation timer stops immediately, the hold is released, and the customer is notified explicitly.\n3. Owner Password (FR-VEN-25, FRS §2.4): required only when the affected set has a CONFIRMED Online or an AWAITING booking. Use a separate @OwnerProtected(\"HOURS_CLOSURE_SAVE_CANCELLING_PROTECTED\") command and flip that matrix row to built=yes. Missing: 423 OWNER_PASSWORD_REQUIRED. Wrong: 423 OWNER_PASSWORD_INVALID, audited.\n4. Step 9: notify each affected Online customer through the outbox.\n5. Keep from E7-25: the preview-token check (409 AFFECTED_SET_CHANGED_REFRESH_PREVIEW), the tournament block (422), ACTIVE never cancelled. PO decisions 3 Oct 2026: a Manual Booking made outside opening hours is never affected; a day whose session a booking references keeps its old session row; no audit row or outbox event for the hours change itself.\n\nDone when (write these as tests first where possible):\n- Tests: pending Online and Manual cancellations alone commit without the Owner Password; a CONFIRMED Online or AWAITING cancellation needs it (423 without it, audited when wrong); the hours, the sessions and all cancellations commit together or not at all; an AWAITING booking's hold is released and its Late Confirm stopped; a booking created after the preview gives 409; one notification per affected Online customer is enqueued.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
  "E7-59": {
   "id": "S3-E2",
   "title": "Check-in, late present, no-show (O13)",
@@ -1792,7 +1821,8 @@
   ],
   "steps": [
    "Maintenance windows in Layer 1 with the range_agg rolling threshold (Owner Password over the threshold); closures in Layer 2.",
-   "Carry-forward from the E7-30 review: maintenance_window and venue_closure have no 'deleted' column yet. If maintenance or closure delete is built as a soft delete, isFree checks 6-7 (OperationalOverlaps.maintenanceOverlaps / closureOverlaps in operations/internal/JdbcOperationalOverlaps) must skip deleted rows, with a test that a deleted window no longer blocks."
+   "Carry-forward from the E7-30 review: maintenance_window and venue_closure have no 'deleted' column yet. If maintenance or closure delete is built as a soft delete, isFree checks 6-7 (OperationalOverlaps.maintenanceOverlaps / closureOverlaps in operations/internal/JdbcOperationalOverlaps) must skip deleted rows, with a test that a deleted window no longer blocks.",
+   "Carry-forward from E7-113: the closure cascade cancels affected Bookings the same way an opening-hours change does (FRS §2.4 \"Hours/Closure save cancelling protected bookings\"). Reuse the cancellation E7-113 built (the Booking port, stopping Late Confirm, the outbox notification, the Owner Password only for a CONFIRMED Online or AWAITING booking) with reason VENUE_CLOSURE; do not build a second cancellation path."
   ],
   "done": [
    "Splitting a 30-hour maintenance into two windows with a 1-minute gap still demands the Owner Password."
@@ -1800,7 +1830,7 @@
   "folders": [
    "backend/src/main/java/ps/e7gz/operations/ (maintenance, closure)"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S5-E1 — \"Maintenance and closures\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 04 §9.7\n- ADR-010\n- A1 (overlapping maintenance allowed)\n\nDo:\n1. Maintenance windows in Layer 1 with the range_agg rolling threshold (Owner Password over the threshold); closures in Layer 2.\n\nDone when (write these as tests first where possible):\n- Splitting a 30-hour maintenance into two windows with a 1-minute gap still demands the Owner Password.\n\nCarry-forward from the E7-30 review (do these too):\n- maintenance_window and venue_closure have no 'deleted' column yet. If maintenance or closure delete is built as a soft delete (a new column), the availability predicate's reads must skip deleted rows: OperationalOverlaps.maintenanceOverlaps and closureOverlaps (operations/internal/JdbcOperationalOverlaps, checks 6-7 of isFree), plus a test that a deleted window no longer blocks.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S5-E1 — \"Maintenance and closures\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 04 §9.7\n- ADR-010\n- A1 (overlapping maintenance allowed)\n\nDo:\n1. Maintenance windows in Layer 1 with the range_agg rolling threshold (Owner Password over the threshold); closures in Layer 2.\n\nDone when (write these as tests first where possible):\n- Splitting a 30-hour maintenance into two windows with a 1-minute gap still demands the Owner Password.\n\nCarry-forward from the E7-30 review (do these too):\n- maintenance_window and venue_closure have no 'deleted' column yet. If maintenance or closure delete is built as a soft delete (a new column), the availability predicate's reads must skip deleted rows: OperationalOverlaps.maintenanceOverlaps and closureOverlaps (operations/internal/JdbcOperationalOverlaps, checks 6-7 of isFree), plus a test that a deleted window no longer blocks.\n- Carry-forward from E7-113: the closure cascade cancels affected Bookings the same way an opening-hours change does (FRS §2.4 \"Hours/Closure save cancelling protected bookings\"). Reuse the cancellation E7-113 built (the Booking port, stopping Late Confirm, the outbox notification, the Owner Password only for a CONFIRMED Online or AWAITING booking) with reason VENUE_CLOSURE; do not build a second cancellation path.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-82": {
   "id": "S5-E2",
@@ -2450,34 +2480,5 @@
    "docs/launch-readiness.md"
   ],
   "prompt": "Read CLAUDE.md first. You are implementing task S7-C5 — \"Launch readiness checklist (PO)\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 14 §8 (launch readiness bar)\n- arch 13\n\nDo:\n1. Walk the 10 launch criteria; confirm every M requirement in the traceability matrix has a merged task and a passing test; list gaps as new Jira tasks.\n\nDone when (write these as tests first where possible):\n- Signed-off checklist in docs/.\n\nCarry-forward from E7-13 (do these too):\n- Check the SMS Misr result codes (identity SmsMisrSmsSender.RESULT_CODES, success 4901) against SMS Misr's official API document.\n- Confirm with the PO: customer phone numbers are limited to Egyptian mobiles (010/011/012/015; identity PhoneNumbers).\n- Confirm with the Engine lane: eligibility category A for the account commands (register, send OTP, verify phone), which have no Venue in scope.\n\nCarry-forward from the Sprint 0 review (do these too):\n- Re-confirm two accepted risks from the Sprint 0 review (PO, 2 Oct 2026): (1) no MFA for Platform Admin at launch (S-5); (2) registration and resend reveal whether a phone is registered, accepted for MVP and slowed by the per-IP limit (S-16).\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
- },
- "E7-113": {
-  "id": "S3-E5",
-  "title": "Opening-hours change: cancel affected bookings (O5)",
-  "owner": "Amr",
-  "what": "When a venue saves new opening hours, cancel the future bookings the new hours no longer cover, release their holds and tell the customers.",
-  "read": [
-   "FR-VEN-23, FR-VEN-24, FR-VEN-25, FR-VEN-26, FR-VEN-28",
-   "arch 06 §2.4",
-   "arch 03 §5 (impact preview token)",
-   "FRS §2.4 (Owner Password)",
-   "packages/api-client/SPRINT-1-CONTRACT.md §5.7"
-  ],
-  "steps": [
-   "Replace the 501 in OpeningHoursCommands.Commit (venue/internal, E7-25): in the same transaction, cancel every affected Booking with VENUE_OPENING_HOURS_CHANGED and release its ledger row (BOOKING or LATE_CONFIRM_HOLD). Venue must not depend on Booking: declare a port in venue.api (like HoursChangeBookings) and implement it in the Booking module.",
-   "AWAITING bookings (FR-VEN-28): the Late Confirmation timer stops immediately, the hold is released, and the customer is notified explicitly.",
-   "Owner Password (FR-VEN-25, FRS §2.4): required only when the affected set has a CONFIRMED Online or an AWAITING booking. Use a separate @OwnerProtected(\"HOURS_CLOSURE_SAVE_CANCELLING_PROTECTED\") command and flip that matrix row to built=yes. Missing: 423 OWNER_PASSWORD_REQUIRED. Wrong: 423 OWNER_PASSWORD_INVALID, audited.",
-   "Step 9: notify each affected Online customer through the outbox.",
-   "Keep from E7-25: the preview-token check (409 AFFECTED_SET_CHANGED_REFRESH_PREVIEW), the tournament block (422), ACTIVE never cancelled. PO decisions 3 Oct 2026: a Manual Booking made outside opening hours is never affected; a day whose session a booking references keeps its old session row; no audit row or outbox event for the hours change itself."
-  ],
-  "done": [
-   "Tests: pending Online and Manual cancellations alone commit without the Owner Password; a CONFIRMED Online or AWAITING cancellation needs it (423 without it, audited when wrong); the hours, the sessions and all cancellations commit together or not at all; an AWAITING booking's hold is released and its Late Confirm stopped; a booking created after the preview gives 409; one notification per affected Online customer is enqueued."
-  ],
-  "folders": [
-   "backend/src/main/java/ps/e7gz/booking/ (hours-change cancellation)",
-   "backend/src/main/java/ps/e7gz/booking/lateconfirm/",
-   "backend/src/main/java/ps/e7gz/venue/internal/ (OpeningHoursCommands, reviewed by Sayed)"
-  ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S3-E5 — \"Opening-hours change: cancel affected bookings (O5)\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- FR-VEN-23, FR-VEN-24, FR-VEN-25, FR-VEN-26, FR-VEN-28\n- arch 06 §2.4\n- arch 03 §5 (impact preview token)\n- FRS §2.4 (Owner Password)\n- packages/api-client/SPRINT-1-CONTRACT.md §5.7\n\nDo:\n1. Replace the 501 in OpeningHoursCommands.Commit (venue/internal, E7-25): in the same transaction, cancel every affected Booking with VENUE_OPENING_HOURS_CHANGED and release its ledger row (BOOKING or LATE_CONFIRM_HOLD). Venue must not depend on Booking: declare a port in venue.api (like HoursChangeBookings) and implement it in the Booking module.\n2. AWAITING bookings (FR-VEN-28): the Late Confirmation timer stops immediately, the hold is released, and the customer is notified explicitly.\n3. Owner Password (FR-VEN-25, FRS §2.4): required only when the affected set has a CONFIRMED Online or an AWAITING booking. Use a separate @OwnerProtected(\"HOURS_CLOSURE_SAVE_CANCELLING_PROTECTED\") command and flip that matrix row to built=yes. Missing: 423 OWNER_PASSWORD_REQUIRED. Wrong: 423 OWNER_PASSWORD_INVALID, audited.\n4. Step 9: notify each affected Online customer through the outbox.\n5. Keep from E7-25: the preview-token check (409 AFFECTED_SET_CHANGED_REFRESH_PREVIEW), the tournament block (422), ACTIVE never cancelled. PO decisions 3 Oct 2026: a Manual Booking made outside opening hours is never affected; a day whose session a booking references keeps its old session row; no audit row or outbox event for the hours change itself.\n\nDone when (write these as tests first where possible):\n- Tests: pending Online and Manual cancellations alone commit without the Owner Password; a CONFIRMED Online or AWAITING cancellation needs it (423 without it, audited when wrong); the hours, the sessions and all cancellations commit together or not at all; an AWAITING booking's hold is released and its Late Confirm stopped; a booking created after the preview gives 409; one notification per affected Online customer is enqueued.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  }
 }

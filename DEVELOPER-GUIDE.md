@@ -211,10 +211,10 @@ e7gz-ps/
 | E7-56 | Sayed | **Admin alerts** | Alerts to the admin when something is seriously wrong. | E7-41 | `…/admin/ (alerts)` |
 | E7-57 | Sayed | **Profile and account management** | Edit profile, change username, phone, email, reset password. | E7-14 | `…/identity/ (profile)` |
 | E7-58 | Amr | **Late Confirm (O3)** | Late Confirm: the venue offers a late slot, the customer accepts in time. | E7-47, E7-45 | `…/booking/lateconfirm/` |
+| E7-113 | Amr | **Opening-hours change: cancel affected bookings (O5)** | When a venue saves new opening hours, cancel the future bookings the new hours no longer cover, release their holds and tell the customers. | E7-25, E7-49, E7-58, E7-55 | `…/booking/ (hours-change cancellation)`<br>`…/venue/internal/ (OpeningHoursCommands)` |
 | E7-59 | Amr | **Check-in, late present, no-show (O13)** | Check-in, "arrived late", and no-show. | E7-47 | `…/attendance/` |
 | E7-60 | Amr | **Start-time revalidation (O11)** | Re-check everything at start time and cancel with the right reason if needed. | E7-59 | `…/booking/ (start revalidation)` |
 | E7-61 | Amr | **Completion and attendance defaults (O12)** | Finish bookings automatically and set the final attendance result. | E7-59 | `…/attendance/ (completion)` |
-| E7-113 | Amr | **Opening-hours change: cancel affected bookings (O5)** | When a venue saves new opening hours, cancel the future bookings the new hours no longer cover, release their holds and tell the customers. | E7-25, E7-49, E7-58, E7-55 | `…/booking/ (hours-change cancellation)`<br>`…/venue/internal/ (OpeningHoursCommands)` |
 
 #### Sprint 4 — Trust, bans and rewards · 22 Nov – 3 Dec 2026
 
@@ -248,7 +248,7 @@ e7gz-ps/
 | E7-78 | Sayed | **Venue account disable (O10) and attendance protection** | Admin disables a venue account and what happens to its bookings. | E7-61 | `…/venue/ (account disable)`<br>`…/attendance/ (protection)` |
 | E7-79 | Sayed | **Fault-injection harness and sellable-gap detector** | Tests that break a process halfway and prove nothing is left half-done. | E7-32 | `backend/src/test/java/ps/e7gz/faultinjection/`<br>`…/inventory/sweep/` |
 | E7-80 | Sayed | **Operational notifications** | Notifications for emergencies, closures, refunds and admin events. | E7-43 | `…/notification/ (triggers)` |
-| E7-81 | Amr | **Maintenance and closures** | Maintenance windows and venue closures block the calendar. | E7-30 | `…/operations/ (maintenance, closure)` |
+| E7-81 | Amr | **Maintenance and closures** | Maintenance windows and venue closures block the calendar. | E7-30, E7-113 | `…/operations/ (maintenance, closure)` |
 | E7-82 | Amr | **Emergencies and cascades (O7/O8)** | Venue or room emergency: cancel or pause affected bookings safely. | E7-81, E7-79 | `…/operations/ (emergency)` |
 | E7-83 | Amr | **Timer pause/resume and feasibility** | Pause and resume timers during emergencies (30-minute limits). | E7-82 | `…/operations/ (pause)` |
 | E7-84 | Amr | **Owner review cascade (O9)** | Owner review: lock the venue down when limits are exceeded. | E7-82, E7-73 | `…/operations/ (owner review)` |
