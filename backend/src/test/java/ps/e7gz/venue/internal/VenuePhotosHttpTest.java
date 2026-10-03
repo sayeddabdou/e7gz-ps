@@ -108,7 +108,7 @@ class VenuePhotosHttpTest extends IntegrationTest {
     void anAdminAndAVenue() {
         token = accessTokens.issue(AuthSubjectType.ADMIN, AuditFixtures.admin());
         venue = venue();
-        jobs = new VenuePhotoJobs(runner, store, properties, appDataSource);   // the worker profile's jobs, run by hand
+        jobs = new VenuePhotoJobs(runner, store, properties, clock, appDataSource);   // the worker profile's jobs, run by hand
     }
 
     // ------------------------------------------------------------------------------------------ upload and copies
@@ -299,6 +299,33 @@ class VenuePhotosHttpTest extends IntegrationTest {
         assertThat(stored("venues/" + venue + "/" + recent + ".jpg")).isNotEmpty();
     }
 
+    @Test
+    void photosWhoseCopiesFailDoNotHoldUpNewerOnes() throws Exception {
+        // E7-24: more failing photos than one batch (on other venues: a venue holds at most 10), all older than a good one.
+        List<UUID> broken = new ArrayList<>();
+        for (int i = 0; i < 21; i++) {
+            UUID id = visibleRowOf(venue(), 1);
+            owner.sql("UPDATE venue.venue_image SET uploaded_at = now() - interval '1 hour' WHERE id = :id")
+                    .param("id", id).update();
+            broken.add(id);
+        }
+        try {
+            UUID good = uploadAndConfirm(jpeg(800, 600), "image/jpeg");
+
+            // Before E7-24 the same oldest 20 were picked on every run, so the good photo never got its turn. Now each
+            // failed photo is set aside after one try, and the queue moves on (other tests may leave broken rows too).
+            for (int run = 0; run < 10 && !processed(good); run++) {
+                jobs.makeCopies();
+            }
+
+            assertThat(processed(good)).isTrue();
+        } finally {
+            // The other tests share this database and run the copy job without this test's set-aside list.
+            owner.sql("UPDATE venue.venue_image SET removed_at = now() WHERE id = ANY(:ids)")
+                    .param("ids", broken.toArray(UUID[]::new)).update();
+        }
+    }
+
     // ------------------------------------------------------------------------------------------ helpers
 
     private UUID uploadAndConfirm(byte[] file, String type) throws Exception {
@@ -410,6 +437,11 @@ class VenuePhotosHttpTest extends IntegrationTest {
 
     private boolean removed(UUID id) {
         return owner.sql("SELECT removed_at IS NOT NULL FROM venue.venue_image WHERE id = :id").param("id", id)
+                .query(Boolean.class).single();
+    }
+
+    private boolean processed(UUID id) {
+        return owner.sql("SELECT processed_at IS NOT NULL FROM venue.venue_image WHERE id = :id").param("id", id)
                 .query(Boolean.class).single();
     }
 

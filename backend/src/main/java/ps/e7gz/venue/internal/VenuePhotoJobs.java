@@ -1,6 +1,12 @@
 package ps.e7gz.venue.internal;
 
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,32 +32,45 @@ class VenuePhotoJobs {
 
     private static final Logger log = LoggerFactory.getLogger(VenuePhotoJobs.class);
     private static final int BATCH = 20;
+    /** A photo whose copies could not be made is retried after this, so it never holds up newer photos (E7-24). */
+    static final Duration RETRY_FAILED_AFTER = Duration.ofHours(1);
 
     private final CommandRunner runner;
     private final ObjectStore store;
     private final VenuePhotoProperties properties;
+    private final Clock clock;
     private final JdbcClient jdbc;
+    /** This worker's photos that failed, with the time they may be tried again. Lost on restart: they are retried. */
+    private final Map<UUID, Instant> failedUntil = new ConcurrentHashMap<>();
 
-    VenuePhotoJobs(CommandRunner runner, ObjectStore store, VenuePhotoProperties properties, DataSource appDataSource) {
+    VenuePhotoJobs(CommandRunner runner, ObjectStore store, VenuePhotoProperties properties, Clock clock,
+                   DataSource appDataSource) {
         this.runner = runner;
         this.store = store;
         this.properties = properties;
+        this.clock = clock;
         this.jdbc = JdbcClient.create(appDataSource);
     }
 
     @Scheduled(fixedDelayString = "${e7gz.venue-photos.process-every:30s}", initialDelayString = "10s")
     void makeCopies() {
         try (CorrelationId.Scope ignored = CorrelationId.open(CorrelationId.generate())) {
+            Instant now = clock.instant();
+            failedUntil.values().removeIf(until -> !until.isAfter(now));
             List<VenuePhotoRow> pending = jdbc.sql(VenuePhotoRow.SELECT + """
 
                              WHERE i.uploaded_at IS NOT NULL AND i.processed_at IS NULL AND i.removed_at IS NULL
+                               AND NOT (i.id = ANY(:skip))
                              ORDER BY i.uploaded_at
-                             LIMIT :batch""").param("batch", BATCH).query(VenuePhotoRow::map).list();
+                             LIMIT :batch""")
+                    .param("skip", failedUntil.keySet().toArray(UUID[]::new)).param("batch", BATCH)
+                    .query(VenuePhotoRow::map).list();
             for (VenuePhotoRow row : pending) {
                 try {
                     makeCopies(row);
                 } catch (RuntimeException e) {
-                    // Left unprocessed: retried on the next run; the photo shows a placeholder meanwhile.
+                    // Set aside and retried later; the photo shows a placeholder meanwhile.
+                    failedUntil.put(row.id(), now.plus(RETRY_FAILED_AFTER));
                     log.error("Could not make the copies of venue photo {}", row.id(), e);
                 }
             }

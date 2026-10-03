@@ -242,6 +242,13 @@ class VenueOwnerPasswordHttpTest extends IntegrationTest {
     }
 
     @Test
+    void aNewOwnerPasswordMustFollowThePasswordRule() throws Exception {
+        call(post("/api/v1/venue/owner-password"), Map.of("current", OWNER_PASSWORD, "next", "weakpass"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("next"));
+        assertThat(secretVersion()).isZero();
+    }
+
+    @Test
     void noPasswordReachesAResponseOrAnAuditRow() throws Exception {
         UUID photo = visiblePhoto(venue.venueId(), 1);
         String refused = call(post(IMAGES + "/" + photo + "/remove"), Map.of("ownerPassword", WRONG))

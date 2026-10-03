@@ -18,12 +18,26 @@ enum VenueAccountAuditAction implements AuditAction {
      * the Owner Password matrix, {@code lockedOut} tells whether the account was already locked out (password not
      * checked). The row carries owner_password_outcome = FAILURE.
      */
-    OWNER_PASSWORD_REFUSED(AuditPayloadAllowlist.of("protectedAction", "lockedOut"));
+    OWNER_PASSWORD_REFUSED(AuditPayloadAllowlist.of("protectedAction", "lockedOut")),
+    /** The Platform Admin disabled Dashboard access (FR-ADM-03, FR-VEN-08); the admin's reason is required. */
+    VENUE_ACCOUNT_DISABLED(AuditPayloadAllowlist.of("venueId", "previousStatus", "newStatus"), true),
+    /** The Platform Admin re-enabled Dashboard access (FR-ADM-03); the admin's reason is required. */
+    VENUE_ACCOUNT_ENABLED(AuditPayloadAllowlist.of("venueId", "previousStatus", "newStatus"), true),
+    /** The Platform Admin set a new venue login password (FR-ADM-03); venue data is kept. */
+    VENUE_LOGIN_PASSWORD_RESET(AuditPayloadAllowlist.of("venueId")),
+    /** The Platform Admin set a new Owner Password (FR-ADM-03); the old one stopped working at once. */
+    OWNER_PASSWORD_RESET(AuditPayloadAllowlist.of("venueId"));
 
     private final AuditPayloadAllowlist payload;
+    private final boolean requiresReason;
 
     VenueAccountAuditAction(AuditPayloadAllowlist payload) {
+        this(payload, false);
+    }
+
+    VenueAccountAuditAction(AuditPayloadAllowlist payload, boolean requiresReason) {
         this.payload = payload;
+        this.requiresReason = requiresReason;
     }
 
     @Override
@@ -34,5 +48,10 @@ enum VenueAccountAuditAction implements AuditAction {
     @Override
     public AuditPayloadAllowlist payloadAllowlist() {
         return payload;
+    }
+
+    @Override
+    public boolean requiresReason() {
+        return requiresReason;
     }
 }

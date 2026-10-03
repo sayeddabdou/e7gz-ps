@@ -1,5 +1,7 @@
 package ps.e7gz.venue.internal;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Map;
@@ -155,5 +157,132 @@ final class VenueAccountCommands {
             }
             return null;
         }
+    }
+
+    /**
+     * The Platform Admin disables or re-enables Dashboard access (FR-ADM-03, FR-VEN-08), with a reason; marketplace
+     * status and venue data are untouched (FR-VEN-06). Disabled, the account cannot log in and its tokens stop working
+     * on the next request (the per-request active check, arch 10 §2.3). Setting the status it already has changes
+     * nothing and writes no audit row.
+     *
+     * <p>Only the access part of O10 exists yet: interrupting PENDING bookings, cancelling AWAITING ones and the
+     * restriction interval for attendance protection come with E7-78. The database already refuses a disable while the
+     * venue has a tournament waiting for its approval ({@code tr_tournament_account_disable_from_account}).
+     */
+    record SetAccountStatus(UUID adminId, UUID correlationId, UUID venueAccountId, UUID venueId,
+                            VenueAccountStatus target, String reason, AuditWriter audit)
+            implements Command<Venues.VenueAccountSummary> {
+
+        @Override
+        public EligibilityCategory eligibilityCategory() {
+            return EligibilityCategory.C_INTERNAL_VENUE_OPERATION;
+        }
+
+        @Override
+        public CommandScope scope() {
+            return CommandScope.admin(adminId, correlationId, LockSet.builder().venues(venueId).build());
+        }
+
+        @Override
+        public Venues.VenueAccountSummary execute(CommandContext context) {
+            Venues.VenueAccountSummary current = context.jdbc().sql("""
+                            SELECT id, venue_id, login_identifier, account_status FROM iam.venue_account
+                             WHERE id = :account FOR UPDATE""")
+                    .param("account", venueAccountId).query(VenueAccountCommands::summary).optional()
+                    .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND));
+            if (current.status() == target) {
+                return current;
+            }
+            context.jdbc().sql("UPDATE iam.venue_account SET account_status = :status WHERE id = :account")
+                    .param("status", target.name()).param("account", venueAccountId).update();
+            VenueAccountAuditAction action = target == VenueAccountStatus.DISABLED
+                    ? VenueAccountAuditAction.VENUE_ACCOUNT_DISABLED : VenueAccountAuditAction.VENUE_ACCOUNT_ENABLED;
+            audit.write(context, AuditRecord.builder(action, AuditActor.admin(adminId), venueAccountId, correlationId)
+                    .reason(reason)
+                    .payload(Map.of("venueId", venueId, "previousStatus", current.status().name(),
+                            "newStatus", target.name()))
+                    .build());
+            return new Venues.VenueAccountSummary(current.id(), current.venueId(), current.loginIdentifier(), target);
+        }
+    }
+
+    /**
+     * The Platform Admin sets a new venue login password (FR-ADM-03; PO decision 28 Sep 2026: the admin chooses it and
+     * gives it to the venue through support). No temporary password, reset link or forced change; venue data is kept.
+     */
+    record ResetLoginPassword(UUID adminId, UUID correlationId, UUID venueAccountId, UUID venueId, String passwordHash,
+                              AuditWriter audit) implements Command<Void> {
+
+        @Override
+        public EligibilityCategory eligibilityCategory() {
+            return EligibilityCategory.C_INTERNAL_VENUE_OPERATION;
+        }
+
+        @Override
+        public CommandScope scope() {
+            return CommandScope.admin(adminId, correlationId, LockSet.builder().venues(venueId).build());
+        }
+
+        @Override
+        public Void execute(CommandContext context) {
+            int changed = context.jdbc().sql("UPDATE iam.venue_account SET password_hash = :hash WHERE id = :account")
+                    .param("hash", passwordHash).param("account", venueAccountId).update();
+            if (changed != 1) {
+                throw new ApiException(ApiErrorCode.NOT_FOUND);
+            }
+            audit.write(context, AuditRecord.builder(VenueAccountAuditAction.VENUE_LOGIN_PASSWORD_RESET,
+                    AuditActor.admin(adminId), venueAccountId, correlationId).payload(Map.of("venueId", venueId)).build());
+            return null;
+        }
+
+        @Override
+        public String toString() {
+            return "ResetLoginPassword[venueAccountId=" + venueAccountId + ", <password redacted>]";
+        }
+    }
+
+    /**
+     * The Platform Admin sets a new Owner Password (FR-ADM-03): like the venue's own change, the new hash gets a later
+     * {@code changed_at} and the next {@code version}, so the old one stops working at once. The venue must be notified
+     * (FR-VEN-05, FR-ADM-03); that notification comes with the notification catalogue (E7-43).
+     */
+    record ResetOwnerPassword(UUID adminId, UUID correlationId, UUID venueAccountId, UUID venueId,
+                              String ownerPasswordHash, AuditWriter audit) implements Command<Void> {
+
+        @Override
+        public EligibilityCategory eligibilityCategory() {
+            return EligibilityCategory.C_INTERNAL_VENUE_OPERATION;
+        }
+
+        @Override
+        public CommandScope scope() {
+            return CommandScope.admin(adminId, correlationId, LockSet.builder().venues(venueId).build());
+        }
+
+        @Override
+        public Void execute(CommandContext context) {
+            int changed = context.jdbc().sql("""
+                            UPDATE iam.venue_owner_secret
+                               SET owner_password_hash = :hash, changed_at = :changedAt, version = version + 1
+                             WHERE venue_account_id = :account""")
+                    .param("hash", ownerPasswordHash).param("changedAt", utc(context)).param("account", venueAccountId)
+                    .update();
+            if (changed != 1) {
+                throw new ApiException(ApiErrorCode.NOT_FOUND);
+            }
+            audit.write(context, AuditRecord.builder(VenueAccountAuditAction.OWNER_PASSWORD_RESET,
+                    AuditActor.admin(adminId), venueAccountId, correlationId).payload(Map.of("venueId", venueId)).build());
+            return null;
+        }
+
+        @Override
+        public String toString() {
+            return "ResetOwnerPassword[venueAccountId=" + venueAccountId + ", <password redacted>]";
+        }
+    }
+
+    static Venues.VenueAccountSummary summary(ResultSet rs, int row) throws SQLException {
+        return new Venues.VenueAccountSummary(rs.getObject("id", UUID.class), rs.getObject("venue_id", UUID.class),
+                rs.getString("login_identifier"), VenueAccountStatus.valueOf(rs.getString("account_status")));
     }
 }

@@ -20,6 +20,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import ps.e7gz.audit.AuditFixtures;
 import ps.e7gz.common.codes.AuthSubjectType;
 import ps.e7gz.common.security.AccessTokens;
@@ -139,6 +140,122 @@ class AdminVenueAccountHttpTest extends IntegrationTest {
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("loginIdentifier"));
         assertThat(OWNER.sql("SELECT count(*) FROM iam.venue_account WHERE venue_id = :venue").param("venue", venue)
                 .query(Long.class).single()).isZero();
+    }
+
+    @Test
+    void venuePasswordsFollowThePasswordRule() throws Exception {
+        create(venue, "weak." + venue, "short1", "Owner-pass-1", "en")
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("password"));
+        create(venue, "weak." + venue, "Login-pass-1", "no-digits-here", "en")
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("initialOwnerPassword"));
+        create(venue, "weak." + venue, "Login-pass-1", "12345678", "en")
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("initialOwnerPassword"));
+    }
+
+    // ------------------------------------------------------------------------------------------ FR-ADM-03
+
+    @Test
+    void disableBlocksTheDashboardAtOnceAndEnableRestoresIt() throws Exception {
+        UUID account = createdAccount();
+        String venueToken = accessTokens.issue(AuthSubjectType.VENUE, account);
+        mvc.perform(get("/api/v1/venue/settings").header("Authorization", "Bearer " + venueToken))
+                .andExpect(status().isOk());
+
+        admin(post(ACCOUNTS + account + "/disable"), Map.of("reason", "Owner request"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.accountStatus").value("DISABLED"));
+        mvc.perform(get("/api/v1/venue/settings").header("Authorization", "Bearer " + venueToken))
+                .andExpect(status().isUnauthorized());
+        login("Login-pass-1").andExpect(status().is4xxClientError());
+        assertThat(OWNER.sql("SELECT marketplace_status FROM venue.venue WHERE id = :id").param("id", venue)
+                .query(String.class).single()).isEqualTo("ONBOARDING");
+        assertThat(OWNER.sql("""
+                        SELECT reason FROM audit.audit_event
+                         WHERE action = 'VENUE_ACCOUNT_DISABLED' AND subject_id = :account""")
+                .param("account", account).query(String.class).single()).isEqualTo("Owner request");
+
+        admin(post(ACCOUNTS + account + "/disable"), Map.of("reason", "Again"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.accountStatus").value("DISABLED"));
+        assertThat(auditCount("VENUE_ACCOUNT_DISABLED", account)).isEqualTo(1);
+
+        admin(post(ACCOUNTS + account + "/enable"), Map.of("reason", "Resolved"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.accountStatus").value("ENABLED"));
+        mvc.perform(get("/api/v1/venue/settings").header("Authorization", "Bearer " + venueToken))
+                .andExpect(status().isOk());
+        login("Login-pass-1").andExpect(status().isOk());
+        assertThat(auditCount("VENUE_ACCOUNT_ENABLED", account)).isEqualTo(1);
+    }
+
+    @Test
+    void disableAndEnableNeedAReason() throws Exception {
+        UUID account = createdAccount();
+        admin(post(ACCOUNTS + account + "/disable"), Map.of("reason", "  "))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("reason"));
+        assertThat(OWNER.sql("SELECT account_status FROM iam.venue_account WHERE id = :id").param("id", account)
+                .query(String.class).single()).isEqualTo("ENABLED");
+    }
+
+    @Test
+    void resetLoginPasswordReplacesItAndKeepsTheVenueData() throws Exception {
+        UUID account = createdAccount();
+        admin(post(ACCOUNTS + account + "/reset-login-password"), Map.of("newPassword", "weak"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("newPassword"));
+
+        admin(post(ACCOUNTS + account + "/reset-login-password"), Map.of("newPassword", "Fresh-login-9"))
+                .andExpect(status().isNoContent());
+        login("Login-pass-1").andExpect(status().is4xxClientError());
+        login("Fresh-login-9").andExpect(status().isOk());
+        assertThat(auditCount("VENUE_LOGIN_PASSWORD_RESET", account)).isEqualTo(1);
+        assertThat(OWNER.sql("SELECT count(*) FROM venue.venue WHERE id = :id").param("id", venue)
+                .query(Long.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void resetOwnerPasswordReplacesItAndTheOldOneStopsWorkingAtOnce() throws Exception {
+        UUID account = createdAccount();
+        UUID photo = VenueAccountFixtures.visiblePhoto(venue, 1);
+
+        admin(post(ACCOUNTS + account + "/reset-owner-password"), Map.of("newPassword", "Fresh-owner-9"))
+                .andExpect(status().isNoContent());
+        assertThat(auditCount("OWNER_PASSWORD_RESET", account)).isEqualTo(1);
+        assertThat(OWNER.sql("SELECT version FROM iam.venue_owner_secret WHERE venue_account_id = :id")
+                .param("id", account).query(Long.class).single()).isEqualTo(1L);
+
+        String venueToken = accessTokens.issue(AuthSubjectType.VENUE, account);
+        removePhoto(venueToken, photo, "Owner-pass-1").andExpect(status().is(423));
+        removePhoto(venueToken, photo, "Fresh-owner-9").andExpect(status().isNoContent());
+    }
+
+    @Test
+    void anUnknownVenueAccountIsNotFound() throws Exception {
+        UUID unknown = UUID.randomUUID();
+        admin(post(ACCOUNTS + unknown + "/disable"), Map.of("reason", "x")).andExpect(status().isNotFound());
+        admin(post(ACCOUNTS + unknown + "/reset-owner-password"), Map.of("newPassword", "Fresh-owner-9"))
+                .andExpect(status().isNotFound());
+    }
+
+    private static final String ACCOUNTS = "/api/v1/admin/venue-accounts/";
+
+    private UUID createdAccount() throws Exception {
+        String body = create(venue, "acct." + venue, "Login-pass-1", "Owner-pass-1", "en")
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        return UUID.fromString(json.readTree(body).path("data").path("id").asText());
+    }
+
+    private ResultActions admin(MockHttpServletRequestBuilder request, Object body) throws Exception {
+        return mvc.perform(request.header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(body)));
+    }
+
+    private ResultActions login(String password) throws Exception {
+        return mvc.perform(post("/api/v1/venue/auth/login").header("Origin", DASHBOARD_ORIGIN)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("loginIdentifier", "acct." + venue, "password", password))));
+    }
+
+    private ResultActions removePhoto(String venueToken, UUID photo, String ownerPassword) throws Exception {
+        return mvc.perform(post("/api/v1/venue/images/" + photo + "/remove")
+                .header("Authorization", "Bearer " + venueToken).contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("ownerPassword", ownerPassword))));
     }
 
     private ResultActions create(UUID venueId, String login, String password, String ownerPassword, String language)
