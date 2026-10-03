@@ -1350,6 +1350,9 @@ Do:
 Done when (write these as tests first where possible):
 - A catalogued code with missing required channels fails at commit (DB) — test it; push delivered in dev via a fake adapter.
 
+Carry-forward from E7-24 (do these too):
+- An admin Owner Password reset must notify the venue (FR-ADM-03, FR-VEN-05). POST /admin/venue-accounts/{id}/reset-owner-password already exists (VenueAccountCommands.ResetOwnerPassword, audit OWNER_PASSWORD_RESET); send the catalogued VENUE_OWNER_PASSWORD_RESET notification to the venue through the outbox in that same transaction once the catalogue exists. The notification never contains the password.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2301,6 +2304,9 @@ Do:
 
 Done when (write these as tests first where possible):
 - Two disable/re-enable cycles in one session → one protection event and one reset.
+
+Carry-forward from E7-24 (PO decision 3 Oct 2026; do these too):
+- POST /admin/venue-accounts/{id}/disable and /enable already exist (VenueAccounts.setStatus -> VenueAccountCommands.SetAccountStatus): they change iam.venue_account.account_status with the admin's reason, audit VENUE_ACCOUNT_DISABLED / VENUE_ACCOUNT_ENABLED and block the Dashboard at once. Add the O10 consequences inside that same command and transaction: PENDING -> VENUE_RESPONSE_EXPIRED with the account-disable event, AWAITING cancelled under VENUE_ACCOUNT_DISABLED, PENDING_VENUE_APPROVAL tournaments cancelled (the database refuses the disable until they are), and the iam.venue_account_restriction_interval rows (open on disable, close on enable). Do not add a second disable endpoint.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.

@@ -953,7 +953,8 @@
   "steps": [
    "NotificationService.notify(code, recipient, reference, params) validated against the catalogue; creates notification + required deliveries in the same transaction.",
    "Adapters: FCM (Android + APNs via FCM) for customers, email (Mailpit in dev), SMS for OTP only.",
-   "Device token register/revoke API (tokens are revoked, never deleted)."
+   "Device token register/revoke API (tokens are revoked, never deleted).",
+   "Carry-forward from E7-24: An admin Owner Password reset must notify the venue (FR-ADM-03, FR-VEN-05). POST /admin/venue-accounts/{id}/reset-owner-password already exists (VenueAccountCommands.ResetOwnerPassword, audit OWNER_PASSWORD_RESET); send the catalogued VENUE_OWNER_PASSWORD_RESET notification to the venue through the outbox in that same transaction once the catalogue exists. The notification never contains the password."
   ],
   "done": [
    "A catalogued code with missing required channels fails at commit (DB) — test it; push delivered in dev via a fake adapter."
@@ -961,7 +962,7 @@
   "folders": [
    "backend/src/main/java/ps/e7gz/notification/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S2-P4 — \"Notifications: catalogue, channels, push and email\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 08 §4.4–§4.5\n- Spec v5 §52\n- notification.* tables (86 catalogue codes already seeded)\n\nDo:\n1. NotificationService.notify(code, recipient, reference, params) validated against the catalogue; creates notification + required deliveries in the same transaction.\n2. Adapters: FCM (Android + APNs via FCM) for customers, email (Mailpit in dev), SMS for OTP only.\n3. Device token register/revoke API (tokens are revoked, never deleted).\n\nDone when (write these as tests first where possible):\n- A catalogued code with missing required channels fails at commit (DB) — test it; push delivered in dev via a fake adapter.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S2-P4 — \"Notifications: catalogue, channels, push and email\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 08 §4.4–§4.5\n- Spec v5 §52\n- notification.* tables (86 catalogue codes already seeded)\n\nDo:\n1. NotificationService.notify(code, recipient, reference, params) validated against the catalogue; creates notification + required deliveries in the same transaction.\n2. Adapters: FCM (Android + APNs via FCM) for customers, email (Mailpit in dev), SMS for OTP only.\n3. Device token register/revoke API (tokens are revoked, never deleted).\n\nDone when (write these as tests first where possible):\n- A catalogued code with missing required channels fails at commit (DB) — test it; push delivered in dev via a fake adapter.\n\nCarry-forward from E7-24 (do these too):\n- An admin Owner Password reset must notify the venue (FR-ADM-03, FR-VEN-05). POST /admin/venue-accounts/{id}/reset-owner-password already exists (VenueAccountCommands.ResetOwnerPassword, audit OWNER_PASSWORD_RESET); send the catalogued VENUE_OWNER_PASSWORD_RESET notification to the venue through the outbox in that same transaction once the catalogue exists. The notification never contains the password.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-44": {
   "id": "S2-P5",
@@ -1726,7 +1727,8 @@
    "arch 07 §7.5"
   ],
   "steps": [
-   "Disable/re-enable with the five per-state effects; restriction intervals; Platform Attendance Protection."
+   "Disable/re-enable with the five per-state effects; restriction intervals; Platform Attendance Protection.",
+   "Carry-forward from E7-24: POST /admin/venue-accounts/{id}/disable and /enable already exist (VenueAccounts.setStatus -> VenueAccountCommands.SetAccountStatus): they change iam.venue_account.account_status with the admin's reason, audit VENUE_ACCOUNT_DISABLED / VENUE_ACCOUNT_ENABLED and block the Dashboard at once. Add the O10 consequences inside that same command and transaction: PENDING -> VENUE_RESPONSE_EXPIRED with the account-disable event, AWAITING cancelled under VENUE_ACCOUNT_DISABLED, PENDING_VENUE_APPROVAL tournaments cancelled (the database refuses the disable until they are), and the iam.venue_account_restriction_interval rows (open on disable, close on enable). Do not add a second disable endpoint."
   ],
   "done": [
    "Two disable/re-enable cycles in one session → one protection event and one reset."
@@ -1735,7 +1737,7 @@
    "backend/src/main/java/ps/e7gz/venue/ (account disable)",
    "backend/src/main/java/ps/e7gz/attendance/ (protection)"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S5-P1 — \"Venue account disable (O10) and attendance protection\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 06 §2.8\n- arch 07 §7.5\n\nDo:\n1. Disable/re-enable with the five per-state effects; restriction intervals; Platform Attendance Protection.\n\nDone when (write these as tests first where possible):\n- Two disable/re-enable cycles in one session → one protection event and one reset.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S5-P1 — \"Venue account disable (O10) and attendance protection\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 06 §2.8\n- arch 07 §7.5\n\nDo:\n1. Disable/re-enable with the five per-state effects; restriction intervals; Platform Attendance Protection.\n\nDone when (write these as tests first where possible):\n- Two disable/re-enable cycles in one session → one protection event and one reset.\n\nCarry-forward from E7-24 (PO decision 3 Oct 2026; do these too):\n- POST /admin/venue-accounts/{id}/disable and /enable already exist (VenueAccounts.setStatus -> VenueAccountCommands.SetAccountStatus): they change iam.venue_account.account_status with the admin's reason, audit VENUE_ACCOUNT_DISABLED / VENUE_ACCOUNT_ENABLED and block the Dashboard at once. Add the O10 consequences inside that same command and transaction: PENDING -> VENUE_RESPONSE_EXPIRED with the account-disable event, AWAITING cancelled under VENUE_ACCOUNT_DISABLED, PENDING_VENUE_APPROVAL tournaments cancelled (the database refuses the disable until they are), and the iam.venue_account_restriction_interval rows (open on disable, close on enable). Do not add a second disable endpoint.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-79": {
   "id": "S5-P2",
