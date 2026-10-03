@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { components } from "@e7gz/api-client";
 import { apiErrorOf, type ApiClient } from "../../api";
 import { useMessages } from "../../i18n";
@@ -24,12 +24,14 @@ export function OpeningHoursEditor({ api }: { api: ApiClient }) {
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [passwordError, setPasswordError] = useState<string>();
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const [timezone, setTimezone] = useState("Africa/Cairo");
 
   useEffect(() => {
     let active = true;
     void api.GET("/api/v1/venue/opening-hours").then(({ data, error: body }) => {
       if (!active) return;
       if (!data) return setError(setupErrorMessage(apiErrorOf(body).code, t));
+      setTimezone(data.data.timezone);
       setProposal({
         defaultOpen: data.data.defaultOpen,
         defaultClose: data.data.defaultClose,
@@ -104,6 +106,16 @@ export function OpeningHoursEditor({ api }: { api: ApiClient }) {
     setProposal({ ...proposal, days: proposal.days.map((day) => day.weekday === weekday ? { ...day, ...patch } : day) });
   };
 
+  const affectedDateFormatter = useMemo(() => new Intl.DateTimeFormat(t.setup.hours.locale, {
+    dateStyle: "medium",
+    timeZone: timezone,
+  }), [t, timezone]);
+  const affectedTimeFormatter = useMemo(() => new Intl.DateTimeFormat(t.setup.hours.locale, {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: timezone,
+  }), [t, timezone]);
+
   return (
     <section aria-labelledby="hours-title" style={styles.card}>
       <div><h2 id="hours-title" style={styles.cardTitle}>{t.setup.hours.title}</h2><p style={styles.muted}>{t.setup.hours.description}</p></div>
@@ -140,7 +152,15 @@ export function OpeningHoursEditor({ api }: { api: ApiClient }) {
       {preview ? (
         <section aria-labelledby="affected-title" style={styles.card}>
           <h3 id="affected-title" style={styles.cardTitle}>{t.setup.hours.affected}</h3>
-          {preview.affected.length ? <ul>{preview.affected.map((item) => <li key={item.bookingId}>{item.bookingId} · {item.startAt} – {item.endAt}</li>)}</ul> : <p>{t.setup.hours.noAffected}</p>}
+          {preview.affected.length ? <ul style={styles.list}>{preview.affected.map((item) => {
+            const start = new Date(item.startAt);
+            const end = new Date(item.endAt);
+            return <li key={item.bookingId} style={styles.field}>
+              <strong>{t.setup.hours.booking} {item.bookingId}</strong>
+              <span>{t.setup.hours.resource} {item.resourceId}</span>
+              <span><time dateTime={item.startAt}>{affectedDateFormatter.format(start)}, {affectedTimeFormatter.format(start)}</time> – <time dateTime={item.endAt}>{affectedTimeFormatter.format(end)}</time></span>
+            </li>;
+          })}</ul> : <p>{t.setup.hours.noAffected}</p>}
           {preview.ownerPasswordRequired ? <p style={styles.info}>{t.setup.hours.protectedNotice}</p> : null}
           <button disabled={working === "commit"} style={styles.primaryButton} type="button" onClick={() => preview.ownerPasswordRequired ? setPasswordOpen(true) : void commit()}>{working === "commit" ? t.setup.hours.committing : t.setup.hours.commit}</button>
         </section>

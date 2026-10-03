@@ -15,7 +15,7 @@ afterEach(cleanup);
 const meta = { correlationId: "c-1", serverTime: "2026-10-03T12:00:00Z" };
 const response = (data: unknown, status = 200) => new Response(status === 204 ? undefined : JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
 const ok = (data: unknown, status = 200) => response({ data, meta }, status);
-const failure = (code: string, status: number) => response({ error: { code }, meta }, status);
+const failure = (code: string, status: number, error: Record<string, unknown> = {}) => response({ error: { code, ...error }, meta }, status);
 
 function renderWithApi(ui: (api: ReturnType<typeof createDashboardApiClient>) => ReactNode, fetch: (request: Request) => Promise<Response>, language: "en" | "ar" = "en") {
   const requests: Request[] = [];
@@ -114,12 +114,30 @@ describe("VenueProfile", () => {
     expect(requests[1]?.method).toBe("PATCH");
     expect(await requests[1]?.json()).toEqual({ name: "New name", address: "12 Test St", phone: "+201001234567", languagePreference: "ar" });
     expect(requests[1]?.headers.get("Authorization")).toBe("Bearer token");
+    expect(screen.getByText("30, 31")).toBeTruthy();
+    expect(screen.getByText("Active")).toBeTruthy();
+  });
+
+  it("highlights every field named by a validation response", async () => {
+    renderWithApi((api) => <VenueProfile api={api} onLanguagePreference={() => {}} />, async (request) => request.method === "GET"
+      ? ok({ venueId: "v-1", name: "Game Zone", areaId: "a-1", areaName: "Nasr City", address: "12 Test St", location: { lat: 30, lng: 31 }, phone: "+201001234567", timezone: "Africa/Cairo", marketplaceStatus: "ACTIVE", activities: ["PLAYSTATION"], languagePreference: "en" })
+      : failure("VALIDATION_FAILED", 400, { field: "name", details: { fields: ["address", "phone"] } }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Save" }));
+    expect(await screen.findAllByText("Check this field and try again.")).toHaveLength(3);
+
+    for (const label of ["Venue name", "Address", "Phone number"]) {
+      const input = screen.getByLabelText(label);
+      expect(input.getAttribute("aria-invalid")).toBe("true");
+      expect(input.getAttribute("aria-describedby")).toBeTruthy();
+    }
   });
 
   it("renders its complete form in Arabic", async () => {
     renderWithApi((api) => <VenueProfile api={api} onLanguagePreference={() => {}} />, async () => ok({ venueId: "v-1", name: "مكان", areaId: "a-1", areaName: "مدينة نصر", address: "عنوان", location: { lat: 30, lng: 31 }, phone: "+201001234567", timezone: "Africa/Cairo", marketplaceStatus: "ACTIVE", activities: ["PLAYSTATION"], languagePreference: "ar" }), "ar");
     expect(await screen.findByRole("heading", { name: "ملف المكان" })).toBeTruthy();
     expect(screen.getByLabelText("اسم المكان")).toBeTruthy();
+    expect(screen.getByText("نشطة")).toBeTruthy();
   });
 });
 
@@ -149,13 +167,16 @@ describe("OpeningHoursEditor", () => {
     });
 
     fireEvent.click(await screen.findByRole("button", { name: "Preview changes" }));
-    expect(await screen.findByText(/b-1/u)).toBeTruthy();
+    expect(await screen.findByText("Booking b-1")).toBeTruthy();
+    expect(screen.getByText("Resource r-1")).toBeTruthy();
+    expect(screen.getByText(/9:00 PM/u)).toBeTruthy();
+    expect(screen.queryByText("2026-10-04T18:00:00Z")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Save opening hours" }));
     fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "1111" } });
     fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
 
     expect(await screen.findByText(/Bookings changed/u)).toBeTruthy();
-    expect(screen.getByText(/b-2/u)).toBeTruthy();
+    expect(screen.getByText("Booking b-2")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Save opening hours" }));
     expect((screen.getByLabelText("Owner PIN") as HTMLInputElement).value).toBe("");
     fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "2222" } });
