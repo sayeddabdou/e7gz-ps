@@ -29,6 +29,12 @@ export const setupStyles = {
     paddingBlock: webTokens.spacing.lg,
     paddingInline: webTokens.spacing.xl,
   },
+  invalidInput: { borderColor: webTokens.color.feedback.danger },
+  fieldError: {
+    color: webTokens.color.feedback.danger,
+    fontSize: webTokens.typography.fontSize.caption,
+    marginBlock: 0,
+  },
   primaryButton: {
     backgroundColor: webTokens.color.brand.venue,
     border: 0,

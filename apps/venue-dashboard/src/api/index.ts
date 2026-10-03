@@ -28,11 +28,12 @@ export function errorCodeOf(body: unknown): string | undefined {
 export type ApiErrorDetails = Record<string, unknown>;
 
 /** The structured error body used by setup flows; backend message text is deliberately ignored. */
-export function apiErrorOf(body: unknown): { code?: string; details?: ApiErrorDetails } {
+export function apiErrorOf(body: unknown): { code?: string; field?: string; details?: ApiErrorDetails } {
   if (!body || typeof body !== "object" || !("error" in body)) return {};
-  const error = (body as { error?: { code?: unknown; details?: unknown } }).error;
+  const error = (body as { error?: { code?: unknown; field?: unknown; details?: unknown } }).error;
   return {
     ...(typeof error?.code === "string" ? { code: error.code } : {}),
+    ...(typeof error?.field === "string" ? { field: error.field } : {}),
     ...(error?.details && typeof error.details === "object" ? { details: error.details as ApiErrorDetails } : {}),
   };
 }
