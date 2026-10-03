@@ -76,7 +76,8 @@ public class AdminVenueAccountController {
     @Operation(operationId = "adminResetVenueOwnerPassword",
             summary = "Reset the Owner Password; the venue is notified (FR-ADM-03, FR-VEN-05)",
             description = "The admin chooses the new Owner Password and gives it to the venue through support (PO "
-                    + "decision, 28 Sep 2026). No temporary password, reset link or forced change. Audited; the venue "
+                    + "decision, 28 Sep 2026). The Owner Password is a PIN of exactly 4 digits (PCR-006). No temporary "
+                    + "password, reset link or forced change. Audited; the venue "
                     + "is notified (FR-ADM-03).")
     public void resetOwnerPassword(@AuthenticationPrincipal AuthenticatedSubject admin,
             @PathVariable UUID venueAccountId, @Valid @RequestBody AdminVenuePasswordResetRequest request) {

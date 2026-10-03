@@ -244,7 +244,9 @@ public class AdminVenueController {
             @NotBlank @Size(max = MAX_TEXT) @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY)
             String password,
             @NotBlank @Size(max = MAX_TEXT) @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY,
-                    description = "Sets the first Owner Password (FR-ADM-02); not a check of an existing one.")
+                    pattern = "^[0-9]{4}$",
+                    description = "Sets the first Owner Password (FR-ADM-02): a PIN of exactly 4 digits (PCR-006). "
+                            + "Not a check of an existing one.")
             String initialOwnerPassword,
             @Schema(description = "Dashboard language; en when absent (FR-VEN-40).") VenueAccountLanguage languagePreference) {
 

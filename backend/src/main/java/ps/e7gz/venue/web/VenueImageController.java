@@ -29,15 +29,14 @@ import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.ResponseMetaFactory;
-import ps.e7gz.venue.api.OwnerPasswordGate;
 import ps.e7gz.venue.api.VenuePhotos;
 import ps.e7gz.venue.internal.VenueAccounts;
 
 /**
  * Venue Dashboard — the venue's own photos (arch 09 §4.2, PCR-005). Two-step upload (arch 12 §2): {@code POST} returns
- * a signed PUT, the browser uploads the bytes, {@code confirm} makes the photo visible. Add (confirm), reorder and
- * remove need the Owner Password (FRS §2.4 as amended by PCR-005). Contract from E7-23 PR 3; implemented by E7-24.
- * A venue only ever sees and changes its own photos: another venue's photo is NOT_FOUND.
+ * a signed PUT, the browser uploads the bytes, {@code confirm} makes the photo visible. No photo action needs the Owner
+ * Password (PCR-006 amends PCR-005; PO decision 3 Oct 2026); every change is audited. A venue only ever sees and changes
+ * its own photos: another venue's photo is NOT_FOUND. Contract from E7-23 PR 3; implemented by E7-24.
  */
 @RestController
 @RequestMapping("/api/v1/venue/images")
@@ -47,14 +46,11 @@ public class VenueImageController {
 
     private final VenuePhotos photos;
     private final VenueAccounts accounts;
-    private final OwnerPasswordGate ownerPassword;
     private final ResponseMetaFactory meta;
 
-    public VenueImageController(VenuePhotos photos, VenueAccounts accounts, OwnerPasswordGate ownerPassword,
-                                ResponseMetaFactory meta) {
+    public VenueImageController(VenuePhotos photos, VenueAccounts accounts, ResponseMetaFactory meta) {
         this.photos = photos;
         this.accounts = accounts;
-        this.ownerPassword = ownerPassword;
         this.meta = meta;
     }
 
@@ -72,7 +68,7 @@ public class VenueImageController {
     @ApiError(status = 422, codes = {ApiErrorCode.VENUE_IMAGE_NOT_ACCEPTED, ApiErrorCode.VENUE_IMAGE_LIMIT_REACHED})
     public DataResponse<VenueImageUploadView> start(@AuthenticationPrincipal AuthenticatedSubject venue,
             @Valid @RequestBody VenueImageUploadRequest request) {
-        VenuePhotos.Upload upload = photos.startUpload(accounts.venueOf(venue.id()), actor(venue, null),
+        VenuePhotos.Upload upload = photos.startUpload(accounts.venueOf(venue.id()), actor(venue),
                 request.contentType(), request.sizeBytes());
         return meta.data(new VenueImageUploadView(VenueImageView.of(upload.photo()), upload.uploadUrl().toString(),
                 upload.uploadExpiresAt()));
@@ -80,44 +76,34 @@ public class VenueImageController {
 
     @PostMapping("/{imageId}/confirm")
     @Operation(operationId = "venueConfirmImage",
-            summary = "The uploaded photo becomes visible, last in the order — Owner Password (PCR-005)")
+            summary = "The uploaded photo becomes visible, last in the order (PCR-005; no Owner Password, PCR-006)")
     @ApiError(status = 422, codes = {ApiErrorCode.VENUE_IMAGE_NOT_UPLOADED, ApiErrorCode.VENUE_IMAGE_NOT_ACCEPTED,
             ApiErrorCode.VENUE_IMAGE_LIMIT_REACHED})
-    @ApiError(status = 423, codes = {ApiErrorCode.OWNER_PASSWORD_REQUIRED, ApiErrorCode.OWNER_PASSWORD_INVALID})
     public DataResponse<VenueImageView> confirm(@AuthenticationPrincipal AuthenticatedSubject venue,
-            @PathVariable UUID imageId, @Valid @RequestBody VenueImageOwnerPasswordRequest request) {
-        return meta.data(VenueImageView.of(photos.confirm(accounts.venueOf(venue.id()), imageId,
-                actor(venue, request.ownerPassword()))));
+            @PathVariable UUID imageId) {
+        return meta.data(VenueImageView.of(photos.confirm(accounts.venueOf(venue.id()), imageId, actor(venue))));
     }
 
     @PutMapping("/order")
     @Operation(operationId = "venueReorderImages",
-            summary = "Save the photo order: every visible photo exactly once — Owner Password (PCR-005)")
-    @ApiError(status = 423, codes = {ApiErrorCode.OWNER_PASSWORD_REQUIRED, ApiErrorCode.OWNER_PASSWORD_INVALID})
+            summary = "Save the photo order: every visible photo exactly once (PCR-005; no Owner Password, PCR-006)")
     public DataResponse<List<VenueImageView>> reorder(@AuthenticationPrincipal AuthenticatedSubject venue,
             @Valid @RequestBody VenueImageOrderRequest request) {
-        return meta.data(photos.reorder(accounts.venueOf(venue.id()), request.imageIds(),
-                actor(venue, request.ownerPassword())).stream().map(VenueImageView::of).toList());
+        return meta.data(photos.reorder(accounts.venueOf(venue.id()), request.imageIds(), actor(venue)).stream()
+                .map(VenueImageView::of).toList());
     }
 
     @PostMapping("/{imageId}/remove")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(operationId = "venueRemoveImage",
-            summary = "Hide a photo; it is kept and the removal audited, never hard-deleted — Owner Password (PCR-005)")
-    @ApiError(status = 423, codes = {ApiErrorCode.OWNER_PASSWORD_REQUIRED, ApiErrorCode.OWNER_PASSWORD_INVALID})
-    public void remove(@AuthenticationPrincipal AuthenticatedSubject venue, @PathVariable UUID imageId,
-            @Valid @RequestBody VenueImageOwnerPasswordRequest request) {
-        photos.remove(accounts.venueOf(venue.id()), imageId, actor(venue, request.ownerPassword()));
+            summary = "Hide a photo; it is kept and the removal audited, never hard-deleted (PCR-005; no Owner "
+                    + "Password, PCR-006)")
+    public void remove(@AuthenticationPrincipal AuthenticatedSubject venue, @PathVariable UUID imageId) {
+        photos.remove(accounts.venueOf(venue.id()), imageId, actor(venue));
     }
 
-    /**
-     * The signed-in venue account. Its Owner Password step checks the password from this request's body inside the
-     * change's transaction (ADR-011); starting an upload passes none and never calls the step.
-     */
-    private VenuePhotos.Actor actor(AuthenticatedSubject venue, String suppliedOwnerPassword) {
-        UUID account = venue.id();
-        return new VenuePhotos.Actor.Venue(account, CorrelationId.require(),
-                context -> ownerPassword.verify(context, account, suppliedOwnerPassword));
+    private static VenuePhotos.Actor actor(AuthenticatedSubject venue) {
+        return new VenuePhotos.Actor.Venue(venue.id(), CorrelationId.require());
     }
 
     /**
@@ -158,23 +144,6 @@ public class VenueImageController {
     }
 
     @Schema(name = "VenueImageOrderRequest")
-    public record VenueImageOrderRequest(
-            @NotEmpty List<@NotNull UUID> imageIds,
-            @NotBlank @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY) String ownerPassword) {
-
-        @Override
-        public String toString() {
-            return "VenueImageOrderRequest[imageIds=" + imageIds + ", <owner password redacted>]";
-        }
-    }
-
-    @Schema(name = "VenueImageOwnerPasswordRequest")
-    public record VenueImageOwnerPasswordRequest(
-            @NotBlank @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY) String ownerPassword) {
-
-        @Override
-        public String toString() {
-            return "VenueImageOwnerPasswordRequest[<owner password redacted>]";
-        }
+    public record VenueImageOrderRequest(@NotEmpty List<@NotNull UUID> imageIds) {
     }
 }

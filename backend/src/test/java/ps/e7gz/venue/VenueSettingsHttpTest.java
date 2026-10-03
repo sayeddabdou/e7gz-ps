@@ -51,8 +51,8 @@ class VenueSettingsHttpTest extends IntegrationTest {
 
     @BeforeEach
     void twoVenues() {
-        venue = VenueAccountFixtures.venueWithAccount(passwords, "Owner-pass-1");
-        other = VenueAccountFixtures.venueWithAccount(passwords, "Other-pass-1");
+        venue = VenueAccountFixtures.venueWithAccount(passwords, "1234");
+        other = VenueAccountFixtures.venueWithAccount(passwords, "5678");
         token = accessTokens.issue(AuthSubjectType.VENUE, venue.accountId());
     }
 

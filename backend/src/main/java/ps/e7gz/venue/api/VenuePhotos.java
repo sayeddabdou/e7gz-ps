@@ -7,8 +7,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import ps.e7gz.audit.api.OwnerPasswordCheck;
-import ps.e7gz.common.command.CommandContext;
 
 /**
  * Venue photos for other modules (PCR-005, arch 12 §2): the Venue Dashboard routes (E7-24) and customer discovery
@@ -71,24 +69,15 @@ public interface VenuePhotos {
         }
 
         /**
-         * The venue's shared account (arch 09 §4.2). {@code ownerPassword} runs first inside the change's transaction
-         * (FRS §2.4 as amended by PCR-005: add, reorder and remove need the Owner Password; E7-24 supplies the check).
-         * Starting an upload does not call it.
+         * The venue's shared account (arch 09 §4.2), on the app connection. No photo action needs the Owner Password
+         * (PCR-006 amends PCR-005; PO decision 3 Oct 2026).
          */
-        record Venue(UUID venueAccountId, UUID correlationId, OwnerPasswordStep ownerPassword) implements Actor {
+        record Venue(UUID venueAccountId, UUID correlationId) implements Actor {
 
             public Venue {
                 Objects.requireNonNull(venueAccountId, "venueAccountId");
                 Objects.requireNonNull(correlationId, "correlationId");
-                Objects.requireNonNull(ownerPassword, "ownerPassword");
             }
         }
-    }
-
-    /** Verifies the Owner Password inside the action's transaction; throws when it is wrong (E7-24). */
-    @FunctionalInterface
-    interface OwnerPasswordStep {
-
-        OwnerPasswordCheck verify(CommandContext context);
     }
 }

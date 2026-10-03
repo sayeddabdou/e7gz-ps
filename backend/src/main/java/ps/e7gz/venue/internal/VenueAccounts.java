@@ -1,6 +1,7 @@
 package ps.e7gz.venue.internal;
 
 import java.util.UUID;
+import java.util.regex.Pattern;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -26,6 +27,9 @@ import ps.e7gz.venue.api.OwnerPasswordGate;
  */
 @Service
 public class VenueAccounts {
+
+    /** PCR-006: exactly four ASCII digits. */
+    private static final Pattern OWNER_PIN = Pattern.compile("[0-9]{4}");
 
     private final CommandRunner runner;
     private final OwnerPasswordGate gate;
@@ -61,7 +65,7 @@ public class VenueAccounts {
         requireVenue(venueId);
         String login = TextFields.optional(loginIdentifier, "loginIdentifier");
         requireAcceptable(password, "password");
-        requireAcceptable(initialOwnerPassword, "initialOwnerPassword");
+        requireOwnerPin(initialOwnerPassword, "initialOwnerPassword");
         String passwordHash = passwords.encode(password);
         String ownerPasswordHash = passwords.encode(initialOwnerPassword);
         return runner.run(new VenueAccountCommands.Create(adminId, CorrelationId.require(), venueId, login,
@@ -71,7 +75,7 @@ public class VenueAccounts {
     /** FR-VEN-46: the current Owner Password authorises the change; the new one works at once, the old one never again. */
     public void changeOwnerPassword(UUID venueAccountId, String currentPassword, String nextPassword) {
         UUID venueId = venueOf(venueAccountId);
-        requireAcceptable(nextPassword, "next");
+        requireOwnerPin(nextPassword, "next");
         String nextHash = passwords.encode(nextPassword);
         UUID correlationId = CorrelationId.require();
         gate.run(new VenueAccountCommands.ChangeOwnerPassword(venueAccountId, venueId, correlationId, currentPassword,
@@ -98,10 +102,10 @@ public class VenueAccounts {
                 venueId, hash, audit));
     }
 
-    /** FR-ADM-03: the admin chooses the new Owner Password; the old one stops working at once. */
+    /** FR-ADM-03: the admin chooses the new Owner Password (a 4-digit PIN); the old one stops working at once. */
     public void resetOwnerPassword(UUID adminId, UUID venueAccountId, String newPassword) {
         UUID venueId = venueOf(venueAccountId);
-        requireAcceptable(newPassword, "newPassword");
+        requireOwnerPin(newPassword, "newPassword");
         String hash = passwords.encode(newPassword);
         runner.run(new VenueAccountCommands.ResetOwnerPassword(adminId, CorrelationId.require(), venueAccountId,
                 venueId, hash, audit));
@@ -139,11 +143,22 @@ public class VenueAccounts {
     }
 
     /**
-     * Venue login and Owner Passwords follow the customer password rule: at least 8 characters with a letter and a
-     * digit (VALIDATION RULES §2.1; Product Owner decision 3 Oct 2026, E7-24).
+     * The venue login password follows the customer password rule: at least 8 characters with a letter and a digit
+     * (VALIDATION RULES §2.1; Product Owner decision 3 Oct 2026, E7-24).
      */
     private static void requireAcceptable(String password, String field) {
         if (!PasswordRules.isAcceptable(password)) {
+            throw new ApiException(ApiErrorCode.VALIDATION_FAILED, field);
+        }
+    }
+
+    /** The Owner Password is a PIN of exactly 4 digits, 0-9 (PCR-006). */
+    static boolean isOwnerPin(String value) {
+        return value != null && OWNER_PIN.matcher(value).matches();
+    }
+
+    private static void requireOwnerPin(String value, String field) {
+        if (!isOwnerPin(value)) {
             throw new ApiException(ApiErrorCode.VALIDATION_FAILED, field);
         }
     }

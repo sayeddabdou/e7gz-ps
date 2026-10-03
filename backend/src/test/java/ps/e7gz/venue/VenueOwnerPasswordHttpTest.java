@@ -12,6 +12,7 @@ import static ps.e7gz.venue.VenueAccountFixtures.visiblePhoto;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.Cookie;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
@@ -40,17 +41,18 @@ import ps.e7gz.identity.api.OwnerPasswordAttempts;
 import ps.e7gz.support.IntegrationTest;
 
 /**
- * E7-24: the Owner Password on the Venue Dashboard's protected actions (ADR-011, arch 10 §3, FRS §2.4 as amended by
- * PCR-005). Done when: a wrong password is audited and rate limited; no session "unlock" exists; photo confirm,
- * reorder and remove with a wrong Owner Password return 423 OWNER_PASSWORD_INVALID and are audited; another venue's
- * photo is NOT_FOUND. Plus the venue's own Owner Password change (FR-VEN-46).
+ * E7-24: the Owner Password (a 4-digit PIN, PCR-006) on the Venue Dashboard (ADR-011, arch 10 §3). Today the venue's
+ * one protected action is changing it (FR-VEN-46); the gate is the same for pricing and rooms later. Done when: a wrong
+ * PIN is audited and rate limited, and no session "unlock" exists. Venue photos need no PIN (PCR-006), are audited, and
+ * another venue's photo is NOT_FOUND.
  */
 @AutoConfigureMockMvc
 class VenueOwnerPasswordHttpTest extends IntegrationTest {
 
     private static final String IMAGES = "/api/v1/venue/images";
-    private static final String OWNER_PASSWORD = "Owner-pass-1";
-    private static final String WRONG = "not-the-owner-password";
+    private static final String CHANGE = "/api/v1/venue/owner-password";
+    private static final String OWNER_PIN = "1234";
+    private static final String WRONG = "0000";
 
     @Autowired
     MockMvc mvc;
@@ -71,127 +73,126 @@ class VenueOwnerPasswordHttpTest extends IntegrationTest {
 
     @BeforeEach
     void aVenueWithItsAccount() {
-        venue = VenueAccountFixtures.venueWithAccount(passwords, OWNER_PASSWORD);
+        venue = VenueAccountFixtures.venueWithAccount(passwords, OWNER_PIN);
         token = accessTokens.issue(AuthSubjectType.VENUE, venue.accountId());
     }
 
-    // ------------------------------------------------------------------------------------------ photos (PCR-005)
+    // ------------------------------------------------------------------------------------------ photos: no PIN
 
     @Test
-    void confirmWithAWrongOwnerPasswordIs423AuditedAndThePhotoStaysHidden() throws Exception {
+    void addingAPhotoNeedsNoOwnerPinAndIsAudited() throws Exception {
         UUID photo = uploaded();
 
-        call(post(IMAGES + "/" + photo + "/confirm"), Map.of("ownerPassword", WRONG))
-                .andExpect(status().is(423)).andExpect(jsonPath("$.error.code").value("OWNER_PASSWORD_INVALID"));
-        assertThat(list()).isEmpty();
-        assertThat(auditCount("VENUE_PHOTO_ADDED", photo)).isZero();
-        assertRefusals("VENUE_PHOTO_ADD", 1);
+        call(post(IMAGES + "/" + photo + "/confirm"), null).andExpect(status().isOk());
 
-        call(post(IMAGES + "/" + photo + "/confirm"), Map.of("ownerPassword", OWNER_PASSWORD))
-                .andExpect(status().isOk());
         assertThat(ids(list())).containsExactly(photo.toString());
-        assertThat(outcome("VENUE_PHOTO_ADDED", photo)).isEqualTo("SUCCESS");
+        assertThat(auditCount("VENUE_PHOTO_ADDED", photo)).isEqualTo(1);
+        assertThat(ownerPinChecked("VENUE_PHOTO_ADDED", photo)).isFalse();
     }
 
     @Test
-    void reorderWithAWrongOwnerPasswordIs423AuditedAndTheOrderIsUnchanged() throws Exception {
+    void reorderingAndRemovingPhotosNeedNoOwnerPin() throws Exception {
         UUID first = visiblePhoto(venue.venueId(), 1);
         UUID second = visiblePhoto(venue.venueId(), 2);
 
-        call(put(IMAGES + "/order"), Map.of("imageIds", List.of(second, first), "ownerPassword", WRONG))
-                .andExpect(status().is(423)).andExpect(jsonPath("$.error.code").value("OWNER_PASSWORD_INVALID"));
-        assertThat(ids(list())).containsExactly(first.toString(), second.toString());
-        assertRefusals("VENUE_PHOTO_REORDER", 1);
-
-        call(put(IMAGES + "/order"), Map.of("imageIds", List.of(second, first), "ownerPassword", OWNER_PASSWORD))
-                .andExpect(status().isOk());
+        call(put(IMAGES + "/order"), Map.of("imageIds", List.of(second, first))).andExpect(status().isOk());
         assertThat(ids(list())).containsExactly(second.toString(), first.toString());
-        assertThat(outcome("VENUE_PHOTOS_REORDERED", venue.venueId())).isEqualTo("SUCCESS");
+
+        call(post(IMAGES + "/" + first + "/remove"), null).andExpect(status().isNoContent());
+        assertThat(ids(list())).containsExactly(second.toString());
+        assertThat(auditCount("VENUE_PHOTOS_REORDERED", venue.venueId())).isEqualTo(1);
+        assertThat(auditCount("VENUE_PHOTO_REMOVED", first)).isEqualTo(1);
+        assertRefusals(0);
     }
 
     @Test
-    void removeWithAWrongOwnerPasswordIs423AuditedAndThePhotoStaysVisible() throws Exception {
-        UUID photo = visiblePhoto(venue.venueId(), 1);
-
-        call(post(IMAGES + "/" + photo + "/remove"), Map.of("ownerPassword", WRONG))
-                .andExpect(status().is(423)).andExpect(jsonPath("$.error.code").value("OWNER_PASSWORD_INVALID"));
-        assertThat(ids(list())).containsExactly(photo.toString());
-        assertRefusals("VENUE_PHOTO_REMOVE", 1);
-
-        call(post(IMAGES + "/" + photo + "/remove"), Map.of("ownerPassword", OWNER_PASSWORD))
-                .andExpect(status().isNoContent());
-        assertThat(list()).isEmpty();
-        assertThat(outcome("VENUE_PHOTO_REMOVED", photo)).isEqualTo("SUCCESS");
-    }
-
-    @Test
-    void anotherVenuesPhotoIsNotFoundEvenWithTheRightOwnerPassword() throws Exception {
-        VenueAccountFixtures.VenueWithAccount other = VenueAccountFixtures.venueWithAccount(passwords, "Other-pass-1");
+    void anotherVenuesPhotoIsNotFound() throws Exception {
+        VenueAccountFixtures.VenueWithAccount other = VenueAccountFixtures.venueWithAccount(passwords, "5678");
         UUID theirs = visiblePhoto(other.venueId(), 1);
 
-        call(post(IMAGES + "/" + theirs + "/remove"), Map.of("ownerPassword", OWNER_PASSWORD))
+        call(post(IMAGES + "/" + theirs + "/remove"), null)
                 .andExpect(status().isNotFound()).andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
-        call(post(IMAGES + "/" + theirs + "/confirm"), Map.of("ownerPassword", OWNER_PASSWORD))
-                .andExpect(status().isNotFound());
+        call(post(IMAGES + "/" + theirs + "/confirm"), null).andExpect(status().isNotFound());
         assertThat(OWNER.sql("SELECT removed_at IS NULL FROM venue.venue_image WHERE id = :id").param("id", theirs)
                 .query(Boolean.class).single()).isTrue();
         assertThat(list()).isEmpty();
     }
 
+    // ------------------------------------------------------------------------------------------ the PIN (FR-VEN-46)
+
     @Test
-    void startingAnUploadNeedsNoOwnerPassword() throws Exception {
-        call(post(IMAGES), Map.of("contentType", "image/jpeg", "sizeBytes", 1024)).andExpect(status().isCreated());
-        assertRefusals("VENUE_PHOTO_ADD", 0);
+    void aWrongCurrentPinIs423AuditedAndChangesNothing() throws Exception {
+        long versionBefore = secretVersion();
+
+        call(post(CHANGE), Map.of("current", WRONG, "next", "2468"))
+                .andExpect(status().is(423)).andExpect(jsonPath("$.error.code").value("OWNER_PASSWORD_INVALID"));
+
+        assertThat(secretVersion()).isEqualTo(versionBefore);
+        assertRefusals(1);
+    }
+
+    @Test
+    void theRightCurrentPinChangesItAndTheOldOneStopsWorkingAtOnce() throws Exception {
+        long versionBefore = secretVersion();
+
+        call(post(CHANGE), Map.of("current", OWNER_PIN, "next", "2468")).andExpect(status().isNoContent());
+        assertThat(secretVersion()).isEqualTo(versionBefore + 1);
+        assertThat(outcome("OWNER_PASSWORD_CHANGED", venue.accountId())).isEqualTo("SUCCESS");
+
+        call(post(CHANGE), Map.of("current", OWNER_PIN, "next", "1357")).andExpect(status().is(423));
+        call(post(CHANGE), Map.of("current", "2468", "next", "1357")).andExpect(status().isNoContent());
+    }
+
+    @Test
+    void aNewPinMustBeExactlyFourDigits() throws Exception {
+        for (String notAPin : List.of("weakpass", "123", "12345", "12a4", "١٢٣٤", "Sayed123")) {
+            call(post(CHANGE), Map.of("current", OWNER_PIN, "next", notAPin))
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("next"));
+        }
+        assertThat(secretVersion()).isZero();
     }
 
     // ------------------------------------------------------------------------------------------ no unlock (FR-VEN-02)
 
     @Test
-    void twoProtectedActionsInARowEachNeedTheOwnerPassword() throws Exception {
-        UUID first = visiblePhoto(venue.venueId(), 1);
-        UUID second = visiblePhoto(venue.venueId(), 2);
-
-        call(post(IMAGES + "/" + first + "/remove"), Map.of("ownerPassword", OWNER_PASSWORD))
-                .andExpect(status().isNoContent());
-        // Right after a success, the next protected action is not unlocked: no password and a wrong one both fail.
-        call(post(IMAGES + "/" + second + "/remove"), Map.of())
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("ownerPassword"));
-        call(post(IMAGES + "/" + second + "/remove"), Map.of("ownerPassword", WRONG))
-                .andExpect(status().is(423));
-        assertThat(ids(list())).containsExactly(second.toString());
+    void twoProtectedActionsInARowEachNeedThePin() throws Exception {
+        call(post(CHANGE), Map.of("current", OWNER_PIN, "next", "2468")).andExpect(status().isNoContent());
+        // Right after a success the next protected action is not unlocked: no PIN and a wrong one both fail.
+        call(post(CHANGE), Map.of("next", "1357"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("current"));
+        call(post(CHANGE), Map.of("current", WRONG, "next", "1357")).andExpect(status().is(423));
+        assertThat(secretVersion()).isEqualTo(1);
     }
 
     @Test
-    void theOwnerPasswordIsReadOnlyFromTheBodyNeverAHeaderOrCookie() throws Exception {
-        UUID photo = visiblePhoto(venue.venueId(), 1);
-        MockHttpServletRequestBuilder request = post(IMAGES + "/" + photo + "/remove")
-                .header("X-Owner-Password", OWNER_PASSWORD).header("Owner-Password", OWNER_PASSWORD)
-                .cookie(new jakarta.servlet.http.Cookie("ownerPassword", OWNER_PASSWORD));
-        call(request, Map.of()).andExpect(status().isBadRequest());
-        assertThat(ids(list())).containsExactly(photo.toString());
+    void thePinIsReadOnlyFromTheBodyNeverAHeaderOrCookie() throws Exception {
+        MockHttpServletRequestBuilder request = post(CHANGE)
+                .header("X-Owner-Password", OWNER_PIN).header("Owner-Password", OWNER_PIN)
+                .cookie(new Cookie("ownerPassword", OWNER_PIN));
+        call(request, Map.of("next", "2468")).andExpect(status().isBadRequest());
+        assertThat(secretVersion()).isZero();
     }
 
     // ------------------------------------------------------------------------------------------ rate limit (NFR-16)
 
     @Test
-    void fiveWrongPasswordsLockTheAccountForFifteenMinutesEvenForTheRightOne() throws Exception {
-        UUID photo = visiblePhoto(venue.venueId(), 1);
+    void fiveWrongPinsLockTheAccountForFifteenMinutesEvenForTheRightOne() throws Exception {
         for (int i = 0; i < OwnerPasswordAttempts.MAX_FAILURES; i++) {
-            call(post(IMAGES + "/" + photo + "/remove"), Map.of("ownerPassword", WRONG))
+            call(post(CHANGE), Map.of("current", WRONG, "next", "2468"))
                     .andExpect(status().is(423)).andExpect(jsonPath("$.error.code").value("OWNER_PASSWORD_INVALID"));
         }
 
-        call(post(IMAGES + "/" + photo + "/remove"), Map.of("ownerPassword", OWNER_PASSWORD))
+        call(post(CHANGE), Map.of("current", OWNER_PIN, "next", "2468"))
                 .andExpect(status().is(429)).andExpect(jsonPath("$.error.code").value("RATE_LIMITED"));
-        assertThat(ids(list())).containsExactly(photo.toString());
-        assertRefusals("VENUE_PHOTO_REMOVE", OwnerPasswordAttempts.MAX_FAILURES + 1);
+        assertThat(secretVersion()).isZero();
+        assertRefusals(OwnerPasswordAttempts.MAX_FAILURES + 1);
         assertThat(OWNER.sql("""
                         SELECT count(*) FROM audit.audit_event
                          WHERE action = 'OWNER_PASSWORD_REFUSED' AND subject_id = :account
                            AND payload ->> 'lockedOut' = 'true'""")
                 .param("account", venue.accountId()).query(Long.class).single()).isEqualTo(1);
 
-        // The lockout lasts 15 minutes from the fifth failure: once it has passed, the right password works again.
+        // The lockout lasts 15 minutes from the fifth failure: once it has passed, the right PIN works again.
         OWNER.sql("""
                         UPDATE iam.security_rate_limit_counter
                            SET cooldown_until = now() - interval '1 second',
@@ -199,82 +200,47 @@ class VenueOwnerPasswordHttpTest extends IntegrationTest {
                          WHERE limiter_type = 'OWNER_PASSWORD'
                            AND subject_key_hash = encode(sha256(convert_to('venue-account:' || :account, 'UTF8')), 'hex')""")
                 .param("account", venue.accountId().toString()).update();
-        call(post(IMAGES + "/" + photo + "/remove"), Map.of("ownerPassword", OWNER_PASSWORD))
-                .andExpect(status().isNoContent());
+        call(post(CHANGE), Map.of("current", OWNER_PIN, "next", "2468")).andExpect(status().isNoContent());
     }
 
     @Test
     void theLockoutBelongsToOneVenueAccount() throws Exception {
-        VenueAccountFixtures.VenueWithAccount other = VenueAccountFixtures.venueWithAccount(passwords, "Other-pass-1");
-        UUID mine = visiblePhoto(venue.venueId(), 1);
+        VenueAccountFixtures.VenueWithAccount other = VenueAccountFixtures.venueWithAccount(passwords, "5678");
         for (int i = 0; i < OwnerPasswordAttempts.MAX_FAILURES; i++) {
-            call(post(IMAGES + "/" + mine + "/remove"), Map.of("ownerPassword", WRONG)).andExpect(status().is(423));
+            call(post(CHANGE), Map.of("current", WRONG, "next", "2468")).andExpect(status().is(423));
         }
-        UUID theirs = visiblePhoto(other.venueId(), 1);
-        mvc.perform(post(IMAGES + "/" + theirs + "/remove")
+        mvc.perform(post(CHANGE)
                         .header("Authorization", "Bearer " + accessTokens.issue(AuthSubjectType.VENUE, other.accountId()))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json.writeValueAsString(Map.of("ownerPassword", "Other-pass-1"))))
-                .andExpect(status().isNoContent());
-    }
-
-    // ------------------------------------------------------------------------------------------ change (FR-VEN-46)
-
-    @Test
-    void changingTheOwnerPasswordNeedsTheCurrentOneAndTheOldOneStopsWorkingAtOnce() throws Exception {
-        UUID photo = visiblePhoto(venue.venueId(), 1);
-        long versionBefore = secretVersion();
-
-        call(post("/api/v1/venue/owner-password"), Map.of("current", WRONG, "next", "New-owner-2"))
-                .andExpect(status().is(423)).andExpect(jsonPath("$.error.code").value("OWNER_PASSWORD_INVALID"));
-        assertThat(secretVersion()).isEqualTo(versionBefore);
-        assertRefusals("OWNER_PASSWORD_CHANGE", 1);
-
-        call(post("/api/v1/venue/owner-password"), Map.of("current", OWNER_PASSWORD, "next", "New-owner-2"))
-                .andExpect(status().isNoContent());
-        assertThat(secretVersion()).isEqualTo(versionBefore + 1);
-        assertThat(outcome("OWNER_PASSWORD_CHANGED", venue.accountId())).isEqualTo("SUCCESS");
-
-        call(post(IMAGES + "/" + photo + "/remove"), Map.of("ownerPassword", OWNER_PASSWORD))
-                .andExpect(status().is(423));
-        call(post(IMAGES + "/" + photo + "/remove"), Map.of("ownerPassword", "New-owner-2"))
+                        .content(json.writeValueAsString(Map.of("current", "5678", "next", "2468"))))
                 .andExpect(status().isNoContent());
     }
 
     @Test
-    void aNewOwnerPasswordMustFollowThePasswordRule() throws Exception {
-        call(post("/api/v1/venue/owner-password"), Map.of("current", OWNER_PASSWORD, "next", "weakpass"))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("next"));
-        assertThat(secretVersion()).isZero();
-    }
-
-    @Test
-    void noPasswordReachesAResponseOrAnAuditRow() throws Exception {
-        UUID photo = visiblePhoto(venue.venueId(), 1);
-        String refused = call(post(IMAGES + "/" + photo + "/remove"), Map.of("ownerPassword", WRONG))
+    void noPinReachesAResponseOrAnAuditRow() throws Exception {
+        String refused = call(post(CHANGE), Map.of("current", WRONG, "next", "2468"))
                 .andReturn().getResponse().getContentAsString();
-        call(post("/api/v1/venue/owner-password"), Map.of("current", OWNER_PASSWORD, "next", "New-owner-2"))
-                .andExpect(status().isNoContent());
+        call(post(CHANGE), Map.of("current", OWNER_PIN, "next", "2468")).andExpect(status().isNoContent());
 
-        assertThat(refused).doesNotContain(WRONG);
+        assertThat(refused).doesNotContain("current").doesNotContain("$argon2");
         String audit = OWNER.sql("""
                         SELECT coalesce(string_agg(coalesce(payload::text, '') || coalesce(reason, ''), '|'), '')
                           FROM audit.audit_event WHERE actor_id = :account""")
                 .param("account", venue.accountId()).query(String.class).single();
-        assertThat(audit).doesNotContain(WRONG).doesNotContain(OWNER_PASSWORD).doesNotContain("New-owner-2")
+        assertThat(audit).doesNotContain("\"current\"").doesNotContain("\"next\"").doesNotContain("ownerPassword")
                 .doesNotContain("$argon2");
     }
 
     // ------------------------------------------------------------------------------------------ helpers
 
-    private void assertRefusals(String protectedAction, long expected) {
+    private void assertRefusals(long expected) {
         assertThat(OWNER.sql("""
                         SELECT count(*) FROM audit.audit_event
                          WHERE action = 'OWNER_PASSWORD_REFUSED' AND subject_id = :account AND actor_type = 'VENUE'
                            AND actor_id = :account AND owner_password_used AND owner_password_outcome = 'FAILURE'
-                           AND payload ->> 'protectedAction' = :action""")
-                .param("account", venue.accountId()).param("action", protectedAction).query(Long.class).single())
-                .as("refused " + protectedAction + " audit rows").isEqualTo(expected);
+                           AND payload ->> 'protectedAction' = 'OWNER_PASSWORD_CHANGE'""")
+                .param("account", venue.accountId()).query(Long.class).single())
+                .as("refused Owner PIN audit rows").isEqualTo(expected);
     }
 
     private String outcome(String action, UUID subject) {
@@ -282,6 +248,13 @@ class VenueOwnerPasswordHttpTest extends IntegrationTest {
                         SELECT owner_password_outcome FROM audit.audit_event
                          WHERE action = :action AND subject_id = :subject AND owner_password_used""")
                 .param("action", action).param("subject", subject).query(String.class).single();
+    }
+
+    private boolean ownerPinChecked(String action, UUID subject) {
+        return OWNER.sql("""
+                        SELECT owner_password_used IS TRUE FROM audit.audit_event
+                         WHERE action = :action AND subject_id = :subject""")
+                .param("action", action).param("subject", subject).query(Boolean.class).single();
     }
 
     private long secretVersion() {

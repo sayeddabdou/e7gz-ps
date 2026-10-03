@@ -52,7 +52,7 @@ class AdminVenueAccountHttpTest extends IntegrationTest {
     @BeforeEach
     void anAdminAndAVenueWithoutAccount() {
         adminToken = accessTokens.issue(AuthSubjectType.ADMIN, AuditFixtures.admin());
-        VenueAccountFixtures.VenueWithAccount existing = VenueAccountFixtures.venueWithAccount(passwords, "x-pass-1");
+        VenueAccountFixtures.VenueWithAccount existing = VenueAccountFixtures.venueWithAccount(passwords, "1357");
         venue = UUID.randomUUID();
         OWNER.sql("""
                         INSERT INTO venue.venue (id, area_id, name, address, location, marketplace_status, timezone, phone)
@@ -64,13 +64,13 @@ class AdminVenueAccountHttpTest extends IntegrationTest {
     @Test
     void theAccountIsCreatedEnabledWithHashedPasswordsAndEnglishByDefault() throws Exception {
         String login = "levelup." + venue;
-        String body = create(venue, login, "Login-pass-1", "Owner-pass-1", null)
+        String body = create(venue, login, "Login-pass-1", "1234", null)
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.venueId").value(venue.toString()))
                 .andExpect(jsonPath("$.data.loginIdentifier").value(login))
                 .andExpect(jsonPath("$.data.accountStatus").value("ENABLED"))
                 .andReturn().getResponse().getContentAsString();
-        assertThat(body).doesNotContain("Login-pass-1").doesNotContain("Owner-pass-1").doesNotContain("argon2");
+        assertThat(body).doesNotContain("Login-pass-1").doesNotContain("initialOwnerPassword").doesNotContain("argon2");
 
         UUID account = UUID.fromString(json.readTree(body).path("data").path("id").asText());
         Map<String, Object> row = OWNER.sql("""
@@ -80,7 +80,7 @@ class AdminVenueAccountHttpTest extends IntegrationTest {
         assertThat((String) row.get("password_hash")).startsWith("$argon2id$");
         assertThat((String) row.get("owner_password_hash")).startsWith("$argon2id$");
         assertThat(passwords.matches("Login-pass-1", (String) row.get("password_hash"))).isTrue();
-        assertThat(passwords.matches("Owner-pass-1", (String) row.get("owner_password_hash"))).isTrue();
+        assertThat(passwords.matches("1234", (String) row.get("owner_password_hash"))).isTrue();
         assertThat(row.get("language_preference")).isEqualTo("en");
         assertThat(row.get("version")).isEqualTo(0L);
         assertThat(auditCount("VENUE_ACCOUNT_CREATED", account)).isEqualTo(1);
@@ -92,7 +92,7 @@ class AdminVenueAccountHttpTest extends IntegrationTest {
     @Test
     void theNewAccountCanLogInAndItsOwnerPasswordWorks() throws Exception {
         String login = "Mixed.Case." + venue;
-        create(venue, login, "Login-pass-1", "Owner-pass-1", "ar").andExpect(status().isCreated())
+        create(venue, login, "Login-pass-1", "1234", "ar").andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.loginIdentifier").value(login));
 
         mvc.perform(post("/api/v1/venue/auth/login").header("Origin", DASHBOARD_ORIGIN)
@@ -103,21 +103,16 @@ class AdminVenueAccountHttpTest extends IntegrationTest {
 
         UUID account = OWNER.sql("SELECT id FROM iam.venue_account WHERE venue_id = :venue").param("venue", venue)
                 .query(UUID.class).single();
-        UUID photo = VenueAccountFixtures.visiblePhoto(venue, 1);
-        mvc.perform(post("/api/v1/venue/images/" + photo + "/remove")
-                        .header("Authorization", "Bearer " + accessTokens.issue(AuthSubjectType.VENUE, account))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(json.writeValueAsString(Map.of("ownerPassword", "Owner-pass-1"))))
-                .andExpect(status().isNoContent());
+        changePin(accessTokens.issue(AuthSubjectType.VENUE, account), "1234").andExpect(status().isNoContent());
     }
 
     @Test
     void aSecondAccountForTheVenueOrATakenLoginIsRefusedWithItsCode() throws Exception {
-        create(venue, "first." + venue, "Login-pass-1", "Owner-pass-1", "en").andExpect(status().isCreated());
-        create(venue, "second." + venue, "Login-pass-1", "Owner-pass-1", "en")
+        create(venue, "first." + venue, "Login-pass-1", "1234", "en").andExpect(status().isCreated());
+        create(venue, "second." + venue, "Login-pass-1", "1234", "en")
                 .andExpect(status().is(422)).andExpect(jsonPath("$.error.code").value("VENUE_ACCOUNT_ALREADY_EXISTS"));
 
-        UUID another = VenueAccountFixtures.venueWithAccount(passwords, "x-pass-1").venueId();
+        UUID another = VenueAccountFixtures.venueWithAccount(passwords, "1357").venueId();
         String takenLogin = OWNER.sql("SELECT login_identifier FROM iam.venue_account WHERE venue_id = :venue")
                 .param("venue", another).query(String.class).single();
         UUID third = UUID.randomUUID();
@@ -126,17 +121,17 @@ class AdminVenueAccountHttpTest extends IntegrationTest {
                         SELECT :id, area_id, 'Third ' || :id, '1 St', location, 'ONBOARDING', 'Africa/Cairo', phone
                           FROM venue.venue WHERE id = :venue""")
                 .param("id", third).param("venue", venue).update();
-        create(third, " " + takenLogin.toUpperCase() + " ", "Login-pass-1", "Owner-pass-1", "en")
+        create(third, " " + takenLogin.toUpperCase() + " ", "Login-pass-1", "1234", "en")
                 .andExpect(status().is(422)).andExpect(jsonPath("$.error.code").value("VENUE_LOGIN_IDENTIFIER_TAKEN"));
     }
 
     @Test
     void anUnknownVenueIsNotFoundAndMissingFieldsAreValidationFailed() throws Exception {
-        create(UUID.randomUUID(), "x." + venue, "Login-pass-1", "Owner-pass-1", "en")
+        create(UUID.randomUUID(), "x." + venue, "Login-pass-1", "1234", "en")
                 .andExpect(status().isNotFound());
         create(venue, "x." + venue, "Login-pass-1", " ", "en")
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("initialOwnerPassword"));
-        create(venue, " ", "Login-pass-1", "Owner-pass-1", "en")
+        create(venue, " ", "Login-pass-1", "1234", "en")
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("loginIdentifier"));
         assertThat(OWNER.sql("SELECT count(*) FROM iam.venue_account WHERE venue_id = :venue").param("venue", venue)
                 .query(Long.class).single()).isZero();
@@ -144,12 +139,17 @@ class AdminVenueAccountHttpTest extends IntegrationTest {
 
     @Test
     void venuePasswordsFollowThePasswordRule() throws Exception {
-        create(venue, "weak." + venue, "short1", "Owner-pass-1", "en")
+        create(venue, "weak." + venue, "short1", "1234", "en")
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("password"));
         create(venue, "weak." + venue, "Login-pass-1", "no-digits-here", "en")
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("initialOwnerPassword"));
         create(venue, "weak." + venue, "Login-pass-1", "12345678", "en")
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("initialOwnerPassword"));
+        create(venue, "weak." + venue, "Login-pass-1", "123", "en")
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("initialOwnerPassword"));
+        create(venue, "weak." + venue, "Login-pass-1", "12a4", "en")
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("initialOwnerPassword"));
+        create(venue, "weak." + venue, "Login-pass-1", "1234", "en").andExpect(status().isCreated());
     }
 
     // ------------------------------------------------------------------------------------------ FR-ADM-03
@@ -212,31 +212,32 @@ class AdminVenueAccountHttpTest extends IntegrationTest {
     @Test
     void resetOwnerPasswordReplacesItAndTheOldOneStopsWorkingAtOnce() throws Exception {
         UUID account = createdAccount();
-        UUID photo = VenueAccountFixtures.visiblePhoto(venue, 1);
+        admin(post(ACCOUNTS + account + "/reset-owner-password"), Map.of("newPassword", "Fresh-login-9"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("newPassword"));
 
-        admin(post(ACCOUNTS + account + "/reset-owner-password"), Map.of("newPassword", "Fresh-owner-9"))
+        admin(post(ACCOUNTS + account + "/reset-owner-password"), Map.of("newPassword", "9753"))
                 .andExpect(status().isNoContent());
         assertThat(auditCount("OWNER_PASSWORD_RESET", account)).isEqualTo(1);
         assertThat(OWNER.sql("SELECT version FROM iam.venue_owner_secret WHERE venue_account_id = :id")
                 .param("id", account).query(Long.class).single()).isEqualTo(1L);
 
         String venueToken = accessTokens.issue(AuthSubjectType.VENUE, account);
-        removePhoto(venueToken, photo, "Owner-pass-1").andExpect(status().is(423));
-        removePhoto(venueToken, photo, "Fresh-owner-9").andExpect(status().isNoContent());
+        changePin(venueToken, "1234").andExpect(status().is(423));
+        changePin(venueToken, "9753").andExpect(status().isNoContent());
     }
 
     @Test
     void anUnknownVenueAccountIsNotFound() throws Exception {
         UUID unknown = UUID.randomUUID();
         admin(post(ACCOUNTS + unknown + "/disable"), Map.of("reason", "x")).andExpect(status().isNotFound());
-        admin(post(ACCOUNTS + unknown + "/reset-owner-password"), Map.of("newPassword", "Fresh-owner-9"))
+        admin(post(ACCOUNTS + unknown + "/reset-owner-password"), Map.of("newPassword", "9753"))
                 .andExpect(status().isNotFound());
     }
 
     private static final String ACCOUNTS = "/api/v1/admin/venue-accounts/";
 
     private UUID createdAccount() throws Exception {
-        String body = create(venue, "acct." + venue, "Login-pass-1", "Owner-pass-1", "en")
+        String body = create(venue, "acct." + venue, "Login-pass-1", "1234", "en")
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
         return UUID.fromString(json.readTree(body).path("data").path("id").asText());
     }
@@ -252,10 +253,11 @@ class AdminVenueAccountHttpTest extends IntegrationTest {
                 .content(json.writeValueAsString(Map.of("loginIdentifier", "acct." + venue, "password", password))));
     }
 
-    private ResultActions removePhoto(String venueToken, UUID photo, String ownerPassword) throws Exception {
-        return mvc.perform(post("/api/v1/venue/images/" + photo + "/remove")
+    /** The venue's Owner PIN change, a protected action: it shows whether {@code currentPin} is the right one. */
+    private ResultActions changePin(String venueToken, String currentPin) throws Exception {
+        return mvc.perform(post("/api/v1/venue/owner-password")
                 .header("Authorization", "Bearer " + venueToken).contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(Map.of("ownerPassword", ownerPassword))));
+                .content(json.writeValueAsString(Map.of("current", currentPin, "next", "2468"))));
     }
 
     private ResultActions create(UUID venueId, String login, String password, String ownerPassword, String language)

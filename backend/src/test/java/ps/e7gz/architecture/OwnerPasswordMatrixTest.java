@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -18,6 +19,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import ps.e7gz.common.command.Command;
@@ -30,7 +32,8 @@ import ps.e7gz.venue.api.OwnerPasswordGate;
  * The Owner Password lists cannot drift (ADR-011, arch 10 §3.3, risk I3). The matrix
  * ({@code architecture/owner-password-actions.tsv}) is FRS §2.4 as data, plus the PCRs and decisions that add to it:
  * <ol>
- *   <li>the FRS §2.4 rows still say exactly what the matrix says, item for item (and PCR-005 still adds the photos);</li>
+ *   <li>the FRS §2.4 rows still say exactly what the matrix says, item for item, and each PCR row still matches its
+ *       PCR (PCR-006: photos need no Owner Password);</li>
  *   <li>every {@code @OwnerProtected} command names a PROTECTED action and every {@code @OwnerPasswordNotRequired}
  *       command a NOT_REQUIRED one - so no command in the unprotected list carries the protection;</li>
  *   <li>a built action has its annotated command and an unbuilt one has none - so no protected action can be built
@@ -42,7 +45,7 @@ class OwnerPasswordMatrixTest {
 
     private static final String FRS =
             "docs/01-product/E7GZ PS — Functional Requirements Specification (FRS) v1.1 — APPROVED FOR BUILD.md";
-    private static final String PCR_005 = "docs/01-product/PCR-005 — Venue Photos from the Venue Dashboard.md";
+    private static final String PRODUCT_DOCS = "docs/01-product";
     private static final String FRS_SOURCE = "FRS §2.4";
 
     private static Map<String, Row> matrix;
@@ -68,10 +71,18 @@ class OwnerPasswordMatrixTest {
     }
 
     @Test
-    void pcr005StillAddsThePhotoActions() throws IOException {
-        String pcr = Files.readString(RepoFiles.get(PCR_005), StandardCharsets.UTF_8);
-        matrix.values().stream().filter(row -> row.source().startsWith("PCR-005") && !"-".equals(row.phrase()))
-                .forEach(row -> assertThat(pcr).as(row.id()).contains(row.phrase()));
+    void pcrRowsStillMatchTheirPcr() throws IOException {
+        for (Row row : matrix.values()) {
+            if (!row.source().startsWith("PCR-") || "-".equals(row.phrase())) {
+                continue;
+            }
+            String pcr = row.source().substring(0, "PCR-000".length());
+            try (Stream<Path> files = Files.list(RepoFiles.get(PRODUCT_DOCS))) {
+                Path file = files.filter(f -> f.getFileName().toString().startsWith(pcr + " ")).findFirst()
+                        .orElseThrow(() -> new AssertionError("No " + pcr + " in " + PRODUCT_DOCS));
+                assertThat(Files.readString(file, StandardCharsets.UTF_8)).as(row.id()).contains(row.phrase());
+            }
+        }
     }
 
     @Test

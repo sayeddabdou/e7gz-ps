@@ -12,11 +12,9 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import ps.e7gz.audit.api.AuditWriter;
-import ps.e7gz.common.command.Command;
 import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
-import ps.e7gz.venue.api.OwnerPasswordGate;
 import ps.e7gz.venue.api.VenuePhotos;
 import ps.e7gz.venue.internal.VenuePhotoRow.CopySize;
 
@@ -30,17 +28,15 @@ import ps.e7gz.venue.internal.VenuePhotoRow.CopySize;
 public class VenuePhotoService implements VenuePhotos {
 
     private final CommandRunner runner;
-    private final OwnerPasswordGate ownerPassword;
     private final AuditWriter audit;
     private final ObjectStore store;
     private final VenuePhotoProperties properties;
     private final Clock clock;
     private final JdbcClient jdbc;
 
-    VenuePhotoService(CommandRunner runner, OwnerPasswordGate ownerPassword, AuditWriter audit, ObjectStore store,
-                      VenuePhotoProperties properties, Clock clock, DataSource appDataSource) {
+    VenuePhotoService(CommandRunner runner, AuditWriter audit, ObjectStore store, VenuePhotoProperties properties,
+                      Clock clock, DataSource appDataSource) {
         this.runner = runner;
-        this.ownerPassword = ownerPassword;
         this.audit = audit;
         this.store = store;
         this.properties = properties;
@@ -78,22 +74,22 @@ public class VenuePhotoService implements VenuePhotos {
         if (!row.uploaded() && !row.removed()) {
             checkStoredFile(row);
         }
-        VenuePhotoRow confirmed = run(new VenuePhotoCommands.Confirm(venueId, imageId, actor,
-                properties.maxVisible(), audit), actor);
+        VenuePhotoRow confirmed = runner.run(new VenuePhotoCommands.Confirm(venueId, imageId, actor,
+                properties.maxVisible(), audit));
         return photo(confirmed, clock.instant().plus(properties.viewLinkTtl()));
     }
 
     @Override
     public List<Photo> reorder(UUID venueId, List<UUID> imageIds, Actor actor) {
         requireVenue(venueId);
-        run(new VenuePhotoCommands.Reorder(venueId, imageIds, actor, audit), actor);
+        runner.run(new VenuePhotoCommands.Reorder(venueId, imageIds, actor, audit));
         return visible(venueId);
     }
 
     @Override
     public void remove(UUID venueId, UUID imageId, Actor actor) {
         requireVenue(venueId);
-        run(new VenuePhotoCommands.Remove(venueId, imageId, actor, audit), actor);
+        runner.run(new VenuePhotoCommands.Remove(venueId, imageId, actor, audit));
     }
 
     @Override
@@ -126,17 +122,6 @@ public class VenuePhotoService implements VenuePhotos {
                 .map(row -> new SignedLink(store.signedGet(row.copyKey(CopySize.MEDIUM), properties.viewLinkTtl()),
                         expiresAt))
                 .toList();
-    }
-
-    /**
-     * The venue's add, reorder and remove go through the Owner Password gate, which audits and counts a refused
-     * password (FRS §2.4 as amended by PCR-005); the Platform Admin's run directly on the admin connection.
-     */
-    private <R> R run(Command<R> command, Actor actor) {
-        return switch (actor) {
-            case Actor.Venue venue -> ownerPassword.run(command, venue.venueAccountId(), venue.correlationId());
-            case Actor.Admin ignored -> runner.run(command);
-        };
     }
 
     /**

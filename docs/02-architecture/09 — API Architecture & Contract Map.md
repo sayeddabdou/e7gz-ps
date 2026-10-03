@@ -362,11 +362,11 @@ No `details`, no field, no hint. The real cause — the 4-commitment limit, a ba
 | `GET` `PATCH` | `/venue/settings` — the venue's profile and language preference; `PATCH {name?, address?, phone?, languagePreference?}` | — | `FR-VEN-40`; editable fields — Product Owner decision, 3 Oct 2026 |
 | `GET` | `/venue/images` — visible photos in order, each with a signed GET URL | — | `FR-DIS-03`, PCR-005 |
 | `POST` | `/venue/images` `{contentType, sizeBytes}` → `{image, uploadUrl, uploadExpiresAt}` — signed PUT; nothing is visible yet | — | PCR-005, arch 12 §2 |
-| `POST` | `/venue/images/{id}/confirm` `{ownerPassword}` — the photo becomes visible | **yes** | PCR-005 |
-| `PUT` | `/venue/images/order` `{imageIds, ownerPassword}` | **yes** | PCR-005 |
-| `POST` | `/venue/images/{id}/remove` `{ownerPassword}` — hides it (`removed_at`); never hard-deleted | **yes** | PCR-005 |
+| `POST` | `/venue/images/{id}/confirm` — the photo becomes visible | — | PCR-005, PCR-006 |
+| `PUT` | `/venue/images/order` `{imageIds}` | — | PCR-005, PCR-006 |
+| `POST` | `/venue/images/{id}/remove` — hides it (`removed_at`); never hard-deleted | — | PCR-005, PCR-006 |
 
-**Venue photos** (PCR-005, Product Owner decision, 2 Oct 2026) use a two-step upload (arch 12 §2): the API validates type and size and returns a short-lived signed PUT; the client uploads the bytes directly; `confirm` checks the stored object and makes the photo visible. A photo that is never confirmed is never shown. The Platform Admin routes in §5 work the same way without the Owner Password.
+**Venue photos** (PCR-005, Product Owner decision, 2 Oct 2026) use a two-step upload (arch 12 §2): the API validates type and size and returns a short-lived signed PUT; the client uploads the bytes directly; `confirm` checks the stored object and makes the photo visible. A photo that is never confirmed is never shown. No photo action needs the Owner Password (PCR-006, Product Owner decision, 3 Oct 2026); every change is audited. The Platform Admin routes in §5 work the same way.
 
 **Venue settings** (Product Owner decision, 3 Oct 2026): the venue edits its own **name, address and phone** and its Dashboard language, with no Owner Password, under the same validation as the Platform Admin venue edit. **Area, location, activities, timezone and marketplace status** stay with the Platform Admin (§5) and are read-only on this route.
 
@@ -389,7 +389,7 @@ Idempotency-Key: 018f…
 { "defaults": [ … ], "ownerPassword": "••••••" }
 ```
 
-Rules (`ADR-011`): body, never header. Verified inside the action's transaction. Never returned, never logged, never echoed. Every attempt — success and failure — writes an audit record (`FR-VEN-05`). A wrong value returns `423 OWNER_PASSWORD_INVALID` and counts against the rate limit. **Two protected actions in a row each demand it separately** — there is no unlock of any duration.
+Rules (`ADR-011`): the Owner Password is a PIN of exactly 4 digits (PCR-006). Body, never header. Verified inside the action's transaction. Never returned, never logged, never echoed. Every attempt — success and failure — writes an audit record (`FR-VEN-05`). A wrong value returns `423 OWNER_PASSWORD_INVALID` and counts against the rate limit. **Two protected actions in a row each demand it separately** — there is no unlock of any duration.
 
 ---
 

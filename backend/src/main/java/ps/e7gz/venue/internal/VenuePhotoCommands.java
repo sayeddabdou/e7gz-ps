@@ -8,7 +8,6 @@ import java.util.UUID;
 import ps.e7gz.audit.api.AuditActor;
 import ps.e7gz.audit.api.AuditRecord;
 import ps.e7gz.audit.api.AuditWriter;
-import ps.e7gz.audit.api.OwnerPasswordCheck;
 import ps.e7gz.common.command.Command;
 import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.command.CommandScope;
@@ -17,13 +16,12 @@ import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.security.owner.OwnerPasswordNotRequired;
-import ps.e7gz.common.security.owner.OwnerProtected;
 import ps.e7gz.venue.api.VenuePhotos.Actor;
 
 /**
  * Venue photo writes (PCR-005), each locking the venue so the visible-photo limit and the order cannot race. The
- * Platform Admin runs on the admin connection ({@code admin.begin_command}); the venue on the app connection, with the
- * Owner Password checked first inside the transaction. Object storage is never called in here (arch 01 §15).
+ * Platform Admin runs on the admin connection ({@code admin.begin_command}); the venue on the app connection. No
+ * photo action needs the Owner Password (PCR-006). Object storage is never called in here (arch 01 §15).
  */
 final class VenuePhotoCommands {
 
@@ -52,11 +50,6 @@ final class VenuePhotoCommands {
         };
     }
 
-    /** FRS §2.4 as amended by PCR-005: the venue's add, reorder and remove need the Owner Password. */
-    static OwnerPasswordCheck ownerPassword(Actor actor, CommandContext context) {
-        return actor instanceof Actor.Venue venue ? venue.ownerPassword().verify(context) : null;
-    }
-
     static int visibleCount(CommandContext context, UUID venueId) {
         return context.jdbc().sql("""
                         SELECT count(*) FROM venue.venue_image
@@ -70,9 +63,8 @@ final class VenuePhotoCommands {
                 .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND));
     }
 
-    static AuditRecord.Builder audit(VenuePhotoAuditAction action, Actor actor, UUID subjectId, OwnerPasswordCheck check) {
-        AuditRecord.Builder record = AuditRecord.builder(action, auditActor(actor), subjectId, correlationId(actor));
-        return check == null ? record : record.ownerPasswordCheck(check);
+    static AuditRecord.Builder audit(VenuePhotoAuditAction action, Actor actor, UUID subjectId) {
+        return AuditRecord.builder(action, auditActor(actor), subjectId, correlationId(actor));
     }
 
     private abstract static class OnVenue<R> implements Command<R> {
@@ -98,7 +90,7 @@ final class VenuePhotoCommands {
 
     /**
      * Records the upload; the photo stays hidden until confirmed. Refused when the venue is already at its limit. Only
-     * returns a signed PUT link, so no Owner Password (PCR-005; arch 09 §4.2).
+     * returns a signed PUT link; no photo action needs the Owner Password (PCR-006).
      */
     @OwnerPasswordNotRequired("VENUE_PHOTO_UPLOAD_START")
     static final class Start extends OnVenue<VenuePhotoRow> {
@@ -129,10 +121,10 @@ final class VenuePhotoCommands {
     }
 
     /**
-     * The checked upload becomes visible, last in the order (PCR-005). A visible photo is returned unchanged. The venue
-     * needs the Owner Password (PCR-005 amends FRS §2.4); the Platform Admin does not.
+     * The checked upload becomes visible, last in the order (PCR-005). A visible photo is returned unchanged. No Owner
+     * Password (PCR-006 amends PCR-005).
      */
-    @OwnerProtected("VENUE_PHOTO_ADD")
+    @OwnerPasswordNotRequired("VENUE_PHOTO_ADD")
     static final class Confirm extends OnVenue<VenuePhotoRow> {
 
         private final UUID imageId;
@@ -148,7 +140,6 @@ final class VenuePhotoCommands {
 
         @Override
         public VenuePhotoRow execute(CommandContext context) {
-            OwnerPasswordCheck check = ownerPassword(actor, context);
             VenuePhotoRow row = lockedRow(context, venueId, imageId);
             if (row.removed()) {
                 throw new ApiException(ApiErrorCode.NOT_FOUND);
@@ -168,14 +159,14 @@ final class VenuePhotoCommands {
                              WHERE id = :id""")
                     .param("now", VenuePhotoRow.utc(context.commandNow())).param("venue", venueId)
                     .param("id", imageId).update();
-            audit.write(context, audit(VenuePhotoAuditAction.VENUE_PHOTO_ADDED, actor, imageId, check)
+            audit.write(context, audit(VenuePhotoAuditAction.VENUE_PHOTO_ADDED, actor, imageId)
                     .payload(Map.of("venueId", venueId, "contentType", row.contentType())).build());
             return lockedRow(context, venueId, imageId);
         }
     }
 
-    /** Positions 1…n in the given order; the list must name every visible photo exactly once. Venue: Owner Password. */
-    @OwnerProtected("VENUE_PHOTO_REORDER")
+    /** Positions 1…n in the given order; the list must name every visible photo exactly once. No Owner Password. */
+    @OwnerPasswordNotRequired("VENUE_PHOTO_REORDER")
     static final class Reorder extends OnVenue<Void> {
 
         private final List<UUID> imageIds;
@@ -189,7 +180,6 @@ final class VenuePhotoCommands {
 
         @Override
         public Void execute(CommandContext context) {
-            OwnerPasswordCheck check = ownerPassword(actor, context);
             List<UUID> visible = context.jdbc().sql(VenuePhotoRow.VISIBLE + " FOR UPDATE").param("venue", venueId)
                     .query(VenuePhotoRow::map).list().stream().map(VenuePhotoRow::id).toList();
             if (imageIds.size() != visible.size() || !new HashSet<>(imageIds).equals(new HashSet<>(visible))) {
@@ -199,14 +189,14 @@ final class VenuePhotoCommands {
                 context.jdbc().sql("UPDATE venue.venue_image SET sort_order = :position WHERE id = :id")
                         .param("position", i + 1).param("id", imageIds.get(i)).update();
             }
-            audit.write(context, audit(VenuePhotoAuditAction.VENUE_PHOTOS_REORDERED, actor, venueId, check)
+            audit.write(context, audit(VenuePhotoAuditAction.VENUE_PHOTOS_REORDERED, actor, venueId)
                     .payload(Map.of("imageIds", imageIds)).build());
             return null;
         }
     }
 
-    /** Hides a visible photo; the row and the stored original stay (PCR-005). Venue: Owner Password. */
-    @OwnerProtected("VENUE_PHOTO_REMOVE")
+    /** Hides a visible photo; the row and the stored original stay (PCR-005). No Owner Password (PCR-006). */
+    @OwnerPasswordNotRequired("VENUE_PHOTO_REMOVE")
     static final class Remove extends OnVenue<Void> {
 
         private final UUID imageId;
@@ -220,14 +210,13 @@ final class VenuePhotoCommands {
 
         @Override
         public Void execute(CommandContext context) {
-            OwnerPasswordCheck check = ownerPassword(actor, context);
             VenuePhotoRow row = lockedRow(context, venueId, imageId);
             if (!row.visible()) {
                 throw new ApiException(ApiErrorCode.NOT_FOUND);
             }
             context.jdbc().sql("UPDATE venue.venue_image SET removed_at = :now WHERE id = :id")
                     .param("now", VenuePhotoRow.utc(context.commandNow())).param("id", imageId).update();
-            audit.write(context, audit(VenuePhotoAuditAction.VENUE_PHOTO_REMOVED, actor, imageId, check)
+            audit.write(context, audit(VenuePhotoAuditAction.VENUE_PHOTO_REMOVED, actor, imageId)
                     .payload(Map.of("venueId", venueId)).build());
             return null;
         }

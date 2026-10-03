@@ -20,7 +20,7 @@ import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.venue.internal.VenueAccounts;
 
 /**
- * Venue Dashboard — change the Owner Password (arch 09 §4.2, FR-VEN-46). The current Owner Password authorises the
+ * Venue Dashboard — change the Owner Password (arch 09 §4.2, FR-VEN-46). The Owner Password is a 4-digit PIN (PCR-006). The current Owner Password authorises the
  * change like any protected action (checked in the transaction, audited, rate-limited); the new one works at once and
  * the old one stops working. There is no venue self-service reset (Out-of-Scope §3).
  */
@@ -50,7 +50,8 @@ public class VenueOwnerPasswordController {
     @Schema(name = "VenueOwnerPasswordChangeRequest")
     public record VenueOwnerPasswordChangeRequest(
             @NotBlank @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY) String current,
-            @NotBlank @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY) String next) {
+            @NotBlank @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY, pattern = "^[0-9]{4}$",
+                    description = "The new Owner Password: a PIN of exactly 4 digits (PCR-006).") String next) {
 
         @Override
         public String toString() {
