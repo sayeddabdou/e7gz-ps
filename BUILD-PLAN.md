@@ -879,7 +879,7 @@ Done when (write these as tests first where possible):
 - EC-AVAI-002 and EC-AVAI-004 from the roadmap Phase 1 exit criteria pass.
 
 Carry-forward from the E7-29 review (do these too):
-- ReservationLedger.create (inventory/ledger) turns 23P01 on ex_no_double_booking into SlotTaken (SLOT_NO_LONGER_AVAILABLE) for every reservation type. Only a BOOKING row should become SlotTaken; for LATE_CONFIRM_HOLD, TOURNAMENT_APPROVAL_HOLD and TOURNAMENT_HOLD let the error propagate so the global mapping gives its own code (e.g. LATE_CONFIRM_RESOURCE_CONFLICT). It is rare because tr_10_resource_reservation_cross_class_guard usually refuses first, but check the reservation type before throwing SlotTaken.
+- ReservationLedger.create (inventory/ledger) turns 23P01 on ex_no_double_booking into SlotTaken (SLOT_NO_LONGER_AVAILABLE) for every reservation type. Only a BOOKING row should become SlotTaken; for LATE_CONFIRM_HOLD, TOURNAMENT_APPROVAL_HOLD and TOURNAMENT_HOLD the original exception propagates unchanged. Do not change DatabaseErrorCodes (ex_no_double_booking stays SLOT_NO_LONGER_AVAILABLE, arch 09 §1.5): tr_10_resource_reservation_cross_class_guard refuses a hold first with its type-specific P0001, so a raw 23P01 for a hold means the guard was bypassed, a defect (PO decision 3 Oct 2026, corrected).
 - Test: a 23P01 on ex_no_double_booking for a non-BOOKING row is not SlotTaken.
 
 PO decision 3 Oct 2026 — reads from other modules (Amr's question; do these too):
@@ -2371,6 +2371,9 @@ Do:
 
 Done when (write these as tests first where possible):
 - Splitting a 30-hour maintenance into two windows with a 1-minute gap still demands the Owner Password.
+
+Carry-forward from the E7-30 review (do these too):
+- maintenance_window and venue_closure have no 'deleted' column yet. If maintenance or closure delete is built as a soft delete (a new column), the availability predicate's reads must skip deleted rows: OperationalOverlaps.maintenanceOverlaps and closureOverlaps (operations/internal/JdbcOperationalOverlaps, checks 6-7 of isFree), plus a test that a deleted window no longer blocks.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
