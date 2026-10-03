@@ -172,6 +172,7 @@ e7gz-ps/
 | E7-32 | Amr | **Concurrency harness and invariant sweep** | A test that fires many bookings at once, and a nightly health check. | E7-29 | `backend/src/test/java/ps/e7gz/concurrency/`<br>`…/inventory/sweep/` |
 | E7-33 | Amr | **Nearest Availability projection** | Pre-compute "next available time" for every venue so lists are fast. | E7-30 | `…/inventory/availability/ (projection)` |
 | E7-34 | Amr | **Discovery API** | The venue list: nearest first, filters, next available time. | E7-33, E7-22 | `…/inventory/availability/web/ (discovery)` |
+| E7-112 | Amr | **Venue availability schedule API** | The backend for the Dashboard schedule: each room's bookings, holds, maintenance and closures for one business day. | E7-30, E7-31, E7-25, E7-26 | `…/inventory/availability/ (schedule query + web)` |
 
 #### Sprint 2 — Book a room end to end · 25 Oct – 5 Nov 2026
 
