@@ -163,3 +163,15 @@ E7-22 missed `GET PATCH /venue/settings` (arch 09 §4.2); E7-35 needs it for the
 - `PATCH {name?, address?, phone?, languagePreference?}` → `VenueSettings`. Only the fields sent change. Same rules as `PATCH /admin/venues` (§5.3): a text field that is sent must not be blank, at most 200 characters; `phone` is normalised to E.164. Errors are `VALIDATION_FAILED` with `error.field`.
 - **PO decision 3 Oct 2026:** the venue edits name, address and phone itself; area, location, activities, timezone and marketplace status stay with the Platform Admin. No Owner Password (not in FR-VEN-03); `Idempotency-Key` optional.
 - `languagePreference` (`en` | `ar`) is the account preference that FR-VEN-40's resolution reads first (account → browser storage → English).
+
+### 5.7 Opening hours (E7-25, 3 Oct 2026)
+
+`GET /venue/opening-hours`, `POST …/preview` and `POST …/commit` work. No schema change.
+
+- Before the first save, `GET` returns `version: 0` with all seven days `CLOSED` (and a `00:00` full-day default, so a proposal built from it is valid). The venue has no Operating Session until it saves hours.
+- Days are `0 = Monday … 6 = Sunday`. A weekday left out of `days` uses the default. A close time at or before the open time ends the next day. `defaultFullDay: true` needs `defaultOpen = defaultClose` (24 hours); equal times without it are `VALIDATION_FAILED` on `defaultClose`. A CUSTOM day with equal times is 24 hours.
+- Sessions that overlap anywhere in the week (Sunday → Monday included) are `VALIDATION_FAILED` on `days`, with `details.weekday` = the day whose session runs into the next one. Touching is fine.
+- `previewToken` binds the proposal and the exact affected set. Committing a different proposal, or when the affected set changed, is `409 AFFECTED_SET_CHANGED_REFRESH_PREVIEW`: show a refreshed preview.
+- A future Tournament hold the new hours no longer cover is `422 TOURNAMENT_CONFLICT_BLOCKS_SAVE` (preview and commit).
+- **Not built yet:** cancelling affected Bookings (E7-113, Sprint 3; it needs the Booking, Late Confirm and Messaging modules). Until then the preview lists them, but a commit with a non-empty `affected` answers `501` and changes nothing. A commit with nothing affected saves the hours and regenerates the sessions; it never needs the Owner Password.
+- Sessions are generated 120 days ahead (`E7GZ_SESSION_HORIZON_DAYS`) and extended nightly by the worker profile.

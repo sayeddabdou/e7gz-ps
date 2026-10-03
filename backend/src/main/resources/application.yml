@@ -68,6 +68,10 @@ e7gz:
     max-visible: 10
     upload-link-ttl: 10m
     view-link-ttl: 1h
+  # Operating Sessions are materialized this many operating days ahead (ADR-009, arch 01 §14 A2): a deployment
+  # setting, not a Product booking limit. The worker extends the horizon nightly (see OperatingSessionProperties).
+  operating-sessions:
+    horizon-days: ${E7GZ_SESSION_HORIZON_DAYS:120}
 
 # Every log line carries the correlation ID of its request or job (NFR-32; CorrelationId puts it in the MDC).
 # JSON log output is the observability task's (arch 11 §5.1, E7-100); this only adds the field to the default pattern.

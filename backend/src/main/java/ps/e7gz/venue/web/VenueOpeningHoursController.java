@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -20,15 +21,18 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import ps.e7gz.common.codes.OpeningDayMode;
 import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
+import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.venue.internal.OpeningHoursService;
 
 /**
  * Venue Dashboard — opening hours (arch 09 §4.2, arch 03 §5, FR-VEN-17, FR-VEN-23…FR-VEN-27). A change is two calls
- * bound by a {@code previewToken}; the commit aborts with a refreshed preview when the affected set grew (FR-VEN-26).
- * Stub until E7-25.
+ * bound by a {@code previewToken}; the commit aborts with a refreshed preview when the affected set changed (FR-VEN-26).
+ * Implemented by E7-25. Until Booking cancellation exists, a commit that would cancel a Booking answers 501 and changes
+ * nothing (PO decision 3 Oct 2026); the preview already shows the complete affected set.
  */
 @RestController
 @RequestMapping("/api/v1/venue/opening-hours")
@@ -36,18 +40,31 @@ import ps.e7gz.common.web.OpenApiConfig;
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class VenueOpeningHoursController {
 
+    private final OpeningHoursService hours;
+    private final ResponseMetaFactory meta;
+
+    public VenueOpeningHoursController(OpeningHoursService hours, ResponseMetaFactory meta) {
+        this.hours = hours;
+        this.meta = meta;
+    }
+
     @GetMapping
     @Operation(operationId = "venueGetOpeningHours", summary = "The weekly template and weekday overrides (FR-VEN-17)")
-    public DataResponse<VenueOpeningHoursView> get() {
-        throw NotImplementedYet.stub();
+    public DataResponse<VenueOpeningHoursView> get(@AuthenticationPrincipal AuthenticatedSubject venue) {
+        return meta.data(VenueOpeningHoursView.of(hours.get(venue.id())));
     }
 
     @PostMapping("/preview")
     @Operation(operationId = "venuePreviewOpeningHours",
             summary = "Steps 1–5: validate, block on tournament conflicts, list affected reservations (FR-VEN-23, FR-VEN-27)")
     @ApiError(status = 422, codes = ApiErrorCode.TOURNAMENT_CONFLICT_BLOCKS_SAVE)
-    public DataResponse<VenueOpeningHoursPreview> preview(@Valid @RequestBody VenueOpeningHoursPreviewRequest request) {
-        throw NotImplementedYet.stub();
+    public DataResponse<VenueOpeningHoursPreview> preview(@AuthenticationPrincipal AuthenticatedSubject venue,
+                                                          @Valid @RequestBody VenueOpeningHoursPreviewRequest request) {
+        OpeningHoursService.Preview preview = hours.preview(venue.id(), request.proposal().toProposal());
+        return meta.data(new VenueOpeningHoursPreview(preview.previewToken(), preview.affected().stream()
+                .map(a -> new VenueAffectedReservation(a.bookingId(), a.resourceId(), a.startAt(), a.endAt(),
+                        a.protectedCancellation()))
+                .toList(), preview.ownerPasswordRequired()));
     }
 
     @PostMapping("/commit")
@@ -57,8 +74,10 @@ public class VenueOpeningHoursController {
     @ApiError(status = 409, codes = ApiErrorCode.AFFECTED_SET_CHANGED_REFRESH_PREVIEW)
     @ApiError(status = 422, codes = ApiErrorCode.TOURNAMENT_CONFLICT_BLOCKS_SAVE)
     @ApiError(status = 423, codes = {ApiErrorCode.OWNER_PASSWORD_REQUIRED, ApiErrorCode.OWNER_PASSWORD_INVALID})
-    public DataResponse<VenueOpeningHoursView> commit(@Valid @RequestBody VenueOpeningHoursCommitRequest request) {
-        throw NotImplementedYet.stub();
+    public DataResponse<VenueOpeningHoursView> commit(@AuthenticationPrincipal AuthenticatedSubject venue,
+                                                      @Valid @RequestBody VenueOpeningHoursCommitRequest request) {
+        return meta.data(VenueOpeningHoursView.of(
+                hours.commit(venue.id(), request.proposal().toProposal(), request.previewToken())));
     }
 
     /** {@code venue.venue_opening_template} + {@code venue_opening_day}; times are venue local time. */
@@ -70,6 +89,13 @@ public class VenueOpeningHoursController {
             @NotNull Boolean defaultFullDay,
             @NotNull List<VenueOpeningDay> days,
             @NotNull @Schema(example = "3") Long version) {
+
+        static VenueOpeningHoursView of(OpeningHoursService.View view) {
+            return new VenueOpeningHoursView(view.timezone(), view.defaultOpen(), view.defaultClose(),
+                    view.defaultFullDay(), view.days().stream()
+                    .map(d -> new VenueOpeningDay(d.weekday(), d.mode(), d.customOpen(), d.customClose())).toList(),
+                    view.version());
+        }
     }
 
     /** A weekday override: DEFAULT, CUSTOM (with both times) or CLOSED ({@code ck_opening_day_custom_times}). */
@@ -89,6 +115,12 @@ public class VenueOpeningHoursController {
             @NotNull @Schema(example = "02:00:00") LocalTime defaultClose,
             @NotNull Boolean defaultFullDay,
             @NotNull List<@Valid VenueOpeningDay> days) {
+
+        OpeningHoursService.Proposal toProposal() {
+            return new OpeningHoursService.Proposal(defaultOpen, defaultClose, defaultFullDay, days.stream()
+                    .map(d -> new OpeningHoursService.Day(d.weekday(), d.mode(), d.customOpen(), d.customClose()))
+                    .toList());
+        }
     }
 
     @Schema(name = "VenueOpeningHoursPreviewRequest")
