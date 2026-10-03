@@ -1,0 +1,1290 @@
+{
+ "info": {
+  "name": "E7GZ PS — E7-23 areas, venues, marketplace status",
+  "description": "E7-23 PR 2: the Platform Admin's areas, venues and marketplace status, end to end. Needs seed-test-accounts.sql (admin postman.admin@e7gz.test). Run in order with the Collection Runner or `postman collection run`. Each run creates its own area and venue, so it can be re-run.",
+  "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+ },
+ "variable": [
+  {
+   "key": "adminToken",
+   "value": ""
+  },
+  {
+   "key": "areaId",
+   "value": ""
+  },
+  {
+   "key": "areaName",
+   "value": ""
+  },
+  {
+   "key": "venueId",
+   "value": ""
+  },
+  {
+   "key": "photoId",
+   "value": ""
+  },
+  {
+   "key": "photoUploadUrl",
+   "value": ""
+  },
+  {
+   "key": "emptyPhotoId",
+   "value": ""
+  }
+ ],
+ "event": [
+  {
+   "listen": "test",
+   "script": {
+    "type": "text/javascript",
+    "exec": [
+     "// Runs after every request (arch 09 §1.3–§1.4).",
+     "// Signed photo links go to object storage, not to our API (E7-23 PR 3): skip the API-wide checks there.",
+     "if (!pm.request.url.toString().includes(\"/api/v1/\")) return;",
+     "pm.test(\"[all] X-Correlation-Id header is a UUID\", () =>",
+     "  pm.expect(pm.response.headers.get(\"X-Correlation-Id\") || \"\").to.match(/^[0-9a-f-]{36}$/));",
+     "if (pm.response.code >= 400 && (pm.response.headers.get(\"Content-Type\") || \"\").includes(\"json\")) {",
+     "  pm.test(\"[all] Error body has a code and no message\", () => {",
+     "    const body = pm.response.json();",
+     "    pm.expect(body.error.code).to.be.a(\"string\");",
+     "    pm.expect(body.error).to.not.have.property(\"message\");",
+     "  });",
+     "}"
+    ]
+   }
+  }
+ ],
+ "item": [
+  {
+   "name": "1 · Admin login",
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Origin",
+      "value": "http://localhost:5174"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "body": {
+     "mode": "raw",
+     "raw": "{\n  \"email\": \"postman.admin@e7gz.test\",\n  \"password\": \"Postman-Test-2026\"\n}"
+    },
+    "url": "{{baseUrl}}/api/v1/admin/auth/login"
+   },
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+       "pm.collectionVariables.set(\"adminToken\", pm.response.json().data.accessToken);"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "2 · Create an area (with centroid) → 201, active",
+   "event": [
+    {
+     "listen": "prerequest",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.collectionVariables.set(\"areaName\", \"Postman Area \" + Date.now());"
+      ]
+     }
+    },
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+       "const a = pm.response.json().data;",
+       "pm.test(\"active, centroid stored as sent\", () => {",
+       "  pm.expect(a.active).to.eql(true);",
+       "  pm.expect(a.centroid.lat).to.eql(30.0561);",
+       "  pm.expect(a.centroid.lng).to.eql(31.3301);",
+       "});",
+       "pm.collectionVariables.set(\"areaId\", a.id);"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "body": {
+     "mode": "raw",
+     "raw": "{\n  \"name\": \"{{areaName}}\",\n  \"nameAr\": \"منطقة بوستمان\",\n  \"centroid\": { \"lat\": 30.0561, \"lng\": 31.3301 }\n}"
+    },
+    "url": "{{baseUrl}}/api/v1/admin/areas"
+   }
+  },
+  {
+   "name": "2b · Same area name again (other case/spaces) → 422 AREA_NAME_TAKEN",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 422\", () => pm.response.to.have.status(422));",
+       "pm.test(\"code\", () => pm.expect(pm.response.json().error.code).to.eql(\"AREA_NAME_TAKEN\"));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/areas",
+    "body": {
+     "mode": "raw",
+     "raw": "{ \"name\": \"  {{areaName}}  \" }"
+    }
+   }
+  },
+  {
+   "name": "3 · Customers see the new area (public)",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+       "pm.test(\"the area is listed\", () => pm.expect(pm.response.json().data.map(a => a.id)).to.include(pm.collectionVariables.get(\"areaId\")));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [],
+    "url": "{{baseUrl}}/api/v1/customer/areas"
+   }
+  },
+  {
+   "name": "4 · Create a venue → 201 ONBOARDING, location as sent",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+       "const v = pm.response.json().data;",
+       "pm.test(\"ONBOARDING, lat/lng not swapped, activities kept\", () => {",
+       "  pm.expect(v.marketplaceStatus).to.eql(\"ONBOARDING\");",
+       "  pm.expect(v.location.lat).to.eql(30.0561);",
+       "  pm.expect(v.location.lng).to.eql(31.3301);",
+       "  pm.expect(v.activities).to.have.members([\"PLAYSTATION\", \"BILLIARDS\"]);",
+       "  pm.expect(v.timezone).to.eql(\"Africa/Cairo\");",
+       "});",
+       "pm.collectionVariables.set(\"venueId\", v.id);"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "body": {
+     "mode": "raw",
+     "raw": "{\n  \"areaId\": \"{{areaId}}\",\n  \"name\": \"Postman Lounge\",\n  \"address\": \"12 Abbas El Akkad St\",\n  \"location\": { \"lat\": 30.0561, \"lng\": 31.3301 },\n  \"phone\": \"+201001234567\",\n  \"activities\": [\"PLAYSTATION\", \"BILLIARDS\"]\n}"
+    },
+    "url": "{{baseUrl}}/api/v1/admin/venues"
+   }
+  },
+  {
+   "name": "5 · Activate while ONBOARDING → 422 MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 422\", () => pm.response.to.have.status(422));",
+       "pm.test(\"code\", () => pm.expect(pm.response.json().error.code).to.eql(\"MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED\"));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "body": {
+     "mode": "raw",
+     "raw": "{ \"reason\": \"Too early\" }"
+    },
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/activate"
+   }
+  },
+  {
+   "name": "6 · Complete onboarding → INACTIVE",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+       "pm.test(\"INACTIVE, never ACTIVE\", () => pm.expect(pm.response.json().data.marketplaceStatus).to.eql(\"INACTIVE\"));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "body": {
+     "mode": "raw",
+     "raw": "{ \"reason\": \"Setup verified on site\" }"
+    },
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/onboarding/complete"
+   }
+  },
+  {
+   "name": "7 · Complete onboarding again → 422",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 422\", () => pm.response.to.have.status(422));",
+       "pm.test(\"code\", () => pm.expect(pm.response.json().error.code).to.eql(\"MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED\"));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "body": {
+     "mode": "raw",
+     "raw": "{ \"reason\": \"Twice\" }"
+    },
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/onboarding/complete"
+   }
+  },
+  {
+   "name": "8 · Activate → ACTIVE",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+       "pm.test(\"ACTIVE\", () => pm.expect(pm.response.json().data.marketplaceStatus).to.eql(\"ACTIVE\"));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "body": {
+     "mode": "raw",
+     "raw": "{ \"reason\": \"Go live\" }"
+    },
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/activate"
+   }
+  },
+  {
+   "name": "9 · Deactivate the area while the venue is ACTIVE → 422 AREA_HAS_ACTIVE_VENUES",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 422\", () => pm.response.to.have.status(422));",
+       "pm.test(\"code\", () => pm.expect(pm.response.json().error.code).to.eql(\"AREA_HAS_ACTIVE_VENUES\"));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/areas/{{areaId}}/deactivate"
+   }
+  },
+  {
+   "name": "10 · Suspend → SUSPENDED",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+       "pm.test(\"SUSPENDED\", () => pm.expect(pm.response.json().data.marketplaceStatus).to.eql(\"SUSPENDED\"));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "body": {
+     "mode": "raw",
+     "raw": "{ \"reason\": \"Repeated complaints\" }"
+    },
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/suspend"
+   }
+  },
+  {
+   "name": "11 · Deactivate the area while the venue is SUSPENDED → 422 AREA_HAS_ACTIVE_VENUES",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 422\", () => pm.response.to.have.status(422));",
+       "pm.test(\"code\", () => pm.expect(pm.response.json().error.code).to.eql(\"AREA_HAS_ACTIVE_VENUES\"));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/areas/{{areaId}}/deactivate"
+   }
+  },
+  {
+   "name": "12 · Deactivate the venue → INACTIVE",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+       "pm.test(\"INACTIVE\", () => pm.expect(pm.response.json().data.marketplaceStatus).to.eql(\"INACTIVE\"));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "body": {
+     "mode": "raw",
+     "raw": "{ \"reason\": \"Owner request\" }"
+    },
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/deactivate"
+   }
+  },
+  {
+   "name": "13 · Deactivate the venue again → 422 (already INACTIVE)",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 422\", () => pm.response.to.have.status(422));",
+       "pm.test(\"code\", () => pm.expect(pm.response.json().error.code).to.eql(\"MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED\"));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "body": {
+     "mode": "raw",
+     "raw": "{ \"reason\": \"Again\" }"
+    },
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/deactivate"
+   }
+  },
+  {
+   "name": "14 · Deactivate the area (venue now INACTIVE) → 200",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+       "pm.test(\"inactive\", () => pm.expect(pm.response.json().data.active).to.eql(false));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/areas/{{areaId}}/deactivate"
+   }
+  },
+  {
+   "name": "15 · Customers no longer see the area",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+       "pm.test(\"the area is hidden\", () => pm.expect(pm.response.json().data.map(a => a.id)).to.not.include(pm.collectionVariables.get(\"areaId\")));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [],
+    "url": "{{baseUrl}}/api/v1/customer/areas"
+   }
+  },
+  {
+   "name": "16 · Activate a venue in an inactive area → 422 AREA_INACTIVE",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 422\", () => pm.response.to.have.status(422));",
+       "pm.test(\"code\", () => pm.expect(pm.response.json().error.code).to.eql(\"AREA_INACTIVE\"));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "body": {
+     "mode": "raw",
+     "raw": "{ \"reason\": \"Try\" }"
+    },
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/activate"
+   }
+  },
+  {
+   "name": "17 · Edit the venue: rename, move the pin, replace activities",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+       "const v = pm.response.json().data;",
+       "pm.test(\"only the sent fields changed\", () => {",
+       "  pm.expect(v.name).to.eql(\"Postman Lounge 2\");",
+       "  pm.expect(v.address).to.eql(\"12 Abbas El Akkad St\");",
+       "  pm.expect(v.location.lat).to.eql(30.07);",
+       "  pm.expect(v.location.lng).to.eql(31.34);",
+       "  pm.expect(v.activities).to.have.members([\"PING_PONG\"]);",
+       "});"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "PATCH",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "body": {
+     "mode": "raw",
+     "raw": "{\n  \"name\": \"Postman Lounge 2\",\n  \"location\": { \"lat\": 30.07, \"lng\": 31.34 },\n  \"activities\": [\"PING_PONG\"]\n}"
+    },
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}"
+   }
+  },
+  {
+   "name": "17b · Venue landline phone is stored as +20…",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+       "pm.test(\"E.164\", () => pm.expect(pm.response.json().data.phone).to.eql(\"+20223456789\"));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "PATCH",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}",
+    "body": {
+     "mode": "raw",
+     "raw": "{ \"phone\": \"(02) 2345 6789\" }"
+    }
+   }
+  },
+  {
+   "name": "17c · A non-Egyptian phone → 400 (field phone)",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+       "pm.test(\"field phone\", () => pm.expect(pm.response.json().error.field).to.eql(\"phone\"));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "PATCH",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}",
+    "body": {
+     "mode": "raw",
+     "raw": "{ \"phone\": \"+1 202 555 0100\" }"
+    }
+   }
+  },
+  {
+   "name": "18 · Venue page (no venue account yet)",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+       "pm.test(\"venue and a null account\", () => {",
+       "  const d = pm.response.json().data;",
+       "  pm.expect(d.venue.id).to.eql(pm.collectionVariables.get(\"venueId\"));",
+       "  pm.expect(d.venueAccount).to.eql(null);",
+       "});"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}"
+   }
+  },
+  {
+   "name": "19 · Venue list, one per page, with a cursor",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+       "const d = pm.response.json().data;",
+       "pm.test(\"one item and a next cursor\", () => {",
+       "  pm.expect(d.items).to.have.lengthOf(1);",
+       "  pm.expect(d.nextCursor).to.be.a(\"string\");",
+       "});"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/venues?limit=1"
+   }
+  },
+  {
+   "name": "21 · Blank name on a venue edit → 400 VALIDATION_FAILED (field name)",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+       "pm.test(\"field name\", () => { const e = pm.response.json().error; pm.expect(e.code).to.eql(\"VALIDATION_FAILED\"); pm.expect(e.field).to.eql(\"name\"); });"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "PATCH",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}",
+    "body": {
+     "mode": "raw",
+     "raw": "{ \"name\": \"\" }"
+    }
+   }
+  },
+  {
+   "name": "22 · Remove the area's Arabic name and centroid",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+       "pm.test(\"both cleared\", () => { const a = pm.response.json().data; pm.expect(a.nameAr).to.eql(null); pm.expect(a.centroid).to.eql(null); });"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "PATCH",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/areas/{{areaId}}",
+    "body": {
+     "mode": "raw",
+     "raw": "{ \"removeNameAr\": true, \"removeCentroid\": true }"
+    }
+   }
+  },
+  {
+   "name": "23 · A value together with its remove flag → 400 (field removeNameAr)",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+       "pm.test(\"field removeNameAr\", () => pm.expect(pm.response.json().error.field).to.eql(\"removeNameAr\"));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "PATCH",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/areas/{{areaId}}",
+    "body": {
+     "mode": "raw",
+     "raw": "{ \"nameAr\": \"x\", \"removeNameAr\": true }"
+    }
+   }
+  },
+  {
+   "name": "P1 · Photos: start an upload → 201 signed PUT, nothing visible yet",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+       "const d = pm.response.json().data;",
+       "pm.test(\"signed link, no copies yet\", () => { pm.expect(d.uploadUrl).to.include(\"X-Amz-Signature\"); pm.expect(d.image.smallUrl).to.eql(null); });",
+       "pm.test(\"upload link lasts about 10 minutes\", () => { const m = (new Date(d.uploadExpiresAt) - new Date(pm.response.json().meta.serverTime)) / 60000; pm.expect(m).to.be.within(9, 11); });",
+       "pm.collectionVariables.set(\"photoId\", d.image.id); pm.collectionVariables.set(\"photoUploadUrl\", d.uploadUrl);"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/images",
+    "body": {
+     "mode": "raw",
+     "raw": "{\n  \"contentType\": \"image/jpeg\",\n  \"sizeBytes\": 15665\n}"
+    }
+   }
+  },
+  {
+   "name": "P2 · Photos: PUT the file to the signed link (no Authorization) → 200",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "PUT",
+    "header": [
+     {
+      "key": "Content-Type",
+      "value": "image/jpeg"
+     }
+    ],
+    "body": {
+     "mode": "file",
+     "file": {
+      "src": "tools/postman/fixtures/venue-photo.jpg"
+     }
+    },
+    "url": "{{photoUploadUrl}}"
+   }
+  },
+  {
+   "name": "P3 · Photos: confirm → 200, visible, copies not made yet",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+       "pm.test(\"same photo\", () => pm.expect(pm.response.json().data.id).to.eql(pm.collectionVariables.get(\"photoId\")));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/images/{{photoId}}/confirm"
+   }
+  },
+  {
+   "name": "P4 · Photos: the list shows it",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+       "pm.test(\"listed\", () => pm.expect(pm.response.json().data.map(p => p.id)).to.include(pm.collectionVariables.get(\"photoId\")));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/images"
+   }
+  },
+  {
+   "name": "P5 · Photos: a GIF → 422 VENUE_IMAGE_NOT_ACCEPTED (field contentType)",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 422\", () => pm.response.to.have.status(422));",
+       "pm.test(\"VENUE_IMAGE_NOT_ACCEPTED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VENUE_IMAGE_NOT_ACCEPTED\"));",
+       "pm.test(\"field contentType\", () => pm.expect(pm.response.json().error.field).to.eql(\"contentType\"));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/images",
+    "body": {
+     "mode": "raw",
+     "raw": "{\n  \"contentType\": \"image/gif\",\n  \"sizeBytes\": 1000\n}"
+    }
+   }
+  },
+  {
+   "name": "P6 · Photos: over 5 MB → 422 VENUE_IMAGE_NOT_ACCEPTED (field sizeBytes)",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 422\", () => pm.response.to.have.status(422));",
+       "pm.test(\"VENUE_IMAGE_NOT_ACCEPTED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VENUE_IMAGE_NOT_ACCEPTED\"));",
+       "pm.test(\"field sizeBytes\", () => pm.expect(pm.response.json().error.field).to.eql(\"sizeBytes\"));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/images",
+    "body": {
+     "mode": "raw",
+     "raw": "{\n  \"contentType\": \"image/jpeg\",\n  \"sizeBytes\": 5242881\n}"
+    }
+   }
+  },
+  {
+   "name": "P7 · Photos: start another upload (never sent)",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+       "pm.collectionVariables.set(\"emptyPhotoId\", pm.response.json().data.image.id);"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/images",
+    "body": {
+     "mode": "raw",
+     "raw": "{\n  \"contentType\": \"image/jpeg\",\n  \"sizeBytes\": 1000\n}"
+    }
+   }
+  },
+  {
+   "name": "P8 · Photos: confirm before the upload → 422 VENUE_IMAGE_NOT_UPLOADED",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 422\", () => pm.response.to.have.status(422));",
+       "pm.test(\"VENUE_IMAGE_NOT_UPLOADED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VENUE_IMAGE_NOT_UPLOADED\"));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/images/{{emptyPhotoId}}/confirm"
+   }
+  },
+  {
+   "name": "P9 · Photos: an order that misses a photo → 400 (field imageIds)",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+       "pm.test(\"VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));",
+       "pm.test(\"field imageIds\", () => pm.expect(pm.response.json().error.field).to.eql(\"imageIds\"));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "PUT",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/images/order",
+    "body": {
+     "mode": "raw",
+     "raw": "{\n  \"imageIds\": []\n}"
+    }
+   }
+  },
+  {
+   "name": "P10 · Photos: order with every visible photo → 200",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+       "pm.test(\"first is the card photo\", () => pm.expect(pm.response.json().data[0].id).to.eql(pm.collectionVariables.get(\"photoId\")));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "PUT",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     },
+     {
+      "key": "Content-Type",
+      "value": "application/json"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/images/order",
+    "body": {
+     "mode": "raw",
+     "raw": "{\n  \"imageIds\": [\n    \"{{photoId}}\"\n  ]\n}"
+    }
+   }
+  },
+  {
+   "name": "P11 · Photos: remove → 204 (hidden, kept)",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/images/{{photoId}}/remove"
+   }
+  },
+  {
+   "name": "P12 · Photos: the removed photo is no longer listed",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+       "pm.test(\"not listed\", () => pm.expect(pm.response.json().data.map(p => p.id)).to.not.include(pm.collectionVariables.get(\"photoId\")));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/images"
+   }
+  },
+  {
+   "name": "P13 · Photos: remove again → 404",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 404\", () => pm.response.to.have.status(404));",
+       "pm.test(\"NOT_FOUND\", () => pm.expect(pm.response.json().error.code).to.eql(\"NOT_FOUND\"));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/images/{{photoId}}/remove"
+   }
+  },
+  {
+   "name": "P14 · Photos: another venue id → 404",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 404\", () => pm.response.to.have.status(404));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "GET",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/venues/00000000-0000-4000-8000-000000000000/images"
+   }
+  },
+  {
+   "name": "20 · Re-activate the area (clean up for the next run)",
+   "event": [
+    {
+     "listen": "test",
+     "script": {
+      "type": "text/javascript",
+      "exec": [
+       "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+       "pm.test(\"active again\", () => pm.expect(pm.response.json().data.active).to.eql(true));"
+      ]
+     }
+    }
+   ],
+   "request": {
+    "method": "POST",
+    "header": [
+     {
+      "key": "Authorization",
+      "value": "Bearer {{adminToken}}"
+     }
+    ],
+    "url": "{{baseUrl}}/api/v1/admin/areas/{{areaId}}/activate"
+   }
+  }
+ ]
+}

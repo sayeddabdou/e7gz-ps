@@ -1,0 +1,2226 @@
+{
+  "info": {
+    "_postman_id": "b5ac8e61-f808-58a1-a112-c754a5be7802",
+    "name": "E7GZ PS — E7-22 (Sprint 1 contract + web session)",
+    "description": "E7-22 only: Venue/Admin HttpOnly cookie session, CSRF (Origin + X-Requested-With), CORS, deny-all outside /api, customer app unchanged, and the new Sprint 1 contract endpoints. Backend must run with E7GZ_CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:5174. Run tools/postman/seed-test-accounts.sql first.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test(\"X-Correlation-Id is a UUID\", () => pm.expect(pm.response.headers.get(\"X-Correlation-Id\") || \"\").to.match(/^[0-9a-f-]{36}$/i));",
+          "if (pm.response.code >= 400 && pm.response.text()) {",
+          "  const j = pm.response.json();",
+          "  pm.test(\"error envelope: code, no message or stack\", () => { pm.expect(j.error.code).to.be.a(\"string\"); pm.expect(j.error).to.not.have.property(\"message\"); pm.expect(JSON.stringify(j)).to.not.include(\"Exception\"); });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "venueRt1",
+      "value": ""
+    },
+    {
+      "key": "venueRt2",
+      "value": ""
+    },
+    {
+      "key": "venueRt3",
+      "value": ""
+    },
+    {
+      "key": "venueRtF",
+      "value": ""
+    },
+    {
+      "key": "adminRt1",
+      "value": ""
+    },
+    {
+      "key": "adminRt2",
+      "value": ""
+    },
+    {
+      "key": "adminRt3",
+      "value": ""
+    },
+    {
+      "key": "adminRtF",
+      "value": ""
+    },
+    {
+      "key": "venueAccess",
+      "value": ""
+    },
+    {
+      "key": "adminAccess",
+      "value": ""
+    },
+    {
+      "key": "custPhone",
+      "value": ""
+    },
+    {
+      "key": "custUser",
+      "value": ""
+    },
+    {
+      "key": "custRt",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "A · Venue cookie session",
+      "description": "Needs tools/postman/seed-test-accounts.sql. The cookie is sent by hand (cookie jar disabled) so each case is exact.",
+      "item": [
+        {
+          "name": "Venue login → 200, accessToken only, refresh token in a strict HttpOnly cookie (7 days)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sessionCookie(name) {",
+                  "  const all = pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").map(h => h.value);",
+                  "  pm.test(\"exactly one Set-Cookie\", () => pm.expect(all.length).to.eql(1));",
+                  "  const c = all[0] || \"\";",
+                  "  pm.test(\"cookie is \" + name, () => pm.expect(c.startsWith(name + \"=\")).to.be.true);",
+                  "  return c;",
+                  "}",
+                  "",
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"body has accessToken\", () => pm.expect(body.data.accessToken).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"body has NO refreshToken\", () => pm.expect(body.data).to.not.have.property(\"refreshToken\"));",
+                  "const c = sessionCookie(\"e7gz_venue_refresh\");",
+                  "pm.test(\"HttpOnly; Secure; SameSite=Strict\", () => {",
+                  "  pm.expect(c).to.include(\"HttpOnly\"); pm.expect(c).to.include(\"Secure\"); pm.expect(c).to.include(\"SameSite=Strict\");",
+                  "});",
+                  "pm.test(\"Path=/api/v1/venue/auth\", () => pm.expect(c).to.include(\"Path=/api/v1/venue/auth\"));",
+                  "pm.test(\"Max-Age=604800\", () => pm.expect(c).to.include(\"Max-Age=604800\"));",
+                  "pm.collectionVariables.set(\"venueRt1\", c.substring(c.indexOf(\"=\") + 1, c.indexOf(\";\")));",
+                  "pm.collectionVariables.set(\"venueAccess\", body.data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginIdentifier\": \"postman.venue\",\n  \"password\": \"Postman-Test-2026\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Refresh without X-Requested-With → 403 FORBIDDEN (CSRF), nothing changes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"error.code FORBIDDEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\"));",
+                  "pm.test(\"no cookie set or changed\", () =>",
+                  "  pm.expect(pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").length).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "Cookie",
+                "value": "e7gz_venue_refresh={{venueRt1}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/refresh"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Refresh with X-Requested-With: XMLHttpRequest → 403 (must be e7gz)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"error.code FORBIDDEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\"));",
+                  "pm.test(\"no cookie set or changed\", () =>",
+                  "  pm.expect(pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").length).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "XMLHttpRequest"
+              },
+              {
+                "key": "Cookie",
+                "value": "e7gz_venue_refresh={{venueRt1}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/refresh"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Refresh without Origin → 403 FORBIDDEN",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"error.code FORBIDDEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\"));",
+                  "pm.test(\"no cookie set or changed\", () =>",
+                  "  pm.expect(pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").length).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Requested-With",
+                "value": "e7gz"
+              },
+              {
+                "key": "Cookie",
+                "value": "e7gz_venue_refresh={{venueRt1}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/refresh"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Refresh from another origin → 403 FORBIDDEN (CORS refuses it, error envelope)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"error.code FORBIDDEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\"));",
+                  "pm.test(\"no cookie set or changed\", () =>",
+                  "  pm.expect(pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").length).to.eql(0));",
+                  "",
+                  "pm.test(\"no Access-Control-Allow-Origin\", () => pm.expect(pm.response.headers.has(\"Access-Control-Allow-Origin\")).to.be.false);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "https://evil.example"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "e7gz"
+              },
+              {
+                "key": "Cookie",
+                "value": "e7gz_venue_refresh={{venueRt1}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/refresh"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Refresh from the Dashboard → 200, cookie rotated, CORS headers",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sessionCookie(name) {",
+                  "  const all = pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").map(h => h.value);",
+                  "  pm.test(\"exactly one Set-Cookie\", () => pm.expect(all.length).to.eql(1));",
+                  "  const c = all[0] || \"\";",
+                  "  pm.test(\"cookie is \" + name, () => pm.expect(c.startsWith(name + \"=\")).to.be.true);",
+                  "  return c;",
+                  "}",
+                  "",
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"body has accessToken only\", () => {",
+                  "  pm.expect(body.data.accessToken).to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(body.data).to.not.have.property(\"refreshToken\");",
+                  "});",
+                  "const c = sessionCookie(\"e7gz_venue_refresh\");",
+                  "const v = c.substring(c.indexOf(\"=\") + 1, c.indexOf(\";\"));",
+                  "pm.test(\"the cookie was rotated\", () => pm.expect(v).to.not.eql(pm.collectionVariables.get(\"venueRt1\")));",
+                  "pm.test(\"CORS allows the page's origin with credentials\", () => {",
+                  "  pm.expect(pm.response.headers.get(\"Access-Control-Allow-Origin\")).to.eql(\"http://localhost:5173\");",
+                  "  pm.expect(pm.response.headers.get(\"Access-Control-Allow-Credentials\")).to.eql(\"true\");",
+                  "});",
+                  "pm.collectionVariables.set(\"venueRt2\", v);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "e7gz"
+              },
+              {
+                "key": "Cookie",
+                "value": "e7gz_venue_refresh={{venueRt1}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/refresh"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Reuse the OLD cookie → 401 and the cookie is cleared (reuse detected)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sessionCookie(name) {",
+                  "  const all = pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").map(h => h.value);",
+                  "  pm.test(\"exactly one Set-Cookie\", () => pm.expect(all.length).to.eql(1));",
+                  "  const c = all[0] || \"\";",
+                  "  pm.test(\"cookie is \" + name, () => pm.expect(c.startsWith(name + \"=\")).to.be.true);",
+                  "  return c;",
+                  "}",
+                  "",
+                  "pm.test(\"status 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));",
+                  "const cleared = sessionCookie(\"e7gz_venue_refresh\");",
+                  "pm.test(\"cookie cleared (empty, Max-Age=0)\", () => {",
+                  "  pm.expect(cleared.startsWith(\"e7gz_venue_refresh=;\")).to.be.true; pm.expect(cleared).to.include(\"Max-Age=0\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "e7gz"
+              },
+              {
+                "key": "Cookie",
+                "value": "e7gz_venue_refresh={{venueRt1}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/refresh"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "The NEW cookie was revoked by the reuse → 401 (whole chain)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sessionCookie(name) {",
+                  "  const all = pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").map(h => h.value);",
+                  "  pm.test(\"exactly one Set-Cookie\", () => pm.expect(all.length).to.eql(1));",
+                  "  const c = all[0] || \"\";",
+                  "  pm.test(\"cookie is \" + name, () => pm.expect(c.startsWith(name + \"=\")).to.be.true);",
+                  "  return c;",
+                  "}",
+                  "",
+                  "pm.test(\"status 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));",
+                  "const cleared = sessionCookie(\"e7gz_venue_refresh\");",
+                  "pm.test(\"cookie cleared (empty, Max-Age=0)\", () => {",
+                  "  pm.expect(cleared.startsWith(\"e7gz_venue_refresh=;\")).to.be.true; pm.expect(cleared).to.include(\"Max-Age=0\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "e7gz"
+              },
+              {
+                "key": "Cookie",
+                "value": "e7gz_venue_refresh={{venueRt2}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/refresh"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Login again → fresh cookie",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sessionCookie(name) {",
+                  "  const all = pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").map(h => h.value);",
+                  "  pm.test(\"exactly one Set-Cookie\", () => pm.expect(all.length).to.eql(1));",
+                  "  const c = all[0] || \"\";",
+                  "  pm.test(\"cookie is \" + name, () => pm.expect(c.startsWith(name + \"=\")).to.be.true);",
+                  "  return c;",
+                  "}",
+                  "",
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"body has accessToken\", () => pm.expect(body.data.accessToken).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"body has NO refreshToken\", () => pm.expect(body.data).to.not.have.property(\"refreshToken\"));",
+                  "const c = sessionCookie(\"e7gz_venue_refresh\");",
+                  "pm.test(\"HttpOnly; Secure; SameSite=Strict\", () => {",
+                  "  pm.expect(c).to.include(\"HttpOnly\"); pm.expect(c).to.include(\"Secure\"); pm.expect(c).to.include(\"SameSite=Strict\");",
+                  "});",
+                  "pm.test(\"Path=/api/v1/venue/auth\", () => pm.expect(c).to.include(\"Path=/api/v1/venue/auth\"));",
+                  "pm.test(\"Max-Age=604800\", () => pm.expect(c).to.include(\"Max-Age=604800\"));",
+                  "pm.collectionVariables.set(\"venueRt3\", c.substring(c.indexOf(\"=\") + 1, c.indexOf(\";\")));",
+                  "pm.collectionVariables.set(\"venueAccess\", body.data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginIdentifier\": \"postman.venue\",\n  \"password\": \"Postman-Test-2026\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Refresh token in the BODY, no cookie → 401 (the body is ignored)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sessionCookie(name) {",
+                  "  const all = pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").map(h => h.value);",
+                  "  pm.test(\"exactly one Set-Cookie\", () => pm.expect(all.length).to.eql(1));",
+                  "  const c = all[0] || \"\";",
+                  "  pm.test(\"cookie is \" + name, () => pm.expect(c.startsWith(name + \"=\")).to.be.true);",
+                  "  return c;",
+                  "}",
+                  "",
+                  "pm.test(\"status 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));",
+                  "const cleared = sessionCookie(\"e7gz_venue_refresh\");",
+                  "pm.test(\"cookie cleared (empty, Max-Age=0)\", () => {",
+                  "  pm.expect(cleared.startsWith(\"e7gz_venue_refresh=;\")).to.be.true; pm.expect(cleared).to.include(\"Max-Age=0\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "e7gz"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/refresh",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{venueRt3}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Logout without X-Requested-With → 403, session kept",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"error.code FORBIDDEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\"));",
+                  "pm.test(\"no cookie set or changed\", () =>",
+                  "  pm.expect(pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").length).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "Cookie",
+                "value": "e7gz_venue_refresh={{venueRt3}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/logout"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Logout → 204 and the cookie is cleared",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sessionCookie(name) {",
+                  "  const all = pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").map(h => h.value);",
+                  "  pm.test(\"exactly one Set-Cookie\", () => pm.expect(all.length).to.eql(1));",
+                  "  const c = all[0] || \"\";",
+                  "  pm.test(\"cookie is \" + name, () => pm.expect(c.startsWith(name + \"=\")).to.be.true);",
+                  "  return c;",
+                  "}",
+                  "",
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));",
+                  "",
+                  "const cleared = sessionCookie(\"e7gz_venue_refresh\");",
+                  "pm.test(\"cookie cleared (empty, Max-Age=0)\", () => {",
+                  "  pm.expect(cleared.startsWith(\"e7gz_venue_refresh=;\")).to.be.true; pm.expect(cleared).to.include(\"Max-Age=0\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "e7gz"
+              },
+              {
+                "key": "Cookie",
+                "value": "e7gz_venue_refresh={{venueRt3}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/logout"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Refresh after logout → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sessionCookie(name) {",
+                  "  const all = pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").map(h => h.value);",
+                  "  pm.test(\"exactly one Set-Cookie\", () => pm.expect(all.length).to.eql(1));",
+                  "  const c = all[0] || \"\";",
+                  "  pm.test(\"cookie is \" + name, () => pm.expect(c.startsWith(name + \"=\")).to.be.true);",
+                  "  return c;",
+                  "}",
+                  "",
+                  "pm.test(\"status 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));",
+                  "const cleared = sessionCookie(\"e7gz_venue_refresh\");",
+                  "pm.test(\"cookie cleared (empty, Max-Age=0)\", () => {",
+                  "  pm.expect(cleared.startsWith(\"e7gz_venue_refresh=;\")).to.be.true; pm.expect(cleared).to.include(\"Max-Age=0\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "e7gz"
+              },
+              {
+                "key": "Cookie",
+                "value": "e7gz_venue_refresh={{venueRt3}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/refresh"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Logout with no cookie → 204 (nothing to end)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sessionCookie(name) {",
+                  "  const all = pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").map(h => h.value);",
+                  "  pm.test(\"exactly one Set-Cookie\", () => pm.expect(all.length).to.eql(1));",
+                  "  const c = all[0] || \"\";",
+                  "  pm.test(\"cookie is \" + name, () => pm.expect(c.startsWith(name + \"=\")).to.be.true);",
+                  "  return c;",
+                  "}",
+                  "",
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));",
+                  "",
+                  "const cleared = sessionCookie(\"e7gz_venue_refresh\");",
+                  "pm.test(\"cookie cleared (empty, Max-Age=0)\", () => {",
+                  "  pm.expect(cleared.startsWith(\"e7gz_venue_refresh=;\")).to.be.true; pm.expect(cleared).to.include(\"Max-Age=0\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "e7gz"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/logout"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "DISABLED venue account, right password → 403, no cookie",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"error.code FORBIDDEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\"));",
+                  "pm.test(\"no cookie set or changed\", () =>",
+                  "  pm.expect(pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").length).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginIdentifier\": \"postman.venue.disabled\",\n  \"password\": \"Postman-Test-2026\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "B · Admin cookie session",
+      "description": "",
+      "item": [
+        {
+          "name": "Admin login → 200, accessToken only, cookie on the admin path (12 hours)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sessionCookie(name) {",
+                  "  const all = pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").map(h => h.value);",
+                  "  pm.test(\"exactly one Set-Cookie\", () => pm.expect(all.length).to.eql(1));",
+                  "  const c = all[0] || \"\";",
+                  "  pm.test(\"cookie is \" + name, () => pm.expect(c.startsWith(name + \"=\")).to.be.true);",
+                  "  return c;",
+                  "}",
+                  "",
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"body has accessToken\", () => pm.expect(body.data.accessToken).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"body has NO refreshToken\", () => pm.expect(body.data).to.not.have.property(\"refreshToken\"));",
+                  "const c = sessionCookie(\"e7gz_admin_refresh\");",
+                  "pm.test(\"HttpOnly; Secure; SameSite=Strict\", () => {",
+                  "  pm.expect(c).to.include(\"HttpOnly\"); pm.expect(c).to.include(\"Secure\"); pm.expect(c).to.include(\"SameSite=Strict\");",
+                  "});",
+                  "pm.test(\"Path=/api/v1/admin/auth\", () => pm.expect(c).to.include(\"Path=/api/v1/admin/auth\"));",
+                  "pm.test(\"Max-Age=43200\", () => pm.expect(c).to.include(\"Max-Age=43200\"));",
+                  "pm.collectionVariables.set(\"adminRt1\", c.substring(c.indexOf(\"=\") + 1, c.indexOf(\";\")));",
+                  "pm.collectionVariables.set(\"adminAccess\", body.data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5174"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"postman.admin@e7gz.test\",\n  \"password\": \"Postman-Test-2026\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Admin refresh from the Admin origin → 200, rotated",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sessionCookie(name) {",
+                  "  const all = pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").map(h => h.value);",
+                  "  pm.test(\"exactly one Set-Cookie\", () => pm.expect(all.length).to.eql(1));",
+                  "  const c = all[0] || \"\";",
+                  "  pm.test(\"cookie is \" + name, () => pm.expect(c.startsWith(name + \"=\")).to.be.true);",
+                  "  return c;",
+                  "}",
+                  "",
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"body has accessToken only\", () => {",
+                  "  pm.expect(body.data.accessToken).to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(body.data).to.not.have.property(\"refreshToken\");",
+                  "});",
+                  "const c = sessionCookie(\"e7gz_admin_refresh\");",
+                  "const v = c.substring(c.indexOf(\"=\") + 1, c.indexOf(\";\"));",
+                  "pm.test(\"the cookie was rotated\", () => pm.expect(v).to.not.eql(pm.collectionVariables.get(\"adminRt1\")));",
+                  "pm.test(\"CORS allows the page's origin with credentials\", () => {",
+                  "  pm.expect(pm.response.headers.get(\"Access-Control-Allow-Origin\")).to.eql(\"http://localhost:5174\");",
+                  "  pm.expect(pm.response.headers.get(\"Access-Control-Allow-Credentials\")).to.eql(\"true\");",
+                  "});",
+                  "pm.collectionVariables.set(\"adminRt2\", v);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5174"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "e7gz"
+              },
+              {
+                "key": "Cookie",
+                "value": "e7gz_admin_refresh={{adminRt1}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/auth/refresh"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Admin token value under the VENUE cookie name on the venue refresh → 401 (other audience)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sessionCookie(name) {",
+                  "  const all = pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").map(h => h.value);",
+                  "  pm.test(\"exactly one Set-Cookie\", () => pm.expect(all.length).to.eql(1));",
+                  "  const c = all[0] || \"\";",
+                  "  pm.test(\"cookie is \" + name, () => pm.expect(c.startsWith(name + \"=\")).to.be.true);",
+                  "  return c;",
+                  "}",
+                  "",
+                  "pm.test(\"status 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));",
+                  "const cleared = sessionCookie(\"e7gz_venue_refresh\");",
+                  "pm.test(\"cookie cleared (empty, Max-Age=0)\", () => {",
+                  "  pm.expect(cleared.startsWith(\"e7gz_venue_refresh=;\")).to.be.true; pm.expect(cleared).to.include(\"Max-Age=0\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "e7gz"
+              },
+              {
+                "key": "Cookie",
+                "value": "e7gz_venue_refresh={{adminRt2}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/refresh"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "…and it still works on the admin refresh → 200 (untouched)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sessionCookie(name) {",
+                  "  const all = pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").map(h => h.value);",
+                  "  pm.test(\"exactly one Set-Cookie\", () => pm.expect(all.length).to.eql(1));",
+                  "  const c = all[0] || \"\";",
+                  "  pm.test(\"cookie is \" + name, () => pm.expect(c.startsWith(name + \"=\")).to.be.true);",
+                  "  return c;",
+                  "}",
+                  "",
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"body has accessToken only\", () => {",
+                  "  pm.expect(body.data.accessToken).to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(body.data).to.not.have.property(\"refreshToken\");",
+                  "});",
+                  "const c = sessionCookie(\"e7gz_admin_refresh\");",
+                  "const v = c.substring(c.indexOf(\"=\") + 1, c.indexOf(\";\"));",
+                  "pm.test(\"the cookie was rotated\", () => pm.expect(v).to.not.eql(pm.collectionVariables.get(\"adminRt2\")));",
+                  "pm.test(\"CORS allows the page's origin with credentials\", () => {",
+                  "  pm.expect(pm.response.headers.get(\"Access-Control-Allow-Origin\")).to.eql(\"http://localhost:5174\");",
+                  "  pm.expect(pm.response.headers.get(\"Access-Control-Allow-Credentials\")).to.eql(\"true\");",
+                  "});",
+                  "pm.collectionVariables.set(\"adminRt3\", v);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5174"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "e7gz"
+              },
+              {
+                "key": "Cookie",
+                "value": "e7gz_admin_refresh={{adminRt2}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/auth/refresh"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Admin logout without Origin → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"error.code FORBIDDEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\"));",
+                  "pm.test(\"no cookie set or changed\", () =>",
+                  "  pm.expect(pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").length).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Requested-With",
+                "value": "e7gz"
+              },
+              {
+                "key": "Cookie",
+                "value": "e7gz_admin_refresh={{adminRt3}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/auth/logout"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Admin logout → 204, cookie cleared",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sessionCookie(name) {",
+                  "  const all = pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").map(h => h.value);",
+                  "  pm.test(\"exactly one Set-Cookie\", () => pm.expect(all.length).to.eql(1));",
+                  "  const c = all[0] || \"\";",
+                  "  pm.test(\"cookie is \" + name, () => pm.expect(c.startsWith(name + \"=\")).to.be.true);",
+                  "  return c;",
+                  "}",
+                  "",
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));",
+                  "",
+                  "const cleared = sessionCookie(\"e7gz_admin_refresh\");",
+                  "pm.test(\"cookie cleared (empty, Max-Age=0)\", () => {",
+                  "  pm.expect(cleared.startsWith(\"e7gz_admin_refresh=;\")).to.be.true; pm.expect(cleared).to.include(\"Max-Age=0\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5174"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "e7gz"
+              },
+              {
+                "key": "Cookie",
+                "value": "e7gz_admin_refresh={{adminRt3}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/auth/logout"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Inactive admin, right password → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"error.code FORBIDDEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\"));",
+                  "pm.test(\"no cookie set or changed\", () =>",
+                  "  pm.expect(pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").length).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5174"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"postman.inactive@e7gz.test\",\n  \"password\": \"Postman-Test-2026\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "C · CORS",
+      "description": "",
+      "item": [
+        {
+          "name": "Preflight from the Dashboard on a venue route → 200 with credentials",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"allow-origin is the Dashboard\", () => pm.expect(pm.response.headers.get(\"Access-Control-Allow-Origin\")).to.eql(\"http://localhost:5173\"));",
+                  "pm.test(\"credentials allowed\", () => pm.expect(pm.response.headers.get(\"Access-Control-Allow-Credentials\")).to.eql(\"true\"));",
+                  "pm.test(\"X-Requested-With allowed\", () => pm.expect(pm.response.headers.get(\"Access-Control-Allow-Headers\").toLowerCase()).to.include(\"x-requested-with\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "OPTIONS",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "Access-Control-Request-Method",
+                "value": "POST"
+              },
+              {
+                "key": "Access-Control-Request-Headers",
+                "value": "content-type, x-requested-with, authorization"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/refresh"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Preflight from the Admin origin on an admin route → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"allow-origin is Admin\", () => pm.expect(pm.response.headers.get(\"Access-Control-Allow-Origin\")).to.eql(\"http://localhost:5174\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "OPTIONS",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5174"
+              },
+              {
+                "key": "Access-Control-Request-Method",
+                "value": "GET"
+              },
+              {
+                "key": "Access-Control-Request-Headers",
+                "value": "authorization"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Preflight from another origin → 403 FORBIDDEN (envelope, no CORS headers)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"error.code FORBIDDEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\"));",
+                  "pm.test(\"no Access-Control-Allow-Origin\", () => pm.expect(pm.response.headers.has(\"Access-Control-Allow-Origin\")).to.be.false);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "OPTIONS",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "https://evil.example"
+              },
+              {
+                "key": "Access-Control-Request-Method",
+                "value": "POST"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/refresh"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Customer routes have no CORS (mobile app)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"no Access-Control-Allow-Origin\", () => pm.expect(pm.response.headers.has(\"Access-Control-Allow-Origin\")).to.be.false);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "OPTIONS",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "Access-Control-Request-Method",
+                "value": "POST"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/customer/auth/login"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "D · Everything outside /api is denied (S-15)",
+      "description": "",
+      "item": [
+        {
+          "name": "GET / → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "GET /error → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/error"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "GET /index.html → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/index.html"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "POST /internal/anything with an admin token → still 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccess}}"
+              }
+            ],
+            "url": "{{baseUrl}}/internal/anything"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "E · Customer app unchanged",
+      "description": "",
+      "item": [
+        {
+          "name": "Register a customer → 201",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const n = Math.floor(Math.random() * 1e8).toString().padStart(8, \"0\");",
+                  "pm.collectionVariables.set(\"custPhone\", \"010\" + n);",
+                  "pm.collectionVariables.set(\"custUser\", \"e722_\" + n);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/customer/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"E7-22 Tester\",\n  \"username\": \"{{custUser}}\",\n  \"phone\": \"{{custPhone}}\",\n  \"email\": \"{{custUser}}@example.com\",\n  \"password\": \"Passw0rd1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Customer login → tokens in the JSON body, no cookie",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test(\"accessToken and refreshToken in the body\", () => { pm.expect(d.accessToken).to.not.be.empty; pm.expect(d.refreshToken).to.not.be.empty; });",
+                  "pm.test(\"no Set-Cookie\", () => pm.expect(pm.response.headers.has(\"Set-Cookie\")).to.be.false);",
+                  "pm.collectionVariables.set(\"custRt\", d.refreshToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/customer/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usernameOrPhone\": \"{{custUser}}\",\n  \"password\": \"Passw0rd1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Customer refresh with the body token (no Origin, no header) → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"new refreshToken in the body\", () => pm.expect(pm.response.json().data.refreshToken).to.not.eql(pm.collectionVariables.get(\"custRt\")));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/customer/auth/refresh",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{custRt}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "F · New Sprint 1 contract endpoints (stubs → 501 until E7-23/24/26)",
+      "description": "",
+      "item": [
+        {
+          "name": "Admin login (token for this folder)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sessionCookie(name) {",
+                  "  const all = pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").map(h => h.value);",
+                  "  pm.test(\"exactly one Set-Cookie\", () => pm.expect(all.length).to.eql(1));",
+                  "  const c = all[0] || \"\";",
+                  "  pm.test(\"cookie is \" + name, () => pm.expect(c.startsWith(name + \"=\")).to.be.true);",
+                  "  return c;",
+                  "}",
+                  "",
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"body has accessToken\", () => pm.expect(body.data.accessToken).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"body has NO refreshToken\", () => pm.expect(body.data).to.not.have.property(\"refreshToken\"));",
+                  "const c = sessionCookie(\"e7gz_admin_refresh\");",
+                  "pm.test(\"HttpOnly; Secure; SameSite=Strict\", () => {",
+                  "  pm.expect(c).to.include(\"HttpOnly\"); pm.expect(c).to.include(\"Secure\"); pm.expect(c).to.include(\"SameSite=Strict\");",
+                  "});",
+                  "pm.test(\"Path=/api/v1/admin/auth\", () => pm.expect(c).to.include(\"Path=/api/v1/admin/auth\"));",
+                  "pm.test(\"Max-Age=43200\", () => pm.expect(c).to.include(\"Max-Age=43200\"));",
+                  "pm.collectionVariables.set(\"adminRtF\", c.substring(c.indexOf(\"=\") + 1, c.indexOf(\";\")));",
+                  "pm.collectionVariables.set(\"adminAccess\", body.data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5174"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"postman.admin@e7gz.test\",\n  \"password\": \"Postman-Test-2026\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Venue login (token for this folder)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sessionCookie(name) {",
+                  "  const all = pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").map(h => h.value);",
+                  "  pm.test(\"exactly one Set-Cookie\", () => pm.expect(all.length).to.eql(1));",
+                  "  const c = all[0] || \"\";",
+                  "  pm.test(\"cookie is \" + name, () => pm.expect(c.startsWith(name + \"=\")).to.be.true);",
+                  "  return c;",
+                  "}",
+                  "",
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"body has accessToken\", () => pm.expect(body.data.accessToken).to.be.a(\"string\").and.not.empty);",
+                  "pm.test(\"body has NO refreshToken\", () => pm.expect(body.data).to.not.have.property(\"refreshToken\"));",
+                  "const c = sessionCookie(\"e7gz_venue_refresh\");",
+                  "pm.test(\"HttpOnly; Secure; SameSite=Strict\", () => {",
+                  "  pm.expect(c).to.include(\"HttpOnly\"); pm.expect(c).to.include(\"Secure\"); pm.expect(c).to.include(\"SameSite=Strict\");",
+                  "});",
+                  "pm.test(\"Path=/api/v1/venue/auth\", () => pm.expect(c).to.include(\"Path=/api/v1/venue/auth\"));",
+                  "pm.test(\"Max-Age=604800\", () => pm.expect(c).to.include(\"Max-Age=604800\"));",
+                  "pm.collectionVariables.set(\"venueRtF\", c.substring(c.indexOf(\"=\") + 1, c.indexOf(\";\")));",
+                  "pm.collectionVariables.set(\"venueAccess\", body.data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginIdentifier\": \"postman.venue\",\n  \"password\": \"Postman-Test-2026\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "GET /admin/venues/{id} → 200 (E7-23)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"the seeded venue, still ONBOARDING\", () => {",
+                  "  const d = pm.response.json().data;",
+                  "  pm.expect(d.venue.id).to.eql(\"0192f000-0000-7000-8000-000000000011\");",
+                  "  pm.expect(d.venue.marketplaceStatus).to.eql(\"ONBOARDING\");",
+                  "  pm.expect(d).to.have.property(\"venueAccount\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccess}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues/0192f000-0000-7000-8000-000000000011"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "POST …/activate → 422 while ONBOARDING (E7-23)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 422 (the seeded venue is still ONBOARDING)\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"error.code is MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED\", () => pm.expect(pm.response.json().error.code).to.eql(\"MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccess}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues/0192f000-0000-7000-8000-000000000011/activate",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Postman E7-22\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "POST …/deactivate → 422 while ONBOARDING (E7-23)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 422 (the seeded venue is still ONBOARDING)\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"error.code is MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED\", () => pm.expect(pm.response.json().error.code).to.eql(\"MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccess}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues/0192f000-0000-7000-8000-000000000011/deactivate",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Postman E7-22\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "POST …/suspend → 422 while ONBOARDING (E7-23)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 422 (the seeded venue is still ONBOARDING)\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"error.code is MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED\", () => pm.expect(pm.response.json().error.code).to.eql(\"MARKETPLACE_STATUS_CHANGE_NOT_ALLOWED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccess}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues/0192f000-0000-7000-8000-000000000011/suspend",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Postman E7-22\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "POST …/activate without a reason → 400 VALIDATION_FAILED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"error.code VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccess}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues/0192f000-0000-7000-8000-000000000011/activate",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "POST …/venue-account on the seeded venue → 422 VENUE_ACCOUNT_ALREADY_EXISTS (implemented by E7-24)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"VENUE_ACCOUNT_ALREADY_EXISTS\", () => pm.expect(pm.response.json().error.code).to.eql(\"VENUE_ACCOUNT_ALREADY_EXISTS\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccess}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues/0192f000-0000-7000-8000-000000000011/venue-account",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginIdentifier\": \"postman.e722\",\n  \"password\": \"Postman-Test-2026\",\n  \"initialOwnerPassword\": \"Owner-Test-2026\",\n  \"languagePreference\": \"ar\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "POST …/venue-account without initialOwnerPassword → 400 VALIDATION_FAILED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"error.code VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccess}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues/0192f000-0000-7000-8000-000000000011/venue-account",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginIdentifier\": \"postman.e722\",\n  \"password\": \"Postman-Test-2026\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "GET …/resources (admin) → 501",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 501\", () => pm.response.to.have.status(501));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccess}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues/0192f000-0000-7000-8000-000000000011/resources"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "POST …/resources (admin, no Owner Password) → 501",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 501\", () => pm.response.to.have.status(501));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccess}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues/0192f000-0000-7000-8000-000000000011/resources",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"activity\": \"PLAYSTATION\",\n  \"consoleType\": \"PS5\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "GET /admin/activities → 501",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 501\", () => pm.response.to.have.status(501));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccess}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/activities"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Venue token on GET /admin/activities → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"error.code FORBIDDEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueAccess}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/activities"
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "No token on POST …/activate → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues/0192f000-0000-7000-8000-000000000011/activate",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Postman E7-22\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "POST /venue/resources with the Owner Password → 501 (venue accepted)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 501\", () => pm.response.to.have.status(501));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueAccess}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/resources",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"activity\": \"BILLIARDS\",\n  \"ownerPassword\": \"Owner-Test-2026\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "POST /venue/resources without the Owner Password → 400 VALIDATION_FAILED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"error.code VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueAccess}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/resources",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"activity\": \"BILLIARDS\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "Admin token on POST /venue/resources → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"error.code FORBIDDEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccess}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/resources",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"activity\": \"BILLIARDS\",\n  \"ownerPassword\": \"x\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "PATCH /venue/resources/{id} no longer exists → 4xx, never 2xx/501",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"refused as a client error\", () => pm.expect(pm.response.code).to.be.oneOf([400, 404, 405]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueAccess}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/resources/0192f000-0000-7000-8000-0000000000aa",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"x\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        }
+      ]
+    }
+  ]
+}

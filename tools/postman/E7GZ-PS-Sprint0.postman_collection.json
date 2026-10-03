@@ -1,0 +1,3569 @@
+{
+  "info": {
+    "_postman_id": "97fe632d-4557-4594-adcb-089199ebd7ec",
+    "name": "E7GZ PS — Sprint 0 API tests",
+    "description": "Every endpoint that works at the end of Sprint 0 (E7-12 … E7-14), plus the security rules around them.\n\n**Before running:** start the backend locally (see tools/postman/README.md), run `seed-test-accounts.sql` once, then use the Collection Runner on the whole collection (the OTP-attempt and rate-limit loops need the Runner).\n\n**Manual step:** after folder 2 registers customer A, copy the 6-digit code from the backend log into the collection variable `otpCode`; otherwise the phone-verification request is skipped.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Runs after every request (arch 09 §1.3–§1.4).",
+          "pm.test(\"[all] X-Correlation-Id header is a UUID\", () =>",
+          "  pm.expect(pm.response.headers.get(\"X-Correlation-Id\") || \"\").to.match(/^[0-9a-f-]{36}$/));",
+          "const text = pm.response.text();",
+          "if (text && pm.response.headers.get(\"Content-Type\") && pm.response.headers.get(\"Content-Type\").includes(\"json\")) {",
+          "  const body = pm.response.json();",
+          "  pm.test(\"[all] Envelope has meta.correlationId matching the header\", () =>",
+          "    pm.expect(body.meta.correlationId).to.eql(pm.response.headers.get(\"X-Correlation-Id\")));",
+          "  if (pm.response.code >= 400) {",
+          "    pm.test(\"[all] Error body has a code and no message / stack trace\", () => {",
+          "      pm.expect(body.error.code).to.be.a(\"string\");",
+          "      pm.expect(body.error).to.not.have.property(\"message\");",
+          "      pm.expect(text).to.not.match(/Exception|stackTrace|\"trace\"|\"path\"/);",
+          "    });",
+          "  }",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "customerPassword",
+      "value": "Postman-Cust-2026"
+    },
+    {
+      "key": "seedPassword",
+      "value": "Postman-Test-2026"
+    },
+    {
+      "key": "otpCode",
+      "value": ""
+    },
+    {
+      "key": "wrongTries",
+      "value": "0"
+    },
+    {
+      "key": "rlTries",
+      "value": "0"
+    }
+  ],
+  "item": [
+    {
+      "name": "0 · Platform & security basics",
+      "description": "Things that must hold for every request: docs and actuator are not public, the error envelope never leaks internals, the correlation ID is echoed.",
+      "item": [
+        {
+          "name": "Swagger / OpenAPI docs are not public",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v3/api-docs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v3",
+                "api-docs"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code is UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Swagger UI is not public",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/swagger-ui.html",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "swagger-ui.html"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Actuator is not public",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Correlation ID sent by the client is echoed",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{fixedCorrelationId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/areas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "areas"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"fixedCorrelationId\", \"0192f000-aaaa-7bbb-8ccc-0123456789ab\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Same X-Correlation-Id comes back\", () => pm.expect(pm.response.headers.get(\"X-Correlation-Id\")).to.eql(pm.collectionVariables.get(\"fixedCorrelationId\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "A malformed correlation ID is replaced by a new UUID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-Id",
+                "value": "not-a-uuid"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/areas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "areas"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"A new UUID was generated\", () => {",
+                  "  const id = pm.response.headers.get(\"X-Correlation-Id\");",
+                  "  pm.expect(id).to.not.eql(\"not-a-uuid\");",
+                  "  pm.expect(id).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown API route without a token is 401 (no route discovery)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/does-not-exist",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "does-not-exist"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code is UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1 · Public discovery (Sprint 1 stubs → 501)",
+      "description": "Public routes need no token. They are contract stubs until E7-23 / E7-34, so 501 is the expected answer. When those tasks merge, change these tests to 200.",
+      "item": [
+        {
+          "name": "GET areas (public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/areas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "areas"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200 (E7-23)\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"data is the list of active areas\", () => pm.expect(pm.response.json().data).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET venues (public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/venues?activity=PLAYSTATION&lat=30.05&lng=31.24",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "venues"
+              ],
+              "query": [
+                {
+                  "key": "activity",
+                  "value": "PLAYSTATION"
+                },
+                {
+                  "key": "lat",
+                  "value": "30.05"
+                },
+                {
+                  "key": "lng",
+                  "value": "31.24"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 501\", () => pm.response.to.have.status(501));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET venues without the required activity → 400",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/venues",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "venues"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"error.code is VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));",
+                  "pm.test(\"error.field is activity\", () => pm.expect(pm.response.json().error.field).to.eql(\"activity\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET venues with an unknown activity → 400",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/venues?activity=CHESS",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "venues"
+              ],
+              "query": [
+                {
+                  "key": "activity",
+                  "value": "CHESS"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"error.code is VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));",
+                  "pm.test(\"error.field is activity\", () => pm.expect(pm.response.json().error.field).to.eql(\"activity\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET venues map (public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/venues/map?activity=BILLIARDS&bounds=29.9,31.1,30.2,31.5",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "venues",
+                "map"
+              ],
+              "query": [
+                {
+                  "key": "activity",
+                  "value": "BILLIARDS"
+                },
+                {
+                  "key": "bounds",
+                  "value": "29.9,31.1,30.2,31.5"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 501\", () => pm.response.to.have.status(501));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET find-available (public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/find-available?areaId=0192f000-0000-7000-8000-000000000001&activity=PLAYSTATION&date=2026-10-20&startTime=18:00&durationMinutes=60",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "find-available"
+              ],
+              "query": [
+                {
+                  "key": "areaId",
+                  "value": "0192f000-0000-7000-8000-000000000001"
+                },
+                {
+                  "key": "activity",
+                  "value": "PLAYSTATION"
+                },
+                {
+                  "key": "date",
+                  "value": "2026-10-20"
+                },
+                {
+                  "key": "startTime",
+                  "value": "18:00"
+                },
+                {
+                  "key": "durationMinutes",
+                  "value": "60"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 501\", () => pm.response.to.have.status(501));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET venue by id (public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/venues/0192f000-0000-7000-8000-000000000011",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "venues",
+                "0192f000-0000-7000-8000-000000000011"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 501\", () => pm.response.to.have.status(501));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "A bad Bearer token is ignored on public routes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer garbage.token.value"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/areas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "areas"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200 (E7-23)\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"data is the list of active areas\", () => pm.expect(pm.response.json().data).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2 · Customer registration & phone OTP",
+      "description": "FR-ACC-01…06 and the OTP limits (arch 10 §2.4). Each run uses new random phones and usernames. SMS goes to the backend log while E7GZ_SMS_PROVIDER=log.",
+      "item": [
+        {
+          "name": "Register: invalid phone → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "register"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Postman Test\",\n  \"username\": \"pm_bad_{{$timestamp}}\",\n  \"phone\": \"12345\",\n  \"email\": \"pm@e7gz.test\",\n  \"password\": \"Passw0rd!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"error.code is VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));",
+                  "pm.test(\"error.field is phone\", () => pm.expect(pm.response.json().error.field).to.eql(\"phone\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register: weak password (no digit) → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "register"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Postman Test\",\n  \"username\": \"pm_weak_{{$timestamp}}\",\n  \"phone\": \"{{phoneUnused}}\",\n  \"email\": \"pm@e7gz.test\",\n  \"password\": \"abcdefgh\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rnd = () => String(Math.floor(Math.random() * 1e8)).padStart(8, \"0\");",
+                  "pm.collectionVariables.set(\"phoneUnused\", \"011\" + rnd());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"error.code is VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));",
+                  "pm.test(\"error.field is password\", () => pm.expect(pm.response.json().error.field).to.eql(\"password\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register: password too short → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "register"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Postman Test\",\n  \"username\": \"pm_short_{{$timestamp}}\",\n  \"phone\": \"{{phoneUnused}}\",\n  \"email\": \"pm@e7gz.test\",\n  \"password\": \"a1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"error.code is VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));",
+                  "pm.test(\"error.field is password\", () => pm.expect(pm.response.json().error.field).to.eql(\"password\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register: invalid email → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "register"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Postman Test\",\n  \"username\": \"pm_mail_{{$timestamp}}\",\n  \"phone\": \"{{phoneUnused}}\",\n  \"email\": \"not-an-email\",\n  \"password\": \"Passw0rd!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"error.code is VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));",
+                  "pm.test(\"error.field is email\", () => pm.expect(pm.response.json().error.field).to.eql(\"email\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register: empty body → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "register"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"error.code is VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register customer A → 201",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "register"
+              ]
+            },
+            "description": "After this request, find the line `DEV SMS to +20…: OTP 123456` in the backend log and put the code in the collection variable `otpCode` (used in folder 3).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Postman Customer A\",\n  \"username\": \"{{usernameA}}\",\n  \"phone\": \"{{phoneA}}\",\n  \"email\": \"a@e7gz.test\",\n  \"password\": \"{{customerPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rnd = () => String(Math.floor(Math.random() * 1e8)).padStart(8, \"0\");",
+                  "pm.collectionVariables.set(\"phoneA\", \"010\" + rnd());",
+                  "pm.collectionVariables.set(\"usernameA\", \"pm_a_\" + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json().data;",
+                  "pm.test(\"userId and otpChallengeId returned\", () => {",
+                  "  pm.expect(d.userId).to.be.a(\"string\");",
+                  "  pm.expect(d.otpChallengeId).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Response never echoes the password\", () => pm.expect(pm.response.text()).to.not.include(pm.collectionVariables.get(\"customerPassword\")));",
+                  "pm.collectionVariables.set(\"userIdA\", d.userId);",
+                  "pm.collectionVariables.set(\"challengeA\", d.otpChallengeId);",
+                  "console.log(\"Customer A phone \" + pm.collectionVariables.get(\"phoneA\") + \": copy its OTP from the backend log into the otpCode variable\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register: same username, other case and spaces → 422 USERNAME_TAKEN",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "register"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Dup\",\n  \"username\": \"  {{usernameAUpper}} \",\n  \"phone\": \"{{phoneUnused}}\",\n  \"email\": \"dup@e7gz.test\",\n  \"password\": \"Passw0rd!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rnd = () => String(Math.floor(Math.random() * 1e8)).padStart(8, \"0\");",
+                  "pm.collectionVariables.set(\"phoneUnused\", \"012\" + rnd());",
+                  "pm.collectionVariables.set(\"usernameAUpper\", pm.collectionVariables.get(\"usernameA\").toUpperCase());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"error.code is USERNAME_TAKEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"USERNAME_TAKEN\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register: same phone written as +20… → 422 PHONE_TAKEN",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "register"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Dup\",\n  \"username\": \"pm_dup_{{$timestamp}}\",\n  \"phone\": \"{{phoneAIntl}}\",\n  \"email\": \"dup@e7gz.test\",\n  \"password\": \"Passw0rd!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"phoneAIntl\", \"+20\" + pm.collectionVariables.get(\"phoneA\").substring(1));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"error.code is PHONE_TAKEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"PHONE_TAKEN\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resend OTP within 60 s → 429 OTP_RESEND_TOO_SOON",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/otp/send",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "otp",
+                "send"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{phoneA}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 429\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"error.code is OTP_RESEND_TOO_SOON\", () => pm.expect(pm.response.json().error.code).to.eql(\"OTP_RESEND_TOO_SOON\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resend OTP for a phone with no pending account → 404",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/otp/send",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "otp",
+                "send"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{phoneUnused}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rnd = () => String(Math.floor(Math.random() * 1e8)).padStart(8, \"0\");",
+                  "pm.collectionVariables.set(\"phoneUnused\", \"015\" + rnd());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"error.code is NOT_FOUND\", () => pm.expect(pm.response.json().error.code).to.eql(\"NOT_FOUND\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resend OTP with an invalid phone → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/otp/send",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "otp",
+                "send"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"999\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"error.code is VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));",
+                  "pm.test(\"error.field is phone\", () => pm.expect(pm.response.json().error.field).to.eql(\"phone\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify: malformed code → 400 (costs no attempt)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/verify-phone",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "verify-phone"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"otpChallengeId\": \"{{challengeA}}\",\n  \"code\": \"12ab\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"error.code is VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify: unknown challenge → 422 OTP_INVALID",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/verify-phone",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "verify-phone"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"otpChallengeId\": \"0192f000-0000-7000-8000-00000000dead\",\n  \"code\": \"123456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"error.code is OTP_INVALID\", () => pm.expect(pm.response.json().error.code).to.eql(\"OTP_INVALID\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register customer B (for the attempt limit) → 201",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "register"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Postman Customer B\",\n  \"username\": \"{{usernameB}}\",\n  \"phone\": \"{{phoneB}}\",\n  \"email\": \"b@e7gz.test\",\n  \"password\": \"{{customerPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rnd = () => String(Math.floor(Math.random() * 1e8)).padStart(8, \"0\");",
+                  "pm.collectionVariables.set(\"phoneB\", \"011\" + rnd());",
+                  "pm.collectionVariables.set(\"usernameB\", \"pm_b_\" + Date.now());",
+                  "pm.collectionVariables.set(\"wrongTries\", 0);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"challengeB\", pm.response.json().data.otpChallengeId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify B with a wrong code (repeats 5×) → 422 OTP_INVALID",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/verify-phone",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "verify-phone"
+              ]
+            },
+            "description": "Loops itself 5 times in the Collection Runner. Sent alone it runs once.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"otpChallengeId\": \"{{challengeB}}\",\n  \"code\": \"000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"error.code is OTP_INVALID\", () => pm.expect(pm.response.json().error.code).to.eql(\"OTP_INVALID\"));",
+                  "const n = Number(pm.collectionVariables.get(\"wrongTries\")) + 1;",
+                  "pm.collectionVariables.set(\"wrongTries\", n);",
+                  "if (n < 5) { pm.execution.setNextRequest(pm.info.requestName); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify B a 6th time → 429 OTP_ATTEMPTS_EXCEEDED",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/verify-phone",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "verify-phone"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"otpChallengeId\": \"{{challengeB}}\",\n  \"code\": \"000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 429\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"error.code is OTP_ATTEMPTS_EXCEEDED\", () => pm.expect(pm.response.json().error.code).to.eql(\"OTP_ATTEMPTS_EXCEEDED\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 · Customer login, refresh rotation, logout",
+      "description": "arch 10 §2.3: 15-minute JWT, rotating refresh token, reuse revokes the chain.",
+      "item": [
+        {
+          "name": "Login unverified customer A by username → 200 (FR-ACC-03)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usernameOrPhone\": \"{{usernameA}}\",\n  \"password\": \"{{customerPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test(\"accessToken and refreshToken returned\", () => {",
+                  "  pm.expect(d.accessToken).to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(d.refreshToken).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "const claims = JSON.parse(atob(d.accessToken.split(\".\")[1].replace(/-/g, \"+\").replace(/_/g, \"/\")));",
+                  "const header = JSON.parse(atob(d.accessToken.split(\".\")[0].replace(/-/g, \"+\").replace(/_/g, \"/\")));",
+                  "pm.test(\"JWT is HS512\", () => pm.expect(header.alg).to.eql(\"HS512\"));",
+                  "pm.test(\"JWT typ is CUSTOMER\", () => pm.expect(claims.typ).to.eql(\"CUSTOMER\"));",
+                  "pm.test(\"JWT lives exactly 15 minutes\", () => pm.expect(claims.exp - claims.iat).to.eql(900));",
+                  "pm.test(\"JWT carries only identity claims\", () =>",
+                  "  pm.expect(Object.keys(claims).sort()).to.eql([\"exp\", \"iat\", \"jti\", \"sub\", \"typ\", \"ver\"]));",
+                  "pm.test(\"Refresh token is opaque (not a JWT)\", () => pm.expect(d.refreshToken.split(\".\").length).to.eql(1));",
+                  "pm.collectionVariables.set(\"custAccess\", d.accessToken);",
+                  "pm.collectionVariables.set(\"custRefresh\", d.refreshToken);",
+                  "pm.test(\"sub is customer A\", () => pm.expect(claims.sub).to.eql(pm.collectionVariables.get(\"userIdA\")));",
+                  "pm.collectionVariables.set(\"custRefreshFirst\", d.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login customer A by phone in 0020… form → 200",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usernameOrPhone\": \"{{phoneA0020}}\",\n  \"password\": \"{{customerPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"phoneA0020\", \"0020\" + pm.collectionVariables.get(\"phoneA\").substring(1));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login with a wrong password → 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usernameOrPhone\": \"{{usernameA}}\",\n  \"password\": \"Wrong-pass-1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code is UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login with an unknown username → 401 (same answer, no enumeration)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usernameOrPhone\": \"nobody_{{$timestamp}}\",\n  \"password\": \"Wrong-pass-1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code is UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login with an empty body → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"error.code is VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh → 200 with a NEW refresh token (rotation)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{custRefreshFirst}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test(\"accessToken and refreshToken returned\", () => {",
+                  "  pm.expect(d.accessToken).to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(d.refreshToken).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "const claims = JSON.parse(atob(d.accessToken.split(\".\")[1].replace(/-/g, \"+\").replace(/_/g, \"/\")));",
+                  "const header = JSON.parse(atob(d.accessToken.split(\".\")[0].replace(/-/g, \"+\").replace(/_/g, \"/\")));",
+                  "pm.test(\"JWT is HS512\", () => pm.expect(header.alg).to.eql(\"HS512\"));",
+                  "pm.test(\"JWT typ is CUSTOMER\", () => pm.expect(claims.typ).to.eql(\"CUSTOMER\"));",
+                  "pm.test(\"JWT lives exactly 15 minutes\", () => pm.expect(claims.exp - claims.iat).to.eql(900));",
+                  "pm.test(\"JWT carries only identity claims\", () =>",
+                  "  pm.expect(Object.keys(claims).sort()).to.eql([\"exp\", \"iat\", \"jti\", \"sub\", \"typ\", \"ver\"]));",
+                  "pm.test(\"Refresh token is opaque (not a JWT)\", () => pm.expect(d.refreshToken.split(\".\").length).to.eql(1));",
+                  "pm.collectionVariables.set(\"custAccess\", d.accessToken);",
+                  "pm.collectionVariables.set(\"custRefresh\", d.refreshToken);",
+                  "pm.test(\"Refresh token rotated\", () => pm.expect(d.refreshToken).to.not.eql(pm.collectionVariables.get(\"custRefreshFirst\")));",
+                  "pm.collectionVariables.set(\"custRefreshSecond\", d.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reuse the OLD refresh token → 401 (reuse detected)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{custRefreshFirst}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code is UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "The NEW token was revoked by the reuse → 401 (whole chain revoked)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{custRefreshSecond}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code is UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login again → fresh session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usernameOrPhone\": \"{{usernameA}}\",\n  \"password\": \"{{customerPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test(\"accessToken and refreshToken returned\", () => {",
+                  "  pm.expect(d.accessToken).to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(d.refreshToken).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "const claims = JSON.parse(atob(d.accessToken.split(\".\")[1].replace(/-/g, \"+\").replace(/_/g, \"/\")));",
+                  "const header = JSON.parse(atob(d.accessToken.split(\".\")[0].replace(/-/g, \"+\").replace(/_/g, \"/\")));",
+                  "pm.test(\"JWT is HS512\", () => pm.expect(header.alg).to.eql(\"HS512\"));",
+                  "pm.test(\"JWT typ is CUSTOMER\", () => pm.expect(claims.typ).to.eql(\"CUSTOMER\"));",
+                  "pm.test(\"JWT lives exactly 15 minutes\", () => pm.expect(claims.exp - claims.iat).to.eql(900));",
+                  "pm.test(\"JWT carries only identity claims\", () =>",
+                  "  pm.expect(Object.keys(claims).sort()).to.eql([\"exp\", \"iat\", \"jti\", \"sub\", \"typ\", \"ver\"]));",
+                  "pm.test(\"Refresh token is opaque (not a JWT)\", () => pm.expect(d.refreshToken.split(\".\").length).to.eql(1));",
+                  "pm.collectionVariables.set(\"custAccess\", d.accessToken);",
+                  "pm.collectionVariables.set(\"custRefresh\", d.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer refresh token as the VENUE cookie → 401 (other audience)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "e7gz"
+              },
+              {
+                "key": "Cookie",
+                "value": "e7gz_venue_refresh={{custRefresh}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/venue/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "venue",
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code is UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "…and it still works on the customer refresh → 200",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{custRefresh}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test(\"accessToken and refreshToken returned\", () => {",
+                  "  pm.expect(d.accessToken).to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(d.refreshToken).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "const claims = JSON.parse(atob(d.accessToken.split(\".\")[1].replace(/-/g, \"+\").replace(/_/g, \"/\")));",
+                  "const header = JSON.parse(atob(d.accessToken.split(\".\")[0].replace(/-/g, \"+\").replace(/_/g, \"/\")));",
+                  "pm.test(\"JWT is HS512\", () => pm.expect(header.alg).to.eql(\"HS512\"));",
+                  "pm.test(\"JWT typ is CUSTOMER\", () => pm.expect(claims.typ).to.eql(\"CUSTOMER\"));",
+                  "pm.test(\"JWT lives exactly 15 minutes\", () => pm.expect(claims.exp - claims.iat).to.eql(900));",
+                  "pm.test(\"JWT carries only identity claims\", () =>",
+                  "  pm.expect(Object.keys(claims).sort()).to.eql([\"exp\", \"iat\", \"jti\", \"sub\", \"typ\", \"ver\"]));",
+                  "pm.test(\"Refresh token is opaque (not a JWT)\", () => pm.expect(d.refreshToken.split(\".\").length).to.eql(1));",
+                  "pm.collectionVariables.set(\"custAccess\", d.accessToken);",
+                  "pm.collectionVariables.set(\"custRefresh\", d.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout → 204",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{custRefresh}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 204\", () => pm.response.to.have.status(204));",
+                  "pm.collectionVariables.set(\"custRefreshLoggedOut\", pm.collectionVariables.get(\"custRefresh\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh after logout → 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{custRefreshLoggedOut}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code is UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login again (token for folder 4)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usernameOrPhone\": \"{{usernameA}}\",\n  \"password\": \"{{customerPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test(\"accessToken and refreshToken returned\", () => {",
+                  "  pm.expect(d.accessToken).to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(d.refreshToken).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "const claims = JSON.parse(atob(d.accessToken.split(\".\")[1].replace(/-/g, \"+\").replace(/_/g, \"/\")));",
+                  "const header = JSON.parse(atob(d.accessToken.split(\".\")[0].replace(/-/g, \"+\").replace(/_/g, \"/\")));",
+                  "pm.test(\"JWT is HS512\", () => pm.expect(header.alg).to.eql(\"HS512\"));",
+                  "pm.test(\"JWT typ is CUSTOMER\", () => pm.expect(claims.typ).to.eql(\"CUSTOMER\"));",
+                  "pm.test(\"JWT lives exactly 15 minutes\", () => pm.expect(claims.exp - claims.iat).to.eql(900));",
+                  "pm.test(\"JWT carries only identity claims\", () =>",
+                  "  pm.expect(Object.keys(claims).sort()).to.eql([\"exp\", \"iat\", \"jti\", \"sub\", \"typ\", \"ver\"]));",
+                  "pm.test(\"Refresh token is opaque (not a JWT)\", () => pm.expect(d.refreshToken.split(\".\").length).to.eql(1));",
+                  "pm.collectionVariables.set(\"custAccess\", d.accessToken);",
+                  "pm.collectionVariables.set(\"custRefresh\", d.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify customer A's phone with the SMS code → 200 + tokens (needs otpCode)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/verify-phone",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "verify-phone"
+              ]
+            },
+            "description": "Manual step: set the collection variable `otpCode` to the 6-digit code from the backend log (`DEV SMS to …: OTP ……`). Skipped automatically when it is empty.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"otpChallengeId\": \"{{challengeA}}\",\n  \"code\": \"{{otpCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!/^[0-9]{6}$/.test(pm.collectionVariables.get(\"otpCode\") || \"\")) {",
+                  "  console.log(\"otpCode not set: skipping phone verification (copy the code from the backend log)\");",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test(\"accessToken and refreshToken returned\", () => {",
+                  "  pm.expect(d.accessToken).to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(d.refreshToken).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "const claims = JSON.parse(atob(d.accessToken.split(\".\")[1].replace(/-/g, \"+\").replace(/_/g, \"/\")));",
+                  "const header = JSON.parse(atob(d.accessToken.split(\".\")[0].replace(/-/g, \"+\").replace(/_/g, \"/\")));",
+                  "pm.test(\"JWT is HS512\", () => pm.expect(header.alg).to.eql(\"HS512\"));",
+                  "pm.test(\"JWT typ is CUSTOMER\", () => pm.expect(claims.typ).to.eql(\"CUSTOMER\"));",
+                  "pm.test(\"JWT lives exactly 15 minutes\", () => pm.expect(claims.exp - claims.iat).to.eql(900));",
+                  "pm.test(\"JWT carries only identity claims\", () =>",
+                  "  pm.expect(Object.keys(claims).sort()).to.eql([\"exp\", \"iat\", \"jti\", \"sub\", \"typ\", \"ver\"]));",
+                  "pm.test(\"Refresh token is opaque (not a JWT)\", () => pm.expect(d.refreshToken.split(\".\").length).to.eql(1));",
+                  "pm.collectionVariables.set(\"custVerifiedAccess\", d.accessToken);",
+                  "pm.collectionVariables.set(\"custVerifiedRefresh\", d.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "After verification there is no code to resend → 404",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/otp/send",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "otp",
+                "send"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{phoneA}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!/^[0-9]{6}$/.test(pm.collectionVariables.get(\"otpCode\") || \"\")) { pm.execution.skipRequest(); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"error.code is NOT_FOUND\", () => pm.expect(pm.response.json().error.code).to.eql(\"NOT_FOUND\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4 · Route groups: each accepts only its own token",
+      "description": "arch 09 §1.1: /customer, /venue and /admin each accept only their own identity type.",
+      "item": [
+        {
+          "name": "No token on a venue route → 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/venue/resources",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "venue",
+                "resources"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code is UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "No token on an admin route → 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/areas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "areas"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code is UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Garbage token → 401",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer garbage"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/venue/resources",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "venue",
+                "resources"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code is UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer token with a tampered signature → 401",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{custAccessTampered}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/does-not-exist",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "does-not-exist"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const t = pm.collectionVariables.get(\"custAccess\");",
+                  "const last = t.slice(-1) === \"A\" ? \"B\" : \"A\";",
+                  "pm.collectionVariables.set(\"custAccessTampered\", t.slice(0, -2) + last + last);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code is UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer token on a VENUE route → 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{custAccess}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/venue/resources",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "venue",
+                "resources"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"error.code is FORBIDDEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer token on an ADMIN route → 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{custAccess}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/areas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "areas"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"error.code is FORBIDDEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customer token on its own group (unknown route) → 404, so the token was accepted",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{custAccess}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/does-not-exist",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "does-not-exist"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"error.code is NOT_FOUND\", () => pm.expect(pm.response.json().error.code).to.eql(\"NOT_FOUND\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5 · Venue account login (needs seed-test-accounts.sql)",
+      "description": "Shared venue account (FR-VEN-01). A DISABLED account is refused even with the right password (FR-VEN-08).",
+      "item": [
+        {
+          "name": "Venue login with a wrong password → 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/venue/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "venue",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginIdentifier\": \"postman.venue\",\n  \"password\": \"Wrong-pass-1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code is UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Venue login (identifier is trimmed, case-insensitive) → 200, refresh token in an HttpOnly cookie",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/venue/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "venue",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginIdentifier\": \"  Postman.Venue \",\n  \"password\": \"{{seedPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sessionCookie() {",
+                  "  const all = pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").map(h => h.value);",
+                  "  pm.test(\"exactly one Set-Cookie (e7gz_venue_refresh)\", () => pm.expect(all.length).to.eql(1));",
+                  "  const c = all[0] || \"\";",
+                  "  pm.test(\"cookie is e7gz_venue_refresh\", () => pm.expect(c.startsWith(\"e7gz_venue_refresh=\")).to.be.true);",
+                  "  return c;",
+                  "}",
+                  "",
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test(\"accessToken in the body, refreshToken NOT in the body\", () => {",
+                  "  pm.expect(d.accessToken).to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(d).to.not.have.property(\"refreshToken\");",
+                  "});",
+                  "const c = sessionCookie();",
+                  "pm.test(\"cookie is HttpOnly; Secure; SameSite=Strict; Path=/api/v1/venue/auth; Max-Age=604800\", () => {",
+                  "  pm.expect(c).to.include(\"HttpOnly\"); pm.expect(c).to.include(\"Secure\"); pm.expect(c).to.include(\"SameSite=Strict\");",
+                  "  pm.expect(c).to.include(\"Path=/api/v1/venue/auth\"); pm.expect(c).to.include(\"Max-Age=604800\");",
+                  "});",
+                  "const rt = c.substring(c.indexOf(\"=\") + 1, c.indexOf(\";\"));",
+                  "pm.test(\"Refresh token is opaque (not a JWT)\", () => { pm.expect(rt).to.not.be.empty; pm.expect(rt.split(\".\").length).to.eql(1); });",
+                  "pm.collectionVariables.set(\"venueRefresh\", rt);",
+                  "const claims = JSON.parse(atob(d.accessToken.split(\".\")[1].replace(/-/g, \"+\").replace(/_/g, \"/\")));",
+                  "const header = JSON.parse(atob(d.accessToken.split(\".\")[0].replace(/-/g, \"+\").replace(/_/g, \"/\")));",
+                  "pm.test(\"JWT is HS512\", () => pm.expect(header.alg).to.eql(\"HS512\"));",
+                  "pm.test(\"JWT typ is VENUE\", () => pm.expect(claims.typ).to.eql(\"VENUE\"));",
+                  "pm.test(\"JWT lives exactly 15 minutes\", () => pm.expect(claims.exp - claims.iat).to.eql(900));",
+                  "pm.test(\"JWT carries only identity claims\", () =>",
+                  "  pm.expect(Object.keys(claims).sort()).to.eql([\"exp\", \"iat\", \"jti\", \"sub\", \"typ\", \"ver\"]));",
+                  "pm.collectionVariables.set(\"venueAccess\", d.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Venue token on a venue route → 501 (accepted; endpoint is a Sprint 1 stub)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueAccess}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/venue/resources",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "venue",
+                "resources"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 501\", () => pm.response.to.have.status(501));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Venue token on an ADMIN route → 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueAccess}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/areas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "areas"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"error.code is FORBIDDEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Venue token on a CUSTOMER route → 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueAccess}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/does-not-exist",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "does-not-exist"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"error.code is FORBIDDEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Venue refresh (cookie, from the Dashboard origin) → 200, rotated",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "e7gz"
+              },
+              {
+                "key": "Cookie",
+                "value": "e7gz_venue_refresh={{venueRefresh}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/venue/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "venue",
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sessionCookie() {",
+                  "  const all = pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").map(h => h.value);",
+                  "  pm.test(\"exactly one Set-Cookie (e7gz_venue_refresh)\", () => pm.expect(all.length).to.eql(1));",
+                  "  const c = all[0] || \"\";",
+                  "  pm.test(\"cookie is e7gz_venue_refresh\", () => pm.expect(c.startsWith(\"e7gz_venue_refresh=\")).to.be.true);",
+                  "  return c;",
+                  "}",
+                  "",
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test(\"accessToken in the body, refreshToken NOT in the body\", () => {",
+                  "  pm.expect(d.accessToken).to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(d).to.not.have.property(\"refreshToken\");",
+                  "});",
+                  "const c = sessionCookie();",
+                  "pm.test(\"cookie is HttpOnly; Secure; SameSite=Strict; Path=/api/v1/venue/auth; Max-Age=604800\", () => {",
+                  "  pm.expect(c).to.include(\"HttpOnly\"); pm.expect(c).to.include(\"Secure\"); pm.expect(c).to.include(\"SameSite=Strict\");",
+                  "  pm.expect(c).to.include(\"Path=/api/v1/venue/auth\"); pm.expect(c).to.include(\"Max-Age=604800\");",
+                  "});",
+                  "const rt = c.substring(c.indexOf(\"=\") + 1, c.indexOf(\";\"));",
+                  "pm.test(\"Refresh token is opaque (not a JWT)\", () => { pm.expect(rt).to.not.be.empty; pm.expect(rt.split(\".\").length).to.eql(1); });",
+                  "pm.test(\"the cookie was rotated\", () => pm.expect(rt).to.not.eql(pm.collectionVariables.get(\"venueRefresh\")));",
+                  "pm.collectionVariables.set(\"venueRefresh\", rt);",
+                  "const claims = JSON.parse(atob(d.accessToken.split(\".\")[1].replace(/-/g, \"+\").replace(/_/g, \"/\")));",
+                  "const header = JSON.parse(atob(d.accessToken.split(\".\")[0].replace(/-/g, \"+\").replace(/_/g, \"/\")));",
+                  "pm.test(\"JWT is HS512\", () => pm.expect(header.alg).to.eql(\"HS512\"));",
+                  "pm.test(\"JWT typ is VENUE\", () => pm.expect(claims.typ).to.eql(\"VENUE\"));",
+                  "pm.test(\"JWT lives exactly 15 minutes\", () => pm.expect(claims.exp - claims.iat).to.eql(900));",
+                  "pm.test(\"JWT carries only identity claims\", () =>",
+                  "  pm.expect(Object.keys(claims).sort()).to.eql([\"exp\", \"iat\", \"jti\", \"sub\", \"typ\", \"ver\"]));",
+                  "pm.collectionVariables.set(\"venueAccess\", d.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Venue logout → 204",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "e7gz"
+              },
+              {
+                "key": "Cookie",
+                "value": "e7gz_venue_refresh={{venueRefresh}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/venue/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "venue",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sessionCookie() {",
+                  "  const all = pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").map(h => h.value);",
+                  "  pm.test(\"exactly one Set-Cookie (e7gz_venue_refresh)\", () => pm.expect(all.length).to.eql(1));",
+                  "  const c = all[0] || \"\";",
+                  "  pm.test(\"cookie is e7gz_venue_refresh\", () => pm.expect(c.startsWith(\"e7gz_venue_refresh=\")).to.be.true);",
+                  "  return c;",
+                  "}",
+                  "",
+                  "pm.test(\"Status is 204\", () => pm.response.to.have.status(204));",
+                  "const c = sessionCookie();",
+                  "pm.test(\"cookie cleared (empty, Max-Age=0)\", () => { pm.expect(c.startsWith(\"e7gz_venue_refresh=;\")).to.be.true; pm.expect(c).to.include(\"Max-Age=0\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Venue refresh after logout → 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "e7gz"
+              },
+              {
+                "key": "Cookie",
+                "value": "e7gz_venue_refresh={{venueRefresh}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/venue/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "venue",
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code is UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DISABLED venue account, right password → 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/venue/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "venue",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginIdentifier\": \"postman.venue.disabled\",\n  \"password\": \"{{seedPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"error.code is FORBIDDEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6 · Platform Admin login (needs seed-test-accounts.sql)",
+      "description": "Admin login by email. An inactive admin is refused even with the right password.",
+      "item": [
+        {
+          "name": "Admin login with a wrong password → 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"postman.admin@e7gz.test\",\n  \"password\": \"Wrong-pass-1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code is UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin login → 200, refresh token in an HttpOnly cookie",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5174"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"POSTMAN.ADMIN@e7gz.test\",\n  \"password\": \"{{seedPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sessionCookie() {",
+                  "  const all = pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").map(h => h.value);",
+                  "  pm.test(\"exactly one Set-Cookie (e7gz_admin_refresh)\", () => pm.expect(all.length).to.eql(1));",
+                  "  const c = all[0] || \"\";",
+                  "  pm.test(\"cookie is e7gz_admin_refresh\", () => pm.expect(c.startsWith(\"e7gz_admin_refresh=\")).to.be.true);",
+                  "  return c;",
+                  "}",
+                  "",
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test(\"accessToken in the body, refreshToken NOT in the body\", () => {",
+                  "  pm.expect(d.accessToken).to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(d).to.not.have.property(\"refreshToken\");",
+                  "});",
+                  "const c = sessionCookie();",
+                  "pm.test(\"cookie is HttpOnly; Secure; SameSite=Strict; Path=/api/v1/admin/auth; Max-Age=43200\", () => {",
+                  "  pm.expect(c).to.include(\"HttpOnly\"); pm.expect(c).to.include(\"Secure\"); pm.expect(c).to.include(\"SameSite=Strict\");",
+                  "  pm.expect(c).to.include(\"Path=/api/v1/admin/auth\"); pm.expect(c).to.include(\"Max-Age=43200\");",
+                  "});",
+                  "const rt = c.substring(c.indexOf(\"=\") + 1, c.indexOf(\";\"));",
+                  "pm.test(\"Refresh token is opaque (not a JWT)\", () => { pm.expect(rt).to.not.be.empty; pm.expect(rt.split(\".\").length).to.eql(1); });",
+                  "pm.collectionVariables.set(\"adminRefresh\", rt);",
+                  "const claims = JSON.parse(atob(d.accessToken.split(\".\")[1].replace(/-/g, \"+\").replace(/_/g, \"/\")));",
+                  "const header = JSON.parse(atob(d.accessToken.split(\".\")[0].replace(/-/g, \"+\").replace(/_/g, \"/\")));",
+                  "pm.test(\"JWT is HS512\", () => pm.expect(header.alg).to.eql(\"HS512\"));",
+                  "pm.test(\"JWT typ is ADMIN\", () => pm.expect(claims.typ).to.eql(\"ADMIN\"));",
+                  "pm.test(\"JWT lives exactly 15 minutes\", () => pm.expect(claims.exp - claims.iat).to.eql(900));",
+                  "pm.test(\"JWT carries only identity claims\", () =>",
+                  "  pm.expect(Object.keys(claims).sort()).to.eql([\"exp\", \"iat\", \"jti\", \"sub\", \"typ\", \"ver\"]));",
+                  "pm.collectionVariables.set(\"adminAccess\", d.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin token on an admin route → 200 (accepted; E7-23)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccess}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/areas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "areas"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200 (accepted; E7-23)\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"data is the list of all areas\", () => pm.expect(pm.response.json().data).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin token on a VENUE route → 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccess}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/venue/resources",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "venue",
+                "resources"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"error.code is FORBIDDEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin token on a CUSTOMER route → 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccess}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/does-not-exist",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "does-not-exist"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"error.code is FORBIDDEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin refresh (cookie, from the Admin origin) → 200, rotated",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5174"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "e7gz"
+              },
+              {
+                "key": "Cookie",
+                "value": "e7gz_admin_refresh={{adminRefresh}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sessionCookie() {",
+                  "  const all = pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").map(h => h.value);",
+                  "  pm.test(\"exactly one Set-Cookie (e7gz_admin_refresh)\", () => pm.expect(all.length).to.eql(1));",
+                  "  const c = all[0] || \"\";",
+                  "  pm.test(\"cookie is e7gz_admin_refresh\", () => pm.expect(c.startsWith(\"e7gz_admin_refresh=\")).to.be.true);",
+                  "  return c;",
+                  "}",
+                  "",
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test(\"accessToken in the body, refreshToken NOT in the body\", () => {",
+                  "  pm.expect(d.accessToken).to.be.a(\"string\").and.not.empty;",
+                  "  pm.expect(d).to.not.have.property(\"refreshToken\");",
+                  "});",
+                  "const c = sessionCookie();",
+                  "pm.test(\"cookie is HttpOnly; Secure; SameSite=Strict; Path=/api/v1/admin/auth; Max-Age=43200\", () => {",
+                  "  pm.expect(c).to.include(\"HttpOnly\"); pm.expect(c).to.include(\"Secure\"); pm.expect(c).to.include(\"SameSite=Strict\");",
+                  "  pm.expect(c).to.include(\"Path=/api/v1/admin/auth\"); pm.expect(c).to.include(\"Max-Age=43200\");",
+                  "});",
+                  "const rt = c.substring(c.indexOf(\"=\") + 1, c.indexOf(\";\"));",
+                  "pm.test(\"Refresh token is opaque (not a JWT)\", () => { pm.expect(rt).to.not.be.empty; pm.expect(rt.split(\".\").length).to.eql(1); });",
+                  "pm.test(\"the cookie was rotated\", () => pm.expect(rt).to.not.eql(pm.collectionVariables.get(\"adminRefresh\")));",
+                  "pm.collectionVariables.set(\"adminRefresh\", rt);",
+                  "const claims = JSON.parse(atob(d.accessToken.split(\".\")[1].replace(/-/g, \"+\").replace(/_/g, \"/\")));",
+                  "const header = JSON.parse(atob(d.accessToken.split(\".\")[0].replace(/-/g, \"+\").replace(/_/g, \"/\")));",
+                  "pm.test(\"JWT is HS512\", () => pm.expect(header.alg).to.eql(\"HS512\"));",
+                  "pm.test(\"JWT typ is ADMIN\", () => pm.expect(claims.typ).to.eql(\"ADMIN\"));",
+                  "pm.test(\"JWT lives exactly 15 minutes\", () => pm.expect(claims.exp - claims.iat).to.eql(900));",
+                  "pm.test(\"JWT carries only identity claims\", () =>",
+                  "  pm.expect(Object.keys(claims).sort()).to.eql([\"exp\", \"iat\", \"jti\", \"sub\", \"typ\", \"ver\"]));",
+                  "pm.collectionVariables.set(\"adminAccess\", d.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin logout → 204",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5174"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "e7gz"
+              },
+              {
+                "key": "Cookie",
+                "value": "e7gz_admin_refresh={{adminRefresh}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function sessionCookie() {",
+                  "  const all = pm.response.headers.all().filter(h => h.key.toLowerCase() === \"set-cookie\").map(h => h.value);",
+                  "  pm.test(\"exactly one Set-Cookie (e7gz_admin_refresh)\", () => pm.expect(all.length).to.eql(1));",
+                  "  const c = all[0] || \"\";",
+                  "  pm.test(\"cookie is e7gz_admin_refresh\", () => pm.expect(c.startsWith(\"e7gz_admin_refresh=\")).to.be.true);",
+                  "  return c;",
+                  "}",
+                  "",
+                  "pm.test(\"Status is 204\", () => pm.response.to.have.status(204));",
+                  "const c = sessionCookie();",
+                  "pm.test(\"cookie cleared (empty, Max-Age=0)\", () => { pm.expect(c.startsWith(\"e7gz_admin_refresh=;\")).to.be.true; pm.expect(c).to.include(\"Max-Age=0\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Inactive admin, right password → 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"postman.inactive@e7gz.test\",\n  \"password\": \"{{seedPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 403\", () => pm.response.to.have.status(403));",
+                  "pm.test(\"error.code is FORBIDDEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"FORBIDDEN\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7 · Login rate limit (run last)",
+      "description": "arch 10 §7: 10 attempts per 15 minutes per identifier + IP; the 11th is 429.",
+      "item": [
+        {
+          "name": "Wrong login ×10 → 401 each (loops itself)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usernameOrPhone\": \"{{rateLimitUser}}\",\n  \"password\": \"Wrong-pass-1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get(\"rateLimitUser\") || Number(pm.collectionVariables.get(\"rlTries\")) === 0) {",
+                  "  pm.collectionVariables.set(\"rateLimitUser\", \"rl_\" + Date.now());",
+                  "  pm.collectionVariables.set(\"rlTries\", 0);",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"error.code is UNAUTHENTICATED\", () => pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHENTICATED\"));",
+                  "const n = Number(pm.collectionVariables.get(\"rlTries\")) + 1;",
+                  "pm.collectionVariables.set(\"rlTries\", n);",
+                  "if (n < 10) { pm.execution.setNextRequest(pm.info.requestName); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "11th attempt → 429 RATE_LIMITED",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customer/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "customer",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usernameOrPhone\": \"{{rateLimitUser}}\",\n  \"password\": \"Wrong-pass-1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 429\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"error.code is RATE_LIMITED\", () => pm.expect(pm.response.json().error.code).to.eql(\"RATE_LIMITED\"));",
+                  "pm.collectionVariables.set(\"rlTries\", 0);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
