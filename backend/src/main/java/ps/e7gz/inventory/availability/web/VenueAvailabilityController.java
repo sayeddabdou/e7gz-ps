@@ -31,13 +31,16 @@ public class VenueAvailabilityController {
     @GetMapping
     @Operation(operationId = "venueGetAvailability", summary = "Resource × time schedule for one business date (FR-VEN-37)")
     public DataResponse<VenueSchedule> get(
-            @Parameter(description = "Business date (arch 04 §4.3).") @RequestParam LocalDate date) {
+            @Parameter(description = "Business date (arch 04 §4.3). Optional: when absent, the Venue's current business "
+                    + "date; the date used is returned as VenueSchedule.businessDate.")
+            @RequestParam(required = false) LocalDate date) {
         throw NotImplementedYet.stub();
     }
 
     @Schema(name = "VenueSchedule")
     public record VenueSchedule(
-            @NotNull @Schema(example = "2026-10-12") LocalDate businessDate,
+            @NotNull @Schema(example = "2026-10-12",
+                    description = "The business date actually used (arch 04 §4.3).") LocalDate businessDate,
             @NotNull List<VenueScheduleResource> resources) {
     }
 
