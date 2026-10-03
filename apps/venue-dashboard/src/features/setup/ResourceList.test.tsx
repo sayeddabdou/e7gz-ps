@@ -38,18 +38,22 @@ describe("ResourceList", () => {
       meta,
     }));
 
-    expect((await screen.findByRole("listitem")).textContent).toBe("Room 1 · PlayStation · PS5 · Active");
+    const resource = await screen.findByRole("listitem");
+    expect(resource.textContent).toContain("Room 1");
+    expect(resource.textContent).toContain("PlayStation · PS5 · Active");
+    expect(resource.textContent).toContain("Change console");
+    expect(resource.textContent).toContain("Disable");
+    expect(resource.textContent).toContain("Archive");
     expect(requests[0]!.url).toBe("http://127.0.0.1:4010/api/v1/venue/resources");
     expect(requests[0]!.headers.get("Authorization")).toBe("Bearer mock-access-token");
   });
 
-  it("shows the error code of a documented error response, and retries", async () => {
+  it("maps a documented error response through the shared message map, and retries", async () => {
     let calls = 0;
-    renderList(async () => (++calls === 1 ? json(401, { error: { code: "PHONE_VERIFICATION_REQUIRED" }, meta }) : json(200, { data: [], meta })));
+    renderList(async () => (++calls === 1 ? json(403, { error: { code: "FORBIDDEN" }, meta }) : json(200, { data: [], meta })));
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("Could not load the resources.");
-    expect(alert.textContent).toContain("PHONE_VERIFICATION_REQUIRED");
+    expect(alert.textContent).toContain("This action is not available for this account.");
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("No resources yet.")).toBeTruthy();
