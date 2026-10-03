@@ -2,18 +2,20 @@
 --
 --   docker compose exec -T postgres psql -U postgres -d e7gz_ps < tools/postman/seed-team-accounts.sql
 --
--- Each of Abdallah, Amr and Sayed has three accounts - a venue (Dashboard login + Owner Password), a Platform Admin and
+-- Each of Abdallah, Amr and Sayed has three accounts - a venue (Dashboard login + Owner PIN), a Platform Admin and
 -- a customer - all with the same password:
 --
 --   Abdallah  venue login: abdallah   admin: abdallah@e7gz.test   customer: abdallah / +201000000001   password: Abdallah123
 --   Amr       venue login: amr        admin: amr@e7gz.test        customer: amr      / +201000000002   password: Amr12345
 --   Sayed     venue login: sayed      admin: sayed@e7gz.test      customer: sayed    / +201000000003   password: Sayed123
 --
--- The venue's Owner Password is the same password. Hashes are Argon2id m=64 MiB, t=3, p=1 (the backend's settings).
+-- Every venue's Owner Password is the 4-digit PIN 1234 (PCR-006). Hashes are Argon2id m=64 MiB, t=3, p=1 (the backend's
+-- settings).
 -- Safe to run more than once. The Postman collections use their own accounts: seed-test-accounts.sql.
 
 \set abdallah '''$argon2id$v=19$m=65536,t=3,p=1$m7NFZ7XXzU8nJZglSAQlCg$CpGktjoNujYL4I8W0JgwzVELaWeO4gOl1t/3X7VRFPQ'''
 \set amr      '''$argon2id$v=19$m=65536,t=3,p=1$2M4gnewn686UMMV8CpNs/Q$f8uEllX5UVa08iVC6DvVPxHAJQl0OAmTmVCJBmvhAf0'''
+\set pin      '''$argon2id$v=19$m=65536,t=3,p=1$Bm42UK5CWeSFnz5rVPty5g$6a50bcwryA/CBKfJZXT3Mus/6Totg7dxQL8TPkgEoSo'''
 \set sayed    '''$argon2id$v=19$m=65536,t=3,p=1$TMg1gZNdxk7CTnWD+7SLeA$glmg2Xlk1OWA8mc7JkgQsZPiR4POe8sasIxj7OOoba0'''
 
 -- One area for the three venues.
@@ -47,11 +49,11 @@ VALUES ('0192f100-0000-7000-8000-000000000021', '0192f100-0000-7000-8000-0000000
        ('0192f100-0000-7000-8000-000000000023', '0192f100-0000-7000-8000-000000000013', 'sayed', :sayed, 'ENABLED', 'en')
 ON CONFLICT (id) DO NOTHING;
 
--- Owner Passwords (same password as the login). Kept as they are on re-runs: a change must move version forward.
+-- Owner PINs: 1234 for every venue. Kept as they are on re-runs: a change must move version forward.
 INSERT INTO iam.venue_owner_secret (venue_account_id, owner_password_hash, changed_at, version)
-VALUES ('0192f100-0000-7000-8000-000000000021', :abdallah, now(), 0),
-       ('0192f100-0000-7000-8000-000000000022', :amr, now(), 0),
-       ('0192f100-0000-7000-8000-000000000023', :sayed, now(), 0)
+VALUES ('0192f100-0000-7000-8000-000000000021', :pin, now(), 0),
+       ('0192f100-0000-7000-8000-000000000022', :pin, now(), 0),
+       ('0192f100-0000-7000-8000-000000000023', :pin, now(), 0)
 ON CONFLICT (venue_account_id) DO NOTHING;
 
 -- Platform Admins.

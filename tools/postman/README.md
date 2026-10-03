@@ -12,7 +12,7 @@ audiences) plus the security rules around it. **83 requests, 435 assertions — 
 ## 0. Team accounts for trying the apps by hand
 
 `seed-team-accounts.sql` creates three people, each with a **venue**, a **Platform Admin** and a **customer** account,
-all with the same password (the venue's Owner Password is that password too). Local database only.
+all with the same password. Every venue's **Owner PIN is `1234`** (the Owner Password is a 4-digit PIN, PCR-006). Local database only.
 
 ```bash
 docker compose exec -T postgres psql -U postgres -d e7gz_ps < tools/postman/seed-team-accounts.sql
@@ -111,7 +111,7 @@ npx newman run tools/postman/E7GZ-PS-Sprint0.postman_collection.json -e tools/po
 
 ## E7-24 — venue account, Owner Password, venue photos, settings
 
-`E7GZ-PS-E7-24.postman_collection.json` — **45 requests, 140 assertions, all green** on the E7-24 branch. Start the
+`E7GZ-PS-E7-24.postman_collection.json` — **45 requests, 139 assertions, all green** on the E7-24 branch. Start the
 backend with **both** profiles (`--spring.profiles.active=api,worker`), seed, then run **from the repository root**
 (the photo upload reads `tools/postman/fixtures/venue-photo.jpg`):
 
@@ -120,9 +120,9 @@ postman collection run tools/postman/E7GZ-PS-E7-24.postman_collection.json -e to
 ```
 
 Each run creates its own area, two venues and a venue account through the admin API, so it can be re-run at once.
-It covers: account creation (weak password, duplicate account, taken login), settings, photos with a wrong / missing /
-right Owner Password, no unlock between two actions, the venue's own Owner Password change, the lockout after 5 wrong
-passwords (429), and the admin reset, disable and enable buttons.
+It covers: account creation (weak password, a non-PIN Owner Password, duplicate account, taken login), settings, photos
+with no Owner PIN (PCR-006), the venue's own Owner PIN change (4 digits, no unlock between two changes), the lockout
+after 5 wrong PINs (429), and the admin reset, disable and enable buttons.
 
-The seed now also gives `postman.venue` an Owner Password (the same test password), so you can test the Venue
-Dashboard's Settings page by hand, and re-seeding clears the Owner Password lockout counters.
+The seed now also gives `postman.venue` an Owner PIN (`1234`), and re-seeding clears the Owner Password lockout
+counters.

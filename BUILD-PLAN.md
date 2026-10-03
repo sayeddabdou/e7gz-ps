@@ -1177,6 +1177,9 @@ PO decisions 2 Oct 2026 — venue location and photos (do these too):
 PO decisions 3 Oct 2026 (do these too):
 - Error text: write the on-screen text for every new error code you map (English) in the error-code map; the Product Owner approves it in your PR. Never take text from the backend.
 
+PO decision 3 Oct 2026 — PCR-006 (do these too):
+- The Owner Password is a 4-digit PIN (PCR-006). In the create-venue-account form, initialOwnerPassword takes exactly 4 digits (numeric keypad, maxlength 4); reset-owner-password's newPassword too. The venue login password keeps the password rule (8+ characters, a letter and a digit). Map VALIDATION_FAILED on initialOwnerPassword, password and newPassword through the error-code map. Call it 'Owner PIN' on screen; the API field names stay ownerPassword / initialOwnerPassword.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```

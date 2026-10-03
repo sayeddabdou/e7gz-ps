@@ -41,10 +41,11 @@ ON CONFLICT (id) DO NOTHING;
 UPDATE iam.venue_account SET account_status = 'DISABLED'
  WHERE id = '0192f000-0000-7000-8000-000000000022' AND account_status <> 'DISABLED';
 
--- E7-24: the enabled venue's Owner Password (same test password), for the Dashboard photo screens. Kept as is on
--- re-runs: the database only lets a change move changed_at and version forward.
+-- E7-24: the enabled venue's Owner Password, the 4-digit PIN 1234 (PCR-006). Kept as is on re-runs: the database only
+-- lets a change move changed_at and version forward.
+\set pin '''$argon2id$v=19$m=65536,t=3,p=1$Bm42UK5CWeSFnz5rVPty5g$6a50bcwryA/CBKfJZXT3Mus/6Totg7dxQL8TPkgEoSo'''
 INSERT INTO iam.venue_owner_secret (venue_account_id, owner_password_hash, changed_at, version)
-VALUES ('0192f000-0000-7000-8000-000000000021', :hash, now(), 0)
+VALUES ('0192f000-0000-7000-8000-000000000021', :pin, now(), 0)
 ON CONFLICT (venue_account_id) DO NOTHING;
 
 -- Active admin: postman.admin@e7gz.test

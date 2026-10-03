@@ -1846,7 +1846,7 @@
             "url": "{{baseUrl}}/api/v1/admin/venues/0192f000-0000-7000-8000-000000000011/venue-account",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"loginIdentifier\": \"postman.e722\",\n  \"password\": \"Postman-Test-2026\",\n  \"initialOwnerPassword\": \"Owner-Test-2026\",\n  \"languagePreference\": \"ar\"\n}",
+              "raw": "{\n  \"loginIdentifier\": \"postman.e722\",\n  \"password\": \"Postman-Test-2026\",\n  \"initialOwnerPassword\": \"1234\",\n  \"languagePreference\": \"ar\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2086,7 +2086,7 @@
             "url": "{{baseUrl}}/api/v1/venue/resources",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"activity\": \"BILLIARDS\",\n  \"ownerPassword\": \"Owner-Test-2026\"\n}",
+              "raw": "{\n  \"activity\": \"BILLIARDS\",\n  \"ownerPassword\": \"1234\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

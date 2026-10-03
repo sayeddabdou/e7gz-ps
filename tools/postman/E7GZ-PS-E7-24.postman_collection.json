@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "E7GZ PS — E7-24 venue account and Owner Password",
-    "description": "E7-24: the admin creates a venue account; venue settings; venue photos with the Owner Password; the venue's own Owner Password change; the 5-in-15-minutes lockout; admin reset, disable and enable. Needs seed-test-accounts.sql (admin postman.admin@e7gz.test) and the backend with the api and worker profiles. Each run creates its own area, venues and account, so it can be re-run (the lockout belongs to that run's account). Run from the repository root so the photo file is found.",
+    "description": "E7-24 (with PCR-006): the admin creates a venue account; venue settings; venue photos with no Owner PIN; the venue's own Owner PIN change (4 digits); the 5-in-15-minutes lockout; admin reset, disable and enable. Needs seed-test-accounts.sql (admin postman.admin@e7gz.test) and the backend with the api and worker profiles. Each run creates its own area, venues and account, so it can be re-run (the lockout belongs to that run's account). Run from the repository root so the photo file is found.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -41,8 +41,8 @@
                   "pm.collectionVariables.set(\"run\", run);",
                   "pm.collectionVariables.set(\"login\", \"e7-24.\" + run);",
                   "pm.collectionVariables.set(\"loginPassword\", \"Login-pass-\" + (run % 10000));",
-                  "pm.collectionVariables.set(\"ownerPassword\", \"Owner-pass-\" + (run % 10000));",
-                  "pm.collectionVariables.set(\"newOwnerPassword\", \"New-owner-\" + (run % 10000));"
+                  "pm.collectionVariables.set(\"ownerPassword\", String(1000 + (run % 8000)));",
+                  "pm.collectionVariables.set(\"newOwnerPassword\", String(1000 + ((run + 1) % 8000)));"
                 ]
               }
             },
@@ -225,7 +225,7 @@
                   "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
                   "const a = pm.response.json().data;",
                   "pm.test(\"ENABLED, for venue A, login as sent\", () => { pm.expect(a.accountStatus).to.eql(\"ENABLED\"); pm.expect(a.venueId).to.eql(pm.collectionVariables.get(\"venueId\")); pm.expect(a.loginIdentifier).to.eql(pm.collectionVariables.get(\"login\")); });",
-                  "pm.test(\"no password in the response\", () => { const t = pm.response.text(); [\"{{ownerPassword}}\", \"{{loginPassword}}\", \"Wrong-guess-1\", \"argon2\"].forEach(p => pm.expect(t).to.not.include(pm.variables.replaceIn(p))); });",
+                  "pm.test(\"no password in the response\", () => { const t = pm.response.text(); [\"{{loginPassword}}\", \"argon2\"].forEach(p => pm.expect(t).to.not.include(pm.variables.replaceIn(p))); });",
                   "pm.collectionVariables.set(\"accountId\", a.id);"
                 ]
               }
@@ -576,10 +576,10 @@
       ]
     },
     {
-      "name": "4 · Venue photos with the Owner Password",
+      "name": "4 · Venue photos (no Owner PIN, PCR-006)",
       "item": [
         {
-          "name": "4.1 · Start an upload → 201 (no Owner Password needed)",
+          "name": "4.1 · Start an upload → 201",
           "event": [
             {
               "listen": "test",
@@ -643,99 +643,7 @@
           }
         },
         {
-          "name": "4.3 · Confirm with a wrong Owner Password → 423",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"status 423\", () => pm.response.to.have.status(423));",
-                  "pm.test(\"error OWNER_PASSWORD_INVALID\", () => pm.expect(pm.response.json().error.code).to.eql(\"OWNER_PASSWORD_INVALID\"));",
-                  "pm.test(\"no password in the response\", () => { const t = pm.response.text(); [\"{{ownerPassword}}\", \"{{loginPassword}}\", \"Wrong-guess-1\", \"argon2\"].forEach(p => pm.expect(t).to.not.include(pm.variables.replaceIn(p))); });"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{venueToken}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": "{{baseUrl}}/api/v1/venue/images/{{photoId}}/confirm",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"ownerPassword\": \"Wrong-guess-1\"\n}"
-            }
-          }
-        },
-        {
-          "name": "4.4 · The photo is still hidden",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
-                  "pm.test(\"no photos\", () => pm.expect(pm.response.json().data).to.have.length(0));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{venueToken}}"
-              }
-            ],
-            "url": "{{baseUrl}}/api/v1/venue/images"
-          }
-        },
-        {
-          "name": "4.5 · Confirm with no Owner Password → 400 (field ownerPassword)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
-                  "pm.test(\"field ownerPassword\", () => pm.expect(pm.response.json().error.field).to.eql(\"ownerPassword\"));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{venueToken}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": "{{baseUrl}}/api/v1/venue/images/{{photoId}}/confirm",
-            "body": {
-              "mode": "raw",
-              "raw": "{}"
-            }
-          }
-        },
-        {
-          "name": "4.6 · Confirm with the right Owner Password → 200",
+          "name": "4.3 · Confirm with no PIN → 200, visible",
           "event": [
             {
               "listen": "test",
@@ -754,54 +662,38 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{venueToken}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
               }
             ],
-            "url": "{{baseUrl}}/api/v1/venue/images/{{photoId}}/confirm",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"ownerPassword\": \"{{ownerPassword}}\"\n}"
-            }
+            "url": "{{baseUrl}}/api/v1/venue/images/{{photoId}}/confirm"
           }
         },
         {
-          "name": "4.7 · Right after a success, the next action still asks (no unlock) → 423",
+          "name": "4.4 · The list shows it",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"status 423\", () => pm.response.to.have.status(423));",
-                  "pm.test(\"error OWNER_PASSWORD_INVALID\", () => pm.expect(pm.response.json().error.code).to.eql(\"OWNER_PASSWORD_INVALID\"));"
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"one photo\", () => pm.expect(pm.response.json().data).to.have.length(1));"
                 ]
               }
             }
           ],
           "request": {
-            "method": "PUT",
+            "method": "GET",
             "header": [
               {
                 "key": "Authorization",
                 "value": "Bearer {{venueToken}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
               }
             ],
-            "url": "{{baseUrl}}/api/v1/venue/images/order",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"imageIds\": [\n    \"{{photoId}}\"\n  ],\n  \"ownerPassword\": \"Wrong-guess-1\"\n}"
-            }
+            "url": "{{baseUrl}}/api/v1/venue/images"
           }
         },
         {
-          "name": "4.8 · Reorder with the right Owner Password → 200",
+          "name": "4.5 · Reorder with no PIN → 200",
           "event": [
             {
               "listen": "test",
@@ -829,45 +721,12 @@
             "url": "{{baseUrl}}/api/v1/venue/images/order",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"imageIds\": [\n    \"{{photoId}}\"\n  ],\n  \"ownerPassword\": \"{{ownerPassword}}\"\n}"
+              "raw": "{\n  \"imageIds\": [\n    \"{{photoId}}\"\n  ]\n}"
             }
           }
         },
         {
-          "name": "4.9 · Remove with a wrong Owner Password → 423, still visible",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"status 423\", () => pm.response.to.have.status(423));",
-                  "pm.test(\"error OWNER_PASSWORD_INVALID\", () => pm.expect(pm.response.json().error.code).to.eql(\"OWNER_PASSWORD_INVALID\"));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{venueToken}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": "{{baseUrl}}/api/v1/venue/images/{{photoId}}/remove",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"ownerPassword\": \"Wrong-guess-1\"\n}"
-            }
-          }
-        },
-        {
-          "name": "4.10 · Remove with the right Owner Password → 204",
+          "name": "4.6 · Remove with no PIN → 204",
           "event": [
             {
               "listen": "test",
@@ -885,21 +744,13 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{venueToken}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
               }
             ],
-            "url": "{{baseUrl}}/api/v1/venue/images/{{photoId}}/remove",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"ownerPassword\": \"{{ownerPassword}}\"\n}"
-            }
+            "url": "{{baseUrl}}/api/v1/venue/images/{{photoId}}/remove"
           }
         },
         {
-          "name": "4.11 · The list is empty again",
+          "name": "4.7 · The list is empty again",
           "event": [
             {
               "listen": "test",
@@ -926,10 +777,10 @@
       ]
     },
     {
-      "name": "5 · The venue changes its Owner Password (FR-VEN-46)",
+      "name": "5 · The venue changes its Owner PIN (FR-VEN-46, PCR-006)",
       "item": [
         {
-          "name": "5.1 · A weak new password → 400 (field next)",
+          "name": "5.1 · A new PIN that is not 4 digits → 400 (field next)",
           "event": [
             {
               "listen": "test",
@@ -957,12 +808,12 @@
             "url": "{{baseUrl}}/api/v1/venue/owner-password",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"current\": \"{{ownerPassword}}\",\n  \"next\": \"weakpass\"\n}"
+              "raw": "{\n  \"current\": \"{{ownerPassword}}\",\n  \"next\": \"12a4\"\n}"
             }
           }
         },
         {
-          "name": "5.2 · A wrong current password → 423",
+          "name": "5.2 · A wrong current PIN → 423",
           "event": [
             {
               "listen": "test",
@@ -990,12 +841,12 @@
             "url": "{{baseUrl}}/api/v1/venue/owner-password",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"current\": \"Wrong-guess-1\",\n  \"next\": \"{{newOwnerPassword}}\"\n}"
+              "raw": "{\n  \"current\": \"0000\",\n  \"next\": \"{{newOwnerPassword}}\"\n}"
             }
           }
         },
         {
-          "name": "5.3 · The right current password → 204",
+          "name": "5.3 · The right current PIN → 204",
           "event": [
             {
               "listen": "test",
@@ -1027,7 +878,40 @@
           }
         },
         {
-          "name": "5.4 · The old one stops working at once → 423",
+          "name": "5.4 · No unlock: the next change needs the PIN again (none sent) → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"field current\", () => pm.expect(pm.response.json().error.field).to.eql(\"current\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/owner-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"next\": \"{{ownerPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "5.5 · The old PIN stops working at once → 423",
           "event": [
             {
               "listen": "test",
@@ -1062,10 +946,109 @@
       ]
     },
     {
-      "name": "6 · Lockout: 5 wrong passwords in 15 minutes (requests 4.3, 4.7, 4.9, 5.2, 5.4)",
+      "name": "6 · Lockout: 5 wrong PINs in 15 minutes (5.2, 5.5 and 6.1-6.3)",
       "item": [
         {
-          "name": "6.1 · Locked out: even the right (new) password → 429 RATE_LIMITED",
+          "name": "6.1 · Wrong PIN → 423",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 423\", () => pm.response.to.have.status(423));",
+                  "pm.test(\"error OWNER_PASSWORD_INVALID\", () => pm.expect(pm.response.json().error.code).to.eql(\"OWNER_PASSWORD_INVALID\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/owner-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current\": \"0000\",\n  \"next\": \"{{ownerPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "6.2 · Wrong PIN → 423",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 423\", () => pm.response.to.have.status(423));",
+                  "pm.test(\"error OWNER_PASSWORD_INVALID\", () => pm.expect(pm.response.json().error.code).to.eql(\"OWNER_PASSWORD_INVALID\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/owner-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current\": \"0000\",\n  \"next\": \"{{ownerPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "6.3 · Wrong PIN → 423",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 423\", () => pm.response.to.have.status(423));",
+                  "pm.test(\"error OWNER_PASSWORD_INVALID\", () => pm.expect(pm.response.json().error.code).to.eql(\"OWNER_PASSWORD_INVALID\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/owner-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current\": \"0000\",\n  \"next\": \"{{ownerPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "6.4 · Locked out: even the right (new) PIN → 429 RATE_LIMITED",
           "event": [
             {
               "listen": "test",
@@ -1093,7 +1076,7 @@
             "url": "{{baseUrl}}/api/v1/venue/owner-password",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"current\": \"{{newOwnerPassword}}\",\n  \"next\": \"Another-pass-1\"\n}"
+              "raw": "{\n  \"current\": \"{{newOwnerPassword}}\",\n  \"next\": \"{{ownerPassword}}\"\n}"
             }
           }
         }
@@ -1103,7 +1086,7 @@
       "name": "7 · Admin venue-account actions (FR-ADM-03)",
       "item": [
         {
-          "name": "7.1 · Reset the Owner Password with a weak one → 400",
+          "name": "7.1 · Reset the Owner PIN with something that is not 4 digits → 400",
           "event": [
             {
               "listen": "test",
@@ -1136,7 +1119,7 @@
           }
         },
         {
-          "name": "7.2 · Reset the Owner Password → 204",
+          "name": "7.2 · Reset the Owner PIN → 204",
           "event": [
             {
               "listen": "test",
@@ -1163,7 +1146,7 @@
             "url": "{{baseUrl}}/api/v1/admin/venue-accounts/{{accountId}}/reset-owner-password",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"newPassword\": \"Reset-owner-1\"\n}"
+              "raw": "{\n  \"newPassword\": \"4321\"\n}"
             }
           }
         },
