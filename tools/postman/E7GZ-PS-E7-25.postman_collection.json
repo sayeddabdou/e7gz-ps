@@ -1,0 +1,1364 @@
+{
+  "info": {
+    "_postman_id": "aa3f6a78-8384-55a5-9e96-b224383a3e57",
+    "name": "E7GZ PS — E7-25 opening hours",
+    "description": "E7-25: GET / preview / commit of the venue's opening hours (FR-VEN-17…FR-VEN-27). Needs seed-test-accounts.sql (admin postman.admin@e7gz.test) and the backend with the api profile. Each run creates its own area, two venues and two venue accounts, so it can be re-run. Session rows, DST and affected bookings are checked by the backend tests (OpeningHoursHttpTest, SessionGeneratorTest, SessionPlanTest): there is no booking API yet to create an affected booking from here.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Runs after every request (arch 09 §1.3–§1.4).",
+          "pm.test(\"[all] X-Correlation-Id header is a UUID\", () =>",
+          "  pm.expect(pm.response.headers.get(\"X-Correlation-Id\") || \"\").to.match(/^[0-9a-f-]{36}$/));",
+          "if (pm.response.code >= 400 && (pm.response.headers.get(\"Content-Type\") || \"\").includes(\"json\")) {",
+          "  pm.test(\"[all] Error body has a code and no message\", () => {",
+          "    const body = pm.response.json();",
+          "    pm.expect(body.error.code).to.be.a(\"string\");",
+          "    pm.expect(body.error).to.not.have.property(\"message\");",
+          "  });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "run",
+      "value": ""
+    },
+    {
+      "key": "login",
+      "value": ""
+    },
+    {
+      "key": "loginB",
+      "value": ""
+    },
+    {
+      "key": "loginPassword",
+      "value": ""
+    },
+    {
+      "key": "adminToken",
+      "value": ""
+    },
+    {
+      "key": "areaId",
+      "value": ""
+    },
+    {
+      "key": "venueId",
+      "value": ""
+    },
+    {
+      "key": "venueBId",
+      "value": ""
+    },
+    {
+      "key": "venueToken",
+      "value": ""
+    },
+    {
+      "key": "venueBToken",
+      "value": ""
+    },
+    {
+      "key": "token1",
+      "value": ""
+    },
+    {
+      "key": "token2",
+      "value": ""
+    },
+    {
+      "key": "token3",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1 · Setup (admin creates an area, two venues and their accounts)",
+      "item": [
+        {
+          "name": "1.1 · Admin login",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = Date.now();",
+                  "pm.collectionVariables.set(\"run\", run);",
+                  "pm.collectionVariables.set(\"login\", \"e7-25.a.\" + run);",
+                  "pm.collectionVariables.set(\"loginB\", \"e7-25.b.\" + run);",
+                  "pm.collectionVariables.set(\"loginPassword\", \"Login-pass-\" + (run % 10000));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"adminToken\", pm.response.json().data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5174"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"postman.admin@e7gz.test\",\n  \"password\": \"Postman-Test-2026\"\n}"
+            }
+          }
+        },
+        {
+          "name": "1.2 · Create an area → 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"areaId\", pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/areas",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"E7-25 Area {{run}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "1.3 · Create venue A → 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"venueId\", pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"areaId\": \"{{areaId}}\",\n  \"name\": \"E7-25 Lounge A\",\n  \"address\": \"12 Abbas El Akkad St\",\n  \"location\": {\"lat\": 30.0561, \"lng\": 31.33},\n  \"phone\": \"+201001234567\",\n  \"activities\": [\"PLAYSTATION\"]\n}"
+            }
+          }
+        },
+        {
+          "name": "1.4 · Create venue B → 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"venueBId\", pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"areaId\": \"{{areaId}}\",\n  \"name\": \"E7-25 Lounge B\",\n  \"address\": \"12 Abbas El Akkad St\",\n  \"location\": {\"lat\": 30.06, \"lng\": 31.33},\n  \"phone\": \"+201001234568\",\n  \"activities\": [\"PLAYSTATION\"]\n}"
+            }
+          }
+        },
+        {
+          "name": "1.5 · Venue account A → 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/venue-account",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginIdentifier\": \"{{login}}\",\n  \"password\": \"{{loginPassword}}\",\n  \"initialOwnerPassword\": \"1234\"\n}"
+            }
+          }
+        },
+        {
+          "name": "1.6 · Venue account B → 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues/{{venueBId}}/venue-account",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginIdentifier\": \"{{loginB}}\",\n  \"password\": \"{{loginPassword}}\",\n  \"initialOwnerPassword\": \"1234\"\n}"
+            }
+          }
+        },
+        {
+          "name": "1.7 · Venue A logs in",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"venueToken\", pm.response.json().data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginIdentifier\": \"{{login}}\",\n  \"password\": \"{{loginPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "1.8 · Venue B logs in",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"venueBToken\", pm.response.json().data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginIdentifier\": \"{{loginB}}\",\n  \"password\": \"{{loginPassword}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 · Before the first save",
+      "item": [
+        {
+          "name": "2.1 · GET before any save → version 0, every day CLOSED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const h = pm.response.json().data;",
+                  "pm.test(\"Africa/Cairo, version 0\", () => { pm.expect(h.timezone).to.eql(\"Africa/Cairo\"); pm.expect(h.version).to.eql(0); });",
+                  "pm.test(\"seven days, 0 = Monday … 6 = Sunday, all CLOSED\", () => { pm.expect(h.days.map(d => d.weekday)).to.eql([0,1,2,3,4,5,6]); h.days.forEach(d => pm.expect(d.mode).to.eql(\"CLOSED\")); });",
+                  "pm.test(\"an empty full-day default (valid to send back)\", () => { pm.expect(h.defaultFullDay).to.eql(true); pm.expect(h.defaultOpen).to.eql(h.defaultClose); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours"
+          }
+        },
+        {
+          "name": "2.2 · The GET as-is previews fine (all CLOSED is valid)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/preview",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"00:00:00\",\n    \"defaultClose\": \"00:00:00\",\n    \"defaultFullDay\": true,\n    \"days\": [\n      {\n        \"weekday\": 0,\n        \"mode\": \"CLOSED\",\n        \"customOpen\": null,\n        \"customClose\": null\n      },\n      {\n        \"weekday\": 1,\n        \"mode\": \"CLOSED\",\n        \"customOpen\": null,\n        \"customClose\": null\n      },\n      {\n        \"weekday\": 2,\n        \"mode\": \"CLOSED\",\n        \"customOpen\": null,\n        \"customClose\": null\n      },\n      {\n        \"weekday\": 3,\n        \"mode\": \"CLOSED\",\n        \"customOpen\": null,\n        \"customClose\": null\n      },\n      {\n        \"weekday\": 4,\n        \"mode\": \"CLOSED\",\n        \"customOpen\": null,\n        \"customClose\": null\n      },\n      {\n        \"weekday\": 5,\n        \"mode\": \"CLOSED\",\n        \"customOpen\": null,\n        \"customClose\": null\n      },\n      {\n        \"weekday\": 6,\n        \"mode\": \"CLOSED\",\n        \"customOpen\": null,\n        \"customClose\": null\n      }\n    ]\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "2.3 · No token → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 401\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours"
+          }
+        },
+        {
+          "name": "2.4 · Admin token on a venue route → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 403\", () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 · Validation (FR-VEN-17…FR-VEN-20)",
+      "item": [
+        {
+          "name": "3.1 · Monday runs into Tuesday's session → 400 (days, weekday 0)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));",
+                  "pm.test(\"field days\", () => pm.expect(pm.response.json().error.field).to.eql(\"days\"));",
+                  "pm.test(\"details.weekday 0\", () => pm.expect(pm.response.json().error.details.weekday).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/preview",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"02:00:00\",\n    \"defaultClose\": \"10:00:00\",\n    \"defaultFullDay\": false,\n    \"days\": [\n      {\n        \"weekday\": 0,\n        \"mode\": \"CUSTOM\",\n        \"customOpen\": \"20:00:00\",\n        \"customClose\": \"02:01:00\"\n      }\n    ]\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "3.2 · Touching is fine: Monday ends exactly when Tuesday opens → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/preview",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"02:00:00\",\n    \"defaultClose\": \"10:00:00\",\n    \"defaultFullDay\": false,\n    \"days\": [\n      {\n        \"weekday\": 0,\n        \"mode\": \"CUSTOM\",\n        \"customOpen\": \"20:00:00\",\n        \"customClose\": \"02:00:00\"\n      }\n    ]\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "3.3 · Sunday → Monday wrap overlaps → 400 (days, weekday 6)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));",
+                  "pm.test(\"field days\", () => pm.expect(pm.response.json().error.field).to.eql(\"days\"));",
+                  "pm.test(\"details.weekday 6\", () => pm.expect(pm.response.json().error.details.weekday).to.eql(6));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/preview",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"03:00:00\",\n    \"defaultClose\": \"12:00:00\",\n    \"defaultFullDay\": false,\n    \"days\": [\n      {\n        \"weekday\": 6,\n        \"mode\": \"CUSTOM\",\n        \"customOpen\": \"22:00:00\",\n        \"customClose\": \"04:00:00\"\n      }\n    ]\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "3.4 · Same wrap with Monday CLOSED → 200 (FR-VEN-20)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/preview",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"03:00:00\",\n    \"defaultClose\": \"12:00:00\",\n    \"defaultFullDay\": false,\n    \"days\": [\n      {\n        \"weekday\": 6,\n        \"mode\": \"CUSTOM\",\n        \"customOpen\": \"22:00:00\",\n        \"customClose\": \"04:00:00\"\n      },\n      {\n        \"weekday\": 0,\n        \"mode\": \"CLOSED\",\n        \"customOpen\": null,\n        \"customClose\": null\n      }\n    ]\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "3.5 · Full day with different times → 400 (defaultClose)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));",
+                  "pm.test(\"field defaultClose\", () => pm.expect(pm.response.json().error.field).to.eql(\"defaultClose\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/preview",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"10:00:00\",\n    \"defaultClose\": \"22:00:00\",\n    \"defaultFullDay\": true,\n    \"days\": []\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "3.6 · Equal times without full day → 400 (defaultClose)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));",
+                  "pm.test(\"field defaultClose\", () => pm.expect(pm.response.json().error.field).to.eql(\"defaultClose\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/preview",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"10:00:00\",\n    \"defaultClose\": \"10:00:00\",\n    \"defaultFullDay\": false,\n    \"days\": []\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "3.7 · The same weekday twice → 400 (days)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));",
+                  "pm.test(\"field days\", () => pm.expect(pm.response.json().error.field).to.eql(\"days\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/preview",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"10:00:00\",\n    \"defaultClose\": \"12:00:00\",\n    \"defaultFullDay\": false,\n    \"days\": [\n      {\n        \"weekday\": 2,\n        \"mode\": \"CLOSED\",\n        \"customOpen\": null,\n        \"customClose\": null\n      },\n      {\n        \"weekday\": 2,\n        \"mode\": \"CLOSED\",\n        \"customOpen\": null,\n        \"customClose\": null\n      }\n    ]\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "3.8 · CUSTOM without a close time → 400 (days)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));",
+                  "pm.test(\"field days\", () => pm.expect(pm.response.json().error.field).to.eql(\"days\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/preview",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"10:00:00\",\n    \"defaultClose\": \"12:00:00\",\n    \"defaultFullDay\": false,\n    \"days\": [\n      {\n        \"weekday\": 3,\n        \"mode\": \"CUSTOM\",\n        \"customOpen\": \"10:00:00\",\n        \"customClose\": null\n      }\n    ]\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "3.9 · CLOSED with times → 400 (days)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));",
+                  "pm.test(\"field days\", () => pm.expect(pm.response.json().error.field).to.eql(\"days\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/preview",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"10:00:00\",\n    \"defaultClose\": \"12:00:00\",\n    \"defaultFullDay\": false,\n    \"days\": [\n      {\n        \"weekday\": 3,\n        \"mode\": \"CLOSED\",\n        \"customOpen\": \"10:00:00\",\n        \"customClose\": \"11:00:00\"\n      }\n    ]\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "3.10 · Weekday 7 → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/preview",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"10:00:00\",\n    \"defaultClose\": \"12:00:00\",\n    \"defaultFullDay\": false,\n    \"days\": [\n      {\n        \"weekday\": 7,\n        \"mode\": \"CLOSED\",\n        \"customOpen\": null,\n        \"customClose\": null\n      }\n    ]\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "3.11 · Unknown mode → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/preview",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"10:00:00\",\n    \"defaultClose\": \"12:00:00\",\n    \"defaultFullDay\": false,\n    \"days\": [\n      {\n        \"weekday\": 3,\n        \"mode\": \"SOMETIMES\",\n        \"customOpen\": null,\n        \"customClose\": null\n      }\n    ]\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "3.12 · Commit without a previewToken → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/commit",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"12:00:00\",\n    \"defaultClose\": \"23:00:00\",\n    \"defaultFullDay\": false,\n    \"days\": [\n      {\n        \"weekday\": 1,\n        \"mode\": \"CLOSED\",\n        \"customOpen\": null,\n        \"customClose\": null\n      }\n    ]\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "3.13 · Nothing was saved → still version 0",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"version 0\", () => pm.expect(pm.response.json().data.version).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 · Preview and commit (FR-VEN-23, FR-VEN-26)",
+      "item": [
+        {
+          "name": "4.1 · Preview 12:00–23:00, Tuesday CLOSED → 200, nothing affected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const p = pm.response.json().data;",
+                  "pm.test(\"nothing affected, no Owner PIN needed\", () => { pm.expect(p.affected).to.eql([]); pm.expect(p.ownerPasswordRequired).to.eql(false); });",
+                  "pm.test(\"previewToken is v1.<sha-256>\", () => pm.expect(p.previewToken).to.match(/^v1\\.[A-Za-z0-9_-]{43}$/));",
+                  "pm.collectionVariables.set(\"token1\", p.previewToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/preview",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"12:00:00\",\n    \"defaultClose\": \"23:00:00\",\n    \"defaultFullDay\": false,\n    \"days\": [\n      {\n        \"weekday\": 1,\n        \"mode\": \"CLOSED\",\n        \"customOpen\": null,\n        \"customClose\": null\n      }\n    ]\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "4.2 · The same proposal previews to the same token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"same token\", () => pm.expect(pm.response.json().data.previewToken).to.eql(pm.collectionVariables.get(\"token1\")));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/preview",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"12:00:00\",\n    \"defaultClose\": \"23:00:00\",\n    \"defaultFullDay\": false,\n    \"days\": [\n      {\n        \"weekday\": 1,\n        \"mode\": \"CLOSED\",\n        \"customOpen\": null,\n        \"customClose\": null\n      }\n    ]\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "4.3 · Commit a DIFFERENT proposal with that token → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"code AFFECTED_SET_CHANGED_REFRESH_PREVIEW\", () => pm.expect(pm.response.json().error.code).to.eql(\"AFFECTED_SET_CHANGED_REFRESH_PREVIEW\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/commit",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"14:00:00\",\n    \"defaultClose\": \"02:00:00\",\n    \"defaultFullDay\": false,\n    \"days\": [\n      {\n        \"weekday\": 4,\n        \"mode\": \"CUSTOM\",\n        \"customOpen\": \"16:00:00\",\n        \"customClose\": \"04:00:00\"\n      },\n      {\n        \"weekday\": 0,\n        \"mode\": \"CLOSED\",\n        \"customOpen\": null,\n        \"customClose\": null\n      }\n    ]\n  },\n  \"previewToken\": \"{{token1}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "4.4 · Commit with a made-up token → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"code AFFECTED_SET_CHANGED_REFRESH_PREVIEW\", () => pm.expect(pm.response.json().error.code).to.eql(\"AFFECTED_SET_CHANGED_REFRESH_PREVIEW\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/commit",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"12:00:00\",\n    \"defaultClose\": \"23:00:00\",\n    \"defaultFullDay\": false,\n    \"days\": [\n      {\n        \"weekday\": 1,\n        \"mode\": \"CLOSED\",\n        \"customOpen\": null,\n        \"customClose\": null\n      }\n    ]\n  },\n  \"previewToken\": \"v1.not-a-real-preview\"\n}"
+            }
+          }
+        },
+        {
+          "name": "4.5 · Still nothing saved → version 0",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"version 0\", () => pm.expect(pm.response.json().data.version).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours"
+          }
+        },
+        {
+          "name": "4.6 · Commit with the right token → 200, version 1 (no Owner PIN)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const h = pm.response.json().data;",
+                  "pm.test(\"version 1\", () => pm.expect(h.version).to.eql(1));",
+                  "pm.test(\"12:00–23:00, not full day\", () => { pm.expect(h.defaultOpen).to.eql(\"12:00:00\"); pm.expect(h.defaultClose).to.eql(\"23:00:00\"); pm.expect(h.defaultFullDay).to.eql(false); });",
+                  "pm.test(\"Tuesday CLOSED, the six others DEFAULT\", () => h.days.forEach(d => pm.expect(d.mode).to.eql(d.weekday === 1 ? \"CLOSED\" : \"DEFAULT\")));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/commit",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"12:00:00\",\n    \"defaultClose\": \"23:00:00\",\n    \"defaultFullDay\": false,\n    \"days\": [\n      {\n        \"weekday\": 1,\n        \"mode\": \"CLOSED\",\n        \"customOpen\": null,\n        \"customClose\": null\n      }\n    ]\n  },\n  \"previewToken\": \"{{token1}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "4.7 · GET → the saved hours, version 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"version 1\", () => pm.expect(pm.response.json().data.version).to.eql(1));",
+                  "pm.test(\"Tuesday CLOSED\", () => pm.expect(pm.response.json().data.days[1].mode).to.eql(\"CLOSED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours"
+          }
+        },
+        {
+          "name": "4.8 · Preview overnight hours (14:00–02:00, Friday 16:00–04:00, Monday CLOSED)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const p = pm.response.json().data;",
+                  "pm.test(\"nothing affected, no Owner PIN needed\", () => { pm.expect(p.affected).to.eql([]); pm.expect(p.ownerPasswordRequired).to.eql(false); });",
+                  "pm.test(\"previewToken is v1.<sha-256>\", () => pm.expect(p.previewToken).to.match(/^v1\\.[A-Za-z0-9_-]{43}$/));",
+                  "pm.collectionVariables.set(\"token2\", p.previewToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/preview",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"14:00:00\",\n    \"defaultClose\": \"02:00:00\",\n    \"defaultFullDay\": false,\n    \"days\": [\n      {\n        \"weekday\": 4,\n        \"mode\": \"CUSTOM\",\n        \"customOpen\": \"16:00:00\",\n        \"customClose\": \"04:00:00\"\n      },\n      {\n        \"weekday\": 0,\n        \"mode\": \"CLOSED\",\n        \"customOpen\": null,\n        \"customClose\": null\n      }\n    ]\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "4.9 · Commit → version 2, overnight hours saved",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const h = pm.response.json().data;",
+                  "pm.test(\"version 2\", () => pm.expect(h.version).to.eql(2));",
+                  "pm.test(\"defaults 14:00 → 02:00 (next day)\", () => { pm.expect(h.defaultOpen).to.eql(\"14:00:00\"); pm.expect(h.defaultClose).to.eql(\"02:00:00\"); });",
+                  "pm.test(\"Friday CUSTOM 16:00–04:00, Monday CLOSED, Tuesday DEFAULT again\", () => { pm.expect(h.days[4]).to.eql({weekday: 4, mode: \"CUSTOM\", customOpen: \"16:00:00\", customClose: \"04:00:00\"}); pm.expect(h.days[0].mode).to.eql(\"CLOSED\"); pm.expect(h.days[1].mode).to.eql(\"DEFAULT\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/commit",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"14:00:00\",\n    \"defaultClose\": \"02:00:00\",\n    \"defaultFullDay\": false,\n    \"days\": [\n      {\n        \"weekday\": 4,\n        \"mode\": \"CUSTOM\",\n        \"customOpen\": \"16:00:00\",\n        \"customClose\": \"04:00:00\"\n      },\n      {\n        \"weekday\": 0,\n        \"mode\": \"CLOSED\",\n        \"customOpen\": null,\n        \"customClose\": null\n      }\n    ]\n  },\n  \"previewToken\": \"{{token2}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "4.10 · Preview a full day from 10:00",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const p = pm.response.json().data;",
+                  "pm.test(\"nothing affected, no Owner PIN needed\", () => { pm.expect(p.affected).to.eql([]); pm.expect(p.ownerPasswordRequired).to.eql(false); });",
+                  "pm.test(\"previewToken is v1.<sha-256>\", () => pm.expect(p.previewToken).to.match(/^v1\\.[A-Za-z0-9_-]{43}$/));",
+                  "pm.collectionVariables.set(\"token3\", p.previewToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/preview",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"10:00:00\",\n    \"defaultClose\": \"10:00:00\",\n    \"defaultFullDay\": true,\n    \"days\": []\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "4.11 · Commit → version 3, full day",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const h = pm.response.json().data;",
+                  "pm.test(\"version 3, full day from 10:00\", () => { pm.expect(h.version).to.eql(3); pm.expect(h.defaultFullDay).to.eql(true); pm.expect(h.defaultOpen).to.eql(\"10:00:00\"); });",
+                  "pm.test(\"every day DEFAULT\", () => h.days.forEach(d => pm.expect(d.mode).to.eql(\"DEFAULT\")));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/commit",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"10:00:00\",\n    \"defaultClose\": \"10:00:00\",\n    \"defaultFullDay\": true,\n    \"days\": []\n  },\n  \"previewToken\": \"{{token3}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 · A venue only sees and changes its own hours",
+      "item": [
+        {
+          "name": "5.1 · Venue B still has no hours",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"version 0\", () => pm.expect(pm.response.json().data.version).to.eql(0));",
+                  "pm.test(\"B: all CLOSED\", () => pm.response.json().data.days.forEach(d => pm.expect(d.mode).to.eql(\"CLOSED\")));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueBToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours"
+          }
+        },
+        {
+          "name": "5.2 · A's preview token does not commit for B → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"code AFFECTED_SET_CHANGED_REFRESH_PREVIEW\", () => pm.expect(pm.response.json().error.code).to.eql(\"AFFECTED_SET_CHANGED_REFRESH_PREVIEW\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueBToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours/commit",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proposal\": {\n    \"defaultOpen\": \"10:00:00\",\n    \"defaultClose\": \"10:00:00\",\n    \"defaultFullDay\": true,\n    \"days\": []\n  },\n  \"previewToken\": \"{{token3}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "5.3 · A is unchanged → version 3",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"version 3\", () => pm.expect(pm.response.json().data.version).to.eql(3));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/opening-hours"
+          }
+        }
+      ]
+    }
+  ]
+}

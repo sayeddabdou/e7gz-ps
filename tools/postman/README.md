@@ -126,3 +126,26 @@ after 5 wrong PINs (429), and the admin reset, disable and enable buttons.
 
 The seed now also gives `postman.venue` an Owner PIN (`1234`), and re-seeding clears the Owner Password lockout
 counters.
+
+## E7-25 — opening hours
+
+`E7GZ-PS-E7-25.postman_collection.json`: **39 requests, 140 assertions, all green** on the E7-25 branch (run twice
+in a row). Backend with the `api` profile, seed, then:
+
+```bash
+postman collection run tools/postman/E7GZ-PS-E7-25.postman_collection.json -e tools/postman/E7GZ-PS-local.postman_environment.json
+```
+
+Each run creates its own area, two venues and two venue accounts, so it can be re-run at once.
+It covers:
+- the empty state before the first save (version 0, every day CLOSED);
+- 401 with no token and 403 with an admin token;
+- validation: overlaps (including the Sunday → Monday wrap), touching sessions, the full-day rule, duplicate or malformed days;
+- preview → commit, with no Owner PIN needed;
+- the preview token: a different proposal, a made-up token, or another venue's token gives 409 and saves nothing;
+- three successive saves: plain, overnight with a custom Friday, and full day;
+- one venue never seeing another's hours.
+
+Not covered here: affected bookings and the tournament block need bookings and tournaments, which have no API yet.
+They, the session rows and the DST cases are in the backend tests (`OpeningHoursHttpTest`, `SessionGeneratorTest`,
+`SessionPlanTest`).
