@@ -91,7 +91,7 @@ final class OpeningHoursCommands {
      * preview (FR-VEN-26); then save the hours and regenerate the sessions in the same transaction (ADR-009).
      *
      * <p>Cancelling affected Bookings (step 8's cancellations, step 9's notifications, FR-VEN-28) needs the Booking,
-     * Late Confirm and Messaging modules, which do not exist yet (PO decision 3 Oct 2026, E7-25): until they do, a
+     * Late Confirm and Messaging modules, which do not exist yet (PO decision 3 Oct 2026): E7-113 builds it. Until then a
      * change that would cancel anything answers 501 and changes nothing. So every change that commits cancels nothing
      * and needs no Owner Password (FRS §2.4, "Hours/Closure with no protected cancellation").
      */
