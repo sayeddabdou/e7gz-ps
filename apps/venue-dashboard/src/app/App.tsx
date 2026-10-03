@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { logicalSpacing, webTokens } from "@e7gz/tokens/web";
 import { BrowserRouter, NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { createDashboardApiClient } from "../api";
 import type { ConfigResult } from "../config";
-import { ResourceList } from "../features/setup/ResourceList";
+import { PricingEditor, ResourceList, SettingsPage } from "../features/setup";
 import { createVenueSessionApi, VenueLoginScreen, type VenueSessionApi } from "../features/auth";
 import { directionOf, messages, MessagesContext, type Language, type Messages } from "../i18n";
 
@@ -94,6 +94,7 @@ function ProtectedShell({
   config,
   direction,
   onAccessToken,
+  onLanguagePreference,
   onUnauthenticated,
   session,
   t,
@@ -102,6 +103,7 @@ function ProtectedShell({
   config: Extract<ConfigResult, { ok: true }>;
   direction: "ltr" | "rtl";
   onAccessToken: (accessToken: string) => void;
+  onLanguagePreference: (language: Language) => void;
   onUnauthenticated: () => void;
   session: VenueSessionApi;
   t: Messages;
@@ -140,6 +142,10 @@ function ProtectedShell({
               element={
                 route.path === "/rooms" ? (
                   <ResourceList api={api} />
+                ) : route.path === "/pricing" ? (
+                  <PricingEditor api={api} />
+                ) : route.path === "/settings" ? (
+                  <SettingsPage api={api} onLanguagePreference={onLanguagePreference} />
                 ) : (
                   <h2>{t.navigation[route.label]}</h2>
                 )
@@ -194,6 +200,11 @@ export function App({
     saveLanguage(nextLanguage);
   };
 
+  const setLanguagePreference = useCallback((nextLanguage: Language) => {
+    setLanguage(nextLanguage);
+    saveLanguage(nextLanguage);
+  }, []);
+
   const logout = async () => {
     if (!session) return;
     setLoggingOut(true);
@@ -232,6 +243,7 @@ export function App({
               config={config}
               direction={direction}
               onAccessToken={setAccessToken}
+              onLanguagePreference={setLanguagePreference}
               onUnauthenticated={() => setAccessToken(undefined)}
               session={session!}
               t={t}
