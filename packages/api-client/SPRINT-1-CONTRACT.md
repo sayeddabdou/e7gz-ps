@@ -55,7 +55,8 @@ Sources:
 | Error codes for generic failures (400/401/403/404/429). Arch 09 §1.5 defines none. | E7-12 | 401 is documented on every secured route with **no body schema**, rather than an invented or borrowed code. No generic 400/404/429 responses are documented yet. A 500 carries only a correlation ID (§1.4) and is not modelled. |
 | The endpoint for the separate activation action, and the other marketplace status changes (INACTIVE ↔ ACTIVE ↔ SUSPENDED). | E7-22 / E7-23 | **Added by E7-22**, see §4. |
 | Venue account creation, resource creation, `GET /admin/venues/{id}`, `GET PATCH /admin/activities`, `PATCH /venue/resources/{id}` | E7-22 / E7-23 / E7-24 / E7-26 | **E7-22** added the first three (§4); activities and resource PATCH are still open (§4.3). |
-| `/venue/settings`, reviews, closures, maintenance, emergencies, tournaments, owner reviews | later sprint contracts | Not Sprint 1. |
+| `/venue/settings` | E7-24 | **Moved into Sprint 1** (3 Oct 2026), see §5.6. |
+| reviews, closures, maintenance, emergencies, tournaments, owner reviews | later sprint contracts | Not Sprint 1. |
 
 No included endpoint depends on an unresolved product decision, so nothing had to be kept apart as a draft.
 
@@ -153,3 +154,12 @@ Admin `/admin/venues/{id}/images…` work (E7-23 PR 3). Venue `/venue/images…`
 - The copies are made by the worker profile within about a minute of confirm (run the backend locally with `--spring.profiles.active=api,worker`, or the URLs stay `null`); a PNG copy stays PNG, JPEG and WebP copies are JPEG (PO decision 3 Oct 2026).
 - `smallUrl` (venue card) and `mediumUrl` (Venue Details) are signed links valid until `urlsExpireAt` (1 hour); both are `null` until the resized copies are made, so show a placeholder and reload the list later. Never cache the links past `urlsExpireAt`.
 - Errors: `VENUE_IMAGE_NOT_ACCEPTED` (start: `error.field` = `contentType` or `sizeBytes`; confirm, no field: the picture is over 50 megapixels), `VENUE_IMAGE_LIMIT_REACHED` (start or confirm), `VENUE_IMAGE_NOT_UPLOADED` (confirm), `OWNER_PASSWORD_REQUIRED` / `OWNER_PASSWORD_INVALID` (venue writes), `NOT_FOUND` for an unknown or removed photo.
+
+### 5.6 Venue settings (contract only, 3 Oct 2026)
+
+E7-22 missed `GET PATCH /venue/settings` (arch 09 §4.2); E7-35 needs it for the venue profile screen, so it moves into Sprint 1. Both answer 501 until E7-24; build against `pnpm mock` meanwhile. Controller: `venue/web/VenueSettingsController`.
+
+- `GET` → `VenueSettings {venueId, name, areaId, areaName, address, location, phone, timezone, marketplaceStatus, activities, languagePreference}` for the signed-in venue.
+- `PATCH {name?, address?, phone?, languagePreference?}` → `VenueSettings`. Only the fields sent change. Same rules as `PATCH /admin/venues` (§5.3): a text field that is sent must not be blank, at most 200 characters; `phone` is normalised to E.164. Errors are `VALIDATION_FAILED` with `error.field`.
+- **PO decision 3 Oct 2026:** the venue edits name, address and phone itself; area, location, activities, timezone and marketplace status stay with the Platform Admin. No Owner Password (not in FR-VEN-03); `Idempotency-Key` optional.
+- `languagePreference` (`en` | `ar`) is the account preference that FR-VEN-40's resolution reads first (account → browser storage → English).

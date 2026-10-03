@@ -26,6 +26,7 @@ import ps.e7gz.common.codes.OpeningDayMode;
 import ps.e7gz.common.codes.OperationalRestriction;
 import ps.e7gz.common.codes.PlayMode;
 import ps.e7gz.common.codes.ResourceBaseState;
+import ps.e7gz.common.codes.VenueAccountLanguage;
 import ps.e7gz.common.codes.VenueAccountStatus;
 import ps.e7gz.support.IntegrationTest;
 
@@ -215,6 +216,24 @@ class OpenApiProductionContractTest extends IntegrationTest {
     }
 
     @Test
+    void venueSettingsEditOnlyTheVenueOwnedFieldsWithoutTheOwnerPassword() {
+        Map<String, JsonNode> operations = operations();
+        JsonNode patch = operations.get("patch /api/v1/venue/settings");
+        JsonNode get = operations.get("get /api/v1/venue/settings");
+
+        // PO decision 3 Oct 2026 (E7-35): area, location, activities, timezone and status stay with the admin.
+        JsonNode body = resolve(patch.path("requestBody").path("content").path("application/json").path("schema"));
+        List<String> editable = new ArrayList<>();
+        body.path("properties").fieldNames().forEachRemaining(editable::add);
+        assertThat(editable).containsExactlyInAnyOrder("name", "address", "phone", "languagePreference");
+        assertThat(patch.path("responses").has("423")).isFalse();
+        JsonNode view = contract.path("components").path("schemas").path("VenueSettings");
+        assertThat(get.path("responses").path("200").toString()).contains("VenueSettings");
+        assertThat(fieldNames(view.path("required"))).containsExactlyInAnyOrder("venueId", "name", "areaId", "areaName",
+                "address", "location", "phone", "timezone", "marketplaceStatus", "activities", "languagePreference");
+    }
+
+    @Test
     void nullableReferencesAreWrittenAsAnyOfWithNull() {
         List<String> nullableRefs = new ArrayList<>();
         contract.path("components").path("schemas").properties().forEach(schema ->
@@ -241,7 +260,8 @@ class OpenApiProductionContractTest extends IntegrationTest {
                 "VenueAccountStatus", VenueAccountStatus.values(),
                 "ResourceBaseState", ResourceBaseState.values(),
                 "OperationalRestriction", OperationalRestriction.values(),
-                "OpeningDayMode", OpeningDayMode.values());
+                "OpeningDayMode", OpeningDayMode.values(),
+                "VenueAccountLanguage", VenueAccountLanguage.values());
         Map<String, String> checks = Map.of(
                 "Activity", "ck_resource_activity",
                 "ConsoleType", "ck_resource_console_type",
@@ -250,7 +270,8 @@ class OpenApiProductionContractTest extends IntegrationTest {
                 "VenueAccountStatus", "ck_venue_account_status",
                 "ResourceBaseState", "ck_resource_base_state",
                 "OperationalRestriction", "ck_resource_restriction",
-                "OpeningDayMode", "ck_opening_day_mode");
+                "OpeningDayMode", "ck_opening_day_mode",
+                "VenueAccountLanguage", "ck_venue_account_language");
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 
         enums.forEach((name, values) -> {
