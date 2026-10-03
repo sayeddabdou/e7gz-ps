@@ -695,6 +695,8 @@ Read only these docs for this task:
 - iam.venue_account, iam.venue_owner_secret
 - PCR-005 (venue photos)
 - arch 09 §4.2 (venue photos)
+- arch 09 §4.2 (venue settings)
+- FR-VEN-40
 
 Do:
 1. Admin creates the venue account; venue login already exists (S0-P6).
@@ -705,6 +707,7 @@ Do:
 Done when (write these as tests first where possible):
 - Tests: wrong password audited + rate limited; no session "unlock" exists.
 - Tests: venue photo confirm, reorder and remove with a wrong Owner Password return 423 OWNER_PASSWORD_INVALID and are audited; another venue's photo is NOT_FOUND.
+- Tests (VenueSettingsHttpTest): GET returns the signed-in venue's profile and language; PATCH changes only the fields sent; a blank name or a bad phone is VALIDATION_FAILED on that field; another venue's data is never read or changed.
 
 Carry-forward from the Sprint 0 review (do these too):
 - Password-hashing overload guard (Sprint 0 review S-2): every Argon2id hash and verify (login, registration, Owner Password, later password reset) uses 64 MiB, so a flood can exhaust memory. Put them all behind one bounded gate in identity (e.g. a Semaphore, permits configurable, default 4 per instance). A request that gets no permit within about 2 s fails with 429 RATE_LIMITED, and nothing is written. Test: permits + 1 concurrent hashes, one is refused.
@@ -716,6 +719,9 @@ Carry-forward from E7-22 (do these too):
 PO decisions 2 Oct 2026 — venue location and photos (do these too):
 - Venue photos, Venue Dashboard side (PCR-005, arch 09 §4.2): implement GET POST /venue/images, POST /venue/images/{imageId}/confirm {ownerPassword}, PUT /venue/images/order {imageIds, ownerPassword}, POST /venue/images/{imageId}/remove {ownerPassword}, using the photo service E7-23 exposes in the venue api package. confirm, order and remove are Owner-Password protected; POST (it only returns a signed PUT URL) is not. A venue can only see and change its own photos.
 - PCR-005 adds "venue photo add, reorder and remove" to the FRS §2.4 Owner Password required list: add it to the list your architecture test reads.
+
+PO decision 3 Oct 2026 — venue settings (do these too):
+- Venue settings (arch 09 §4.2, FR-VEN-40; contract added for E7-35): implement GET PATCH /venue/settings in venue/web/VenueSettingsController (the stub answers 501). GET returns the signed-in venue's profile (venueId, name, areaId, areaName, address, location, phone, timezone, marketplaceStatus, activities) and the venue account's languagePreference. PATCH changes only the fields sent: name, address and phone (same rules as PATCH /admin/venues: not blank when sent, at most 200 characters, phone stored as E.164, VALIDATION_FAILED with error.field) and languagePreference (en | ar, iam.venue_account.language_preference). Area, location, activities, timezone and marketplace status stay admin-only. No Owner Password (not in the FRS §2.4 list); Idempotency-Key optional. A venue only ever reads and changes its own venue.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -1024,6 +1030,7 @@ PO decisions 2 Oct 2026 — venue location and photos (do these too):
 
 PO decisions 3 Oct 2026 (do these too):
 - Error text: write the on-screen text for every new error code you map (English and Arabic) in the error-code map; the Product Owner approves it in your PR. Never take text from the backend.
+- Venue profile (PO decision 3 Oct 2026, arch 09 §4.2): GET /venue/settings shows name, area, address, location, phone, activities, marketplace status and language; PATCH /venue/settings edits name, address, phone and languagePreference only, with no Owner Password prompt. Area, location, activities and status are read-only on the Dashboard (the Platform Admin changes them). The language saved here is the account preference (FR-VEN-40: account preference → browser storage → English). Map VALIDATION_FAILED on name, address and phone through the error-code map. Build against pnpm mock until E7-24 implements it.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.

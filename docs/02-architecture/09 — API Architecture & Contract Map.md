@@ -359,7 +359,7 @@ No `details`, no field, no hint. The real cause — the 4-commitment limit, a ba
 | `POST` | `/venue/owner-password` `{current, next}` | **yes** | `FR-VEN-46` |
 | `GET` | `/venue/reviews` — **view only** | — | `FR-VEN-39` |
 | `GET` `POST` | `/venue/tournaments` · `/{id}/approve` · `/reject` · `/cancel` · `/operational-termination` | conditional | `FR-TRN-21`, `FR-TRN-23`, `FR-TRN-24` |
-| `GET` `PATCH` | `/venue/settings` — incl. language preference | — | `FR-VEN-40` |
+| `GET` `PATCH` | `/venue/settings` — the venue's profile and language preference; `PATCH {name?, address?, phone?, languagePreference?}` | — | `FR-VEN-40`; editable fields — Product Owner decision, 3 Oct 2026 |
 | `GET` | `/venue/images` — visible photos in order, each with a signed GET URL | — | `FR-DIS-03`, PCR-005 |
 | `POST` | `/venue/images` `{contentType, sizeBytes}` → `{image, uploadUrl, uploadExpiresAt}` — signed PUT; nothing is visible yet | — | PCR-005, arch 12 §2 |
 | `POST` | `/venue/images/{id}/confirm` `{ownerPassword}` — the photo becomes visible | **yes** | PCR-005 |
@@ -367,6 +367,8 @@ No `details`, no field, no hint. The real cause — the 4-commitment limit, a ba
 | `POST` | `/venue/images/{id}/remove` `{ownerPassword}` — hides it (`removed_at`); never hard-deleted | **yes** | PCR-005 |
 
 **Venue photos** (PCR-005, Product Owner decision, 2 Oct 2026) use a two-step upload (arch 12 §2): the API validates type and size and returns a short-lived signed PUT; the client uploads the bytes directly; `confirm` checks the stored object and makes the photo visible. A photo that is never confirmed is never shown. The Platform Admin routes in §5 work the same way without the Owner Password.
+
+**Venue settings** (Product Owner decision, 3 Oct 2026): the venue edits its own **name, address and phone** and its Dashboard language, with no Owner Password, under the same validation as the Platform Admin venue edit. **Area, location, activities, timezone and marketplace status** stay with the Platform Admin (§5) and are read-only on this route.
 
 There is **no `PATCH` on a resource** (Product Owner decision, 2 Oct 2026): names are fixed (`FR-VEN-41`), the activity is fixed per resource, and console and state each have their own protected action above.
 
