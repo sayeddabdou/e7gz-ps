@@ -877,6 +877,16 @@ Do:
 Done when (write these as tests first where possible):
 - EC-AVAI-002 and EC-AVAI-004 from the roadmap Phase 1 exit criteria pass.
 
+Carry-forward from the E7-29 review (do these too):
+- ReservationLedger.create (inventory/ledger) turns 23P01 on ex_no_double_booking into SlotTaken (SLOT_NO_LONGER_AVAILABLE) for every reservation type. Only a BOOKING row should become SlotTaken; for LATE_CONFIRM_HOLD, TOURNAMENT_APPROVAL_HOLD and TOURNAMENT_HOLD let the error propagate so the global mapping gives its own code (e.g. LATE_CONFIRM_RESOURCE_CONFLICT). It is rare because tr_10_resource_reservation_cross_class_guard usually refuses first, but check the reservation type before throwing SlotTaken.
+- Test: a 23P01 on ex_no_double_booking for a non-BOOKING row is not SlotTaken.
+
+PO decision 3 Oct 2026 — reads from other modules (Amr's question; do these too):
+- Yes: isFree reads Venue, Resource, Operations and the Reservation Ledger only through small read-only interfaces published in each owner's api package (arch 03; ArchUnit). All SQL stays in the owner module's internal package; Availability holds no SQL on their tables. No new tables, no schema change, no caching (arch 01 §15 rule 1).
+- Keep each interface to what the eight checks need (arch 05 §2.2), for example: venue — venueBlocked(venueId, at) [check 1]; resource — the Resource's venueId, baseState and restriction, and resourceBlocked(resourceId, at) [checks 2–4]; operations — declared emergency interval, maintenance and closure overlaps for a period [checks 5–7]; ledger — hasBlockingOverlap(resourceId, period) on ReservationLedger [check 8]. Every read also accepts the caller's CommandContext so a commit-time check reads on the command's own transaction.
+- Ledger and Operations are Engine (your lane). Venue and Resource are Platform: keep those additions to the api interface + one internal JDBC class each, and ask Sayed to review them; E7-26 (resources) will build on the resource one, so do not add anything else there.
+- Tests: each new read is tested in its owner module against the database; the predicate tests use them, not direct SQL.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -899,6 +909,10 @@ Do:
 
 Done when (write these as tests first where possible):
 - Table-driven tests including DST days.
+
+PO decision 3 Oct 2026 — current business date for the Dashboard (from the E7-36 review; do these too):
+- The business date stays as Product Spec §17.5 defines it (the Operating Day of the session; a night that crosses midnight is one business day — the PO kept this rule). The Dashboard must not guess today's business date from the device clock. Add currentBusinessDate(venueId) to the resolver's api (the command/request instant from the injected Clock, never Instant.now()). Make the date query parameter of GET /api/v1/venue/availability optional in the contract: when absent the server uses currentBusinessDate and returns it in VenueSchedule.businessDate (the stub still answers 501 until the endpoint is implemented). Regenerate OpenAPI (pnpm api:gen) and tell Abdallah (E7-36): the schedule's first load sends no date and navigates from the returned businessDate.
+- Test: at 01:00 Africa/Cairo for a venue open 18:00–02:00, currentBusinessDate is the previous calendar day; at 03:00 (after closing, no session) it is that calendar day.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
