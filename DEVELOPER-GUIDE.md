@@ -214,6 +214,7 @@ e7gz-ps/
 | E7-59 | Amr | **Check-in, late present, no-show (O13)** | Check-in, "arrived late", and no-show. | E7-47 | `…/attendance/` |
 | E7-60 | Amr | **Start-time revalidation (O11)** | Re-check everything at start time and cancel with the right reason if needed. | E7-59 | `…/booking/ (start revalidation)` |
 | E7-61 | Amr | **Completion and attendance defaults (O12)** | Finish bookings automatically and set the final attendance result. | E7-59 | `…/attendance/ (completion)` |
+| E7-113 | Amr | **Opening-hours change: cancel affected bookings (O5)** | When a venue saves new opening hours, cancel the future bookings the new hours no longer cover, release their holds and tell the customers. | E7-25, E7-49, E7-58, E7-55 | `…/booking/ (hours-change cancellation)`<br>`…/venue/internal/ (OpeningHoursCommands)` |
 
 #### Sprint 4 — Trust, bans and rewards · 22 Nov – 3 Dec 2026
 

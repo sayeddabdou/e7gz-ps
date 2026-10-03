@@ -106,6 +106,7 @@ Late Confirm, check-in / late / no-show, start-time revalidation, completion; al
 | S3-E2 | E7-59 | Engine | Check-in, late present, no-show (O13) | Check-in, "arrived late", and no-show. | S2-E2 |
 | S3-E3 | E7-60 | Engine | Start-time revalidation (O11) | Re-check everything at start time and cancel with the right reason if needed. | S3-E2 |
 | S3-E4 | E7-61 | Engine | Completion and attendance defaults (O12) | Finish bookings automatically and set the final attendance result. | S3-E2 |
+| S3-E5 | E7-113 | Engine | Opening-hours change: cancel affected bookings (O5) | When a venue saves new opening hours, cancel the future bookings the new hours no longer cover, release their holds and tell the customers. | S1-P3, S2-E4, S3-E1, S3-P1 |
 
 ### Sprint 4 — Trust, bans and rewards (22 Nov – 3 Dec 2026)
 
@@ -1849,6 +1850,36 @@ Do:
 
 Done when (write these as tests first where possible):
 - Boundary pack green.
+
+Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
+Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
+```
+
+### S3-E5 (E7-113) — Opening-hours change: cancel affected bookings (O5)
+
+**What this task does:** When a venue saves new opening hours, cancel the future bookings the new hours no longer cover, release their holds and tell the customers.
+
+Lane: Engine · Depends on: S1-P3, S2-E4, S3-E1, S3-P1
+
+```text
+Read CLAUDE.md first. You are implementing task S3-E5 — "Opening-hours change: cancel affected bookings (O5)" (Engine lane) of the E7GZ PS build plan.
+
+Read only these docs for this task:
+- FR-VEN-23, FR-VEN-24, FR-VEN-25, FR-VEN-26, FR-VEN-28
+- arch 06 §2.4
+- arch 03 §5 (impact preview token)
+- FRS §2.4 (Owner Password)
+- packages/api-client/SPRINT-1-CONTRACT.md §5.7
+
+Do:
+1. Replace the 501 in OpeningHoursCommands.Commit (venue/internal, E7-25): in the same transaction, cancel every affected Booking with VENUE_OPENING_HOURS_CHANGED and release its ledger row (BOOKING or LATE_CONFIRM_HOLD). Venue must not depend on Booking: declare a port in venue.api (like HoursChangeBookings) and implement it in the Booking module.
+2. AWAITING bookings (FR-VEN-28): the Late Confirmation timer stops immediately, the hold is released, and the customer is notified explicitly.
+3. Owner Password (FR-VEN-25, FRS §2.4): required only when the affected set has a CONFIRMED Online or an AWAITING booking. Use a separate @OwnerProtected("HOURS_CLOSURE_SAVE_CANCELLING_PROTECTED") command and flip that matrix row to built=yes. Missing: 423 OWNER_PASSWORD_REQUIRED. Wrong: 423 OWNER_PASSWORD_INVALID, audited.
+4. Step 9: notify each affected Online customer through the outbox.
+5. Keep from E7-25: the preview-token check (409 AFFECTED_SET_CHANGED_REFRESH_PREVIEW), the tournament block (422), ACTIVE never cancelled. PO decisions 3 Oct 2026: a Manual Booking made outside opening hours is never affected; a day whose session a booking references keeps its old session row; no audit row or outbox event for the hours change itself.
+
+Done when (write these as tests first where possible):
+- Tests: pending Online and Manual cancellations alone commit without the Owner Password; a CONFIRMED Online or AWAITING cancellation needs it (423 without it, audited when wrong); the hours, the sessions and all cancellations commit together or not at all; an AWAITING booking's hold is released and its Late Confirm stopped; a booking created after the preview gives 409; one notification per affected Online customer is enqueued.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
