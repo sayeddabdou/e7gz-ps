@@ -139,6 +139,22 @@ PCR-005 and the Product Owner decisions of 2 and 3 Oct 2026 (including `processe
 
 No trigger, function or grant change: the baseline's table-level grants cover the columns. `created_at` is added beyond PCR-005's list because the 24-hour clean-up (PO decision 3 Oct 2026) needs the upload start time.
 
+### v1.1.32 — Emergency selling-block guard fix (E7-30, 3 Oct 2026)
+
+Product Owner decision 3 Oct 2026 (Sayed), from the E7-30 review. One function, `.dbm` block `v1_1_32_emergency_selling_block_guard_fix` = Flyway `V202610031800__fix_emergency_selling_block_guard.sql`. **For Product Owner review.**
+
+**What was fixed.** `operations.guard_emergency_selling_block()` is the BEFORE INSERT/UPDATE/DELETE trigger function of both `venue.venue_selling_block` and `resource.resource_selling_block`. Its UPDATE branch tested `TG_TABLE_SCHEMA = 'venue' AND NEW.venue_id IS DISTINCT FROM OLD.venue_id` and `TG_TABLE_SCHEMA = 'resource' AND NEW.resource_id IS DISTINCT FROM OLD.resource_id`. The fix scopes every table-specific field access explicitly by its table: each `NEW`/`OLD.venue_id` sits inside `IF TG_TABLE_SCHEMA = 'venue' THEN`, each `NEW`/`OLD.resource_id` inside `IF TG_TABLE_SCHEMA = 'resource' THEN` (the Emergency scope check's `ELSE` becomes an explicit resource `IF`, and the two subject-immutability tests are nested). No business rule or error message changed.
+
+**Why it was necessary.** PL/pgSQL resolves every record field of an expression before evaluating it, so the `AND` did not protect the other table's column: on the venue table `NEW.resource_id`, and on the resource table `NEW.venue_id`, failed with SQLSTATE `42703` (`record "new" has no field …`). No Emergency-linked selling block could be updated, and since `assert_emergency_block_consistency` requires an ENDED or CONVERTED Emergency's block to close at the same instant, no Emergency could be ended or converted.
+
+| Object | Change |
+|---|---|
+| `operations.guard_emergency_selling_block()` | `CREATE OR REPLACE` with every table-specific field access scoped by its table (Emergency scope check and subject-immutability tests); every rule and error message unchanged |
+
+The fix is limited to `operations.guard_emergency_selling_block()`. Signature, language, SECURITY INVOKER, owner and grants are unchanged; both triggers (`tr_guard_venue_emergency_selling_block`, `tr_guard_resource_emergency_selling_block`) are not recreated and keep pointing at the function. No table, column, index, constraint, trigger or data change. Engine-lane function (Operations): needs the Engine owner's review.
+
+- Tests: `EmergencySellingBlockGuardTest` (application role, every trigger on; the DELETE trigger refusal also as the table owner) — an Emergency-linked venue and resource block close with their Emergency; a closed block cannot reopen; subject, start and active-with-end rules unchanged on both tables; DELETE refused; a plain block still opens and closes. The `.dbm`/migration identity check in `MigrationFilesTest`.
+
 ## Product Owner decisions (26 Sep 2026)
 
 A1 overlapping Maintenance allowed · A2 booking horizon is a deployment setting, default 120 days · A4 rate-limit table approved · A5 reports FR-AUD-11/12 at launch · A6 venue alerts = live + Web Push + audible alert · A8 configurable = fees and points only · A9 Venue never returns to ONBOARDING · A10 login limits stored as `LOGIN` rate-limit rows · A11 read-only customer wallet screen (PCR-004, no DB change) · review self-reporting allowed, duplicate open reports blocked.

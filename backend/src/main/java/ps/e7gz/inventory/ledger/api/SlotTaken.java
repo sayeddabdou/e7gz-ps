@@ -8,8 +8,9 @@ import ps.e7gz.common.error.ApiException;
  * fails cleanly with {@link ApiErrorCode#SLOT_NO_LONGER_AVAILABLE} ({@code FR-AVL-11}, ADR-003).
  *
  * <p>Thrown by {@link ReservationLedger#create} for exactly two database refusals: {@code 23P01} on
- * {@code ex_no_double_booking} and {@code P0001} with guard identifier {@code gd_reservation_conflict_booking}.
- * Every other database failure propagates unchanged.
+ * {@code ex_no_double_booking} when the attempted row is a {@code BOOKING}, and {@code P0001} with guard identifier
+ * {@code gd_reservation_conflict_booking}. Every other database failure propagates unchanged, including
+ * {@code ex_no_double_booking} on a hold row (E7-30 carry-forward from the E7-29 review).
  */
 public class SlotTaken extends ApiException {
 

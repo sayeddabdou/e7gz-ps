@@ -90,6 +90,36 @@ class MigrationFilesTest {
                 .contains("WHERE uploaded_at IS NOT NULL AND removed_at IS NULL");
     }
 
+    /**
+     * v1.1.32 (E7-30): the Emergency selling-block guard fix is the model's own block, byte for byte, and every
+     * table-specific field access (the Emergency scope check and the subject-immutability checks) sits inside its own
+     * table's TG_TABLE_SCHEMA test.
+     */
+    @Test
+    void emergencySellingBlockGuardFixIsTheModelsV1132Block() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String open = "<genericsql name=\"v1_1_32_emergency_selling_block_guard_fix\">\n\t<definition> <![CDATA[\n";
+        int start = model.indexOf(open);
+        assertThat(start).as("v1.1.32 block in the .dbm").isPositive();
+        String block = model.substring(start + open.length(), model.indexOf("]]> </definition>", start));
+        String migration = classpath("db/migration/V202610031800__fix_emergency_selling_block_guard.sql");
+
+        assertThat(migration).isEqualTo(block);
+        String body = migration.substring(migration.indexOf("CREATE OR REPLACE FUNCTION operations.guard_emergency_selling_block()"));
+        assertThat(body)
+                .contains("IF TG_TABLE_SCHEMA = 'venue' THEN\n"
+                        + "            IF v_scope <> 'VENUE' OR NEW.venue_id IS DISTINCT FROM v_venue THEN")
+                .contains("IF TG_TABLE_SCHEMA = 'resource' THEN\n"
+                        + "            IF v_scope <> 'RESOURCE' OR NEW.resource_id IS DISTINCT FROM v_resource THEN")
+                .doesNotContain("ELSE\n            IF v_scope <> 'RESOURCE'")
+                .contains("IF TG_TABLE_SCHEMA = 'venue' THEN\n                IF NEW.venue_id IS DISTINCT FROM OLD.venue_id THEN")
+                .contains("IF TG_TABLE_SCHEMA = 'resource' THEN\n                IF NEW.resource_id IS DISTINCT FROM OLD.resource_id THEN")
+                .doesNotContain("TG_TABLE_SCHEMA = 'venue' AND")
+                .doesNotContain("TG_TABLE_SCHEMA = 'resource' AND")
+                .doesNotContain("CREATE TRIGGER")
+                .doesNotContain("DROP ");
+    }
+
     private static String classpath(String resource) throws IOException {
         try (InputStream in = MigrationFilesTest.class.getClassLoader().getResourceAsStream(resource)) {
             assertThat(in).as(resource).isNotNull();
