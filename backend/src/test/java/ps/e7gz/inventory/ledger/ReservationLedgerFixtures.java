@@ -26,12 +26,20 @@ final class ReservationLedgerFixtures {
     static final UUID OWNER_SHAPE_RESOURCE = id(0x104);
     static final UUID TRANSLATION_RESOURCE = id(0x105);
     static final UUID TOURNAMENT_RESOURCE = id(0x106);
+    /** E7-30: rows check 8 counts. */
+    static final UUID BLOCKING_RESOURCE = id(0x107);
+    /** E7-30: MAINTENANCE / CLOSURE guard rows check 8 must not count. */
+    static final UUID GUARD_ROWS_RESOURCE = id(0x108);
 
     static final UUID BOOKING = id(0x201);
     /** Period [2030-01-03 08:00, 09:00) UTC on {@link #OWNER_SHAPE_RESOURCE}. */
     static final UUID MAINTENANCE = id(0x301);
     /** Period [2030-01-04 08:00, 09:00) UTC on {@link #VENUE}. */
     static final UUID CLOSURE = id(0x401);
+    /** E7-30: period [2030-01-12 08:00, 09:00) UTC on {@link #GUARD_ROWS_RESOURCE}. */
+    static final UUID GUARD_MAINTENANCE = id(0x302);
+    /** E7-30: period [2030-01-13 08:00, 09:00) UTC on {@link #VENUE}. */
+    static final UUID GUARD_CLOSURE = id(0x402);
     static final UUID OPERATING_SESSION = id(0x006);
 
     private static final String SCRIPT = "ps/e7gz/inventory/ledger/reservation-ledger-fixtures.sql";

@@ -3,11 +3,13 @@ package ps.e7gz.inventory.ledger.internal;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import org.postgresql.util.ServerErrorMessage;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Component;
+import ps.e7gz.common.codes.ReservationType;
 import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.error.DatabaseErrorCodes;
 import ps.e7gz.inventory.ledger.api.NewReservation;
@@ -45,6 +47,28 @@ class JdbcReservationLedger implements ReservationLedger {
                AND actual_reservation_release_at IS NULL
             """;
 
+    /**
+     * Check 8 of the availability predicate: active commitment rows only, on the immutable planned interval. A
+     * released row ({@code active_flag = false}) keeps its planned interval as history and never blocks (EC-AVAI-004).
+     */
+    static final String BLOCKING_OVERLAP = """
+            SELECT EXISTS (
+                SELECT 1
+                  FROM inventory.resource_reservation rr
+                 WHERE rr.resource_id = :resourceId
+                   AND rr.active_flag
+                   AND rr.reservation_type IN (:blockingTypes)
+                   AND rr.planned_range && tstzrange(CAST(:start AS timestamptz), CAST(:end AS timestamptz), '[)'))
+            """;
+
+    /**
+     * The commitment types check 8 counts. {@code MAINTENANCE} and {@code CLOSURE} rows are technical guards whose
+     * owners the predicate reads from Operations (checks 6-7).
+     */
+    static final List<String> BLOCKING_TYPES = List.of(ReservationType.BOOKING.name(),
+            ReservationType.LATE_CONFIRM_HOLD.name(), ReservationType.TOURNAMENT_APPROVAL_HOLD.name(),
+            ReservationType.TOURNAMENT_HOLD.name());
+
     /** I1 exclusion constraint (arch 05 section 3.1). */
     static final String EX_NO_DOUBLE_BOOKING = "ex_no_double_booking";
 
@@ -77,7 +101,7 @@ class JdbcReservationLedger implements ReservationLedger {
                     .param("actualReservationStart", utc(command.commandNow()))
                     .update();
         } catch (DataAccessException e) {
-            if (isSlotTaken(e)) {
+            if (isSlotTaken(e, reservation.owner().type())) {
                 throw new SlotTaken();
             }
             throw e;
@@ -98,18 +122,42 @@ class JdbcReservationLedger implements ReservationLedger {
                 .update() == 1;
     }
 
-    /**
-     * Exactly {@code 23P01} on {@code ex_no_double_booking}, or {@code P0001} with {@code gd_reservation_conflict_booking},
-     * read from the driver's structured diagnostics (never message text).
-     */
-    static boolean isSlotTaken(Throwable failure) {
-        return DatabaseErrorCodes.serverError(failure).map(JdbcReservationLedger::isSlotTaken).orElse(false);
+    @Override
+    public boolean hasBlockingOverlap(CommandContext command, UUID resourceId, Instant start, Instant end) {
+        Objects.requireNonNull(command, "command");
+        Objects.requireNonNull(resourceId, "resourceId");
+        Objects.requireNonNull(start, "start");
+        Objects.requireNonNull(end, "end");
+        if (!end.isAfter(start)) {
+            throw new IllegalArgumentException("end must be after start: [" + start + ", " + end + ")");
+        }
+        return command.jdbc().sql(BLOCKING_OVERLAP)
+                .param("resourceId", resourceId)
+                .param("blockingTypes", BLOCKING_TYPES)
+                .param("start", utc(start))
+                .param("end", utc(end))
+                .query(Boolean.class).single();
     }
 
-    private static boolean isSlotTaken(ServerErrorMessage error) {
+    /**
+     * {@code 23P01} on {@code ex_no_double_booking} for a {@code BOOKING} row, or {@code P0001} with
+     * {@code gd_reservation_conflict_booking}, read from the driver's structured diagnostics (never message text).
+     * {@code ex_no_double_booking} on a hold row propagates unchanged and is never SlotTaken (PO decision 3 Oct 2026).
+     */
+    static boolean isSlotTaken(Throwable failure, ReservationType attempted) {
+        Objects.requireNonNull(attempted, "attempted");
+        return DatabaseErrorCodes.serverError(failure).map(error -> isSlotTaken(error, attempted)).orElse(false);
+    }
+
+    private static boolean isSlotTaken(ServerErrorMessage error, ReservationType attempted) {
         String sqlState = error.getSQLState();
         String constraint = error.getConstraint();
-        return (DatabaseErrorCodes.EXCLUSION_VIOLATION.equals(sqlState) && EX_NO_DOUBLE_BOOKING.equals(constraint))
+        // PO decision 3 Oct 2026: only a BOOKING row turns ex_no_double_booking into SlotTaken. For a hold,
+        // tr_10_resource_reservation_cross_class_guard normally locks the Resource and refuses first with its
+        // type-specific P0001, so a raw 23P01 means the guard was bypassed (a defect): propagated unchanged.
+        return (attempted == ReservationType.BOOKING
+                        && DatabaseErrorCodes.EXCLUSION_VIOLATION.equals(sqlState)
+                        && EX_NO_DOUBLE_BOOKING.equals(constraint))
                 || (DatabaseErrorCodes.RAISE_EXCEPTION.equals(sqlState)
                         && GD_RESERVATION_CONFLICT_BOOKING.equals(constraint));
     }
