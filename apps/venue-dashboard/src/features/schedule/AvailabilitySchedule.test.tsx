@@ -28,7 +28,6 @@ function renderSchedule(
       <AvailabilitySchedule
         api={api}
         direction={language === "ar" ? "rtl" : "ltr"}
-        initialDate="2026-10-12"
       />
     </MessagesContext.Provider>,
   );
@@ -59,7 +58,7 @@ const schedule = {
 };
 
 describe("AvailabilitySchedule", () => {
-  it("renders only contract schedule states and requests the selected business date", async () => {
+  it("asks the server for the current business date and renders only contract schedule states", async () => {
     const requests = renderSchedule(async () => json(200, { data: schedule, meta }));
 
     expect(await screen.findByRole("heading", { name: "Availability schedule" })).toBeTruthy();
@@ -76,8 +75,10 @@ describe("AvailabilitySchedule", () => {
       "Closure",
     ]) expect(screen.getAllByText(label).length).toBeGreaterThan(0);
 
-    expect(requests[0]?.url).toBe("http://127.0.0.1:4010/api/v1/venue/availability?date=2026-10-12");
+    expect(requests[0]?.url).toBe("http://127.0.0.1:4010/api/v1/venue/availability");
+    expect(requests).toHaveLength(1);
     expect(requests[0]?.headers.get("Authorization")).toBe("Bearer mock-access-token");
+    expect((screen.getByLabelText("Business date") as HTMLInputElement).value).toBe("2026-10-12");
   });
 
   it("keeps a cross-midnight slot on the server business date and formats Cairo instants", async () => {
@@ -103,11 +104,12 @@ describe("AvailabilitySchedule", () => {
 
   it("navigates by business date without using the device timezone", async () => {
     const requests = renderSchedule(async (request) => {
-      const date = new URL(request.url).searchParams.get("date");
+      const date = new URL(request.url).searchParams.get("date") ?? "2026-10-12";
       return json(200, { data: { businessDate: date, resources: [] }, meta });
     });
 
     await screen.findByText("No resources are scheduled for this business date.");
+    expect(requests[0]?.url).toBe("http://127.0.0.1:4010/api/v1/venue/availability");
     fireEvent.click(screen.getByRole("button", { name: "Next business date" }));
     await waitFor(() => expect(requests).toHaveLength(2));
     expect(requests[1]?.url).toContain("date=2026-10-13");

@@ -23,17 +23,6 @@ const displayStates = [
   "CLOSURE",
 ] as const satisfies readonly ScheduleDisplayState[];
 
-function businessDateInCairo(now = new Date()): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    day: "2-digit",
-    month: "2-digit",
-    timeZone: cairoTimeZone,
-    year: "numeric",
-  }).formatToParts(now);
-  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
-  return `${value("year")}-${value("month")}-${value("day")}`;
-}
-
 function shiftBusinessDate(date: string, days: number): string {
   const instant = new Date(`${date}T00:00:00Z`);
   instant.setUTCDate(instant.getUTCDate() + days);
@@ -61,15 +50,14 @@ function ticksFor(range: { start: number; end: number } | undefined): number[] {
 export function AvailabilitySchedule({
   api,
   direction,
-  initialDate,
 }: {
   api: ApiClient;
   direction: "ltr" | "rtl";
-  initialDate?: string;
 }) {
   const t = useMessages();
   const locale = direction === "rtl" ? "ar-EG" : "en-US";
-  const [selectedDate, setSelectedDate] = useState(() => initialDate ?? businessDateInCairo());
+  const [selectedDate, setSelectedDate] = useState("");
+  const [requestedDate, setRequestedDate] = useState<string>();
   const [schedule, setSchedule] = useState<VenueSchedule>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -77,7 +65,10 @@ export function AvailabilitySchedule({
 
   useEffect(() => {
     let active = true;
-    void api.GET("/api/v1/venue/availability", { params: { query: { date: selectedDate } } })
+    const request = requestedDate
+      ? api.GET("/api/v1/venue/availability", { params: { query: { date: requestedDate } } })
+      : api.GET("/api/v1/venue/availability");
+    void request
       .then(({ data, error: body }) => {
         if (!active) return;
         if (!data) {
@@ -86,6 +77,7 @@ export function AvailabilitySchedule({
           return;
         }
         setSchedule(data.data);
+        setSelectedDate(data.data.businessDate);
       })
       .catch(() => {
         if (active) {
@@ -95,7 +87,7 @@ export function AvailabilitySchedule({
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [api, refreshVersion, selectedDate, t]);
+  }, [api, refreshVersion, requestedDate, t]);
 
   const range = useMemo(() => schedule ? rangeOf(schedule) : undefined, [schedule]);
   const ticks = useMemo(() => ticksFor(range), [range]);
@@ -123,6 +115,7 @@ export function AvailabilitySchedule({
     setError(undefined);
     setSchedule(undefined);
     setSelectedDate(date);
+    setRequestedDate(date);
   };
   const retry = () => {
     setLoading(true);
@@ -138,14 +131,14 @@ export function AvailabilitySchedule({
       </header>
 
       <div style={styles.controls}>
-        <button aria-label={t.schedule.previousDate} onClick={() => loadDate(shiftBusinessDate(selectedDate, -1))} style={styles.button} type="button">
+        <button aria-label={t.schedule.previousDate} disabled={!selectedDate} onClick={() => loadDate(shiftBusinessDate(selectedDate, -1))} style={styles.button} type="button">
           {t.schedule.previous}
         </button>
         <label style={styles.field}>
           <span style={styles.label}>{t.schedule.businessDate}</span>
           <input aria-label={t.schedule.businessDate} onChange={(event) => { if (event.target.value) loadDate(event.target.value); }} style={styles.dateInput} type="date" value={selectedDate} />
         </label>
-        <button aria-label={t.schedule.nextDate} onClick={() => loadDate(shiftBusinessDate(selectedDate, 1))} style={styles.button} type="button">
+        <button aria-label={t.schedule.nextDate} disabled={!selectedDate} onClick={() => loadDate(shiftBusinessDate(selectedDate, 1))} style={styles.button} type="button">
           {t.schedule.next}
         </button>
       </div>
