@@ -13,11 +13,13 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.postgresql.util.PSQLException;
 import org.postgresql.util.ServerErrorMessage;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import ps.e7gz.common.codes.ReservationType;
 import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.inventory.ledger.api.NewReservation;
@@ -25,7 +27,8 @@ import ps.e7gz.inventory.ledger.api.ReservationOwner;
 import ps.e7gz.inventory.ledger.api.SlotTaken;
 
 /**
- * E7-29 - which database refusals become {@link SlotTaken}, on driver-shaped diagnostics (SQLSTATE + CONSTRAINT).
+ * E7-29 - which database refusals become {@link SlotTaken}, on driver-shaped diagnostics (SQLSTATE + CONSTRAINT);
+ * E7-30 - {@code ex_no_double_booking} is SlotTaken only for a {@code BOOKING} row.
  * The {@code ex_no_double_booking} branch is covered here because the cross-class guard refuses an overlapping
  * insert before the exclusion constraint is checked; the guard branch is also proven against the real database in
  * {@code ReservationLedgerIntegrationTest}.
@@ -49,7 +52,16 @@ class JdbcReservationLedgerTest {
             "23P01, ex_no_double_booking",
             "P0001, gd_reservation_conflict_booking"})
     void exactlyTheBookingSlotConflictsAreSlotTaken(String sqlState, String constraint) {
-        assertThat(JdbcReservationLedger.isSlotTaken(translated(sqlState, constraint))).isTrue();
+        assertThat(JdbcReservationLedger.isSlotTaken(translated(sqlState, constraint), ReservationType.BOOKING))
+                .isTrue();
+    }
+
+    /** E7-30 carry-forward: only a BOOKING row turns {@code ex_no_double_booking} into SlotTaken. */
+    @ParameterizedTest
+    @EnumSource(value = ReservationType.class, names = "BOOKING", mode = EnumSource.Mode.EXCLUDE)
+    void theExclusionViolationOfANonBookingRowIsNotSlotTaken(ReservationType attempted) {
+        assertThat(JdbcReservationLedger.isSlotTaken(translated("23P01", "ex_no_double_booking"), attempted))
+                .isFalse();
     }
 
     @ParameterizedTest
@@ -74,14 +86,17 @@ class JdbcReservationLedgerTest {
             "23P01, NULL",
             "40001, NULL"})
     void everyOtherDatabaseFailureIsNotSlotTaken(String sqlState, String constraint) {
-        assertThat(JdbcReservationLedger.isSlotTaken(translated(sqlState, constraint))).isFalse();
+        assertThat(JdbcReservationLedger.isSlotTaken(translated(sqlState, constraint), ReservationType.BOOKING))
+                .isFalse();
     }
 
     @Test
     void aFailureWithoutPostgresDiagnosticsIsNotSlotTaken() {
         assertThat(JdbcReservationLedger.isSlotTaken(
-                new DataIntegrityViolationException("x", new SQLException("x", "23P01")))).isFalse();
-        assertThat(JdbcReservationLedger.isSlotTaken(new IllegalStateException("ex_no_double_booking"))).isFalse();
+                new DataIntegrityViolationException("x", new SQLException("x", "23P01")), ReservationType.BOOKING))
+                .isFalse();
+        assertThat(JdbcReservationLedger.isSlotTaken(new IllegalStateException("ex_no_double_booking"),
+                ReservationType.BOOKING)).isFalse();
     }
 
     // ---- create(): the exclusion branch end to end, on a command whose INSERT fails as the driver reports it ---------
@@ -109,6 +124,32 @@ class JdbcReservationLedgerTest {
         assertThatThrownBy(() -> ledger.create(command, aBooking()))
                 .isExactlyInstanceOf(SlotTaken.class)
                 .extracting(e -> ((SlotTaken) e).code()).isEqualTo(ApiErrorCode.SLOT_NO_LONGER_AVAILABLE);
+    }
+
+    /**
+     * E7-30 carry-forward (PO decision 3 Oct 2026): the cross-class guard normally locks the Resource and refuses a hold
+     * first with its type-specific P0001, so a raw {@code ex_no_double_booking} on a hold means the guard was bypassed
+     * (a defect). The ledger propagates that exception unchanged and never turns it into SlotTaken.
+     */
+    @ParameterizedTest
+    @EnumSource(value = ReservationType.class,
+            names = {"LATE_CONFIRM_HOLD", "TOURNAMENT_APPROVAL_HOLD", "TOURNAMENT_HOLD"})
+    void createRethrowsTheExclusionViolationOfAHoldAsTheSameException(ReservationType type) {
+        DataAccessException exclusion = translated("23P01", "ex_no_double_booking");
+        CommandContext command = commandWhoseInsertFailsWith(exclusion);
+        UUID owner = UUID.randomUUID();
+        ReservationOwner hold = switch (type) {
+            case LATE_CONFIRM_HOLD -> ReservationOwner.lateConfirmHold(owner);
+            case TOURNAMENT_APPROVAL_HOLD -> ReservationOwner.tournamentApprovalHold(owner);
+            case TOURNAMENT_HOLD -> ReservationOwner.tournamentHold(owner);
+            default -> throw new IllegalArgumentException(type.name());
+        };
+        NewReservation reservation = new NewReservation(UUID.randomUUID(), hold,
+                Instant.parse("2030-01-01T08:00:00Z"), Instant.parse("2030-01-01T09:00:00Z"));
+
+        assertThatThrownBy(() -> ledger.create(command, reservation))
+                .isSameAs(exclusion)
+                .isNotInstanceOf(SlotTaken.class);
     }
 
     @Test

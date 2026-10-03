@@ -62,3 +62,17 @@ VALUES ('e7290000-0000-4000-8000-000000000006', 'e7290000-0000-4000-8000-0000000
         tstzrange(TIMESTAMP '2030-02-01 12:00' AT TIME ZONE 'Africa/Cairo',
                   TIMESTAMP '2030-02-01 23:00' AT TIME ZONE 'Africa/Cairo', '[)'),
         'Africa/Cairo', 0, now());
+
+-- E7-30 hasBlockingOverlap (check 8): a Resource for the blocking rows and one for the MAINTENANCE / CLOSURE guard
+-- rows that check 8 must not count. Their intervals lie from 12 January 2030 on, clear of the E7-29 tests.
+INSERT INTO resource.resource (id, venue_id, activity, name, console_type, base_state, operational_restriction)
+VALUES ('e7290000-0000-4000-8000-000000000107', 'e7290000-0000-4000-8000-000000000002', 'PLAYSTATION', 'E7-30 blocking room', 'PS5', 'ACTIVE', 'NONE'),
+       ('e7290000-0000-4000-8000-000000000108', 'e7290000-0000-4000-8000-000000000002', 'PLAYSTATION', 'E7-30 guard-rows room', 'PS5', 'ACTIVE', 'NONE');
+
+INSERT INTO operations.maintenance_window (id, resource_id, period, reason, owner_password_used)
+VALUES ('e7290000-0000-4000-8000-000000000302', 'e7290000-0000-4000-8000-000000000108',
+        tstzrange('2030-01-12 08:00:00+00', '2030-01-12 09:00:00+00', '[)'), 'E7-30 check 8 maintenance', false);
+
+INSERT INTO operations.venue_closure (id, venue_id, period, kind, reason)
+VALUES ('e7290000-0000-4000-8000-000000000402', 'e7290000-0000-4000-8000-000000000002',
+        tstzrange('2030-01-13 08:00:00+00', '2030-01-13 09:00:00+00', '[)'), 'PARTIAL', 'E7-30 check 8 closure');
