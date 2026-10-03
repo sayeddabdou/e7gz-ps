@@ -2,6 +2,15 @@ import { useState } from "react";
 import { useMessages } from "../../i18n";
 import { setupStyles as styles } from "./styles";
 
+/** The Owner PIN is 4 digits (PCR-006); Arabic-Indic and Persian digits typed on an Arabic keyboard count as 0-9. */
+export function toPinDigits(value: string): string {
+  return value
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06F0))
+    .replace(/[^0-9]/g, "")
+    .slice(0, 4);
+}
+
 export function OwnerPasswordDialog({
   actionLabel,
   error,
@@ -57,13 +66,16 @@ function OpenOwnerPasswordDialog({
         <label style={styles.field}>
           <span style={styles.label}>{t.setup.ownerPassword.label}</span>
           <input
-            autoComplete="current-password"
+            autoComplete="off"
             autoFocus
+            inputMode="numeric"
+            maxLength={4}
+            pattern="[0-9]{4}"
             required
             style={styles.input}
             type="password"
             value={password}
-            onChange={(event) => setPassword(event.target.value)}
+            onChange={(event) => setPassword(toPinDigits(event.target.value))}
           />
         </label>
         {error ? <p role="alert" style={styles.error}>{error}</p> : null}

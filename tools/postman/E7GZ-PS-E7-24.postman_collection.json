@@ -1,0 +1,1544 @@
+{
+  "info": {
+    "name": "E7GZ PS — E7-24 venue account and Owner Password",
+    "description": "E7-24 (with PCR-006): the admin creates a venue account; venue settings; venue photos with no Owner PIN; the venue's own Owner PIN change (4 digits); the 5-in-15-minutes lockout; admin reset, disable and enable. Needs seed-test-accounts.sql (admin postman.admin@e7gz.test) and the backend with the api and worker profiles. Each run creates its own area, venues and account, so it can be re-run (the lockout belongs to that run's account). Run from the repository root so the photo file is found.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Runs after every request (arch 09 §1.3–§1.4); signed photo links go to object storage, not our API.",
+          "if (!pm.request.url.toString().includes(\"/api/v1/\")) return;",
+          "pm.test(\"[all] X-Correlation-Id header is a UUID\", () =>",
+          "  pm.expect(pm.response.headers.get(\"X-Correlation-Id\") || \"\").to.match(/^[0-9a-f-]{36}$/));",
+          "if (pm.response.code >= 400 && (pm.response.headers.get(\"Content-Type\") || \"\").includes(\"json\")) {",
+          "  pm.test(\"[all] Error body has a code and no message\", () => {",
+          "    const body = pm.response.json();",
+          "    pm.expect(body.error.code).to.be.a(\"string\");",
+          "    pm.expect(body.error).to.not.have.property(\"message\");",
+          "  });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1 · Setup (admin creates an area and two venues)",
+      "item": [
+        {
+          "name": "1.1 · Admin login",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const run = Date.now();",
+                  "pm.collectionVariables.set(\"run\", run);",
+                  "pm.collectionVariables.set(\"login\", \"e7-24.\" + run);",
+                  "pm.collectionVariables.set(\"loginPassword\", \"Login-pass-\" + (run % 10000));",
+                  "pm.collectionVariables.set(\"ownerPassword\", String(1000 + (run % 8000)));",
+                  "pm.collectionVariables.set(\"newOwnerPassword\", String(1000 + ((run + 1) % 8000)));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"adminToken\", pm.response.json().data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5174"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"postman.admin@e7gz.test\",\n  \"password\": \"Postman-Test-2026\"\n}"
+            }
+          }
+        },
+        {
+          "name": "1.2 · Create an area → 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"areaId\", pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/areas",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"E7-24 Area {{run}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "1.3 · Create venue A → 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"venueId\", pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"areaId\": \"{{areaId}}\",\n  \"name\": \"E7-24 Lounge A\",\n  \"address\": \"12 Abbas El Akkad St\",\n  \"location\": {\n    \"lat\": 30.0561,\n    \"lng\": 31.3301\n  },\n  \"phone\": \"+201001234567\",\n  \"activities\": [\n    \"PLAYSTATION\"\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "1.4 · Create venue B → 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"venueBId\", pm.response.json().data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"areaId\": \"{{areaId}}\",\n  \"name\": \"E7-24 Lounge B\",\n  \"address\": \"1 Makram Ebeid St\",\n  \"location\": {\n    \"lat\": 30.06,\n    \"lng\": 31.34\n  },\n  \"phone\": \"+201001234568\",\n  \"activities\": [\n    \"PLAYSTATION\"\n  ]\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 · Admin creates the venue account",
+      "item": [
+        {
+          "name": "2.1 · Weak Owner Password → 400 (field initialOwnerPassword)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"error VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));",
+                  "pm.test(\"field initialOwnerPassword\", () => pm.expect(pm.response.json().error.field).to.eql(\"initialOwnerPassword\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/venue-account",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginIdentifier\": \"{{login}}\",\n  \"password\": \"{{loginPassword}}\",\n  \"initialOwnerPassword\": \"12345678\"\n}"
+            }
+          }
+        },
+        {
+          "name": "2.2 · Create → 201 ENABLED, passwords never returned",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "const a = pm.response.json().data;",
+                  "pm.test(\"ENABLED, for venue A, login as sent\", () => { pm.expect(a.accountStatus).to.eql(\"ENABLED\"); pm.expect(a.venueId).to.eql(pm.collectionVariables.get(\"venueId\")); pm.expect(a.loginIdentifier).to.eql(pm.collectionVariables.get(\"login\")); });",
+                  "pm.test(\"no password in the response\", () => { const t = pm.response.text(); [\"{{loginPassword}}\", \"argon2\"].forEach(p => pm.expect(t).to.not.include(pm.variables.replaceIn(p))); });",
+                  "pm.collectionVariables.set(\"accountId\", a.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/venue-account",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginIdentifier\": \"{{login}}\",\n  \"password\": \"{{loginPassword}}\",\n  \"initialOwnerPassword\": \"{{ownerPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "2.3 · A second account for venue A → 422 VENUE_ACCOUNT_ALREADY_EXISTS",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"error VENUE_ACCOUNT_ALREADY_EXISTS\", () => pm.expect(pm.response.json().error.code).to.eql(\"VENUE_ACCOUNT_ALREADY_EXISTS\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}/venue-account",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginIdentifier\": \"other.{{login}}\",\n  \"password\": \"{{loginPassword}}\",\n  \"initialOwnerPassword\": \"{{ownerPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "2.4 · Venue B with A's login (other case) → 422 VENUE_LOGIN_IDENTIFIER_TAKEN",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"error VENUE_LOGIN_IDENTIFIER_TAKEN\", () => pm.expect(pm.response.json().error.code).to.eql(\"VENUE_LOGIN_IDENTIFIER_TAKEN\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues/{{venueBId}}/venue-account",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginIdentifier\": \" E7-24.{{run}} \",\n  \"password\": \"{{loginPassword}}\",\n  \"initialOwnerPassword\": \"{{ownerPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "2.5 · The venue page now shows the account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"venueAccount present\", () => pm.expect(pm.response.json().data.venueAccount.id).to.eql(pm.collectionVariables.get(\"accountId\")));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}"
+          }
+        },
+        {
+          "name": "2.6 · The new account logs in",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"venueToken\", pm.response.json().data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginIdentifier\": \"{{login}}\",\n  \"password\": \"{{loginPassword}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 · Venue settings (no Owner Password)",
+      "item": [
+        {
+          "name": "3.1 · GET → the venue's own profile, language en",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const s = pm.response.json().data;",
+                  "pm.test(\"own venue, area name, en\", () => { pm.expect(s.venueId).to.eql(pm.collectionVariables.get(\"venueId\")); pm.expect(s.areaName).to.eql(\"E7-24 Area \" + pm.collectionVariables.get(\"run\")); pm.expect(s.languagePreference).to.eql(\"en\"); pm.expect(s.marketplaceStatus).to.eql(\"ONBOARDING\"); pm.expect(s.location.lat).to.eql(30.0561); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/settings"
+          }
+        },
+        {
+          "name": "3.2 · PATCH phone only → stored as +20…, rest unchanged",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const s = pm.response.json().data;",
+                  "pm.test(\"phone +20, name and address unchanged\", () => { pm.expect(s.phone).to.eql(\"+201007654321\"); pm.expect(s.name).to.eql(\"E7-24 Lounge A\"); pm.expect(s.address).to.eql(\"12 Abbas El Akkad St\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/settings",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"0100 765 4321\"\n}"
+            }
+          }
+        },
+        {
+          "name": "3.3 · PATCH a blank name → 400 (field name)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"error VALIDATION_FAILED\", () => pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_FAILED\"));",
+                  "pm.test(\"field name\", () => pm.expect(pm.response.json().error.field).to.eql(\"name\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/settings",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"   \"\n}"
+            }
+          }
+        },
+        {
+          "name": "3.4 · PATCH a bad phone → 400 (field phone)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"field phone\", () => pm.expect(pm.response.json().error.field).to.eql(\"phone\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/settings",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"12345\"\n}"
+            }
+          }
+        },
+        {
+          "name": "3.5 · PATCH area and status (admin-only) → ignored",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const s = pm.response.json().data;",
+                  "pm.test(\"status and timezone unchanged\", () => { pm.expect(s.marketplaceStatus).to.eql(\"ONBOARDING\"); pm.expect(s.timezone).to.eql(\"Africa/Cairo\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/settings",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"E7-24 Lounge A\",\n  \"marketplaceStatus\": \"ACTIVE\",\n  \"timezone\": \"Europe/London\"\n}"
+            }
+          }
+        },
+        {
+          "name": "3.6 · PATCH language ar → ar",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"ar\", () => pm.expect(pm.response.json().data.languagePreference).to.eql(\"ar\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/settings",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"languagePreference\": \"ar\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 · Venue photos (no Owner PIN, PCR-006)",
+      "item": [
+        {
+          "name": "4.1 · Start an upload → 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "const d = pm.response.json().data;",
+                  "pm.collectionVariables.set(\"photoId\", d.image.id); pm.collectionVariables.set(\"photoUploadUrl\", d.uploadUrl);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/images",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contentType\": \"image/jpeg\",\n  \"sizeBytes\": 15665\n}"
+            }
+          }
+        },
+        {
+          "name": "4.2 · PUT the file to the signed link → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "image/jpeg"
+              }
+            ],
+            "body": {
+              "mode": "file",
+              "file": {
+                "src": "tools/postman/fixtures/venue-photo.jpg"
+              }
+            },
+            "url": "{{photoUploadUrl}}"
+          }
+        },
+        {
+          "name": "4.3 · Confirm with no PIN → 200, visible",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"same photo\", () => pm.expect(pm.response.json().data.id).to.eql(pm.collectionVariables.get(\"photoId\")));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/images/{{photoId}}/confirm"
+          }
+        },
+        {
+          "name": "4.4 · The list shows it",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"one photo\", () => pm.expect(pm.response.json().data).to.have.length(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/images"
+          }
+        },
+        {
+          "name": "4.5 · Reorder with no PIN → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"one photo, first\", () => pm.expect(pm.response.json().data[0].id).to.eql(pm.collectionVariables.get(\"photoId\")));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/images/order",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"imageIds\": [\n    \"{{photoId}}\"\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "4.6 · Remove with no PIN → 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/images/{{photoId}}/remove"
+          }
+        },
+        {
+          "name": "4.7 · The list is empty again",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"no photos\", () => pm.expect(pm.response.json().data).to.have.length(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/images"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 · The venue changes its Owner PIN (FR-VEN-46, PCR-006)",
+      "item": [
+        {
+          "name": "5.1 · A new PIN that is not 4 digits → 400 (field next)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"field next\", () => pm.expect(pm.response.json().error.field).to.eql(\"next\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/owner-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current\": \"{{ownerPassword}}\",\n  \"next\": \"12a4\"\n}"
+            }
+          }
+        },
+        {
+          "name": "5.2 · A wrong current PIN → 423",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 423\", () => pm.response.to.have.status(423));",
+                  "pm.test(\"error OWNER_PASSWORD_INVALID\", () => pm.expect(pm.response.json().error.code).to.eql(\"OWNER_PASSWORD_INVALID\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/owner-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current\": \"0000\",\n  \"next\": \"{{newOwnerPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "5.3 · The right current PIN → 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/owner-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current\": \"{{ownerPassword}}\",\n  \"next\": \"{{newOwnerPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "5.4 · No unlock: the next change needs the PIN again (none sent) → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"field current\", () => pm.expect(pm.response.json().error.field).to.eql(\"current\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/owner-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"next\": \"{{ownerPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "5.5 · The old PIN stops working at once → 423",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 423\", () => pm.response.to.have.status(423));",
+                  "pm.test(\"error OWNER_PASSWORD_INVALID\", () => pm.expect(pm.response.json().error.code).to.eql(\"OWNER_PASSWORD_INVALID\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/owner-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current\": \"{{ownerPassword}}\",\n  \"next\": \"{{ownerPassword}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6 · Lockout: 5 wrong PINs in 15 minutes (5.2, 5.5 and 6.1-6.3)",
+      "item": [
+        {
+          "name": "6.1 · Wrong PIN → 423",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 423\", () => pm.response.to.have.status(423));",
+                  "pm.test(\"error OWNER_PASSWORD_INVALID\", () => pm.expect(pm.response.json().error.code).to.eql(\"OWNER_PASSWORD_INVALID\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/owner-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current\": \"0000\",\n  \"next\": \"{{ownerPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "6.2 · Wrong PIN → 423",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 423\", () => pm.response.to.have.status(423));",
+                  "pm.test(\"error OWNER_PASSWORD_INVALID\", () => pm.expect(pm.response.json().error.code).to.eql(\"OWNER_PASSWORD_INVALID\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/owner-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current\": \"0000\",\n  \"next\": \"{{ownerPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "6.3 · Wrong PIN → 423",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 423\", () => pm.response.to.have.status(423));",
+                  "pm.test(\"error OWNER_PASSWORD_INVALID\", () => pm.expect(pm.response.json().error.code).to.eql(\"OWNER_PASSWORD_INVALID\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/owner-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current\": \"0000\",\n  \"next\": \"{{ownerPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "6.4 · Locked out: even the right (new) PIN → 429 RATE_LIMITED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 429\", () => pm.response.to.have.status(429));",
+                  "pm.test(\"error RATE_LIMITED\", () => pm.expect(pm.response.json().error.code).to.eql(\"RATE_LIMITED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/owner-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current\": \"{{newOwnerPassword}}\",\n  \"next\": \"{{ownerPassword}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7 · Admin venue-account actions (FR-ADM-03)",
+      "item": [
+        {
+          "name": "7.1 · Reset the Owner PIN with something that is not 4 digits → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"field newPassword\", () => pm.expect(pm.response.json().error.field).to.eql(\"newPassword\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venue-accounts/{{accountId}}/reset-owner-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newPassword\": \"weak\"\n}"
+            }
+          }
+        },
+        {
+          "name": "7.2 · Reset the Owner PIN → 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venue-accounts/{{accountId}}/reset-owner-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newPassword\": \"4321\"\n}"
+            }
+          }
+        },
+        {
+          "name": "7.3 · Reset the login password → 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venue-accounts/{{accountId}}/reset-login-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newPassword\": \"Reset-login-1\"\n}"
+            }
+          }
+        },
+        {
+          "name": "7.4 · Venue login with the old password → refused",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"4xx\", () => pm.expect(pm.response.code).to.be.within(400, 499));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginIdentifier\": \"{{login}}\",\n  \"password\": \"{{loginPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "7.5 · Venue login with the new password → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"venueToken\", pm.response.json().data.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginIdentifier\": \"{{login}}\",\n  \"password\": \"Reset-login-1\"\n}"
+            }
+          }
+        },
+        {
+          "name": "7.6 · Disable without a reason → 400 (field reason)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"field reason\", () => pm.expect(pm.response.json().error.field).to.eql(\"reason\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venue-accounts/{{accountId}}/disable",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \" \"\n}"
+            }
+          }
+        },
+        {
+          "name": "7.7 · Disable → 200 DISABLED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"DISABLED\", () => pm.expect(pm.response.json().data.accountStatus).to.eql(\"DISABLED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venue-accounts/{{accountId}}/disable",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Owner asked by phone\"\n}"
+            }
+          }
+        },
+        {
+          "name": "7.8 · The venue's token stops working at once → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 401\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/settings"
+          }
+        },
+        {
+          "name": "7.9 · Disabled venue login → refused",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"4xx\", () => pm.expect(pm.response.code).to.be.within(400, 499));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "http://localhost:5173"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginIdentifier\": \"{{login}}\",\n  \"password\": \"Reset-login-1\"\n}"
+            }
+          }
+        },
+        {
+          "name": "7.10 · Marketplace status is untouched",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test(\"ONBOARDING, account DISABLED\", () => { pm.expect(d.venue.marketplaceStatus).to.eql(\"ONBOARDING\"); pm.expect(d.venueAccount.accountStatus).to.eql(\"DISABLED\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venues/{{venueId}}"
+          }
+        },
+        {
+          "name": "7.11 · Enable → 200 ENABLED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"ENABLED\", () => pm.expect(pm.response.json().data.accountStatus).to.eql(\"ENABLED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venue-accounts/{{accountId}}/enable",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Resolved\"\n}"
+            }
+          }
+        },
+        {
+          "name": "7.12 · The venue's token works again → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/venue/settings"
+          }
+        },
+        {
+          "name": "7.13 · Unknown venue account → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/venue-accounts/00000000-0000-4000-8000-000000000000/disable",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"x\"\n}"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "run",
+      "value": ""
+    },
+    {
+      "key": "login",
+      "value": ""
+    },
+    {
+      "key": "loginPassword",
+      "value": ""
+    },
+    {
+      "key": "ownerPassword",
+      "value": ""
+    },
+    {
+      "key": "newOwnerPassword",
+      "value": ""
+    },
+    {
+      "key": "adminToken",
+      "value": ""
+    },
+    {
+      "key": "areaId",
+      "value": ""
+    },
+    {
+      "key": "venueId",
+      "value": ""
+    },
+    {
+      "key": "venueBId",
+      "value": ""
+    },
+    {
+      "key": "accountId",
+      "value": ""
+    },
+    {
+      "key": "venueToken",
+      "value": ""
+    },
+    {
+      "key": "photoId",
+      "value": ""
+    },
+    {
+      "key": "photoUploadUrl",
+      "value": ""
+    }
+  ]
+}

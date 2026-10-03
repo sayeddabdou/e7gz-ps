@@ -302,10 +302,11 @@
       "AdminVenueAccountCreateRequest": {
         "properties": {
           "initialOwnerPassword": {
-            "description": "Sets the first Owner Password (FR-ADM-02); not a check of an existing one.",
+            "description": "Sets the first Owner Password (FR-ADM-02): a PIN of exactly 4 digits (PCR-006). Not a check of an existing one.",
             "format": "password",
             "maxLength": 200,
             "minLength": 0,
+            "pattern": "^[0-9]{4}$",
             "type": "string",
             "writeOnly": true
           },
@@ -2140,31 +2141,10 @@
             },
             "minItems": 1,
             "type": "array"
-          },
-          "ownerPassword": {
-            "format": "password",
-            "minLength": 1,
-            "type": "string",
-            "writeOnly": true
           }
         },
         "required": [
-          "imageIds",
-          "ownerPassword"
-        ],
-        "type": "object"
-      },
-      "VenueImageOwnerPasswordRequest": {
-        "properties": {
-          "ownerPassword": {
-            "format": "password",
-            "minLength": 1,
-            "type": "string",
-            "writeOnly": true
-          }
-        },
-        "required": [
-          "ownerPassword"
+          "imageIds"
         ],
         "type": "object"
       },
@@ -2406,8 +2386,10 @@
             "writeOnly": true
           },
           "next": {
+            "description": "The new Owner Password: a PIN of exactly 4 digits (PCR-006).",
             "format": "password",
             "minLength": 1,
+            "pattern": "^[0-9]{4}$",
             "type": "string",
             "writeOnly": true
           }
@@ -6127,7 +6109,7 @@
     },
     "/api/v1/admin/venue-accounts/{venueAccountId}/reset-owner-password": {
       "post": {
-        "description": "The admin chooses the new Owner Password and gives it to the venue through support (PO decision, 28 Sep 2026). No temporary password, reset link or forced change. Audited; the venue is notified (FR-ADM-03).",
+        "description": "The admin chooses the new Owner Password and gives it to the venue through support (PO decision, 28 Sep 2026). The Owner Password is a PIN of exactly 4 digits (PCR-006). No temporary password, reset link or forced change. Audited; the venue is notified (FR-ADM-03).",
         "operationId": "adminResetVenueOwnerPassword",
         "parameters": [
           {
@@ -11171,7 +11153,7 @@
     },
     "/api/v1/admin/venues/{venueId}/venue-account": {
       "post": {
-        "description": "Onboarding is admin-managed, including the account credentials and the initial Owner Password (FR-ADM-02; PO decision 2 Oct 2026, E7-22). One account per venue (uq_venue_account_venue). Both passwords are write-only: never returned, logged or echoed. The account starts ENABLED. Stub until E7-24.",
+        "description": "Onboarding is admin-managed, including the account credentials and the initial Owner Password (FR-ADM-02; PO decision 2 Oct 2026, E7-22). One account per venue (uq_venue_account_venue). Both passwords are write-only: never returned, logged or echoed. The account starts ENABLED.",
         "operationId": "adminCreateVenueAccount",
         "parameters": [
           {
@@ -15281,50 +15263,6 @@
               }
             }
           },
-          "423": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/ErrorResponse"
-                    },
-                    {
-                      "properties": {
-                        "error": {
-                          "properties": {
-                            "code": {
-                              "enum": [
-                                "OWNER_PASSWORD_REQUIRED",
-                                "OWNER_PASSWORD_INVALID"
-                              ],
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "code"
-                          ],
-                          "type": "object"
-                        }
-                      },
-                      "required": [
-                        "error"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                }
-              }
-            },
-            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
-            "headers": {
-              "X-Correlation-Id": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
           "429": {
             "content": {
               "application/json": {
@@ -15391,7 +15329,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Save the photo order: every visible photo exactly once — Owner Password (PCR-005)",
+        "summary": "Save the photo order: every visible photo exactly once (PCR-005; no Owner Password, PCR-006)",
         "tags": [
           "venue-images"
         ]
@@ -15430,16 +15368,6 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VenueImageOwnerPasswordRequest"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "200": {
             "content": {
@@ -15675,50 +15603,6 @@
               }
             }
           },
-          "423": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/ErrorResponse"
-                    },
-                    {
-                      "properties": {
-                        "error": {
-                          "properties": {
-                            "code": {
-                              "enum": [
-                                "OWNER_PASSWORD_REQUIRED",
-                                "OWNER_PASSWORD_INVALID"
-                              ],
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "code"
-                          ],
-                          "type": "object"
-                        }
-                      },
-                      "required": [
-                        "error"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                }
-              }
-            },
-            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
-            "headers": {
-              "X-Correlation-Id": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
           "429": {
             "content": {
               "application/json": {
@@ -15785,7 +15669,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "The uploaded photo becomes visible, last in the order — Owner Password (PCR-005)",
+        "summary": "The uploaded photo becomes visible, last in the order (PCR-005; no Owner Password, PCR-006)",
         "tags": [
           "venue-images"
         ]
@@ -15824,16 +15708,6 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VenueImageOwnerPasswordRequest"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "204": {
             "description": "No Content",
@@ -16017,50 +15891,6 @@
               }
             }
           },
-          "423": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/ErrorResponse"
-                    },
-                    {
-                      "properties": {
-                        "error": {
-                          "properties": {
-                            "code": {
-                              "enum": [
-                                "OWNER_PASSWORD_REQUIRED",
-                                "OWNER_PASSWORD_INVALID"
-                              ],
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "code"
-                          ],
-                          "type": "object"
-                        }
-                      },
-                      "required": [
-                        "error"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                }
-              }
-            },
-            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
-            "headers": {
-              "X-Correlation-Id": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
           "429": {
             "content": {
               "application/json": {
@@ -16127,7 +15957,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Hide a photo; it is kept and the removal audited, never hard-deleted — Owner Password (PCR-005)",
+        "summary": "Hide a photo; it is kept and the removal audited, never hard-deleted (PCR-005; no Owner Password, PCR-006)",
         "tags": [
           "venue-images"
         ]

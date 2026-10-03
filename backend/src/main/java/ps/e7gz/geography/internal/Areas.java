@@ -1,6 +1,7 @@
 package ps.e7gz.geography.internal;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -49,6 +50,11 @@ public class Areas implements AreaLookup {
     public boolean isActive(UUID areaId) {
         return jdbc.sql("SELECT EXISTS (SELECT 1 FROM geo.area WHERE id = :id AND is_active)").param("id", areaId)
                 .query(Boolean.class).single();
+    }
+
+    @Override
+    public Optional<String> name(UUID areaId) {
+        return jdbc.sql("SELECT name FROM geo.area WHERE id = :id").param("id", areaId).query(String.class).optional();
     }
 
     public Area create(UUID adminId, String name, String nameAr, Coordinates centroid) {

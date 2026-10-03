@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDashboardApiClient } from "../../api";
 import { messages, MessagesContext } from "../../i18n";
 import { OpeningHoursEditor } from "./OpeningHoursEditor";
-import { OwnerPasswordDialog } from "./OwnerPasswordDialog";
+import { OwnerPasswordDialog, toPinDigits } from "./OwnerPasswordDialog";
 import { PhotoManager } from "./PhotoManager";
 import { PricingEditor } from "./PricingEditor";
 import { ResourceList } from "./ResourceList";
@@ -31,14 +31,25 @@ describe("OwnerPasswordDialog", () => {
   it("never remembers the password between protected actions", async () => {
     const confirm = vi.fn(async () => true);
     const { rerender } = render(<MessagesContext.Provider value={messages.en}><OwnerPasswordDialog actionLabel="Save" open onCancel={() => {}} onConfirm={confirm} /></MessagesContext.Provider>);
-    const input = screen.getByLabelText("Owner Password") as HTMLInputElement;
-    fireEvent.change(input, { target: { value: "first-secret" } });
+    const input = screen.getByLabelText("Owner PIN") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "1357" } });
     fireEvent.submit(screen.getByRole("dialog"));
-    await waitFor(() => expect(confirm).toHaveBeenCalledWith("first-secret"));
+    await waitFor(() => expect(confirm).toHaveBeenCalledWith("1357"));
 
     rerender(<MessagesContext.Provider value={messages.en}><OwnerPasswordDialog actionLabel="Save" open={false} onCancel={() => {}} onConfirm={confirm} /></MessagesContext.Provider>);
     rerender(<MessagesContext.Provider value={messages.en}><OwnerPasswordDialog actionLabel="Save" open onCancel={() => {}} onConfirm={confirm} /></MessagesContext.Provider>);
-    expect((screen.getByLabelText("Owner Password") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Owner PIN") as HTMLInputElement).value).toBe("");
+  });
+
+  it("takes only 4 digits, and Arabic digits count as 0-9", () => {
+    expect(toPinDigits("12ab34")).toBe("1234");
+    expect(toPinDigits("\u0661\u0662\u0663\u0664")).toBe("1234");
+    expect(toPinDigits("123456")).toBe("1234");
+    render(<MessagesContext.Provider value={messages.en}><OwnerPasswordDialog actionLabel="Save" open onCancel={() => {}} onConfirm={async () => true} /></MessagesContext.Provider>);
+    const input = screen.getByLabelText("Owner PIN") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "9a8b7c6d5" } });
+    expect(input.value).toBe("9876");
+    expect(input.inputMode).toBe("numeric");
   });
 });
 
@@ -52,12 +63,12 @@ describe("ResourceList protected actions", () => {
     expect(await screen.findByText("No resources yet.")).toBeTruthy();
     expect(screen.queryByLabelText(/room name/iu)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Add resource" }));
-    fireEvent.change(screen.getByLabelText("Owner Password"), { target: { value: "resource-owner" } });
+    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "1111" } });
     fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
 
     await waitFor(() => expect(requests.some((request) => request.method === "POST")).toBe(true));
     const create = requests.find((request) => request.method === "POST");
-    expect(await create?.clone().json()).toEqual({ activity: "PLAYSTATION", consoleType: "PS5", ownerPassword: "resource-owner" });
+    expect(await create?.clone().json()).toEqual({ activity: "PLAYSTATION", consoleType: "PS5", ownerPassword: "1111" });
   });
 });
 
@@ -77,14 +88,14 @@ describe("PricingEditor", () => {
     const price = await screen.findByLabelText("PlayStation · PS5 · Single");
     fireEvent.change(price, { target: { value: "170.50" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    fireEvent.change(screen.getByLabelText("Owner Password"), { target: { value: "pricing-owner" } });
+    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "2222" } });
     fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
 
     await waitFor(() => expect(requests.some((request) => request.method === "PUT" && request.url.endsWith("/pricing"))).toBe(true));
     const save = requests.find((request) => request.method === "PUT" && request.url.endsWith("/pricing"));
     expect(await save?.clone().json()).toEqual({
       defaults: [{ activity: "PLAYSTATION", consoleType: "PS5", playMode: "SINGLE", hourlyPrice: { amount: "170.50", currency: "EGP" } }],
-      ownerPassword: "pricing-owner",
+      ownerPassword: "2222",
     });
   });
 });
@@ -140,25 +151,25 @@ describe("OpeningHoursEditor", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Preview changes" }));
     expect(await screen.findByText(/b-1/u)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Save opening hours" }));
-    fireEvent.change(screen.getByLabelText("Owner Password"), { target: { value: "one" } });
+    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "1111" } });
     fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
 
     expect(await screen.findByText(/Bookings changed/u)).toBeTruthy();
     expect(screen.getByText(/b-2/u)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Save opening hours" }));
-    expect((screen.getByLabelText("Owner Password") as HTMLInputElement).value).toBe("");
-    fireEvent.change(screen.getByLabelText("Owner Password"), { target: { value: "two" } });
+    expect((screen.getByLabelText("Owner PIN") as HTMLInputElement).value).toBe("");
+    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "2222" } });
     fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
     await waitFor(() => expect(commitCalls).toBe(2));
 
     const commitBodies = await Promise.all(requests.filter((request) => request.url.endsWith("/commit")).map((request) => request.clone().json()));
-    expect(commitBodies.map((body) => body.ownerPassword)).toEqual(["one", "two"]);
+    expect(commitBodies.map((body) => body.ownerPassword)).toEqual(["1111", "2222"]);
     expect(previewCalls).toBe(2);
   });
 });
 
 describe("PhotoManager", () => {
-  it("adds through POST, signed PUT and confirm, then protects reorder and remove", async () => {
+  it("adds, reorders and removes photos with no Owner PIN (PCR-006)", async () => {
     let listed = false;
     const calls: string[] = [];
     const requests = renderWithApi((api) => <PhotoManager api={api} uploader={async (_url, _file, progress) => { calls.push("PUT signed"); progress(100); }} />, async (request) => {
@@ -174,22 +185,39 @@ describe("PhotoManager", () => {
     const file = new File(["photo"], "venue.jpg", { type: "image/jpeg" });
     fireEvent.change(screen.getByLabelText("Choose photo"), { target: { files: [file] } });
     fireEvent.click(screen.getByRole("button", { name: "Add photo" }));
-    fireEvent.change(screen.getByLabelText("Owner Password"), { target: { value: "upload-owner" } });
-    fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
     await screen.findByAltText("Venue photos 1");
-
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(calls.slice(1, 4)).toEqual(["POST /api/v1/venue/images", "PUT signed", "POST /api/v1/venue/images/i-1/confirm"]);
-    const confirm = requests.find((request) => request.url.endsWith("/confirm"));
-    expect(await confirm?.clone().json()).toEqual({ ownerPassword: "upload-owner" });
 
     fireEvent.click(screen.getAllByRole("button", { name: "Move down" })[0]!);
     fireEvent.click(screen.getByRole("button", { name: "Save photo order" }));
-    expect((screen.getByLabelText("Owner Password") as HTMLInputElement).value).toBe("");
-    fireEvent.change(screen.getByLabelText("Owner Password"), { target: { value: "order-owner" } });
-    fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
     await waitFor(() => expect(requests.some((request) => request.method === "PUT" && request.url.endsWith("/images/order"))).toBe(true));
+    const order = requests.find((request) => request.method === "PUT" && request.url.endsWith("/images/order"));
+    expect(await order?.clone().json()).toEqual({ imageIds: ["i-2", "i-1"] });
 
     fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
-    expect(within(screen.getByRole("dialog")).getByLabelText("Owner Password")).toHaveProperty("value", "");
+    await waitFor(() => expect(requests.some((request) => request.url.endsWith("/remove"))).toBe(true));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByText("This hides the photo. It is not permanently deleted.")).toBeTruthy();
+  });
+
+  it("shows an upload failure and retries only what is missing", async () => {
+    let uploads = 0;
+    const calls: string[] = [];
+    renderWithApi((api) => <PhotoManager api={api} uploader={async () => { uploads += 1; if (uploads === 1) throw new Error("offline"); }} />, async (request) => {
+      const path = new URL(request.url).pathname;
+      calls.push(`${request.method} ${path}`);
+      if (request.method === "GET") return ok([]);
+      if (request.method === "POST" && path.endsWith("/images")) return ok({ image: { id: "i-9", contentType: "image/jpeg", smallUrl: null, mediumUrl: null, urlsExpireAt: null }, uploadUrl: "https://upload.test/signed", uploadExpiresAt: "2026-10-03T12:10:00Z" }, 201);
+      return ok({ id: "i-9", contentType: "image/jpeg", smallUrl: null, mediumUrl: null, urlsExpireAt: null });
+    });
+
+    fireEvent.change(screen.getByLabelText("Choose photo"), { target: { files: [new File(["photo"], "venue.jpg", { type: "image/jpeg" })] } });
+    fireEvent.click(screen.getByRole("button", { name: "Add photo" }));
+    expect((await screen.findByRole("alert")).textContent).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry upload" }));
+    await waitFor(() => expect(calls.some((call) => call.endsWith("/confirm"))).toBe(true));
+    expect(uploads).toBe(2);
   });
 });

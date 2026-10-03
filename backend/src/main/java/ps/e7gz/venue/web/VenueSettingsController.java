@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -17,16 +18,19 @@ import org.springframework.web.bind.annotation.RestController;
 import ps.e7gz.common.codes.Activity;
 import ps.e7gz.common.codes.MarketplaceStatus;
 import ps.e7gz.common.codes.VenueAccountLanguage;
+import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.DataResponse;
 import ps.e7gz.common.web.GeoPoint;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
+import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.venue.internal.Venue;
+import ps.e7gz.venue.internal.VenueAccounts;
 
 /**
  * Venue Dashboard — the venue's own profile and Dashboard language (arch 09 §4.2, FR-VEN-40). The venue edits its
  * name, address and phone (PO decision 3 Oct 2026, E7-35) and its language; area, location, activities, timezone and
  * marketplace status stay with the Platform Admin (FR-ADM-02, FR-VEN-07, FR-VEN-12). No Owner Password: not a
- * protected action (FR-VEN-03). Stub until E7-24.
+ * protected action (FR-VEN-03). A venue only ever reads and changes its own venue. Implemented by E7-24.
  */
 @RestController
 @RequestMapping("/api/v1/venue/settings")
@@ -34,11 +38,19 @@ import ps.e7gz.common.web.OpenApiConfig;
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class VenueSettingsController {
 
+    private final VenueAccounts accounts;
+    private final ResponseMetaFactory meta;
+
+    public VenueSettingsController(VenueAccounts accounts, ResponseMetaFactory meta) {
+        this.accounts = accounts;
+        this.meta = meta;
+    }
+
     @GetMapping
     @Operation(operationId = "venueGetSettings",
             summary = "The venue's profile and the account's Dashboard language (FR-VEN-40)")
-    public DataResponse<VenueSettingsView> get() {
-        throw NotImplementedYet.stub();
+    public DataResponse<VenueSettingsView> get(@AuthenticationPrincipal AuthenticatedSubject venue) {
+        return meta.data(VenueSettingsView.of(accounts.settings(venue.id())));
     }
 
     @PatchMapping
@@ -47,8 +59,10 @@ public class VenueSettingsController {
             description = "PO decision 3 Oct 2026 (E7-35): the venue may edit its name, address and phone; the same "
                     + "rules as the admin venue edit apply (not blank when sent, at most 200 characters, phone as "
                     + "below). Area, location, activities, timezone and marketplace status are not editable here.")
-    public DataResponse<VenueSettingsView> update(@Valid @RequestBody VenueSettingsUpdateRequest request) {
-        throw NotImplementedYet.stub();
+    public DataResponse<VenueSettingsView> update(@AuthenticationPrincipal AuthenticatedSubject venue,
+                                                  @Valid @RequestBody VenueSettingsUpdateRequest request) {
+        return meta.data(VenueSettingsView.of(accounts.updateSettings(venue.id(), new VenueAccounts.SettingsChanges(
+                request.name(), request.address(), request.phone(), request.languagePreference()))));
     }
 
     /** {@code venue.venue} with its activities, its area's name and {@code iam.venue_account.language_preference}. */
@@ -65,6 +79,13 @@ public class VenueSettingsController {
             @NotNull MarketplaceStatus marketplaceStatus,
             @NotNull List<Activity> activities,
             @NotNull VenueAccountLanguage languagePreference) {
+
+        static VenueSettingsView of(VenueAccounts.Settings settings) {
+            Venue venue = settings.venue();
+            return new VenueSettingsView(venue.id(), venue.name(), venue.areaId(), settings.areaName(),
+                    venue.address(), GeoPoint.of(venue.location()), venue.phone(), venue.timezone(),
+                    venue.marketplaceStatus(), venue.activities(), settings.languagePreference());
+        }
     }
 
     /** Only the fields sent change; a text field that is sent must not be blank. */
