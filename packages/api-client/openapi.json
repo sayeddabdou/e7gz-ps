@@ -2617,6 +2617,7 @@
       "VenueSchedule": {
         "properties": {
           "businessDate": {
+            "description": "The business date actually used (arch 04 §4.3).",
             "example": "2026-10-12",
             "format": "date",
             "type": "string"
@@ -14359,10 +14360,10 @@
         "operationId": "venueGetAvailability",
         "parameters": [
           {
-            "description": "Business date (arch 04 §4.3).",
+            "description": "Business date (arch 04 §4.3). Optional: when absent, the Venue's current business date; the date used is returned as VenueSchedule.businessDate.",
             "in": "query",
             "name": "date",
-            "required": true,
+            "required": false,
             "schema": {
               "format": "date",
               "type": "string"
