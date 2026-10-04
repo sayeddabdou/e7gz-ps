@@ -207,6 +207,99 @@ describe("PricingEditor for a venue with no prices yet", () => {
   });
 });
 
+describe("Abdallah's E7-35 review", () => {
+  const room = { id: "r-1", activity: "PLAYSTATION", name: "Room 1", consoleType: "PS5", baseState: "ACTIVE", operationalRestriction: "NONE" };
+
+  it("reloads the venue's activities when the server says one is no longer offered", async () => {
+    let activities = ["PLAYSTATION", "BILLIARDS"];
+    const requests = renderWithApi((api) => <ResourceList api={api} />, async (request) => {
+      if (request.url.endsWith("/venue/settings")) return ok({ activities });
+      if (request.method === "GET") return ok([]);
+      return failure("VALIDATION_FAILED", 400, { field: "activity" });
+    });
+    const activity = await screen.findByRole("combobox", { name: "Activity" }) as HTMLSelectElement;
+    await waitFor(() => expect(activity.options).toHaveLength(2));
+    fireEvent.change(activity, { target: { value: "BILLIARDS" } });
+
+    activities = ["PLAYSTATION"];           // the Platform Admin removed Billiards meanwhile
+    fireEvent.click(screen.getByRole("button", { name: "Add resource" }));
+    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "1111" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("This venue does not offer that activity.");
+    await waitFor(() => expect([...activity.options].map((option) => option.value)).toEqual(["PLAYSTATION"]));
+    expect(requests.filter((request) => request.url.endsWith("/venue/settings")).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("refuses clearing a saved default price instead of silently keeping it", async () => {
+    const requests = renderWithApi((api) => <PricingEditor api={api} />, async (request) => {
+      if (request.url.endsWith("/settings")) return ok({ activities: ["BILLIARDS"] });
+      if (request.method === "GET" && request.url.endsWith("/pricing")) {
+        return ok({ defaults: [{ activity: "BILLIARDS", consoleType: null, playMode: null, hourlyPrice: { amount: "70.00", currency: "EGP" } }], overrides: [] });
+      }
+      return ok([]);
+    });
+    const price = await screen.findByLabelText("Billiards") as HTMLInputElement;
+    await waitFor(() => expect(price.value).toBe("70.00"));
+
+    fireEvent.change(price, { target: { value: "" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Save" })[0]!);
+
+    expect((await screen.findByRole("alert")).textContent)
+      .toContain("A saved price cannot be removed. Enter a price in every field that had one.");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(requests.some((request) => request.method === "PUT")).toBe(false);
+  });
+
+  it("refuses clearing a saved price in Arabic too", async () => {
+    renderWithApi((api) => <PricingEditor api={api} />, async (request) => {
+      if (request.url.endsWith("/settings")) return ok({ activities: ["BILLIARDS"] });
+      if (request.method === "GET" && request.url.endsWith("/pricing")) {
+        return ok({ defaults: [{ activity: "BILLIARDS", consoleType: null, playMode: null, hourlyPrice: { amount: "70.00", currency: "EGP" } }], overrides: [] });
+      }
+      return ok([]);
+    }, "ar");
+    const price = await screen.findByLabelText("بلياردو") as HTMLInputElement;
+    await waitFor(() => expect(price.value).toBe("70.00"));
+    fireEvent.change(price, { target: { value: "" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "حفظ" })[0]!);
+    expect((await screen.findByRole("alert")).textContent).toContain("لا يمكن حذف سعر محفوظ. أدخل سعرًا في كل خانة كان لها سعر.");
+  });
+
+  it("shows the new messages in Arabic", async () => {
+    renderWithApi((api) => <ResourceList api={api} />, async (request) => {
+      if (request.url.endsWith("/venue/settings")) return ok({ activities: ["PLAYSTATION"] });
+      if (request.method === "GET") return ok([]);
+      return failure("VALIDATION_FAILED", 400, { field: "activity" });
+    }, "ar");
+    await waitFor(() => expect((screen.getByRole("button", { name: "إضافة مورد" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "إضافة مورد" }));
+    fireEvent.change(screen.getByLabelText("رمز المالك"), { target: { value: "1111" } });
+    fireEvent.click(screen.getByRole("button", { name: "تأكيد الإجراء" }));
+    expect((await screen.findByRole("alert")).textContent)
+      .toContain("هذا المكان لا يقدّم هذا النشاط. اطلب من E7GZ PS إضافته أولًا.");
+    cleanup();
+
+    let refusal: Response | undefined = undefined;
+    renderWithApi((api) => <PricingEditor api={api} />, async (request) => {
+      if (request.url.endsWith("/settings")) return ok({ activities: ["BILLIARDS"] });
+      if (request.method === "GET" && request.url.endsWith("/pricing")) return ok({ defaults: [], overrides: [] });
+      if (request.method === "GET") return ok([room]);
+      return refusal ?? ok({ defaults: [], overrides: [] });
+    }, "ar");
+    await screen.findByLabelText("بلياردو");
+    fireEvent.click(screen.getAllByRole("button", { name: "حفظ" })[0]!);
+    expect((await screen.findByRole("alert")).textContent).toContain("أدخل سعرًا واحدًا على الأقل.");
+
+    refusal = failure("VALIDATION_FAILED", 400, { field: "defaults[0].hourlyPrice.amount" });
+    fireEvent.change(screen.getByLabelText("بلياردو"), { target: { value: "12.5" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "حفظ" })[0]!);
+    fireEvent.change(screen.getByLabelText("رمز المالك"), { target: { value: "1111" } });
+    fireEvent.click(screen.getByRole("button", { name: "تأكيد الإجراء" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("أدخل كل سعر كرقم بخانتين عشريتين، مثل 150.00."));
+  });
+});
+
 describe("VenueProfile", () => {
   it("loads editable venue settings and saves only the venue-authorized fields", async () => {
     const requests = renderWithApi((api) => <VenueProfile api={api} onLanguagePreference={() => {}} />, async (request) => request.method === "GET"

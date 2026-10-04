@@ -36,6 +36,7 @@ export function PricingEditor({ api }: { api: ApiClient }) {
   const [pricing, setPricing] = useState<Pricing>();
   const [slots, setSlots] = useState<Slot[]>([]);
   const [defaultDrafts, setDefaultDrafts] = useState<Record<string, string>>({});
+  const [savedKeys, setSavedKeys] = useState<Set<string>>(new Set());
   const [resources, setResources] = useState<VenueResource[]>([]);
   const [overrideDrafts, setOverrideDrafts] = useState<Record<string, OverrideDraft>>({});
   const [action, setAction] = useState<Action>();
@@ -60,6 +61,7 @@ export function PricingEditor({ api }: { api: ApiClient }) {
       const saved = new Map(priceResult.data.data.defaults.map((item) => [slotKey(item), item.hourlyPrice.amount]));
       setSlots(venueSlots);
       setDefaultDrafts(Object.fromEntries(venueSlots.map((slot) => [slotKey(slot), saved.get(slotKey(slot)) ?? ""])));
+      setSavedKeys(new Set(saved.keys()));
       setResources(resourceResult.data.data);
       const drafts: Record<string, OverrideDraft> = {};
       for (const resource of resourceResult.data.data.filter((item) => item.activity === "PLAYSTATION")) {
@@ -81,8 +83,10 @@ export function PricingEditor({ api }: { api: ApiClient }) {
 
   const existingOverrideIds = useMemo(() => new Set(pricing?.overrides.map((item) => item.resourceId) ?? []), [pricing]);
 
-  // Only filled fields are sent: a default price not sent keeps its saved value on the server, and a play mode with
-  // no override uses the venue default (FR-VEN-43). The server checks every amount.
+  // Only filled fields are sent. PUT /venue/pricing sets the prices sent and keeps the others: a saved default price is
+  // never deleted (E7-27; the runtime role has no DELETE on venue_default_price), so clearing one is refused below
+  // rather than silently ignored. A room override replaces the room's set: a play mode left empty uses the venue
+  // default (FR-VEN-43). The server checks every amount.
   const filledDefaults = slots.filter((slot) => defaultDrafts[slotKey(slot)]?.trim())
     .map((slot) => ({ ...slot, hourlyPrice: { amount: defaultDrafts[slotKey(slot)]!.trim(), currency: "EGP" as const } }));
   const filledOverrides = (resource: VenueResource) => (["SINGLE", "MULTIPLAYER"] as const)
@@ -91,6 +95,9 @@ export function PricingEditor({ api }: { api: ApiClient }) {
 
   const ask = (next: Action) => {
     setActionError(undefined);
+    if (next.kind === "defaults" && slots.some((slot) => savedKeys.has(slotKey(slot)) && !defaultDrafts[slotKey(slot)]?.trim())) {
+      return setActionError(t.setup.pricing.savedPriceRequired);
+    }
     const empty = next.kind === "defaults" ? filledDefaults.length === 0
       : next.kind === "override" ? filledOverrides(next.resource).length === 0 : false;
     if (empty) return setActionError(t.setup.pricing.enterAPrice);

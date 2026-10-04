@@ -86,9 +86,10 @@ export function ResourceList({ api }: { api: ApiClient }) {
           return false;
         }
         setAction(undefined);
-        setActionError(code === "VALIDATION_FAILED" && field === "activity"
-          ? t.setup.resources.activityNotOffered
-          : setupErrorMessage(code, t));
+        const activityGone = code === "VALIDATION_FAILED" && field === "activity";
+        setActionError(activityGone ? t.setup.resources.activityNotOffered : setupErrorMessage(code, t));
+        // The venue's activities changed since this page loaded: reload them so the stale one leaves the list.
+        if (activityGone) setRefreshVersion((version) => version + 1);
         return false;
       }
       setAction(undefined);
