@@ -5,13 +5,14 @@ import { webTokens } from "@e7gz/tokens/web";
 type ScheduleDisplayState = components["schemas"]["ScheduleDisplayState"];
 
 export const scheduleStyles = {
-  page: { display: "grid", gap: webTokens.spacing["4xl"] },
+  page: { display: "grid", gap: webTokens.spacing["7xl"] },
   heading: {
-    fontSize: webTokens.typography.fontSize.heading,
+    fontSize: webTokens.typography.fontSize.displaySmall,
     fontWeight: webTokens.typography.fontWeight.extrabold,
+    lineHeight: webTokens.typography.lineHeight.tight,
     marginBlock: 0,
   },
-  intro: { color: webTokens.color.text.venueMuted, marginBlock: webTokens.spacing.xs },
+  intro: { color: webTokens.color.text.venueMuted, lineHeight: webTokens.typography.lineHeight.normal, marginBlock: webTokens.spacing.sm },
   controls: {
     alignItems: "end",
     display: "flex",
@@ -30,8 +31,9 @@ export const scheduleStyles = {
     borderRadius: webTokens.radius.lg,
     color: webTokens.color.text.venue,
     font: "inherit",
+    minHeight: webTokens.spacing["10xl"],
     paddingBlock: webTokens.spacing.md,
-    paddingInline: webTokens.spacing.xl,
+    paddingInline: webTokens.spacing["3xl"],
   },
   button: {
     backgroundColor: webTokens.color.surface.raised,
@@ -41,6 +43,7 @@ export const scheduleStyles = {
     cursor: "pointer",
     font: "inherit",
     fontWeight: webTokens.typography.fontWeight.bold,
+    minHeight: webTokens.spacing["10xl"],
     paddingBlock: webTokens.spacing.md,
     paddingInline: webTokens.spacing.xl,
   },
@@ -50,7 +53,7 @@ export const scheduleStyles = {
     borderRadius: webTokens.radius["3xl"],
     boxShadow: webTokens.shadow.card,
     display: "grid",
-    gap: webTokens.spacing["3xl"],
+    gap: webTokens.spacing["4xl"],
     padding: webTokens.spacing["4xl"],
   },
   cardHeader: {
