@@ -18,6 +18,7 @@ import ps.e7gz.common.validation.VenuePhones;
 import ps.e7gz.geography.api.AreaLookup;
 import ps.e7gz.identity.api.PasswordRules;
 import ps.e7gz.venue.api.OwnerPasswordGate;
+import ps.e7gz.venue.api.VenueAccountVenues;
 
 /**
  * The venue's shared account (FR-VEN-01): creation by the Platform Admin (FR-ADM-02), the venue's own Owner Password
@@ -26,7 +27,7 @@ import ps.e7gz.venue.api.OwnerPasswordGate;
  * protected command (ADR-011).
  */
 @Service
-public class VenueAccounts {
+public class VenueAccounts implements VenueAccountVenues {
 
     /** PCR-006: exactly four ASCII digits. */
     private static final Pattern OWNER_PIN = Pattern.compile("[0-9]{4}");
@@ -137,6 +138,7 @@ public class VenueAccounts {
     }
 
     /** The venue of the signed-in account; the venue routes only ever act on this venue. */
+    @Override
     public UUID venueOf(UUID venueAccountId) {
         return jdbc.sql("SELECT venue_id FROM iam.venue_account WHERE id = :id").param("id", venueAccountId)
                 .query(UUID.class).optional().orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND));

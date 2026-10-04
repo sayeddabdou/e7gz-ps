@@ -20,7 +20,18 @@ public interface ActiveCommitments {
      */
     List<Commitment> startingAfter(CommandContext command, UUID venueId, Instant after);
 
-    /** One active row: its id, Resource, owner and planned interval {@code [plannedStart, plannedEnd)}. */
+    /**
+     * The rows that block Disable, Archive and Console Change of the Resource (FR-VEN-14, Product Spec §13.4, arch 05
+     * "the blocking set the Dashboard must display"): every active row except {@code CLOSURE} - a normal closure alone
+     * does not block - whose planned interval has not completely ended at {@code at}, in planned-start order. Added for
+     * E7-26. Reads on the command's own transaction.
+     */
+    List<Commitment> blockingResourceChange(CommandContext command, UUID resourceId, Instant at);
+
+    /**
+     * One active row: its id, Resource, owner and planned interval {@code [plannedStart, plannedEnd)}. Only
+     * {@link #blockingResourceChange} returns {@code MAINTENANCE} owners.
+     */
     record Commitment(UUID reservationId, UUID resourceId, ReservationOwner owner, Instant plannedStart,
                       Instant plannedEnd) {
     }

@@ -5,11 +5,11 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,14 +22,18 @@ import ps.e7gz.common.codes.ConsoleType;
 import ps.e7gz.common.codes.OperationalRestriction;
 import ps.e7gz.common.codes.ResourceBaseState;
 import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
+import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.resource.internal.Resources;
+import ps.e7gz.resource.internal.Resources.StateChange;
 
 /**
  * Venue Dashboard — resources (arch 09 §4.2, arch 03 §6, FR-VEN-13…FR-VEN-15, FR-VEN-41). The Owner Password travels
- * in the body of each protected command, never a header (arch 09 §4.3, ADR-011). Stub until E7-26.
+ * in the body of each protected command, never a header (arch 09 §4.3, ADR-011). Implemented by E7-26. A refused
+ * Disable, Archive or Console Change names the blocking reservations in {@code error.details.reservations}.
  */
 @RestController
 @RequestMapping("/api/v1/venue/resources")
@@ -37,10 +41,18 @@ import ps.e7gz.common.web.OpenApiConfig;
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class VenueResourceController {
 
+    private final Resources resources;
+    private final ResponseMetaFactory meta;
+
+    public VenueResourceController(Resources resources, ResponseMetaFactory meta) {
+        this.resources = resources;
+        this.meta = meta;
+    }
+
     @GetMapping
     @Operation(operationId = "venueListResources", summary = "The venue's resources with both status columns (FR-VEN-13)")
-    public DataResponse<List<VenueResourceView>> list() {
-        throw NotImplementedYet.stub();
+    public DataResponse<List<VenueResourceView>> list(@AuthenticationPrincipal AuthenticatedSubject venue) {
+        return meta.data(resources.listForVenue(venue.id()).stream().map(VenueResourceView::of).toList());
     }
 
     @PostMapping
@@ -53,14 +65,17 @@ public class VenueResourceController {
                     + "(ck_console_iff_playstation). Starts ACTIVE with no operational restriction. Owner "
                     + "Password required (FRS §2.4 'protected resource configuration'; PO decision 2 Oct 2026).")
     @ApiError(status = 423, codes = {ApiErrorCode.OWNER_PASSWORD_REQUIRED, ApiErrorCode.OWNER_PASSWORD_INVALID})
-    public DataResponse<VenueResourceView> create(@Valid @RequestBody VenueResourceCreateRequest request) {
-        throw NotImplementedYet.stub();
+    public DataResponse<VenueResourceView> create(@AuthenticationPrincipal AuthenticatedSubject venue,
+                                                  @Valid @RequestBody VenueResourceCreateRequest request) {
+        return meta.data(VenueResourceView.of(resources.createForVenue(venue.id(), request.activity(),
+                request.consoleType(), request.ownerPassword())));
     }
 
     @GetMapping("/{resourceId}")
     @Operation(operationId = "venueGetResource", summary = "One resource")
-    public DataResponse<VenueResourceView> get(@PathVariable UUID resourceId) {
-        throw NotImplementedYet.stub();
+    public DataResponse<VenueResourceView> get(@AuthenticationPrincipal AuthenticatedSubject venue,
+                                               @PathVariable UUID resourceId) {
+        return meta.data(VenueResourceView.of(resources.getForVenue(venue.id(), resourceId)));
     }
 
     @PostMapping("/{resourceId}/disable")
@@ -69,16 +84,18 @@ public class VenueResourceController {
     @ApiError(status = 422, codes = ApiErrorCode.RESOURCE_HAS_BLOCKING_RESERVATIONS)
     @ApiError(status = 423, codes = {ApiErrorCode.OWNER_PASSWORD_REQUIRED, ApiErrorCode.OWNER_PASSWORD_INVALID})
     public DataResponse<VenueResourceView> disable(
-            @PathVariable UUID resourceId, @Valid @RequestBody VenueResourceOwnerPasswordRequest request) {
-        throw NotImplementedYet.stub();
+            @AuthenticationPrincipal AuthenticatedSubject venue, @PathVariable UUID resourceId,
+            @Valid @RequestBody VenueResourceOwnerPasswordRequest request) {
+        return change(venue, resourceId, StateChange.DISABLE, request);
     }
 
     @PostMapping("/{resourceId}/re-enable")
     @Operation(operationId = "venueReEnableResource", summary = "Re-enable — Owner Password (FR-VEN-03)")
     @ApiError(status = 423, codes = {ApiErrorCode.OWNER_PASSWORD_REQUIRED, ApiErrorCode.OWNER_PASSWORD_INVALID})
     public DataResponse<VenueResourceView> reEnable(
-            @PathVariable UUID resourceId, @Valid @RequestBody VenueResourceOwnerPasswordRequest request) {
-        throw NotImplementedYet.stub();
+            @AuthenticationPrincipal AuthenticatedSubject venue, @PathVariable UUID resourceId,
+            @Valid @RequestBody VenueResourceOwnerPasswordRequest request) {
+        return change(venue, resourceId, StateChange.RE_ENABLE, request);
     }
 
     @PostMapping("/{resourceId}/archive")
@@ -87,16 +104,18 @@ public class VenueResourceController {
     @ApiError(status = 422, codes = ApiErrorCode.RESOURCE_HAS_BLOCKING_RESERVATIONS)
     @ApiError(status = 423, codes = {ApiErrorCode.OWNER_PASSWORD_REQUIRED, ApiErrorCode.OWNER_PASSWORD_INVALID})
     public DataResponse<VenueResourceView> archive(
-            @PathVariable UUID resourceId, @Valid @RequestBody VenueResourceOwnerPasswordRequest request) {
-        throw NotImplementedYet.stub();
+            @AuthenticationPrincipal AuthenticatedSubject venue, @PathVariable UUID resourceId,
+            @Valid @RequestBody VenueResourceOwnerPasswordRequest request) {
+        return change(venue, resourceId, StateChange.ARCHIVE, request);
     }
 
     @PostMapping("/{resourceId}/restore")
     @Operation(operationId = "venueRestoreResource", summary = "Restore — Owner Password (FR-VEN-03)")
     @ApiError(status = 423, codes = {ApiErrorCode.OWNER_PASSWORD_REQUIRED, ApiErrorCode.OWNER_PASSWORD_INVALID})
     public DataResponse<VenueResourceView> restore(
-            @PathVariable UUID resourceId, @Valid @RequestBody VenueResourceOwnerPasswordRequest request) {
-        throw NotImplementedYet.stub();
+            @AuthenticationPrincipal AuthenticatedSubject venue, @PathVariable UUID resourceId,
+            @Valid @RequestBody VenueResourceOwnerPasswordRequest request) {
+        return change(venue, resourceId, StateChange.RESTORE, request);
     }
 
     @PostMapping("/{resourceId}/console")
@@ -106,8 +125,16 @@ public class VenueResourceController {
     @ApiError(status = 422, codes = ApiErrorCode.RESOURCE_HAS_BLOCKING_RESERVATIONS)
     @ApiError(status = 423, codes = {ApiErrorCode.OWNER_PASSWORD_REQUIRED, ApiErrorCode.OWNER_PASSWORD_INVALID})
     public DataResponse<VenueResourceView> changeConsole(
-            @PathVariable UUID resourceId, @Valid @RequestBody VenueResourceConsoleRequest request) {
-        throw NotImplementedYet.stub();
+            @AuthenticationPrincipal AuthenticatedSubject venue, @PathVariable UUID resourceId,
+            @Valid @RequestBody VenueResourceConsoleRequest request) {
+        return meta.data(VenueResourceView.of(resources.changeConsole(venue.id(), resourceId, request.consoleType(),
+                request.ownerPassword())));
+    }
+
+    private DataResponse<VenueResourceView> change(AuthenticatedSubject venue, UUID resourceId, StateChange change,
+                                                   VenueResourceOwnerPasswordRequest request) {
+        return meta.data(VenueResourceView.of(resources.changeState(venue.id(), resourceId, change,
+                request.ownerPassword())));
     }
 
     /** {@code resource.resource}; console type is set exactly for PlayStation ({@code ck_console_iff_playstation}). */
@@ -119,6 +146,11 @@ public class VenueResourceController {
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) ConsoleType consoleType,
             @NotNull ResourceBaseState baseState,
             @NotNull OperationalRestriction operationalRestriction) {
+
+        static VenueResourceView of(Resources.Resource resource) {
+            return new VenueResourceView(resource.id(), resource.activity(), resource.name(), resource.consoleType(),
+                    resource.baseState(), resource.operationalRestriction());
+        }
     }
 
     /** Console type exactly for PlayStation (ck_console_iff_playstation); the name is assigned (FR-VEN-41). */
@@ -126,17 +158,26 @@ public class VenueResourceController {
     public record VenueResourceCreateRequest(
             @NotNull Activity activity,
             @Schema(description = "PS5 or PS4 for PLAYSTATION; absent for BILLIARDS and PING_PONG.") ConsoleType consoleType,
-            @NotBlank @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY) String ownerPassword) {
+            @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY,
+                    requiredMode = Schema.RequiredMode.REQUIRED,
+                    description = "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.")
+            String ownerPassword) {
     }
 
     @Schema(name = "VenueResourceOwnerPasswordRequest")
     public record VenueResourceOwnerPasswordRequest(
-            @NotBlank @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY) String ownerPassword) {
+            @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY,
+                    requiredMode = Schema.RequiredMode.REQUIRED,
+                    description = "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.")
+            String ownerPassword) {
     }
 
     @Schema(name = "VenueResourceConsoleRequest")
     public record VenueResourceConsoleRequest(
             @NotNull ConsoleType consoleType,
-            @NotBlank @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY) String ownerPassword) {
+            @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY,
+                    requiredMode = Schema.RequiredMode.REQUIRED,
+                    description = "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.")
+            String ownerPassword) {
     }
 }

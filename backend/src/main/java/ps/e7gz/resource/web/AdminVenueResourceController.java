@@ -30,8 +30,7 @@ import ps.e7gz.resource.internal.Resources;
 /**
  * Platform Admin — a venue's resources during onboarding (FR-ADM-02: onboarding covers resources; PO decision 2 Oct
  * 2026, E7-22: the admin and the venue can both add them). Names are assigned (FR-VEN-41); state changes stay with
- * the venue and its Owner Password (arch 09 §4.2). The admin list/create carry-forward is implemented for E7-37;
- * venue-side state changes remain in E7-26.
+ * the venue and its Owner Password (arch 09 §4.2). Implemented by E7-26.
  */
 @RestController
 @RequestMapping("/api/v1/admin/venues/{venueId}/resources")

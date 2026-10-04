@@ -3,7 +3,9 @@ package ps.e7gz.venue.internal;
 import java.nio.ByteBuffer;
 import java.util.Base64;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -65,6 +67,24 @@ public class Venues {
      * the previous page (arch 09 section 1.2); creation time never changes, so editing a venue cannot move it between
      * pages (PO decision 2 Oct 2026).
      */
+    /** One activity of the closed list and how many venues offer it. */
+    public record ActivityCount(Activity activity, int venueCount) {
+    }
+
+    /**
+     * FR-ADM-01 Activities, view only (PO decision 2 Oct 2026, E7-22): all three activities in their declared order,
+     * each with the number of venues of any marketplace status that offer it ({@code venue.venue_activity}).
+     */
+    public List<ActivityCount> activities() {
+        Map<String, Integer> counts = new HashMap<>();
+        jdbc.sql("SELECT activity, count(*)::integer AS venues FROM venue.venue_activity GROUP BY activity")
+                .query(rs -> {
+                    counts.put(rs.getString("activity"), rs.getInt("venues"));
+                });
+        return EnumSet.allOf(Activity.class).stream()
+                .map(activity -> new ActivityCount(activity, counts.getOrDefault(activity.name(), 0))).toList();
+    }
+
     public Page list(String cursor, Integer limit) {
         int size = limit == null ? DEFAULT_PAGE_SIZE : limit;
         UUID after = cursor == null || cursor.isBlank() ? null : decodeCursor(cursor);

@@ -28,7 +28,8 @@ public final class AuditAssertions {
     /** One {@code audit.audit_event} row; {@code payload} is the stored JSON text. */
     public record AuditRow(UUID id, Instant occurredAt, String actorType, UUID actorId, String action,
                            String subjectType, UUID subjectId, String reason, Boolean ownerPasswordUsed,
-                           String ownerPasswordOutcome, UUID correlationId, String payload) {
+                           String ownerPasswordOutcome, UUID correlationId, String payload, String previousState,
+                           String newState, UUID contextVenueId) {
     }
 
     /**
@@ -54,7 +55,8 @@ public final class AuditAssertions {
         List<Object> args = new ArrayList<>(List.of(action.name(), action.subjectType(), subjectId));
         String sql = """
                 SELECT id, occurred_at, actor_type, actor_id, action, subject_type, subject_id, reason,
-                       owner_password_used, owner_password_outcome, correlation_id, payload::text AS payload
+                       owner_password_used, owner_password_outcome, correlation_id, payload::text AS payload,
+                       previous_state, new_state, context_venue_id
                   FROM audit.audit_event
                  WHERE action = ? AND subject_type = ? AND subject_id = ?
                 """;
@@ -74,6 +76,9 @@ public final class AuditAssertions {
                 (Boolean) rs.getObject("owner_password_used"),
                 rs.getString("owner_password_outcome"),
                 rs.getObject("correlation_id", UUID.class),
-                rs.getString("payload")), args.toArray());
+                rs.getString("payload"),
+                rs.getString("previous_state"),
+                rs.getString("new_state"),
+                rs.getObject("context_venue_id", UUID.class)), args.toArray());
     }
 }

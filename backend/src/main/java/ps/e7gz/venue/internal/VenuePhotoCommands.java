@@ -160,6 +160,7 @@ final class VenuePhotoCommands {
                     .param("now", VenuePhotoRow.utc(context.commandNow())).param("venue", venueId)
                     .param("id", imageId).update();
             audit.write(context, audit(VenuePhotoAuditAction.VENUE_PHOTO_ADDED, actor, imageId)
+                    .contextVenue(venueId)
                     .payload(Map.of("venueId", venueId, "contentType", row.contentType())).build());
             return lockedRow(context, venueId, imageId);
         }
@@ -190,7 +191,7 @@ final class VenuePhotoCommands {
                         .param("position", i + 1).param("id", imageIds.get(i)).update();
             }
             audit.write(context, audit(VenuePhotoAuditAction.VENUE_PHOTOS_REORDERED, actor, venueId)
-                    .payload(Map.of("imageIds", imageIds)).build());
+                    .contextVenue(venueId).payload(Map.of("imageIds", imageIds)).build());
             return null;
         }
     }
@@ -217,7 +218,7 @@ final class VenuePhotoCommands {
             context.jdbc().sql("UPDATE venue.venue_image SET removed_at = :now WHERE id = :id")
                     .param("now", VenuePhotoRow.utc(context.commandNow())).param("id", imageId).update();
             audit.write(context, audit(VenuePhotoAuditAction.VENUE_PHOTO_REMOVED, actor, imageId)
-                    .payload(Map.of("venueId", venueId)).build());
+                    .contextVenue(venueId).payload(Map.of("venueId", venueId)).build());
             return null;
         }
     }

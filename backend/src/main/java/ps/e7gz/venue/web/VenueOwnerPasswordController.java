@@ -49,7 +49,10 @@ public class VenueOwnerPasswordController {
     /** Arch 09 §4.2: {@code {current, next}}. Neither is ever returned, logged or echoed. */
     @Schema(name = "VenueOwnerPasswordChangeRequest")
     public record VenueOwnerPasswordChangeRequest(
-            @NotBlank @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY) String current,
+            @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY,
+                    requiredMode = Schema.RequiredMode.REQUIRED,
+                    description = "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.")
+            String current,
             @NotBlank @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY, pattern = "^[0-9]{4}$",
                     description = "The new Owner Password: a PIN of exactly 4 digits (PCR-006).") String next) {
 

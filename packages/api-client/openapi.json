@@ -2380,8 +2380,8 @@
       "VenueOwnerPasswordChangeRequest": {
         "properties": {
           "current": {
+            "description": "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.",
             "format": "password",
-            "minLength": 1,
             "type": "string",
             "writeOnly": true
           },
@@ -2424,8 +2424,8 @@
       "VenuePricingOwnerPasswordRequest": {
         "properties": {
           "ownerPassword": {
+            "description": "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.",
             "format": "password",
-            "minLength": 1,
             "type": "string",
             "writeOnly": true
           }
@@ -2445,8 +2445,8 @@
             "type": "array"
           },
           "ownerPassword": {
+            "description": "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.",
             "format": "password",
-            "minLength": 1,
             "type": "string",
             "writeOnly": true
           }
@@ -2504,8 +2504,8 @@
             "$ref": "#/components/schemas/ConsoleType"
           },
           "ownerPassword": {
+            "description": "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.",
             "format": "password",
-            "minLength": 1,
             "type": "string",
             "writeOnly": true
           }
@@ -2526,8 +2526,8 @@
             "description": "PS5 or PS4 for PLAYSTATION; absent for BILLIARDS and PING_PONG."
           },
           "ownerPassword": {
+            "description": "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.",
             "format": "password",
-            "minLength": 1,
             "type": "string",
             "writeOnly": true
           }
@@ -2541,8 +2541,8 @@
       "VenueResourceOwnerPasswordRequest": {
         "properties": {
           "ownerPassword": {
+            "description": "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.",
             "format": "password",
-            "minLength": 1,
             "type": "string",
             "writeOnly": true
           }
@@ -2595,8 +2595,8 @@
       "VenueRoomOverrideRequest": {
         "properties": {
           "ownerPassword": {
+            "description": "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.",
             "format": "password",
-            "minLength": 1,
             "type": "string",
             "writeOnly": true
           },
@@ -17313,6 +17313,7 @@
         ]
       },
       "put": {
+        "description": "Sets each price sent; a price not sent keeps its value (default prices are never deleted). PlayStation rows carry consoleType and playMode, Billiards and Ping Pong rows neither (ck_price_dimensions); one row per activity, console and play mode; only activities the venue offers.",
         "operationId": "venuePutPricing",
         "parameters": [
           {
@@ -17602,7 +17603,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Replace the venue default prices — Owner Password (FR-VEN-03)",
+        "summary": "Set venue default prices — Owner Password (FR-VEN-03)",
         "tags": [
           "venue-pricing"
         ]
@@ -19904,6 +19905,7 @@
         ]
       },
       "put": {
+        "description": "The prices sent replace the room's overrides; a play mode not sent uses the venue default. PlayStation rooms only (FR-VEN-44); another venue's room is NOT_FOUND.",
         "operationId": "venuePutRoomPriceOverride",
         "parameters": [
           {

@@ -21,9 +21,11 @@ class JdbcAuditWriter implements AuditWriter {
 
     static final String INSERT = """
             INSERT INTO audit.audit_event (id, occurred_at, actor_type, actor_id, action, subject_type, subject_id,
-                                           reason, owner_password_used, owner_password_outcome, correlation_id, payload)
+                                           reason, owner_password_used, owner_password_outcome, correlation_id, payload,
+                                           previous_state, new_state, context_venue_id)
             VALUES (:id, :occurredAt, :actorType, :actorId, :action, :subjectType, :subjectId,
-                    :reason, :ownerPasswordUsed, :ownerPasswordOutcome, :correlationId, CAST(:payload AS jsonb))
+                    :reason, :ownerPasswordUsed, :ownerPasswordOutcome, :correlationId, CAST(:payload AS jsonb),
+                    :previousState, :newState, :contextVenueId)
             """;
 
     @Override
@@ -45,6 +47,9 @@ class JdbcAuditWriter implements AuditWriter {
                 .param("ownerPasswordOutcome", row.ownerPasswordOutcome())
                 .param("correlationId", row.correlationId())
                 .param("payload", row.payloadJson())
+                .param("previousState", row.previousState())
+                .param("newState", row.newState())
+                .param("contextVenueId", row.contextVenueId())
                 .update();
         return row.id();
     }

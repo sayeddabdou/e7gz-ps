@@ -14,7 +14,8 @@ import ps.e7gz.audit.api.OwnerPasswordCheck;
  */
 record AuditEventRow(UUID id, Instant occurredAt, String actorType, UUID actorId, String action, String subjectType,
                      UUID subjectId, String reason, Boolean ownerPasswordUsed, String ownerPasswordOutcome,
-                     UUID correlationId, String payloadJson) {
+                     UUID correlationId, String payloadJson, String previousState, String newState,
+                     UUID contextVenueId) {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -33,7 +34,10 @@ record AuditEventRow(UUID id, Instant occurredAt, String actorType, UUID actorId
                 check == null ? null : Boolean.TRUE,
                 check == null ? null : check.outcome().name(),
                 record.correlationId(),
-                payload.isEmpty() ? null : json(payload));
+                payload.isEmpty() ? null : json(payload),
+                record.previousState().orElse(null),
+                record.newState().orElse(null),
+                record.contextVenueId().orElse(null));
     }
 
     private static String json(Map<String, Object> payload) {
