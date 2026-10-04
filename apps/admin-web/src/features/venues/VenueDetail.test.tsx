@@ -10,7 +10,7 @@ const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200
 const venue = (marketplaceStatus: "ONBOARDING" | "ACTIVE" | "INACTIVE" | "SUSPENDED") => ({ id: "v-1", name: "Arena", areaId: "a-1", address: "Street", phone: "+201001234567", location: { lat: 30, lng: 31 }, timezone: "Africa/Cairo", activities: ["PLAYSTATION"], marketplaceStatus });
 
 function renderDetail(status: "ONBOARDING" | "ACTIVE" | "INACTIVE" | "SUSPENDED") {
-  const api = createAdminApiClient({ apiBaseUrl: "http://api" }, () => "token", async (request) => request.url.endsWith("/images") ? json({ data: [], meta }) : json({ data: { venue: venue(status), venueAccount: null }, meta }));
+  const api = createAdminApiClient({ apiBaseUrl: "http://api" }, () => "token", async (request) => request.url.endsWith("/images") || request.url.endsWith("/resources") ? json({ data: [], meta }) : json({ data: { venue: venue(status), venueAccount: null }, meta }));
   render(<MemoryRouter initialEntries={["/venues/v-1"]}><Routes><Route path="/venues/:venueId" element={<VenueDetail api={api} />} /></Routes></MemoryRouter>);
 }
 
@@ -50,5 +50,6 @@ describe("VenueDetail status actions", () => {
     const request = requests.find((item) => item.method === "POST")!;
     expect(request.url).toBe("http://api/api/v1/admin/venues/v-1/activate");
     expect(JSON.parse(await request.text())).toEqual({ reason: "Reviewed by admin" });
+    expect(request.headers.get("Idempotency-Key")).toBeNull();
   });
 });

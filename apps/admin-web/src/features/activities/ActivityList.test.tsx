@@ -31,8 +31,8 @@ describe("ActivityList", () => {
     answer(json(200, { data: [{ activity: "PLAYSTATION", venueCount: 4 }, { activity: "PING_PONG", venueCount: 2 }], meta }));
 
     const rows = await screen.findAllByRole("row");
-    expect(rows[1]!.textContent).toBe("PLAYSTATION4");
-    expect(rows[2]!.textContent).toBe("PING PONG2");
+    expect(rows[1]!.textContent).toBe("PlayStation4");
+    expect(rows[2]!.textContent).toBe("Ping pong2");
     expect(requests[0]!.url).toBe("http://api/api/v1/admin/activities");
     expect(requests[0]!.headers.get("Authorization")).toBe("Bearer admin-token");
     expect(screen.queryByRole("button")).toBeNull();
@@ -54,7 +54,7 @@ describe("ActivityList", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("Something went wrong. Try again.");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
-    expect((await screen.findAllByRole("row"))[1]!.textContent).toBe("BILLIARDS1");
+    expect((await screen.findAllByRole("row"))[1]!.textContent).toBe("Billiards1");
     expect(calls).toBe(2);
   });
 });
