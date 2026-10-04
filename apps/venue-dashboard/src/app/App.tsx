@@ -115,6 +115,15 @@ function ProtectedShell({
     (request) => session.withRefresh(request, onAccessToken, onUnauthenticated),
   ), [accessToken, config, onAccessToken, onUnauthenticated, session]);
 
+  useEffect(() => {
+    let active = true;
+    void api.GET("/api/v1/venue/settings").then(({ data }) => {
+      const preference = data?.data.languagePreference;
+      if (active && (preference === "en" || preference === "ar")) onLanguagePreference(preference);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [api, onLanguagePreference]);
+
   return (
     <main dir={direction} style={styles.shell}>
       <aside data-testid="venue-sidebar" style={styles.sidebar}>
@@ -207,6 +216,7 @@ export function App({
     setLanguage(nextLanguage);
     saveLanguage(nextLanguage);
   }, []);
+  const unauthenticate = useCallback(() => setAccessToken(undefined), []);
 
   const logout = async () => {
     if (!session) return;
@@ -247,7 +257,7 @@ export function App({
               direction={direction}
               onAccessToken={setAccessToken}
               onLanguagePreference={setLanguagePreference}
-              onUnauthenticated={() => setAccessToken(undefined)}
+              onUnauthenticated={unauthenticate}
               session={session!}
               t={t}
             />

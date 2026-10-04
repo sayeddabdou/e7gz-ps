@@ -1,84 +1,53 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
-import { logicalSpacing, webTokens } from "@e7gz/tokens/web";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { BrowserRouter, NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { createAdminApiClient } from "../api";
 import type { ConfigResult } from "../config";
 import { AreaList } from "../features/areas/AreaList";
+import { ActivityList } from "../features/activities/ActivityList";
 import { AdminLoginScreen, createAdminSessionApi, type AdminSessionApi } from "../features/auth";
+import { Onboarding } from "../features/venues/Onboarding";
+import { VenueDetail } from "../features/venues/VenueDetail";
+import { VenueList } from "../features/venues/VenueList";
 import { messages as t } from "../i18n/messages";
 
 const modules = [
-  { path: "/", label: "dashboard" },
-  { path: "/areas", label: "areas" },
-  { path: "/venues", label: "venues" },
-  { path: "/venue-onboarding", label: "venueOnboarding" },
-  { path: "/venue-accounts", label: "venueAccounts" },
-  { path: "/activities", label: "activities" },
-  { path: "/users", label: "users" },
-  { path: "/verified-players", label: "verifiedPlayers" },
-  { path: "/reviews", label: "reviewsModeration" },
-  { path: "/bookings", label: "globalBookings" },
-  { path: "/no-shows", label: "noShowRecords" },
-  { path: "/tournaments", label: "tournaments" },
-  { path: "/wallet", label: "wallet" },
-  { path: "/points", label: "points" },
-  { path: "/referrals", label: "referrals" },
-  { path: "/fees", label: "platformFees" },
-  { path: "/global-rules", label: "globalRules" },
-  { path: "/notifications", label: "notifications" },
-  { path: "/search", label: "globalSearch" },
-  { path: "/settings", label: "settings" },
-] as const satisfies ReadonlyArray<{ path: string; label: keyof typeof t.modules }>;
-
-const styles = {
-  frame: {
-    backgroundColor: webTokens.color.surface.adminSubtle,
-    color: webTokens.color.text.admin,
-    fontFamily: webTokens.typography.fontFamily.sans,
-    minHeight: "100vh",
-  },
-  header: {
-    ...logicalSpacing.paddingInline(webTokens.spacing["3xl"]),
-    borderBlockEnd: `${webTokens.spacing.hairline}px solid ${webTokens.color.border.admin}`,
-    paddingBlock: webTokens.spacing.lg,
-  },
-  brand: { marginBlock: 0 },
-  shell: {
-    display: "grid",
-    gridTemplateColumns: "minmax(13rem, 18rem) minmax(0, 1fr)",
-    minHeight: "calc(100vh - 5rem)",
-  },
-  sidebar: {
-    ...logicalSpacing.paddingInline(webTokens.spacing.lg),
-    borderInlineEnd: `${webTokens.spacing.hairline}px solid ${webTokens.color.border.admin}`,
-    paddingBlock: webTokens.spacing.xl,
-  },
-  navigation: { display: "grid", gap: webTokens.spacing.xs },
-  navigationLink: {
-    borderRadius: webTokens.radius.md,
-    color: "inherit",
-    paddingBlock: webTokens.spacing.sm,
-    paddingInline: webTokens.spacing.md,
-    textDecoration: "none",
-  },
-  navigationLinkActive: { backgroundColor: webTokens.color.surface.selected },
-  content: {
-    ...logicalSpacing.paddingInline(webTokens.spacing["3xl"]),
-    paddingBlock: webTokens.spacing["3xl"],
-  },
-} satisfies Record<string, CSSProperties>;
+  { path: "/", label: "dashboard", icon: "▦" },
+  { path: "/areas", label: "areas", icon: "◇" },
+  { path: "/venues", label: "venues", icon: "▱" },
+  { path: "/venue-onboarding", label: "venueOnboarding", icon: "+" },
+  { path: "/venue-accounts", label: "venueAccounts", icon: "⌁" },
+  { path: "/activities", label: "activities", icon: "⌘" },
+  { path: "/users", label: "users", icon: "♙" },
+  { path: "/verified-players", label: "verifiedPlayers", icon: "✓" },
+  { path: "/reviews", label: "reviewsModeration", icon: "☆" },
+  { path: "/bookings", label: "globalBookings", icon: "□" },
+  { path: "/no-shows", label: "noShowRecords", icon: "⌁" },
+  { path: "/tournaments", label: "tournaments", icon: "♕" },
+  { path: "/wallet", label: "wallet", icon: "▣" },
+  { path: "/points", label: "points", icon: "⊙" },
+  { path: "/referrals", label: "referrals", icon: "⌯" },
+  { path: "/fees", label: "platformFees", icon: "▤" },
+  { path: "/global-rules", label: "globalRules", icon: "⚙" },
+  { path: "/notifications", label: "notifications", icon: "◉" },
+  { path: "/search", label: "globalSearch", icon: "⌕" },
+  { path: "/settings", label: "settings", icon: "⚙" },
+] as const satisfies ReadonlyArray<{ path: string; label: keyof typeof t.modules; icon: string }>;
 
 function ProtectedShell({
   accessToken,
   config,
   onAccessToken,
   onUnauthenticated,
+  onLogout,
+  loggingOut,
   session,
 }: {
   accessToken: string;
   config: Extract<ConfigResult, { ok: true }>;
   onAccessToken: (accessToken: string) => void;
   onUnauthenticated: () => void;
+  onLogout: () => void;
+  loggingOut: boolean;
   session: AdminSessionApi;
 }) {
   const api = useMemo(() => createAdminApiClient(
@@ -88,34 +57,49 @@ function ProtectedShell({
   ), [accessToken, config, onAccessToken, onUnauthenticated, session]);
 
   return (
-    <main style={styles.shell}>
-      <aside style={styles.sidebar}>
-        <nav aria-label={t.navigationLabel} style={styles.navigation}>
+    <main className="admin-shell">
+      <aside className="admin-sidebar">
+        <div className="admin-brand">
+          <span className="admin-brand-mark" aria-hidden="true">E7</span>
+          <span className="admin-brand-copy"><strong>E7GZ PS</strong><small>Platform Admin</small></span>
+        </div>
+        <nav aria-label={t.navigationLabel} className="admin-navigation">
           {modules.map((module) => (
             <NavLink
               key={module.path}
               end={module.path === "/"}
-              style={({ isActive }) => ({
-                ...styles.navigationLink,
-                ...(isActive ? styles.navigationLinkActive : undefined),
-              })}
+              className={({ isActive }) => `admin-navigation-link${isActive ? " is-active" : ""}`}
+              data-icon={module.icon}
               to={module.path}
             >
-              {t.modules[module.label]}
+              <span>{t.modules[module.label]}</span>
             </NavLink>
           ))}
         </nav>
+        <div className="admin-sidebar-footer"><span>Cairo, Egypt</span><span>v0.9.4</span></div>
       </aside>
-      <section style={styles.content}>
-        <Routes>
-          {modules.map((module) => {
-            let content: ReactNode = <h2>{t.modules[module.label]}</h2>;
-            if (module.path === "/areas") content = <AreaList api={api} />;
-            return <Route key={module.path} path={module.path} element={content} />;
-          })}
-          <Route path="*" element={<Navigate replace to="/" />} />
-        </Routes>
-      </section>
+      <div className="admin-workspace">
+        <header className="admin-topbar">
+          <div className="admin-topbar-search" aria-hidden="true"><span>⌕</span><span>Search</span></div>
+          <div className="admin-topbar-spacer" />
+          <div className="admin-profile"><span className="admin-avatar">PA</span><span><strong>Platform Admin</strong><small>Administrator</small></span></div>
+          <button className="button button--secondary" disabled={loggingOut} type="button" onClick={onLogout}>{loggingOut ? t.auth.loggingOut : t.auth.logout}</button>
+        </header>
+        <section className="admin-content">
+          <Routes>
+            {modules.map((module) => {
+              let content: ReactNode = <section className="admin-page admin-placeholder"><div className="page-heading"><span className="page-eyebrow">Platform administration</span><h2>{t.modules[module.label]}</h2></div></section>;
+              if (module.path === "/areas") content = <AreaList api={api} />;
+              if (module.path === "/venues") content = <VenueList api={api} />;
+              if (module.path === "/venue-onboarding") content = <Onboarding api={api} />;
+              if (module.path === "/activities") content = <ActivityList api={api} />;
+              return <Route key={module.path} path={module.path} element={content} />;
+            })}
+            <Route path="/venues/:venueId" element={<VenueDetail api={api} />} />
+            <Route path="*" element={<Navigate replace to="/" />} />
+          </Routes>
+        </section>
+      </div>
     </main>
   );
 }
@@ -154,19 +138,16 @@ export function App({ config }: { config: ConfigResult }) {
 
   return (
     <BrowserRouter>
-      <div style={styles.frame}>
-        <header style={styles.header}>
-          <h1 style={styles.brand}>{t.appTitle}</h1>
-          {accessToken ? <button disabled={loggingOut} type="button" onClick={() => void logout()}>{loggingOut ? t.auth.loggingOut : t.auth.logout}</button> : null}
-        </header>
+      <div className="admin-frame">
         {!config.ok ? (
-          <main style={styles.content}>
+          <main className="admin-standalone">
+            <h1>{t.appTitle}</h1>
             <p role="alert">
               {t.configMissing} <code>{config.missing.join(", ")}</code>
             </p>
           </main>
         ) : restoringSession ? (
-          <main style={styles.content}><p role="status">{t.auth.restoring}</p></main>
+          <main className="admin-standalone"><p role="status">{t.auth.restoring}</p></main>
         ) : !accessToken ? (
           <AdminLoginScreen apiBaseUrl={config.config.apiBaseUrl} onAuthenticated={setAccessToken} />
         ) : (
@@ -175,6 +156,8 @@ export function App({ config }: { config: ConfigResult }) {
             config={config}
             onAccessToken={setAccessToken}
             onUnauthenticated={() => setAccessToken(undefined)}
+            onLogout={() => void logout()}
+            loggingOut={loggingOut}
             session={session!}
           />
         )}
