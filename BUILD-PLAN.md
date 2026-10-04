@@ -2989,6 +2989,11 @@ Carry-forward from E7-23 (PO decisions 3 Oct 2026, do these too):
 - Put venue photos behind the CDN (arch 12 §2); signed view links stay valid 1 hour.
 - Configure object storage per environment from the secret store: E7GZ_S3_ENDPOINT, E7GZ_S3_PUBLIC_ENDPOINT (the address browsers and apps reach, used in signed links), E7GZ_S3_REGION, E7GZ_S3_BUCKET, E7GZ_S3_ACCESS_KEY, E7GZ_S3_SECRET_KEY, and E7GZ_S3_CREATE_BUCKET=false; set the bucket CORS rule to the Venue Dashboard and Platform Admin origins (GET, PUT, HEAD). Run at least one worker, which makes the photo copies.
 
+Carry-forward from the migration safety rule (PO decision 4 Oct 2026, do these too):
+- Every release that carries a migration: take a backup (or PITR mark) first; restore a copy of production onto staging and run the release's migrations on it; run `flyway info` and `flyway validate` before `flyway migrate`; smoke-test the API and worker after. Production migrates only after all of this passed on the copy.
+- The release pipeline fails if `flyway validate` reports a changed, renamed or missing versioned migration, and never runs `flyway repair` or edits flyway_schema_history automatically.
+- If a production migration fails: restore the backup, keep the old release running, and ship the fix as a NEW migration (CLAUDE.md section 5, Migration safety). Write this into the release runbook and rehearse it once in the restore drill.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
