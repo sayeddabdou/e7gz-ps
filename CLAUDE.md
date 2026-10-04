@@ -64,6 +64,14 @@ pnpm mock                            # Prism mock server from openapi.json
 - Producer-only tables (deletion requests, anonymisation, username changes, review reports, reviews, configuration, ledgers) are written **only** by calling their producer functions (arch 04 §2.2).
 - Never edit `V1__baseline.sql`. A schema change = new migration `V<yyyyMMddHHmm>__<what>.sql` + update the `.dbm` in `docs/04-erd/physical` + the change report, reviewed by the Product Owner. Timestamped versions stop the three of us clashing.
 - Closed value lists are `text` + `CHECK`; Java enums must match them exactly (a test checks this).
+
+**Migration safety (PO rule, 4 Oct 2026; `MigrationSafetyTest` enforces it on every build)**
+- A migration merged to `main` is never edited, renamed or removed: a deployed database already ran it, and Flyway refuses to start. To undo or fix one, write a NEW migration. `backend/src/test/resources/ps/e7gz/database/migration-lock.txt` holds every migration's checksum; a new migration adds its line at the end in the same PR.
+- Every new migration needs, in the same PR: the `.dbm` updated, a change-report entry naming the migration file and its `.dbm` change, a `MigrationFilesTest` check that the `.dbm` matches, and PO review.
+- Before adding one, check it against the data already in the tables, not only an empty database: a new `NOT NULL` without a default, a new `CHECK` or `UNIQUE` that old rows break, a dropped or renamed column, table, function or grant still used by Java, SQL, a trigger or another migration. Search the code (`grep`) for every name it changes. If old rows need a backfill, the migration does it.
+- `MigrationSafetyTest` applies every migration, one at a time, on a database seeded with realistic rows (`upgrade-seed/V1.sql`), and fails if any step crashes or loses rows. When a migration adds columns, add `upgrade-seed/V<version>.sql` with rows that use them, so later migrations are tested against them too.
+- Run `./gradlew check` at least twice before asking for review of a migration PR (Testcontainers runs from scratch each time), and again after merging `main` into the branch.
+- After deployment (E7-101): back up first; run the migration on a restored copy of production on staging; check `flyway info` / `validate` before `migrate`; smoke-test after. If production fails, restore the backup and ship a forward fix as a new migration. Never edit `flyway_schema_history` by hand.
 - Nothing is hard-deleted where history matters. Tokens/subscriptions are revoked, accounts anonymised.
 
 **Time and money**
