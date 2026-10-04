@@ -118,6 +118,7 @@ describe("PricingEditor", () => {
     };
     const resources = [{ id: "r-1", activity: "PLAYSTATION", name: "Room 1", consoleType: "PS5", baseState: "ACTIVE", operationalRestriction: "NONE" }];
     const requests = renderWithApi((api) => <PricingEditor api={api} />, async (request) => {
+      if (request.url.endsWith("/settings")) return ok({ activities: ["PLAYSTATION"] });
       if (request.method === "GET" && request.url.endsWith("/pricing")) return ok(pricing);
       if (request.method === "GET") return ok(resources);
       return ok(pricing);
@@ -135,6 +136,74 @@ describe("PricingEditor", () => {
       defaults: [{ activity: "PLAYSTATION", consoleType: "PS5", playMode: "SINGLE", hourlyPrice: { amount: "170.50", currency: "EGP" } }],
       ownerPassword: "2222",
     });
+  });
+});
+
+describe("PricingEditor for a venue with no prices yet", () => {
+  const empty = { defaults: [], overrides: [] };
+  const room = { id: "r-1", activity: "PLAYSTATION", name: "Room 1", consoleType: "PS5", baseState: "ACTIVE", operationalRestriction: "NONE" };
+
+  function renderEditor(answer: (request: Request) => Response | undefined = () => undefined) {
+    return renderWithApi((api) => <PricingEditor api={api} />, async (request) => {
+      if (request.url.endsWith("/settings")) return ok({ activities: ["PLAYSTATION", "BILLIARDS"] });
+      if (request.method === "GET" && request.url.endsWith("/pricing")) return ok(empty);
+      if (request.method === "GET") return ok([room]);
+      return answer(request) ?? ok(empty);
+    });
+  }
+
+  it("shows a field for every price its activities need and sends only the filled ones", async () => {
+    const requests = renderEditor();
+    for (const label of ["PlayStation · PS5 · Single", "PlayStation · PS5 · Multiplayer", "PlayStation · PS4 · Single",
+      "PlayStation · PS4 · Multiplayer", "Billiards"]) {
+      expect(((await screen.findByLabelText(label)) as HTMLInputElement).value).toBe("");
+    }
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Save" })[0]!);
+    expect((await screen.findByRole("alert")).textContent).toContain("Enter at least one price.");
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Billiards"), { target: { value: "70.00" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Save" })[0]!);
+    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "2222" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
+
+    await waitFor(() => expect(requests.some((request) => request.method === "PUT")).toBe(true));
+    expect(await requests.find((request) => request.method === "PUT")?.clone().json()).toEqual({
+      defaults: [{ activity: "BILLIARDS", consoleType: null, playMode: null, hourlyPrice: { amount: "70.00", currency: "EGP" } }],
+      ownerPassword: "2222",
+    });
+  });
+
+  it("sets a room override for one play mode only", async () => {
+    const requests = renderEditor();
+    fireEvent.change(await screen.findByLabelText("Single"), { target: { value: "200.00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Set room override" }));
+    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "2222" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
+
+    await waitFor(() => expect(requests.some((request) => request.method === "PUT")).toBe(true));
+    expect(await requests.find((request) => request.method === "PUT")?.clone().json()).toEqual({
+      ownerPassword: "2222",
+      prices: [{ playMode: "SINGLE", hourlyPrice: { amount: "200.00", currency: "EGP" } }],
+    });
+  });
+
+  it("keeps PIN errors in the PIN dialog and shows any other refusal on the page", async () => {
+    let refusal = failure("OWNER_PASSWORD_INVALID", 423);
+    renderEditor(() => refusal);
+    fireEvent.change(await screen.findByLabelText("Billiards"), { target: { value: "12.5" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Save" })[0]!);
+    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "2222" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
+    expect(await screen.findByText("The Owner PIN is incorrect.")).toBeTruthy();
+
+    refusal = failure("VALIDATION_FAILED", 400, { field: "defaults[0].hourlyPrice.amount" });
+    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "3333" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
+    expect((await screen.findByRole("alert")).textContent)
+      .toContain("Enter each price as a number with two decimals, for example 150.00.");
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
 
