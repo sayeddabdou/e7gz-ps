@@ -1184,6 +1184,10 @@ PO decisions 3 Oct 2026 (do these too):
 PO decision 3 Oct 2026 — PCR-006 (do these too):
 - The Owner Password is a 4-digit PIN (PCR-006). In the create-venue-account form, initialOwnerPassword takes exactly 4 digits (numeric keypad, maxlength 4); reset-owner-password's newPassword too. The venue login password keeps the password rule (8+ characters, a letter and a digit). Map VALIDATION_FAILED on initialOwnerPassword, password and newPassword through the error-code map. Call it 'Owner PIN' on screen; the API field names stay ownerPassword / initialOwnerPassword.
 
+PO decisions 4 Oct 2026 — pricing and venue accounts (do these too):
+- No pricing in Admin onboarding: the venue sets its own prices in the Venue Dashboard after its first login (GET PUT /venue/pricing, E7-27; Dashboard screen E7-35). There is no admin pricing endpoint: do not build a pricing step or price fields in the wizard, and the wizard's success text must not say the venue was created with initial pricing. (This changes the pricing part of FR-ADM-02; the PO will record it in a PCR.)
+- Venue accounts: creating the account, disable/enable and the two password resets stay on each venue's page. Keep the /venue-accounts menu item as a placeholder in this task; E7-86 turns it into the list of all venue accounts using GET /admin/venue-accounts (contract E7-77, backend E7-78). Do not call an endpoint that is not in openapi.json.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2333,6 +2337,9 @@ Do:
 Done when (write these as tests first where possible):
 - Merged by day 2.
 
+Carry-forward from E7-37 (PO decision 4 Oct 2026, do these too):
+- Add the stub for GET /admin/venue-accounts in venue/web/AdminVenueAccountController (FR-ADM-03: the Platform Admin sees every venue account in one list), answering 501 until E7-78: cursor pagination like GET /admin/venues (PageView), ordered by venue name then id, optional filter accountStatus (ENABLED | DISABLED). Each row is AdminVenueAccount (id, venueId, loginIdentifier, accountStatus) plus venueName and languagePreference; never a password, hash or Owner PIN. Regenerate the client so E7-86 can build against pnpm mock.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2358,6 +2365,9 @@ Done when (write these as tests first where possible):
 
 Carry-forward from E7-24 (PO decision 3 Oct 2026; do these too):
 - POST /admin/venue-accounts/{id}/disable and /enable already exist (VenueAccounts.setStatus -> VenueAccountCommands.SetAccountStatus): they change iam.venue_account.account_status with the admin's reason, audit VENUE_ACCOUNT_DISABLED / VENUE_ACCOUNT_ENABLED and block the Dashboard at once. Add the O10 consequences inside that same command and transaction: PENDING -> VENUE_RESPONSE_EXPIRED with the account-disable event, AWAITING cancelled under VENUE_ACCOUNT_DISABLED, PENDING_VENUE_APPROVAL tournaments cancelled (the database refuses the disable until they are), and the iam.venue_account_restriction_interval rows (open on disable, close on enable). Do not add a second disable endpoint.
+
+Carry-forward from E7-37 (PO decision 4 Oct 2026, do these too):
+- Implement GET /admin/venue-accounts (stub from E7-77): read-only, one row per iam.venue_account with its venue's name, ordered by venue name then id, cursor pagination like GET /admin/venues, optional accountStatus filter. Tests: accounts of every venue are listed; the filter works; paging returns each account exactly once; the JSON never contains a password, hash or Owner PIN; venue and customer tokens are refused.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2571,6 +2581,9 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 - Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.
 - Platform Admin is English only (FRS §3.3).
 - In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.
+
+Carry-forward from E7-37 (PO decision 4 Oct 2026, do these too):
+- Venue accounts page (/venue-accounts, replaces the E7-37 placeholder): list every venue account from GET /admin/venue-accounts (venue name, login, status, language) with a status filter, 'Load more' paging (cursor) and empty, loading and error states. A row opens that venue's page. Disable/enable from this page uses the same required-reason dialog as the venue page.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
