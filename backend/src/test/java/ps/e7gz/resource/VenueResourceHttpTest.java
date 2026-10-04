@@ -186,12 +186,41 @@ class VenueResourceHttpTest extends IntegrationTest {
         assertThat(chain).allSatisfy(r -> assertThat(r.get("owner_password_used")).isEqualTo(true));
         assertThat(audit("RESOURCE_DISABLED") + audit("RESOURCE_RE_ENABLED") + audit("RESOURCE_ARCHIVED")
                 + audit("RESOURCE_RESTORED") + audit("RESOURCE_CONSOLE_CHANGED")).isEqualTo(5);
+        // The audit rows carry the transition and the venue in their own columns too (E7-17 review, 4 Oct 2026).
+        List<Map<String, Object>> trail = OWNER.sql("""
+                        SELECT previous_state, new_state, context_venue_id FROM audit.audit_event
+                         WHERE subject_id = :id ORDER BY occurred_at, id""")
+                .param("id", room).query().listOfRows();
+        assertThat(trail).extracting(r -> r.get("previous_state") + ">" + r.get("new_state"))
+                .containsExactly("null>ACTIVE", "ACTIVE>DISABLED", "DISABLED>ACTIVE", "ACTIVE>ARCHIVED",
+                        "ARCHIVED>ACTIVE", "PS5>PS4");
+        assertThat(trail).allSatisfy(r -> assertThat(r.get("context_venue_id")).isEqualTo(venueId));
 
         // Append-only: history cannot be edited or removed, even by the owner.
         assertThatThrownBy(() -> OWNER.sql("UPDATE resource.resource_state_change SET reason = 'x' "
                 + "WHERE resource_id = :id").param("id", room).update()).hasMessageContaining("append-only");
         assertThatThrownBy(() -> OWNER.sql("DELETE FROM resource.resource_state_change WHERE resource_id = :id")
                 .param("id", room).update()).hasMessageContaining("append-only");
+    }
+
+    @Test
+    void aMissingPinIsRequiredNotRefusedAndChangesNothing() throws Exception {
+        // arch 09 §1.5; PO decision 4 Oct 2026: no value is 423 OWNER_PASSWORD_REQUIRED, not a counted wrong guess.
+        create("PLAYSTATION", "PS5", null)
+                .andExpect(status().is(423)).andExpect(jsonPath("$.error.code").value("OWNER_PASSWORD_REQUIRED"));
+        assertThat(resourceCount()).isZero();
+
+        UUID room = UUID.fromString(field(create("PLAYSTATION", "PS5", PIN), "id"));
+        act(room, "disable", " ").andExpect(status().is(423))
+                .andExpect(jsonPath("$.error.code").value("OWNER_PASSWORD_REQUIRED"));
+        mvc.perform(post(RESOURCES + "/" + room + "/archive").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().is(423)).andExpect(jsonPath("$.error.code").value("OWNER_PASSWORD_REQUIRED"));
+
+        assertThat(baseState(room)).isEqualTo("ACTIVE");
+        assertThat(historyCount(room)).isEqualTo(1);
+        assertThat(refusals("PROTECTED_RESOURCE_CONFIGURATION")).isZero();
+        assertThat(refusals("RESOURCE_DISABLE_REENABLE_ARCHIVE_RESTORE")).isZero();
     }
 
     @Test

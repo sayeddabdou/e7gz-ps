@@ -159,7 +159,7 @@ class VenueOwnerPasswordHttpTest extends IntegrationTest {
         call(post(CHANGE), Map.of("current", OWNER_PIN, "next", "2468")).andExpect(status().isNoContent());
         // Right after a success the next protected action is not unlocked: no PIN and a wrong one both fail.
         call(post(CHANGE), Map.of("next", "1357"))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("current"));
+                .andExpect(status().is(423)).andExpect(jsonPath("$.error.code").value("OWNER_PASSWORD_REQUIRED"));
         call(post(CHANGE), Map.of("current", WRONG, "next", "1357")).andExpect(status().is(423));
         assertThat(secretVersion()).isEqualTo(1);
     }
@@ -169,7 +169,8 @@ class VenueOwnerPasswordHttpTest extends IntegrationTest {
         MockHttpServletRequestBuilder request = post(CHANGE)
                 .header("X-Owner-Password", OWNER_PIN).header("Owner-Password", OWNER_PIN)
                 .cookie(new Cookie("ownerPassword", OWNER_PIN));
-        call(request, Map.of("next", "2468")).andExpect(status().isBadRequest());
+        call(request, Map.of("next", "2468"))
+                .andExpect(status().is(423)).andExpect(jsonPath("$.error.code").value("OWNER_PASSWORD_REQUIRED"));
         assertThat(secretVersion()).isZero();
     }
 

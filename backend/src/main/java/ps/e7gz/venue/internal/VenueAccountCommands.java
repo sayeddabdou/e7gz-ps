@@ -71,7 +71,8 @@ final class VenueAccountCommands {
                             VALUES (:account, :hash, :changedAt, 0)""")
                     .param("account", id).param("hash", ownerPasswordHash).param("changedAt", utc(context)).update();
             audit.write(context, AuditRecord.builder(VenueAccountAuditAction.VENUE_ACCOUNT_CREATED,
-                    AuditActor.admin(adminId), id, correlationId).payload(Map.of("venueId", venueId)).build());
+                    AuditActor.admin(adminId), id, correlationId)
+                    .contextVenue(venueId).payload(Map.of("venueId", venueId)).build());
             return new Venues.VenueAccountSummary(id, venueId, loginIdentifier, VenueAccountStatus.ENABLED);
         }
     }
@@ -110,7 +111,8 @@ final class VenueAccountCommands {
             }
             audit.write(context, AuditRecord.builder(VenueAccountAuditAction.OWNER_PASSWORD_CHANGED,
                             AuditActor.venue(venueAccountId), venueAccountId, correlationId)
-                    .ownerPasswordCheck(check).payload(Map.of("venueId", venueId)).build());
+                    .ownerPasswordCheck(check).contextVenue(venueId).payload(Map.of("venueId", venueId))
+                    .build());
             return null;
         }
 
@@ -199,6 +201,8 @@ final class VenueAccountCommands {
                     ? VenueAccountAuditAction.VENUE_ACCOUNT_DISABLED : VenueAccountAuditAction.VENUE_ACCOUNT_ENABLED;
             audit.write(context, AuditRecord.builder(action, AuditActor.admin(adminId), venueAccountId, correlationId)
                     .reason(reason)
+                    .stateChange(current.status().name(), target.name())
+                    .contextVenue(venueId)
                     .payload(Map.of("venueId", venueId, "previousStatus", current.status().name(),
                             "newStatus", target.name()))
                     .build());
@@ -231,7 +235,8 @@ final class VenueAccountCommands {
                 throw new ApiException(ApiErrorCode.NOT_FOUND);
             }
             audit.write(context, AuditRecord.builder(VenueAccountAuditAction.VENUE_LOGIN_PASSWORD_RESET,
-                    AuditActor.admin(adminId), venueAccountId, correlationId).payload(Map.of("venueId", venueId)).build());
+                    AuditActor.admin(adminId), venueAccountId, correlationId)
+                    .contextVenue(venueId).payload(Map.of("venueId", venueId)).build());
             return null;
         }
 
@@ -271,7 +276,8 @@ final class VenueAccountCommands {
                 throw new ApiException(ApiErrorCode.NOT_FOUND);
             }
             audit.write(context, AuditRecord.builder(VenueAccountAuditAction.OWNER_PASSWORD_RESET,
-                    AuditActor.admin(adminId), venueAccountId, correlationId).payload(Map.of("venueId", venueId)).build());
+                    AuditActor.admin(adminId), venueAccountId, correlationId)
+                    .contextVenue(venueId).payload(Map.of("venueId", venueId)).build());
             return null;
         }
 

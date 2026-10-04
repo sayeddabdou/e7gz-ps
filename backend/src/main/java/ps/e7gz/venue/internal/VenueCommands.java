@@ -164,6 +164,8 @@ final class VenueCommands {
             audit.write(context, AuditRecord.builder(VenueAuditAction.VENUE_MARKETPLACE_STATUS_CHANGED,
                             AuditActor.admin(adminId), venueId, correlationId)
                     .reason(reason)
+                    .stateChange(current.name(), target.name())
+                    .contextVenue(venueId)
                     .payload(Map.of("previousStatus", current.name(), "newStatus", target.name()))
                     .build());
             return read(context, venueId);

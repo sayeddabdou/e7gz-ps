@@ -95,6 +95,21 @@ class AuditRecordTest {
     }
 
     @Test
+    void aStateChangeNeedsANewStateAndBothFitTheDatabaseCheck() {
+        AuditRecord created = AuditRecord.builder(TestAuditAction.E7_17_TEST_NO_PAYLOAD, AuditActor.system(), subject,
+                correlation).stateChange(null, "ACTIVE").build();
+        assertThat(created.previousState()).isEmpty();
+        assertThat(created.newState()).contains("ACTIVE");
+
+        AuditRecord.Builder builder = AuditRecord.builder(TestAuditAction.E7_17_TEST_NO_PAYLOAD, AuditActor.system(),
+                subject, correlation);
+        assertThatThrownBy(() -> builder.stateChange("ACTIVE", null)).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> builder.stateChange(" ", "ACTIVE")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> builder.stateChange("ACTIVE", "X".repeat(81)))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void anAllowlistCannotNameACredentialOrSecretAtAnyDepth() {
         for (String path : new String[] {"password", "ownerPassword", "window.token", "items[].apiKey",
                 "session.cookie", "otp", "privateKey", "Authorization", "clientSecret", "pin"}) {

@@ -27,6 +27,9 @@ public final class AuditRecord {
     private final String reason;
     private final Map<String, ?> payload;
     private final OwnerPasswordCheck ownerPasswordCheck;
+    private final String previousState;
+    private final String newState;
+    private final UUID contextVenueId;
 
     private AuditRecord(Builder builder) {
         this.action = builder.action;
@@ -36,6 +39,9 @@ public final class AuditRecord {
         this.reason = builder.reason;
         this.payload = builder.payload;
         this.ownerPasswordCheck = builder.ownerPasswordCheck;
+        this.previousState = builder.previousState;
+        this.newState = builder.newState;
+        this.contextVenueId = builder.contextVenueId;
     }
 
     public static Builder builder(AuditAction action, AuditActor actor, UUID subjectId, UUID correlationId) {
@@ -72,6 +78,21 @@ public final class AuditRecord {
         return Optional.ofNullable(ownerPasswordCheck);
     }
 
+    /** The state before a transition; empty for a creation or when the action is not a transition. */
+    public Optional<String> previousState() {
+        return Optional.ofNullable(previousState);
+    }
+
+    /** The state after a transition; empty when the action is not a transition. */
+    public Optional<String> newState() {
+        return Optional.ofNullable(newState);
+    }
+
+    /** The venue the action belongs to, so a venue's audit trail is one indexed query. */
+    public Optional<UUID> contextVenueId() {
+        return Optional.ofNullable(contextVenueId);
+    }
+
     public static final class Builder {
 
         private final AuditAction action;
@@ -81,6 +102,9 @@ public final class AuditRecord {
         private String reason;
         private Map<String, ?> payload = Map.of();
         private OwnerPasswordCheck ownerPasswordCheck;
+        private String previousState;
+        private String newState;
+        private UUID contextVenueId;
 
         private Builder(AuditAction action, AuditActor actor, UUID subjectId, UUID correlationId) {
             this.action = Objects.requireNonNull(action, "action");
@@ -103,6 +127,31 @@ public final class AuditRecord {
         public Builder ownerPasswordCheck(OwnerPasswordCheck check) {
             this.ownerPasswordCheck = check;
             return this;
+        }
+
+        /**
+         * A state transition ({@code ck_audit_structured_trace}): {@code previous} is null for a creation, {@code next}
+         * is always set; each is 1-80 characters.
+         */
+        public Builder stateChange(String previous, String next) {
+            this.previousState = state(previous, true);
+            this.newState = state(Objects.requireNonNull(next, "next state"), false);
+            return this;
+        }
+
+        public Builder contextVenue(UUID venueId) {
+            this.contextVenueId = venueId;
+            return this;
+        }
+
+        private static String state(String value, boolean nullable) {
+            if (value == null && nullable) {
+                return null;
+            }
+            if (value == null || value.isBlank() || value.strip().length() > 80) {
+                throw new IllegalArgumentException("Audit state must be 1-80 characters: " + value);
+            }
+            return value;
         }
 
         public AuditRecord build() {

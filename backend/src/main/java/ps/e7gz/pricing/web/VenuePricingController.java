@@ -5,7 +5,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
@@ -99,14 +98,20 @@ public class VenuePricingController {
     @Schema(name = "VenuePricingUpdateRequest")
     public record VenuePricingUpdateRequest(
             @NotEmpty List<@Valid VenueDefaultPrice> defaults,
-            @NotBlank @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY) String ownerPassword) {
+            @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY,
+                    requiredMode = Schema.RequiredMode.REQUIRED,
+                    description = "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.")
+            String ownerPassword) {
     }
 
     /** Prices per play mode for the room's current console. */
     @Schema(name = "VenueRoomOverrideRequest")
     public record VenueRoomOverrideRequest(
             @NotEmpty List<@Valid VenueRoomOverridePrice> prices,
-            @NotBlank @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY) String ownerPassword) {
+            @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY,
+                    requiredMode = Schema.RequiredMode.REQUIRED,
+                    description = "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.")
+            String ownerPassword) {
     }
 
     @Schema(name = "VenueRoomOverridePrice")
@@ -115,6 +120,9 @@ public class VenuePricingController {
 
     @Schema(name = "VenuePricingOwnerPasswordRequest")
     public record VenuePricingOwnerPasswordRequest(
-            @NotBlank @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY) String ownerPassword) {
+            @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY,
+                    requiredMode = Schema.RequiredMode.REQUIRED,
+                    description = "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.")
+            String ownerPassword) {
     }
 }

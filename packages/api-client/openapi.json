@@ -2380,8 +2380,8 @@
       "VenueOwnerPasswordChangeRequest": {
         "properties": {
           "current": {
+            "description": "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.",
             "format": "password",
-            "minLength": 1,
             "type": "string",
             "writeOnly": true
           },
@@ -2424,8 +2424,8 @@
       "VenuePricingOwnerPasswordRequest": {
         "properties": {
           "ownerPassword": {
+            "description": "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.",
             "format": "password",
-            "minLength": 1,
             "type": "string",
             "writeOnly": true
           }
@@ -2445,8 +2445,8 @@
             "type": "array"
           },
           "ownerPassword": {
+            "description": "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.",
             "format": "password",
-            "minLength": 1,
             "type": "string",
             "writeOnly": true
           }
@@ -2504,8 +2504,8 @@
             "$ref": "#/components/schemas/ConsoleType"
           },
           "ownerPassword": {
+            "description": "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.",
             "format": "password",
-            "minLength": 1,
             "type": "string",
             "writeOnly": true
           }
@@ -2526,8 +2526,8 @@
             "description": "PS5 or PS4 for PLAYSTATION; absent for BILLIARDS and PING_PONG."
           },
           "ownerPassword": {
+            "description": "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.",
             "format": "password",
-            "minLength": 1,
             "type": "string",
             "writeOnly": true
           }
@@ -2541,8 +2541,8 @@
       "VenueResourceOwnerPasswordRequest": {
         "properties": {
           "ownerPassword": {
+            "description": "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.",
             "format": "password",
-            "minLength": 1,
             "type": "string",
             "writeOnly": true
           }
@@ -2595,8 +2595,8 @@
       "VenueRoomOverrideRequest": {
         "properties": {
           "ownerPassword": {
+            "description": "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.",
             "format": "password",
-            "minLength": 1,
             "type": "string",
             "writeOnly": true
           },

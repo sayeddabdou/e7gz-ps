@@ -166,6 +166,8 @@ final class ResourceCommands {
                     .param("changedAt", utc(context)).update();
             audit.write(context, AuditRecord.builder(action.auditAction, actor.audit(), resourceId, correlationId)
                     .ownerPasswordCheck(check)
+                    .stateChange(current.baseState().name(), action.to.name())
+                    .contextVenue(venueId)
                     .payload(Map.of("venueId", venueId, "previousState", current.baseState().name(),
                             "newState", action.to.name()))
                     .build());
@@ -222,6 +224,8 @@ final class ResourceCommands {
             audit.write(context, AuditRecord.builder(ResourceAuditAction.RESOURCE_CONSOLE_CHANGED, actor.audit(),
                             resourceId, correlationId)
                     .ownerPasswordCheck(check)
+                    .stateChange(current.consoleType().name(), target.name())
+                    .contextVenue(venueId)
                     .payload(Map.of("venueId", venueId, "previousConsole", current.consoleType().name(),
                             "newConsole", target.name()))
                     .build());
@@ -288,7 +292,8 @@ final class ResourceCommands {
             payload.put("consoleType", console);
         }
         audit.write(context, AuditRecord.builder(ResourceAuditAction.RESOURCE_CREATED, actor.audit(), resourceId,
-                correlationId).ownerPasswordCheck(check).payload(payload).build());
+                correlationId).ownerPasswordCheck(check).stateChange(null, "ACTIVE").contextVenue(venueId)
+                .payload(payload).build());
         return Resources.read(context.jdbc(), resourceId);
     }
 

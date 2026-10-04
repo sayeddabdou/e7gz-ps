@@ -5,7 +5,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
 import java.util.UUID;
@@ -159,17 +158,26 @@ public class VenueResourceController {
     public record VenueResourceCreateRequest(
             @NotNull Activity activity,
             @Schema(description = "PS5 or PS4 for PLAYSTATION; absent for BILLIARDS and PING_PONG.") ConsoleType consoleType,
-            @NotBlank @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY) String ownerPassword) {
+            @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY,
+                    requiredMode = Schema.RequiredMode.REQUIRED,
+                    description = "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.")
+            String ownerPassword) {
     }
 
     @Schema(name = "VenueResourceOwnerPasswordRequest")
     public record VenueResourceOwnerPasswordRequest(
-            @NotBlank @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY) String ownerPassword) {
+            @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY,
+                    requiredMode = Schema.RequiredMode.REQUIRED,
+                    description = "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.")
+            String ownerPassword) {
     }
 
     @Schema(name = "VenueResourceConsoleRequest")
     public record VenueResourceConsoleRequest(
             @NotNull ConsoleType consoleType,
-            @NotBlank @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY) String ownerPassword) {
+            @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY,
+                    requiredMode = Schema.RequiredMode.REQUIRED,
+                    description = "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.")
+            String ownerPassword) {
     }
 }

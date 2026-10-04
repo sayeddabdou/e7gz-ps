@@ -47,6 +47,11 @@ class JdbcOwnerPasswordGate implements OwnerPasswordGate {
     public OwnerPasswordCheck verify(CommandContext command, UUID venueAccountId, String suppliedPassword) {
         Objects.requireNonNull(command, "command");
         Objects.requireNonNull(venueAccountId, "venueAccountId");
+        // No value sent is not a guess: 423 OWNER_PASSWORD_REQUIRED, not counted, nothing written (arch 09 §1.5;
+        // PO decision 4 Oct 2026).
+        if (suppliedPassword == null || suppliedPassword.isBlank()) {
+            throw new ApiException(ApiErrorCode.OWNER_PASSWORD_REQUIRED);
+        }
         if (attempts.lockedOut(command, venueAccountId)) {
             throw new OwnerPasswordRefused(venueAccountId, true);
         }
@@ -55,8 +60,7 @@ class JdbcOwnerPasswordGate implements OwnerPasswordGate {
                         SELECT owner_password_hash FROM iam.venue_owner_secret
                          WHERE venue_account_id = :account FOR SHARE""")
                 .param("account", venueAccountId).query(String.class).optional().orElse(null);
-        if (hash == null || suppliedPassword == null || suppliedPassword.isEmpty()
-                || !passwords.matches(suppliedPassword, hash)) {
+        if (hash == null || !passwords.matches(suppliedPassword, hash)) {
             throw new OwnerPasswordRefused(venueAccountId, false);
         }
         return OwnerPasswordCheck.succeeded();

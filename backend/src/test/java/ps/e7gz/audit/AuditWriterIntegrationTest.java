@@ -15,6 +15,7 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import ps.e7gz.audit.AuditAssertions.AuditRow;
 import ps.e7gz.audit.api.AuditActor;
 import ps.e7gz.audit.api.AuditRecord;
@@ -182,6 +183,31 @@ class AuditWriterIntegrationTest extends IntegrationTest {
             assertThat(row.ownerPasswordUsed()).isTrue();
             assertThat(row.ownerPasswordOutcome()).isEqualTo(check.outcome().name());
         }
+    }
+
+    @Test
+    void aStateChangeAndTheVenueAreStoredInTheirOwnColumns() {
+        UUID venue = new JdbcTemplate(appDataSource).queryForObject(
+                "SELECT venue_id FROM iam.venue_account WHERE id = ?", UUID.class, AuditFixtures.venueAccount());
+        UUID transition = UUID.randomUUID();
+        UUID creation = UUID.randomUUID();
+        UUID correlation = UUID.randomUUID();
+
+        run(ctx -> auditWriter.write(ctx, record(TestAuditAction.E7_17_TEST_NO_PAYLOAD, AuditActor.system(),
+                transition, correlation).stateChange("ACTIVE", "DISABLED").contextVenue(venue).build()));
+        run(ctx -> auditWriter.write(ctx, record(TestAuditAction.E7_17_TEST_NO_PAYLOAD, AuditActor.system(),
+                creation, correlation).stateChange(null, "ACTIVE").build()));
+
+        AuditRow changed = assertExactlyOneAuditRow(appDataSource, TestAuditAction.E7_17_TEST_NO_PAYLOAD, transition,
+                correlation);
+        assertThat(changed.previousState()).isEqualTo("ACTIVE");
+        assertThat(changed.newState()).isEqualTo("DISABLED");
+        assertThat(changed.contextVenueId()).isEqualTo(venue);
+        AuditRow created = assertExactlyOneAuditRow(appDataSource, TestAuditAction.E7_17_TEST_NO_PAYLOAD, creation,
+                correlation);
+        assertThat(created.previousState()).isNull();
+        assertThat(created.newState()).isEqualTo("ACTIVE");
+        assertThat(created.contextVenueId()).isNull();
     }
 
     @Test
