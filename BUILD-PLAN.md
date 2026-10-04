@@ -940,6 +940,9 @@ Do:
 Done when (write these as tests first where possible):
 - Harness runs in CI against every inventory change.
 
+Decision on record:
+- PO decision 3 Oct 2026 (confirmed 4 Oct): the NFR-28 overlap check compares planned_range of active rows only, not the arch 11 section 4 actual_reservation_start range.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -1270,6 +1273,13 @@ Done when (write these as tests first where possible):
 
 Carry-forward from E7-23 (PO decisions 3 Oct 2026, do these too):
 - Move the two venue photo jobs (venue/internal/VenuePhotoJobs: make the small and medium copies, and the nightly clean-up of uploads not confirmed within 24 hours) from their Spring timers onto technical.scheduled_job, keeping the same behaviour and tests; then remove @EnableScheduling from VenuePhotoJobs.
+
+Carry-forward from the E7-32 review (PO decisions 4 Oct 2026, do these too):
+- Before coding, add one migration V<yyyyMMddHHmm>__scheduled_job_finish_and_correlation.sql (+ update the .dbm + change report, PO review): technical.job_finish accepts SUPERSEDED (sets completed_at), and PENDING with an optional new due time (p_due_at) so a job that fired too early or must back off can be moved later; the guard allows due_at to change on LEASED -> PENDING only through job_finish. Never change a job's status with a plain UPDATE.
+- Same migration: add technical.scheduled_job.correlation_id uuid NOT NULL (existing rows take their id). A job created by a command stores that command's correlation ID; a nightly system job uses its own job id. The worker opens CorrelationId.open(job.correlationId()) around each job and closes it afterwards; every retry reuses the same ID.
+- Nightly system jobs: type = the job name (e.g. INVARIANT_SWEEP), subject_type = SYSTEM, subject_id = a fixed UUID derived from the type (UUID.nameUUIDFromBytes), idempotency_key = TYPE:{business date, Africa/Cairo}. Each run inserts the next night's row in the same transaction as its own DONE (ON CONFLICT on the idempotency key does nothing); the worker creates the first row at start-up if none is PENDING.
+- Move every Spring timer onto technical.scheduled_job: the nightly invariant sweep (E7-32), the venue photo clean-up, and the nightly operating-session extension (venue/internal/OperatingSessionJobs, E7-25), plus the photo copies above. Afterwards no @Scheduled / @EnableScheduling remains.
+- Invariant sweep handler: calls only ps.e7gz.inventory.sweep.api.InvariantSweep.run() (no copied SQL, no sweep.internal imports, no single InvariantCheck calls). It runs outside any transaction, because the sweep opens its own read-only REPEATABLE READ snapshot; the job is finished in its own transaction afterwards. Add one line to ReadOnlyInvariantSweep so it fails when called inside an existing transaction (PROPAGATION_NEVER); Amr reviews that line. Tests: the sweep runs through the registered handler with a correlation scope open, is not run by @Scheduled, and does not start in the api profile.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -1724,6 +1734,13 @@ Carry-forward from the Sprint 0 review (do these too):
 - Alert on refresh-token reuse: when AuthSessions.refresh detects a reused rotated token (today only log.warn), raise an admin alert (arch 10 section 2.3: 'revokes the entire chain and alerts'). Sprint 0 review S-9.
 - Alert when an account reaches the per-account login limit added by E7-57.
 - Audit Platform Admin and Venue Account login success and failure with the AuditWriter: account id when known, audience and outcome only, never the identifier, the password or the IP in clear. If no alert or audit catalogue code fits, ask the PO before adding one.
+
+Carry-forward from the E7-32 review (PO decisions 4 Oct 2026, do these too):
+- Before coding, add one migration (+ update the .dbm + change report, PO review): a SECURITY DEFINER producer admin.raise_alert(kind, severity, subject_type, subject_id, payload, correlation_id) returning the alert id, executable by e7gz_app_runtime and e7gz_admin_runtime. Do not give e7gz_app_runtime INSERT or UPDATE on admin.admin_alert. AdminAlertService.raise calls it, so an alert can commit in the same transaction as an Engine command (e.g. SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR).
+- Severity is stored as SEV_1, SEV_2 or SEV_3 (arch 11 section 5.4). The column stays open text: the existing RISK alert (TOURNAMENT_CANCELLATION_ABUSE) stays valid, so no closed enum may reject it.
+- Nightly invariant sweep findings: kind INVARIANT_VIOLATION, severity SEV_1, subject type and id from the violation, payload = the invariant code plus every fact of the violation. One alert per violation. An Admin-side bean implements ps.e7gz.inventory.sweep.api.InvariantViolationReporter and takes the correlation ID from CorrelationId.require() (opened by the E7-40 worker), never a new one per violation. One failing alert is logged and does not stop the others. Do not change ReadOnlyInvariantSweep.
+- Acknowledge (replaces 'acknowledge twice fails'): the same admin acknowledging again succeeds and returns the same alert (DB rule in admin.acknowledge_alert); a different admin gets an error mapped to an ApiErrorCode (ask the PO if no existing code fits).
+- Tests: a clean sweep raises no alert; a planted violation raises exactly one alert carrying its facts and the sweep's correlation ID; the reporter changes no Inventory, Booking or Trust row.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
