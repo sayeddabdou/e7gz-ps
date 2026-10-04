@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,14 +21,17 @@ import ps.e7gz.common.codes.Activity;
 import ps.e7gz.common.codes.ConsoleType;
 import ps.e7gz.common.codes.OperationalRestriction;
 import ps.e7gz.common.codes.ResourceBaseState;
+import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.DataResponse;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
+import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.resource.internal.Resources;
 
 /**
  * Platform Admin — a venue's resources during onboarding (FR-ADM-02: onboarding covers resources; PO decision 2 Oct
  * 2026, E7-22: the admin and the venue can both add them). Names are assigned (FR-VEN-41); state changes stay with
- * the venue and its Owner Password (arch 09 §4.2). Stub until E7-26.
+ * the venue and its Owner Password (arch 09 §4.2). The admin list/create carry-forward is implemented for E7-37;
+ * venue-side state changes remain in E7-26.
  */
 @RestController
 @RequestMapping("/api/v1/admin/venues/{venueId}/resources")
@@ -35,11 +39,19 @@ import ps.e7gz.common.web.OpenApiConfig;
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class AdminVenueResourceController {
 
+    private final Resources resources;
+    private final ResponseMetaFactory meta;
+
+    public AdminVenueResourceController(Resources resources, ResponseMetaFactory meta) {
+        this.resources = resources;
+        this.meta = meta;
+    }
+
     @GetMapping
     @Operation(operationId = "adminListVenueResources", summary = "The venue's resources with both status columns "
             + "(FR-VEN-13)")
     public DataResponse<List<AdminResourceView>> list(@PathVariable UUID venueId) {
-        throw NotImplementedYet.stub();
+        return meta.data(resources.list(venueId).stream().map(AdminResourceView::of).toList());
     }
 
     @PostMapping
@@ -50,8 +62,10 @@ public class AdminVenueResourceController {
             description = "consoleType is required for PLAYSTATION and absent otherwise (ck_console_iff_playstation). "
                     + "Starts ACTIVE with no operational restriction.")
     public DataResponse<AdminResourceView> create(
-            @PathVariable UUID venueId, @Valid @RequestBody AdminResourceCreateRequest request) {
-        throw NotImplementedYet.stub();
+            @AuthenticationPrincipal AuthenticatedSubject admin, @PathVariable UUID venueId,
+            @Valid @RequestBody AdminResourceCreateRequest request) {
+        return meta.data(AdminResourceView.of(resources.create(admin.id(), venueId, request.activity(),
+                request.consoleType())));
     }
 
     /** {@code resource.resource}; console type is set exactly for PlayStation ({@code ck_console_iff_playstation}). */
@@ -64,6 +78,11 @@ public class AdminVenueResourceController {
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) ConsoleType consoleType,
             @NotNull ResourceBaseState baseState,
             @NotNull OperationalRestriction operationalRestriction) {
+
+        static AdminResourceView of(Resources.Resource resource) {
+            return new AdminResourceView(resource.id(), resource.venueId(), resource.activity(), resource.name(),
+                    resource.consoleType(), resource.baseState(), resource.operationalRestriction());
+        }
     }
 
     /** Console type exactly for PlayStation (ck_console_iff_playstation); the name is assigned (FR-VEN-41). */
