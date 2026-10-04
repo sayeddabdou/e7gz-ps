@@ -97,8 +97,9 @@ final class ResourceCommands {
     }
 
     /**
-     * Disable, re-enable, archive and restore (FR-VEN-03, Product Spec §13.4). Restore returns the resource to ACTIVE
-     * (open question for the PO, E7-26).
+     * Disable, re-enable, archive and restore (FR-VEN-03, Product Spec §13.4). Restore returns the resource to ACTIVE,
+     * and an action that does not fit the current state is VALIDATION_FAILED on baseState (PO decisions 4 Oct 2026,
+     * E7-26).
      */
     enum BaseStateAction {
         DISABLE(Set.of(ResourceBaseState.ACTIVE), ResourceBaseState.DISABLED, true,
