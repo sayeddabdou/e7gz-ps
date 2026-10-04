@@ -32,11 +32,32 @@ class JdbcActiveCommitments implements ActiveCommitments {
              ORDER BY rr.planned_start, rr.id
             """;
 
+    /** arch 05: the blocking set of a Resource state change (FR-VEN-14). */
+    static final String BLOCKING_RESOURCE_CHANGE = """
+            SELECT rr.id, rr.resource_id, rr.reservation_type, rr.booking_id, rr.tournament_id, rr.maintenance_id,
+                   rr.planned_start, rr.planned_end
+              FROM inventory.resource_reservation rr
+             WHERE rr.resource_id = :resourceId
+               AND rr.active_flag
+               AND rr.reservation_type <> 'CLOSURE'
+               AND rr.planned_end > :at
+             ORDER BY rr.planned_start, rr.id
+            """;
+
     @Override
     public List<Commitment> startingAfter(CommandContext command, UUID venueId, Instant after) {
         return command.jdbc().sql(STARTING_AFTER)
                 .param("venueId", venueId)
                 .param("after", OffsetDateTime.ofInstant(after, ZoneOffset.UTC))
+                .query(JdbcActiveCommitments::map)
+                .list();
+    }
+
+    @Override
+    public List<Commitment> blockingResourceChange(CommandContext command, UUID resourceId, Instant at) {
+        return command.jdbc().sql(BLOCKING_RESOURCE_CHANGE)
+                .param("resourceId", resourceId)
+                .param("at", OffsetDateTime.ofInstant(at, ZoneOffset.UTC))
                 .query(JdbcActiveCommitments::map)
                 .list();
     }
@@ -50,7 +71,8 @@ class JdbcActiveCommitments implements ActiveCommitments {
             case LATE_CONFIRM_HOLD -> ReservationOwner.lateConfirmHold(bookingId);
             case TOURNAMENT_APPROVAL_HOLD -> ReservationOwner.tournamentApprovalHold(tournamentId);
             case TOURNAMENT_HOLD -> ReservationOwner.tournamentHold(tournamentId);
-            case MAINTENANCE, CLOSURE -> throw new IllegalStateException("not a commitment row: " + type);
+            case MAINTENANCE -> ReservationOwner.maintenance(rs.getObject("maintenance_id", UUID.class));
+            case CLOSURE -> throw new IllegalStateException("not a commitment row: " + type);
         };
         return new Commitment(rs.getObject("id", UUID.class), rs.getObject("resource_id", UUID.class), owner,
                 rs.getObject("planned_start", OffsetDateTime.class).toInstant(),
