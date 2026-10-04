@@ -14,14 +14,19 @@ type Action =
   | { kind: "disable" | "enable" | "archive" | "restore"; resource: VenueResource }
   | { kind: "console"; resource: VenueResource; consoleType: ConsoleType };
 
+// Refusals about the PIN itself stay in the PIN dialog; any other refusal closes it and shows on the page.
+const pinCodes = new Set(["OWNER_PASSWORD_REQUIRED", "OWNER_PASSWORD_INVALID", "RATE_LIMITED"]);
+
 export function ResourceList({ api }: { api: ApiClient }) {
   const t = useMessages();
   const [resources, setResources] = useState<VenueResource[]>();
-  const [activity, setActivity] = useState<Activity>("PLAYSTATION");
+  const [offered, setOffered] = useState<Activity[]>();
+  const [activity, setActivity] = useState<Activity>();
   const [consoleType, setConsoleType] = useState<ConsoleType>("PS5");
   const [consoleSelections, setConsoleSelections] = useState<Record<string, ConsoleType>>({});
   const [action, setAction] = useState<Action>();
   const [error, setError] = useState<string>();
+  const [actionError, setActionError] = useState<string>();
   const [passwordError, setPasswordError] = useState<string>();
   const [refreshVersion, setRefreshVersion] = useState(0);
 
@@ -35,6 +40,18 @@ export function ResourceList({ api }: { api: ApiClient }) {
     return () => { active = false; };
   }, [api, refreshVersion, t]);
 
+  // Only the activities the venue offers can get a room (FR-VEN-41); the Platform Admin manages that list.
+  useEffect(() => {
+    let active = true;
+    void api.GET("/api/v1/venue/settings").then(({ data, error: body }) => {
+      if (!active) return;
+      if (!data) return setError(setupErrorMessage(apiErrorOf(body).code, t));
+      setOffered(data.data.activities);
+      setActivity((current) => current && data.data.activities.includes(current) ? current : data.data.activities[0]);
+    }).catch(() => { if (active) setError(t.setup.errors.network); });
+    return () => { active = false; };
+  }, [api, refreshVersion, t]);
+
   const retry = () => {
     setError(undefined);
     setResources(undefined);
@@ -44,6 +61,7 @@ export function ResourceList({ api }: { api: ApiClient }) {
   const run = async (ownerPassword: string): Promise<boolean> => {
     if (!action) return false;
     setPasswordError(undefined);
+    setActionError(undefined);
     try {
       let result;
       if (action.kind === "create") {
@@ -62,7 +80,16 @@ export function ResourceList({ api }: { api: ApiClient }) {
               : await api.POST("/api/v1/venue/resources/{resourceId}/restore", { params, body });
       }
       if (!result.data) {
-        setPasswordError(setupErrorMessage(apiErrorOf(result.error).code, t));
+        const { code, field } = apiErrorOf(result.error);
+        if (code && pinCodes.has(code)) {
+          setPasswordError(setupErrorMessage(code, t));
+          return false;
+        }
+        setAction(undefined);
+        const activityGone = code === "VALIDATION_FAILED" && field === "activity";
+        setActionError(activityGone ? t.setup.resources.activityNotOffered : setupErrorMessage(code, t));
+        // The venue's activities changed since this page loaded: reload them so the stale one leaves the list.
+        if (activityGone) setRefreshVersion((version) => version + 1);
         return false;
       }
       setAction(undefined);
@@ -87,11 +114,12 @@ export function ResourceList({ api }: { api: ApiClient }) {
       <section style={styles.card}>
         <h3 style={styles.cardTitle}>{t.setup.resources.add}</h3>
         <div style={styles.grid}>
-          <label style={styles.field}><span style={styles.label}>{t.setup.resources.activity}</span><select style={styles.input} value={activity} onChange={(event) => setActivity(event.target.value as Activity)}>{Object.entries(t.activity).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label style={styles.field}><span style={styles.label}>{t.setup.resources.activity}</span><select disabled={!offered} style={styles.input} value={activity ?? ""} onChange={(event) => setActivity(event.target.value as Activity)}>{(offered ?? []).map((value) => <option key={value} value={value}>{t.activity[value]}</option>)}</select></label>
           {activity === "PLAYSTATION" ? <label style={styles.field}><span style={styles.label}>{t.setup.resources.console}</span><select style={styles.input} value={consoleType} onChange={(event) => setConsoleType(event.target.value as ConsoleType)}><option value="PS5">PS5</option><option value="PS4">PS4</option></select></label> : null}
         </div>
-        <button style={styles.primaryButton} type="button" onClick={() => setAction({ kind: "create", activity, ...(activity === "PLAYSTATION" ? { consoleType } : {}) })}>{t.setup.resources.add}</button>
+        <button disabled={!activity} style={styles.primaryButton} type="button" onClick={() => activity && setAction({ kind: "create", activity, ...(activity === "PLAYSTATION" ? { consoleType } : {}) })}>{t.setup.resources.add}</button>
       </section>
+      {actionError ? <div role="alert" style={styles.error}><p>{actionError}</p></div> : null}
       {resources === undefined && !error ? <p role="status">{t.setup.common.loading}</p> : null}
       {error ? <div role="alert" style={styles.error}><p>{error}</p><button style={styles.secondaryButton} type="button" onClick={retry}>{t.setup.common.retry}</button></div> : null}
       {resources?.length === 0 ? <p>{t.setup.resources.empty}</p> : null}

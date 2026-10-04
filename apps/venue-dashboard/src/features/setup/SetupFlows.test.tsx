@@ -56,6 +56,7 @@ describe("OwnerPasswordDialog", () => {
 describe("ResourceList protected actions", () => {
   it("creates a server-named room with activity, console and a fresh Owner Password", async () => {
     const requests = renderWithApi((api) => <ResourceList api={api} />, async (request) => {
+      if (request.url.endsWith("/venue/settings")) return ok({ activities: ["PLAYSTATION", "BILLIARDS"] });
       if (request.method === "GET") return ok([]);
       return ok({ id: "r-1", activity: "PLAYSTATION", name: "Room 1", consoleType: "PS5", baseState: "ACTIVE", operationalRestriction: "NONE" }, 201);
     });
@@ -70,6 +71,43 @@ describe("ResourceList protected actions", () => {
     const create = requests.find((request) => request.method === "POST");
     expect(await create?.clone().json()).toEqual({ activity: "PLAYSTATION", consoleType: "PS5", ownerPassword: "1111" });
   });
+
+  it("offers only the activities the venue has", async () => {
+    renderWithApi((api) => <ResourceList api={api} />, async (request) => {
+      if (request.url.endsWith("/venue/settings")) return ok({ activities: ["BILLIARDS", "PING_PONG"] });
+      return ok([]);
+    });
+
+    expect(await screen.findByText("No resources yet.")).toBeTruthy();
+    const activity = await screen.findByRole("combobox", { name: "Activity" }) as HTMLSelectElement;
+    await waitFor(() => expect([...activity.options].map((option) => option.value)).toEqual(["BILLIARDS", "PING_PONG"]));
+    expect(activity.value).toBe("BILLIARDS");
+    expect(screen.queryByText("Console type")).toBeNull();
+  });
+
+  it("keeps PIN errors in the PIN dialog and shows any other refusal on the page", async () => {
+    let answer = failure("OWNER_PASSWORD_INVALID", 423);
+    renderWithApi((api) => <ResourceList api={api} />, async (request) => {
+      if (request.url.endsWith("/venue/settings")) return ok({ activities: ["PLAYSTATION"] });
+      if (request.method === "GET") return ok([]);
+      return answer;
+    });
+    expect(await screen.findByText("No resources yet.")).toBeTruthy();
+    await waitFor(() => expect((screen.getByRole("button", { name: "Add resource" }) as HTMLButtonElement).disabled).toBe(false));
+
+    fireEvent.click(screen.getByRole("button", { name: "Add resource" }));
+    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "1111" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
+    expect(await screen.findByText("The Owner PIN is incorrect.")).toBeTruthy();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+
+    answer = failure("VALIDATION_FAILED", 400, { field: "activity" });
+    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "2222" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
+    expect((await screen.findByRole("alert")).textContent)
+      .toContain("This venue does not offer that activity. Ask E7GZ PS to add it first.");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
 });
 
 describe("PricingEditor", () => {
@@ -80,6 +118,7 @@ describe("PricingEditor", () => {
     };
     const resources = [{ id: "r-1", activity: "PLAYSTATION", name: "Room 1", consoleType: "PS5", baseState: "ACTIVE", operationalRestriction: "NONE" }];
     const requests = renderWithApi((api) => <PricingEditor api={api} />, async (request) => {
+      if (request.url.endsWith("/settings")) return ok({ activities: ["PLAYSTATION"] });
       if (request.method === "GET" && request.url.endsWith("/pricing")) return ok(pricing);
       if (request.method === "GET") return ok(resources);
       return ok(pricing);
@@ -97,6 +136,167 @@ describe("PricingEditor", () => {
       defaults: [{ activity: "PLAYSTATION", consoleType: "PS5", playMode: "SINGLE", hourlyPrice: { amount: "170.50", currency: "EGP" } }],
       ownerPassword: "2222",
     });
+  });
+});
+
+describe("PricingEditor for a venue with no prices yet", () => {
+  const empty = { defaults: [], overrides: [] };
+  const room = { id: "r-1", activity: "PLAYSTATION", name: "Room 1", consoleType: "PS5", baseState: "ACTIVE", operationalRestriction: "NONE" };
+
+  function renderEditor(answer: (request: Request) => Response | undefined = () => undefined) {
+    return renderWithApi((api) => <PricingEditor api={api} />, async (request) => {
+      if (request.url.endsWith("/settings")) return ok({ activities: ["PLAYSTATION", "BILLIARDS"] });
+      if (request.method === "GET" && request.url.endsWith("/pricing")) return ok(empty);
+      if (request.method === "GET") return ok([room]);
+      return answer(request) ?? ok(empty);
+    });
+  }
+
+  it("shows a field for every price its activities need and sends only the filled ones", async () => {
+    const requests = renderEditor();
+    for (const label of ["PlayStation · PS5 · Single", "PlayStation · PS5 · Multiplayer", "PlayStation · PS4 · Single",
+      "PlayStation · PS4 · Multiplayer", "Billiards"]) {
+      expect(((await screen.findByLabelText(label)) as HTMLInputElement).value).toBe("");
+    }
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Save" })[0]!);
+    expect((await screen.findByRole("alert")).textContent).toContain("Enter at least one price.");
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Billiards"), { target: { value: "70.00" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Save" })[0]!);
+    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "2222" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
+
+    await waitFor(() => expect(requests.some((request) => request.method === "PUT")).toBe(true));
+    expect(await requests.find((request) => request.method === "PUT")?.clone().json()).toEqual({
+      defaults: [{ activity: "BILLIARDS", consoleType: null, playMode: null, hourlyPrice: { amount: "70.00", currency: "EGP" } }],
+      ownerPassword: "2222",
+    });
+  });
+
+  it("sets a room override for one play mode only", async () => {
+    const requests = renderEditor();
+    fireEvent.change(await screen.findByLabelText("Single"), { target: { value: "200.00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Set room override" }));
+    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "2222" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
+
+    await waitFor(() => expect(requests.some((request) => request.method === "PUT")).toBe(true));
+    expect(await requests.find((request) => request.method === "PUT")?.clone().json()).toEqual({
+      ownerPassword: "2222",
+      prices: [{ playMode: "SINGLE", hourlyPrice: { amount: "200.00", currency: "EGP" } }],
+    });
+  });
+
+  it("keeps PIN errors in the PIN dialog and shows any other refusal on the page", async () => {
+    let refusal = failure("OWNER_PASSWORD_INVALID", 423);
+    renderEditor(() => refusal);
+    fireEvent.change(await screen.findByLabelText("Billiards"), { target: { value: "12.5" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Save" })[0]!);
+    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "2222" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
+    expect(await screen.findByText("The Owner PIN is incorrect.")).toBeTruthy();
+
+    refusal = failure("VALIDATION_FAILED", 400, { field: "defaults[0].hourlyPrice.amount" });
+    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "3333" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
+    expect((await screen.findByRole("alert")).textContent)
+      .toContain("Enter each price as a number with two decimals, for example 150.00.");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("Abdallah's E7-35 review", () => {
+  const room = { id: "r-1", activity: "PLAYSTATION", name: "Room 1", consoleType: "PS5", baseState: "ACTIVE", operationalRestriction: "NONE" };
+
+  it("reloads the venue's activities when the server says one is no longer offered", async () => {
+    let activities = ["PLAYSTATION", "BILLIARDS"];
+    const requests = renderWithApi((api) => <ResourceList api={api} />, async (request) => {
+      if (request.url.endsWith("/venue/settings")) return ok({ activities });
+      if (request.method === "GET") return ok([]);
+      return failure("VALIDATION_FAILED", 400, { field: "activity" });
+    });
+    const activity = await screen.findByRole("combobox", { name: "Activity" }) as HTMLSelectElement;
+    await waitFor(() => expect(activity.options).toHaveLength(2));
+    fireEvent.change(activity, { target: { value: "BILLIARDS" } });
+
+    activities = ["PLAYSTATION"];           // the Platform Admin removed Billiards meanwhile
+    fireEvent.click(screen.getByRole("button", { name: "Add resource" }));
+    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "1111" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("This venue does not offer that activity.");
+    await waitFor(() => expect([...activity.options].map((option) => option.value)).toEqual(["PLAYSTATION"]));
+    expect(requests.filter((request) => request.url.endsWith("/venue/settings")).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("refuses clearing a saved default price instead of silently keeping it", async () => {
+    const requests = renderWithApi((api) => <PricingEditor api={api} />, async (request) => {
+      if (request.url.endsWith("/settings")) return ok({ activities: ["BILLIARDS"] });
+      if (request.method === "GET" && request.url.endsWith("/pricing")) {
+        return ok({ defaults: [{ activity: "BILLIARDS", consoleType: null, playMode: null, hourlyPrice: { amount: "70.00", currency: "EGP" } }], overrides: [] });
+      }
+      return ok([]);
+    });
+    const price = await screen.findByLabelText("Billiards") as HTMLInputElement;
+    await waitFor(() => expect(price.value).toBe("70.00"));
+
+    fireEvent.change(price, { target: { value: "" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Save" })[0]!);
+
+    expect((await screen.findByRole("alert")).textContent)
+      .toContain("A saved price cannot be removed. Enter a price in every field that had one.");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(requests.some((request) => request.method === "PUT")).toBe(false);
+  });
+
+  it("refuses clearing a saved price in Arabic too", async () => {
+    renderWithApi((api) => <PricingEditor api={api} />, async (request) => {
+      if (request.url.endsWith("/settings")) return ok({ activities: ["BILLIARDS"] });
+      if (request.method === "GET" && request.url.endsWith("/pricing")) {
+        return ok({ defaults: [{ activity: "BILLIARDS", consoleType: null, playMode: null, hourlyPrice: { amount: "70.00", currency: "EGP" } }], overrides: [] });
+      }
+      return ok([]);
+    }, "ar");
+    const price = await screen.findByLabelText("بلياردو") as HTMLInputElement;
+    await waitFor(() => expect(price.value).toBe("70.00"));
+    fireEvent.change(price, { target: { value: "" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "حفظ" })[0]!);
+    expect((await screen.findByRole("alert")).textContent).toContain("لا يمكن حذف سعر محفوظ. أدخل سعرًا في كل خانة كان لها سعر.");
+  });
+
+  it("shows the new messages in Arabic", async () => {
+    renderWithApi((api) => <ResourceList api={api} />, async (request) => {
+      if (request.url.endsWith("/venue/settings")) return ok({ activities: ["PLAYSTATION"] });
+      if (request.method === "GET") return ok([]);
+      return failure("VALIDATION_FAILED", 400, { field: "activity" });
+    }, "ar");
+    await waitFor(() => expect((screen.getByRole("button", { name: "إضافة مورد" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "إضافة مورد" }));
+    fireEvent.change(screen.getByLabelText("رمز المالك"), { target: { value: "1111" } });
+    fireEvent.click(screen.getByRole("button", { name: "تأكيد الإجراء" }));
+    expect((await screen.findByRole("alert")).textContent)
+      .toContain("هذا المكان لا يقدّم هذا النشاط. اطلب من E7GZ PS إضافته أولًا.");
+    cleanup();
+
+    let refusal: Response | undefined = undefined;
+    renderWithApi((api) => <PricingEditor api={api} />, async (request) => {
+      if (request.url.endsWith("/settings")) return ok({ activities: ["BILLIARDS"] });
+      if (request.method === "GET" && request.url.endsWith("/pricing")) return ok({ defaults: [], overrides: [] });
+      if (request.method === "GET") return ok([room]);
+      return refusal ?? ok({ defaults: [], overrides: [] });
+    }, "ar");
+    await screen.findByLabelText("بلياردو");
+    fireEvent.click(screen.getAllByRole("button", { name: "حفظ" })[0]!);
+    expect((await screen.findByRole("alert")).textContent).toContain("أدخل سعرًا واحدًا على الأقل.");
+
+    refusal = failure("VALIDATION_FAILED", 400, { field: "defaults[0].hourlyPrice.amount" });
+    fireEvent.change(screen.getByLabelText("بلياردو"), { target: { value: "12.5" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "حفظ" })[0]!);
+    fireEvent.change(screen.getByLabelText("رمز المالك"), { target: { value: "1111" } });
+    fireEvent.click(screen.getByRole("button", { name: "تأكيد الإجراء" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("أدخل كل سعر كرقم بخانتين عشريتين، مثل 150.00."));
   });
 });
 
