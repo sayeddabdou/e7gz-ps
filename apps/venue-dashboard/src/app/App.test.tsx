@@ -11,6 +11,25 @@ const sessionResponse = (accessToken: string) => new Response(
   JSON.stringify({ data: { accessToken }, meta: { correlationId: "c-1", serverTime: "2026-10-02T10:00:00Z" } }),
   { status: 200, headers: { "Content-Type": "application/json" } },
 );
+const settingsResponse = (languagePreference: "en" | "ar") => new Response(
+  JSON.stringify({
+    data: {
+      venueId: "v-1",
+      name: "Arena",
+      areaId: "a-1",
+      areaName: "Nasr City",
+      address: "Street",
+      phone: "+201001234567",
+      location: { lat: 30.05, lng: 31.33 },
+      timezone: "Africa/Cairo",
+      activities: ["PLAYSTATION"],
+      marketplaceStatus: "ACTIVE",
+      languagePreference,
+    },
+    meta: { correlationId: "c-1", serverTime: "2026-10-02T10:00:00Z" },
+  }),
+  { status: 200, headers: { "Content-Type": "application/json" } },
+);
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -31,10 +50,13 @@ describe("Venue Dashboard shell", () => {
   });
 
   it("prefers the venue account language, mirrors the shell in Arabic, and keeps logical styles", async () => {
-    window.localStorage.setItem("e7gz.venue.language", "en");
-    render(<App config={readyConfig} preferredLanguage="ar" />);
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      return url.endsWith("/api/v1/venue/settings") ? settingsResponse("ar") : sessionResponse("memory-only-access");
+    }));
+    render(<App config={readyConfig} />);
 
-    await waitFor(() => expect(screen.getByTestId("venue-sidebar")).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("navigation", { name: "التنقل في لوحة التحكم" })).toBeTruthy());
     const shell = screen.getByRole("main");
     const sidebar = screen.getByTestId("venue-sidebar");
     expect(shell.getAttribute("dir")).toBe("rtl");
@@ -43,6 +65,7 @@ describe("Venue Dashboard shell", () => {
     expect(sidebar.style.textAlign).toBe("start");
     expect(sidebar.getAttribute("style")).not.toMatch(/(?:^|-)left|(?:^|-)right/u);
     expect(screen.getByRole("navigation", { name: "التنقل في لوحة التحكم" })).toBeTruthy();
+    expect(window.localStorage.getItem("e7gz.venue.language")).toBe("ar");
   });
 
   it("uses the stored language, switches direction, and persists the choice", async () => {
@@ -72,6 +95,7 @@ describe("Venue Dashboard shell", () => {
     render(<App config={readyConfig} />);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Log out" })).toBeTruthy());
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
     expect(fetch).toHaveBeenNthCalledWith(1, "http://127.0.0.1:4010/api/v1/venue/auth/refresh", expect.objectContaining({
       credentials: "include",
       headers: { "X-Requested-With": "e7gz" },
@@ -82,7 +106,7 @@ describe("Venue Dashboard shell", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Log out" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "Venue sign in" })).toBeTruthy());
-    expect(fetch).toHaveBeenNthCalledWith(2, "http://127.0.0.1:4010/api/v1/venue/auth/logout", expect.objectContaining({
+    expect(fetch).toHaveBeenNthCalledWith(3, "http://127.0.0.1:4010/api/v1/venue/auth/logout", expect.objectContaining({
       credentials: "include",
       headers: { "X-Requested-With": "e7gz" },
       method: "POST",

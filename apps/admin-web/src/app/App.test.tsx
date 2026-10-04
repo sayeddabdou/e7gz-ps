@@ -63,9 +63,21 @@ describe("Platform Admin shell", () => {
     render(<App config={readyConfig} />);
 
     await waitFor(() => expect(screen.getByRole("navigation", { name: "Admin navigation" })).toBeTruthy());
-    fireEvent.click(screen.getByRole("link", { name: "Venue Onboarding" }));
-    expect(screen.getByRole("heading", { name: "Venue Onboarding", level: 2 })).toBeTruthy();
-    expect(window.location.pathname).toBe("/venue-onboarding");
+    fireEvent.click(screen.getByRole("link", { name: "Users" }));
+    expect(screen.getByRole("heading", { name: "Users", level: 2 })).toBeTruthy();
+    expect(window.location.pathname).toBe("/users");
+  });
+
+  it("keeps Venue Accounts as a placeholder without calling an unsupported list endpoint", async () => {
+    const fetch = vi.mocked(globalThis.fetch);
+    render(<App config={readyConfig} />);
+
+    await waitFor(() => expect(screen.getByRole("navigation", { name: "Admin navigation" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("link", { name: "Venue Accounts" }));
+    expect(screen.getByRole("heading", { name: "Venue Accounts", level: 2 })).toBeTruthy();
+    expect(window.location.pathname).toBe("/venue-accounts");
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls.some(([input]) => String(input).endsWith("/api/v1/admin/venue-accounts"))).toBe(false);
   });
 
   it("restores and ends the HttpOnly-cookie session without browser token storage", async () => {

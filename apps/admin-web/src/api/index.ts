@@ -24,3 +24,13 @@ export function errorCodeOf(body: unknown): string | undefined {
   }
   return undefined;
 }
+
+export function errorFieldOf(body: unknown): string | undefined {
+  if (body && typeof body === "object" && "error" in body) {
+    const field = (body as { error?: { field?: unknown } }).error?.field;
+    return typeof field === "string" ? field : undefined;
+  }
+  return undefined;
+}
+
+export const idempotencyHeaders = () => ({ "Idempotency-Key": crypto.randomUUID() });
