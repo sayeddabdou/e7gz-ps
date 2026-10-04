@@ -204,6 +204,14 @@ class VenueResourceHttpTest extends IntegrationTest {
     }
 
     @Test
+    void anUnknownResourceIsNotFoundNotAServerError() throws Exception {
+        UUID unknown = UUID.randomUUID();
+        act(unknown, "disable", PIN).andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
+        console(unknown, "PS4", PIN).andExpect(status().isNotFound());
+    }
+
+    @Test
     void aMissingPinIsRequiredNotRefusedAndChangesNothing() throws Exception {
         // arch 09 §1.5; PO decision 4 Oct 2026: no value is 423 OWNER_PASSWORD_REQUIRED, not a counted wrong guess.
         create("PLAYSTATION", "PS5", null)

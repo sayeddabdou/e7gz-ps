@@ -105,6 +105,7 @@ public class Resources {
 
     public Resource changeState(UUID venueAccountId, UUID resourceId, StateChange change, String ownerPassword) {
         UUID venueId = accounts.venueOf(venueAccountId);
+        requireOwn(venueId, resourceId);
         UUID correlationId = CorrelationId.require();
         return gate.run(new ResourceCommands.ChangeBaseState(venueAccountId, venueId, resourceId, correlationId,
                 change.action, ownerPassword, gate, commitments, audit), venueAccountId, correlationId);
@@ -112,6 +113,7 @@ public class Resources {
 
     public Resource changeConsole(UUID venueAccountId, UUID resourceId, ConsoleType target, String ownerPassword) {
         UUID venueId = accounts.venueOf(venueAccountId);
+        requireOwn(venueId, resourceId);
         UUID correlationId = CorrelationId.require();
         return gate.run(new ResourceCommands.ChangeConsole(venueAccountId, venueId, resourceId, correlationId,
                 target, ownerPassword, gate, commitments, audit), venueAccountId, correlationId);
@@ -122,6 +124,19 @@ public class Resources {
     private List<Resource> listOf(UUID venueId) {
         return jdbc.sql(SELECT + " WHERE venue_id = :venue ORDER BY activity, name, id")
                 .param("venue", venueId).query(Resources::map).list();
+    }
+
+    /**
+     * Checked before the command: begin_command refuses a lock set naming a Resource that does not exist ("missing
+     * authoritative row", a 500). Resources are never deleted (archived only), so the answer cannot change before the
+     * command runs; the command checks the venue again under its lock.
+     */
+    private void requireOwn(UUID venueId, UUID resourceId) {
+        boolean own = jdbc.sql("SELECT EXISTS (SELECT 1 FROM resource.resource WHERE id = :id AND venue_id = :venue)")
+                .param("id", resourceId).param("venue", venueId).query(Boolean.class).single();
+        if (!own) {
+            throw new ApiException(ApiErrorCode.NOT_FOUND);
+        }
     }
 
     private void requireVenue(UUID venueId) {
