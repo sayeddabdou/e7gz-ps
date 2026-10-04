@@ -81,6 +81,7 @@ describe("AreaList", () => {
     await waitFor(() => expect(requests.some((request) => request.method === "POST")).toBe(true));
     const create = requests.find((request) => request.method === "POST")!;
     expect(JSON.parse(await create.text())).toEqual({ name: "Maadi", nameAr: "المعادي", centroid: { lat: 29.96, lng: 31.25 } });
+    expect(create.headers.get("Idempotency-Key")).toBeNull();
   });
 
   it("removes optional Arabic name and centroid explicitly when editing", async () => {
@@ -98,6 +99,7 @@ describe("AreaList", () => {
     await waitFor(() => expect(requests.some((request) => request.method === "PATCH")).toBe(true));
     const update = requests.find((request) => request.method === "PATCH")!;
     expect(JSON.parse(await update.text())).toEqual({ name: "Nasr City", removeNameAr: true, removeCentroid: true });
+    expect(update.headers.get("Idempotency-Key")).toBeNull();
   });
 
   it("activates an inactive area through the documented endpoint", async () => {
@@ -112,6 +114,7 @@ describe("AreaList", () => {
     });
     fireEvent.click(await screen.findByRole("button", { name: "Activate" }));
     await waitFor(() => expect(requests.some((request) => request.url.endsWith("/areas/a-1/activate"))).toBe(true));
+    expect(requests.find((request) => request.url.endsWith("/areas/a-1/activate"))!.headers.get("Idempotency-Key")).toBeNull();
   });
 });
 

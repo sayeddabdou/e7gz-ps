@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { components } from "@e7gz/api-client";
-import { errorCodeOf, errorFieldOf, idempotencyHeaders, type ApiClient } from "../../api";
+import { errorCodeOf, errorFieldOf, type ApiClient } from "../../api";
 import { adminErrorMessage } from "../adminErrors";
 import { parseLocation } from "../venues/location";
 import { messages as t } from "../../i18n/messages";
@@ -28,14 +28,14 @@ export function AreaList({ api }: { api: ApiClient }) {
     setMessage(undefined);
     const path = area.active ? "/api/v1/admin/areas/{areaId}/deactivate" as const : "/api/v1/admin/areas/{areaId}/activate" as const;
     try {
-      const result = await api.POST(path, { params: { path: { areaId: area.id }, header: idempotencyHeaders() } });
+      const result = await api.POST(path, { params: { path: { areaId: area.id } } });
       if (result.error) setMessage(adminErrorMessage(errorCodeOf(result.error), errorFieldOf(result.error))); else reload();
     } catch { setMessage(t.networkError); }
   };
 
   return (
     <section className="admin-page" aria-labelledby="areas-title">
-      <header className="page-heading page-heading--actions"><div><span className="page-eyebrow">Marketplace structure</span><h2 id="areas-title">{t.areasTitle}</h2></div>
+      <header className="page-heading page-heading--actions"><div><span className="page-eyebrow">{t.marketplaceStructure}</span><h2 id="areas-title">{t.areasTitle}</h2></div>
       <button className="button button--primary" type="button" onClick={() => setEditing("new")}><span aria-hidden="true">＋</span>{t.areas.create}</button></header>
       {message && <p className="notice notice--error" role="alert">{message}</p>}
       {editing && <AreaForm api={api} area={editing === "new" ? undefined : editing} onCancel={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); reload(); }} />}
@@ -82,8 +82,8 @@ function AreaForm({ api, area, onCancel, onSaved }: { api: ApiClient; area?: Adm
     const update = { name: name.trim(), ...(nameAr.trim() ? { nameAr: nameAr.trim() } : area?.nameAr ? { removeNameAr: true } : {}), ...(point ? { centroid: point } : area?.centroid ? { removeCentroid: true } : {}) };
     try {
       const result = area
-        ? await api.PATCH("/api/v1/admin/areas/{areaId}", { params: { path: { areaId: area.id }, header: idempotencyHeaders() }, body: update })
-        : await api.POST("/api/v1/admin/areas", { params: { header: idempotencyHeaders() }, body: { name: name.trim(), ...(nameAr.trim() ? { nameAr: nameAr.trim() } : {}), ...(point ? { centroid: point } : {}) } });
+        ? await api.PATCH("/api/v1/admin/areas/{areaId}", { params: { path: { areaId: area.id } }, body: update })
+        : await api.POST("/api/v1/admin/areas", { body: { name: name.trim(), ...(nameAr.trim() ? { nameAr: nameAr.trim() } : {}), ...(point ? { centroid: point } : {}) } });
       if (result.error) setError(adminErrorMessage(errorCodeOf(result.error), errorFieldOf(result.error))); else onSaved();
     } catch { setError(t.networkError); }
     finally { setSaving(false); }

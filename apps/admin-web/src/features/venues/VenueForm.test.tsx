@@ -17,12 +17,13 @@ describe("VenueForm", () => {
     });
     render(<VenueForm api={api} venue={venue} onSaved={() => undefined} />);
     expect(await screen.findByText(/more than 5 km/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("checkbox", { name: "BILLIARDS" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Billiards" }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(requests).toHaveLength(2));
     const body = JSON.parse(await requests[1]!.text());
     expect(body.activities).toEqual(["PLAYSTATION", "BILLIARDS"]);
     expect(body.location).toEqual({ lat: 30.15, lng: 31.33 });
+    expect(requests[1]!.headers.get("Idempotency-Key")).toBeNull();
   });
 
   it("moves the selected location from pasted coordinates and sends latitude before longitude", async () => {
