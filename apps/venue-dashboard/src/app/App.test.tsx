@@ -40,6 +40,18 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("Venue Dashboard shell", () => {
+  it("renders the reference dashboard shell without replacing existing controls", async () => {
+    render(<App config={readyConfig} />);
+
+    await waitFor(() => expect(screen.getByTestId("venue-sidebar")).toBeTruthy());
+    expect(screen.getByTestId("venue-shell").className).toContain("venue-dashboard-shell");
+    expect(screen.getByTestId("venue-topbar").className).toContain("venue-topbar");
+    expect(screen.getByTestId("venue-brand-mark").textContent).toBe("E7");
+    expect(screen.getByRole("navigation", { name: "Dashboard navigation" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "العربية" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Log out" })).toBeTruthy();
+  });
+
   it.each([401, 403])("guards protected routes when session restoration returns %s", async (status) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(undefined, { status })));
     render(<App config={readyConfig} />);
@@ -60,7 +72,7 @@ describe("Venue Dashboard shell", () => {
     const shell = screen.getByRole("main");
     const sidebar = screen.getByTestId("venue-sidebar");
     expect(shell.getAttribute("dir")).toBe("rtl");
-    expect(document.documentElement.dir).toBe("rtl");
+    await waitFor(() => expect(document.documentElement.dir).toBe("rtl"));
     expect(sidebar.style.borderInlineEnd).not.toBe("");
     expect(sidebar.style.textAlign).toBe("start");
     expect(sidebar.getAttribute("style")).not.toMatch(/(?:^|-)left|(?:^|-)right/u);
