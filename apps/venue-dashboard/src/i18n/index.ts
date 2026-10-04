@@ -146,6 +146,7 @@ const en = {
       restore: "Restore",
       changeConsole: "Change console",
       empty: "No resources yet.",
+      activityNotOffered: "This venue does not offer that activity. Ask E7GZ PS to add it first.",
     },
     pricing: {
       title: "Pricing",
@@ -339,6 +340,7 @@ const ar: Messages = {
       restore: "استعادة",
       changeConsole: "تغيير الجهاز",
       empty: "لا توجد غرف أو طاولات بعد.",
+      activityNotOffered: "هذا المكان لا يقدّم هذا النشاط. اطلب من E7GZ PS إضافته أولًا.",
     },
     pricing: {
       title: "الأسعار",

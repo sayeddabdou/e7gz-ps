@@ -56,6 +56,7 @@ describe("OwnerPasswordDialog", () => {
 describe("ResourceList protected actions", () => {
   it("creates a server-named room with activity, console and a fresh Owner Password", async () => {
     const requests = renderWithApi((api) => <ResourceList api={api} />, async (request) => {
+      if (request.url.endsWith("/venue/settings")) return ok({ activities: ["PLAYSTATION", "BILLIARDS"] });
       if (request.method === "GET") return ok([]);
       return ok({ id: "r-1", activity: "PLAYSTATION", name: "Room 1", consoleType: "PS5", baseState: "ACTIVE", operationalRestriction: "NONE" }, 201);
     });
@@ -69,6 +70,43 @@ describe("ResourceList protected actions", () => {
     await waitFor(() => expect(requests.some((request) => request.method === "POST")).toBe(true));
     const create = requests.find((request) => request.method === "POST");
     expect(await create?.clone().json()).toEqual({ activity: "PLAYSTATION", consoleType: "PS5", ownerPassword: "1111" });
+  });
+
+  it("offers only the activities the venue has", async () => {
+    renderWithApi((api) => <ResourceList api={api} />, async (request) => {
+      if (request.url.endsWith("/venue/settings")) return ok({ activities: ["BILLIARDS", "PING_PONG"] });
+      return ok([]);
+    });
+
+    expect(await screen.findByText("No resources yet.")).toBeTruthy();
+    const activity = await screen.findByRole("combobox", { name: "Activity" }) as HTMLSelectElement;
+    await waitFor(() => expect([...activity.options].map((option) => option.value)).toEqual(["BILLIARDS", "PING_PONG"]));
+    expect(activity.value).toBe("BILLIARDS");
+    expect(screen.queryByText("Console type")).toBeNull();
+  });
+
+  it("keeps PIN errors in the PIN dialog and shows any other refusal on the page", async () => {
+    let answer = failure("OWNER_PASSWORD_INVALID", 423);
+    renderWithApi((api) => <ResourceList api={api} />, async (request) => {
+      if (request.url.endsWith("/venue/settings")) return ok({ activities: ["PLAYSTATION"] });
+      if (request.method === "GET") return ok([]);
+      return answer;
+    });
+    expect(await screen.findByText("No resources yet.")).toBeTruthy();
+    await waitFor(() => expect((screen.getByRole("button", { name: "Add resource" }) as HTMLButtonElement).disabled).toBe(false));
+
+    fireEvent.click(screen.getByRole("button", { name: "Add resource" }));
+    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "1111" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
+    expect(await screen.findByText("The Owner PIN is incorrect.")).toBeTruthy();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+
+    answer = failure("VALIDATION_FAILED", 400, { field: "activity" });
+    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "2222" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
+    expect((await screen.findByRole("alert")).textContent)
+      .toContain("This venue does not offer that activity. Ask E7GZ PS to add it first.");
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
 

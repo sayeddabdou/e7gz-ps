@@ -12,9 +12,13 @@ const meta = { correlationId: "c-1", serverTime: "2026-10-12T17:04:11Z" };
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
+const settings = { data: { activities: ["PLAYSTATION"] }, meta };
+
 function renderList(fetch: (request: Request) => Promise<Response>) {
   const requests: Request[] = [];
   const api = createDashboardApiClient(config, () => "mock-access-token", async (request: Request) => {
+    // The venue's own activities (GET /venue/settings) feed the Add resource list; these tests are about the list.
+    if (request.url.endsWith("/api/v1/venue/settings")) return json(200, settings);
     requests.push(request);
     return fetch(request);
   });
