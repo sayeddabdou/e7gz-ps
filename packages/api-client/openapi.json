@@ -17313,6 +17313,7 @@
         ]
       },
       "put": {
+        "description": "Sets each price sent; a price not sent keeps its value (default prices are never deleted). PlayStation rows carry consoleType and playMode, Billiards and Ping Pong rows neither (ck_price_dimensions); one row per activity, console and play mode; only activities the venue offers.",
         "operationId": "venuePutPricing",
         "parameters": [
           {
@@ -17602,7 +17603,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Replace the venue default prices — Owner Password (FR-VEN-03)",
+        "summary": "Set venue default prices — Owner Password (FR-VEN-03)",
         "tags": [
           "venue-pricing"
         ]
@@ -19904,6 +19905,7 @@
         ]
       },
       "put": {
+        "description": "The prices sent replace the room's overrides; a play mode not sent uses the venue default. PlayStation rooms only (FR-VEN-44); another venue's room is NOT_FOUND.",
         "operationId": "venuePutRoomPriceOverride",
         "parameters": [
           {
