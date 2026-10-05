@@ -1373,6 +1373,10 @@ Carry-forward from E7-24 (do these too):
 
 Carry-forward from E7-39 (do these too):
 - Contract from E7-39 (packages/api-client/SPRINT-2-CONTRACT.md; stubs already in the controllers named there): implement GET /customer/notifications (newest first, cursor paging), POST /customer/notifications/{notificationId}/read (204; reading an already-read one changes nothing), POST /customer/notifications/devices {token, platform} -> 201 CustomerDevice (a token already active is seen again, not duplicated), and POST /customer/notifications/devices/{deviceId}/revoke -> 204 (sets revoked_at, never deletes; PO decision 5 Oct 2026). Controller: notification/web/CustomerNotificationController.
+- Error codes (PO decision 5 Oct 2026): a venue with no price for the activity fails under FR-BOK-11 item 20 as 422 RESOURCE_NOT_ELIGIBLE.
+- Error codes (PO decision 5 Oct 2026): accept, reject or reject-after-expiry on a booking no longer in the needed state (e.g. the customer cancelled a second earlier) is 409 BOOKING_STATE_CHANGED (new in ApiErrorCode and arch 09 section 1.5). An accept stopped by an emergency or owner review (FR-BOK-16) cancels the booking under that cause AND answers the matching 422 (VENUE_SELLING_BLOCK_ACTIVE, RESOURCE_SELLING_BLOCK_ACTIVE or RESOURCE_NOT_ELIGIBLE). The reject reasonText is at most 200 characters.
+- Error codes (PO decision 5 Oct 2026): a manual booking on an ONBOARDING venue is 403 FORBIDDEN; cancel-manual on a booking already cancelled or completed is 409 BOOKING_STATE_CHANGED.
+- Error codes (PO decision 5 Oct 2026): customer cancel on a booking already terminal is 409 BOOKING_STATE_CHANGED.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
