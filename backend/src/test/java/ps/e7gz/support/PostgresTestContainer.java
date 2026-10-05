@@ -20,6 +20,9 @@ public final class PostgresTestContainer {
                     .withDatabaseName("postgres")          // e7gz_ps is created by the init script
                     .withUsername("postgres")
                     .withPassword("postgres")
+                    // Testcontainers' default flags plus room for the cached Spring test contexts: each one keeps up to
+                    // 13 pooled connections (app 10 + admin 3), past the default limit of 100 (E7-28).
+                    .withCommand("postgres", "-c", "fsync=off", "-c", "max_connections=300")
                     .withCopyFileToContainer(
                             MountableFile.forHostPath(RepoFiles.get("infra/local/postgres/init/20_e7gz.sql")),
                             "/docker-entrypoint-initdb.d/20_e7gz.sql");

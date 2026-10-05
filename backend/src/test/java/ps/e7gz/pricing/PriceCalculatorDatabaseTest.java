@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static ps.e7gz.support.PostgresTestContainer.DATABASE;
 import static ps.e7gz.support.PostgresTestContainer.MIGRATOR;
+import static ps.e7gz.support.fixtures.Fixtures.aResource;
+import static ps.e7gz.support.fixtures.Fixtures.aVenue;
+import static ps.e7gz.support.fixtures.Fixtures.aVenueAccount;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -19,10 +22,12 @@ import org.junit.jupiter.api.Test;
 import org.postgresql.Driver;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
+import ps.e7gz.common.codes.ConsoleType;
 import ps.e7gz.common.money.Money;
 import ps.e7gz.pricing.api.PriceCalculator;
 import ps.e7gz.support.IntegrationTest;
 import ps.e7gz.support.PostgresTestContainer;
+import ps.e7gz.support.fixtures.Fixtures;
 
 /**
  * E7-27 done-when: the Java formula matches the DB CHECK on booking rows, {@code ck_booking_venue_price_math}:
@@ -106,30 +111,11 @@ class PriceCalculatorDatabaseTest extends IntegrationTest {
                 .param("day", startAt.atOffset(ZoneOffset.UTC).toLocalDate()).update();
     }
 
-    /** An ACTIVE venue with one PS5 room. */
+    /** An ACTIVE venue with its ENABLED account and one PS5 room (E7-28 fixture builders). */
     private static UUID[] venueWithRoom() {
-        UUID area = UUID.randomUUID();
-        OWNER.sql("INSERT INTO geo.area (id, name, is_active) VALUES (:id, :name, true)")
-                .param("id", area).param("name", "E7-27 area " + area).update();
-        UUID venue = UUID.randomUUID();
-        OWNER.sql("""
-                        INSERT INTO venue.venue (id, area_id, name, address, location, marketplace_status, timezone, phone)
-                        VALUES (:id, :area, :name, '12 Test St', 'SRID=4326;POINT(31.2 30.0)'::geography, 'ACTIVE',
-                                'Africa/Cairo', '+20223456789')""")
-                .param("id", venue).param("area", area).param("name", "E7-27 venue " + venue).update();
-        OWNER.sql("INSERT INTO venue.venue_activity (id, venue_id, activity) VALUES (:id, :venue, 'PLAYSTATION')")
-                .param("id", UUID.randomUUID()).param("venue", venue).update();
-        OWNER.sql("""
-                        INSERT INTO iam.venue_account (id, venue_id, login_identifier, password_hash, account_status,
-                                                       language_preference)
-                        VALUES (:id, :venue, :login, 'not-used-here', 'ENABLED', 'en')""")
-                .param("id", UUID.randomUUID()).param("venue", venue).param("login", "e7-27-" + venue).update();
-        UUID room = UUID.randomUUID();
-        OWNER.sql("""
-                        INSERT INTO resource.resource (id, venue_id, activity, name, console_type, base_state,
-                                                       operational_restriction)
-                        VALUES (:id, :venue, 'PLAYSTATION', 'Room 1', 'PS5', 'ACTIVE', 'NONE')""")
-                .param("id", room).param("venue", venue).update();
-        return new UUID[]{venue, room};
+        Fixtures.Venue venue = aVenue().active().create();
+        aVenueAccount().forVenue(venue).create();
+        Fixtures.Resource room = aResource().at(venue).playStation(ConsoleType.PS5).create();
+        return new UUID[]{venue.id(), room.id()};
     }
 }

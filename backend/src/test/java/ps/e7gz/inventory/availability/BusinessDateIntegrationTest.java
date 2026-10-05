@@ -1,10 +1,9 @@
 package ps.e7gz.inventory.availability;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static ps.e7gz.venue.OperatingSessionFixtures.COMMITTED;
-import static ps.e7gz.venue.OperatingSessionFixtures.VENUE;
-import static ps.e7gz.venue.OperatingSessionFixtures.session;
-import static ps.e7gz.venue.OperatingSessionFixtures.template;
+import static ps.e7gz.support.fixtures.Fixtures.aVenue;
+import static ps.e7gz.support.fixtures.Fixtures.anOpeningTemplate;
+import static ps.e7gz.support.fixtures.Fixtures.anOperatingSession;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -26,6 +25,7 @@ import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.inventory.availability.api.BusinessDates;
 import ps.e7gz.inventory.availability.internal.BusinessDatesWithClock;
 import ps.e7gz.support.IntegrationTest;
+import ps.e7gz.support.fixtures.Fixtures;
 import ps.e7gz.venue.OperatingSessionFixtures;
 import ps.e7gz.venue.api.OperatingSessions;
 
@@ -33,6 +33,7 @@ import ps.e7gz.venue.api.OperatingSessions;
  * E7-31 - the business date (arch 04 section 4.3, FR-AVL-14) from real {@code venue.operating_session} rows. Each Venue
  * has a weekly template of 10:00-12:00 that the rows disagree with, so a date taken from the template would fail. The
  * DST dates are E7-25's: Africa/Cairo goes forward at Friday 24 April 2026 00:00 and back at Thursday 29 October 24:00.
+ * The Venues and their rows come from the shared fixture builders (E7-28).
  */
 class BusinessDateIntegrationTest extends IntegrationTest {
 
@@ -47,9 +48,23 @@ class BusinessDateIntegrationTest extends IntegrationTest {
     @Autowired
     OperatingSessions sessions;
 
+    /** No opening hours; each test writes its template and sessions inside a command and rolls back. */
+    private static UUID venue;
+    /** Committed: template 10:00-12:00 and one past session, Wednesday 10 June 2025 18:00 -> Thursday 02:00 Cairo. */
+    private static UUID committed;
+
+    /** After the context started, so Flyway has migrated the shared database; once per JVM. */
     @BeforeEach
     void fixtures() {
-        OperatingSessionFixtures.load();
+        if (venue != null) {
+            return;
+        }
+        venue = aVenue().create().id();
+        Fixtures.Venue withHours = aVenue().create();
+        UUID template = anOpeningTemplate().forVenue(withHours).hours("10:00", "12:00").create();
+        anOperatingSession().forVenue(withHours).template(template)
+                .on("2025-06-10", "2025-06-10T18:00", "2025-06-11T02:00").create();
+        committed = withHours.id();
     }
 
     private static Instant cairo(String localDateTime) {
@@ -58,11 +73,15 @@ class BusinessDateIntegrationTest extends IntegrationTest {
 
     /** The materialized rows of every case; none of them is what the 10:00-12:00 template would generate. */
     private static void sessions(CommandContext ctx) {
-        UUID template = template(ctx, VENUE);
-        session(ctx, VENUE, template, "2026-11-04", "2026-11-04T13:00", "2026-11-04T23:00");     // same day
-        session(ctx, VENUE, template, "2026-11-05", "2026-11-05T18:00", "2026-11-06T02:00");     // cross midnight
-        session(ctx, VENUE, template, "2026-04-23", "2026-04-23T18:00", "2026-04-24T02:00");     // spring forward
-        session(ctx, VENUE, template, "2026-10-29", "2026-10-29T18:00", "2026-10-30T02:00");     // fall back
+        UUID template = anOpeningTemplate().forVenue(venue).hours("10:00", "12:00").create(ctx.jdbc());
+        session(ctx, template, "2026-11-04", "2026-11-04T13:00", "2026-11-04T23:00");     // same day
+        session(ctx, template, "2026-11-05", "2026-11-05T18:00", "2026-11-06T02:00");     // cross midnight
+        session(ctx, template, "2026-04-23", "2026-04-23T18:00", "2026-04-24T02:00");     // spring forward
+        session(ctx, template, "2026-10-29", "2026-10-29T18:00", "2026-10-30T02:00");     // fall back
+    }
+
+    private static void session(CommandContext ctx, UUID template, String day, String localStart, String localEnd) {
+        anOperatingSession().forVenue(venue).template(template).on(day, localStart, localEnd).create(ctx.jdbc());
     }
 
     static Stream<Arguments> cases() {
@@ -95,7 +114,7 @@ class BusinessDateIntegrationTest extends IntegrationTest {
         AtomicReference<LocalDate> resolved = new AtomicReference<>();
         OperatingSessionFixtures.inRolledBackCommand(runner, ctx -> {
             sessions(ctx);
-            resolved.set(dates.businessDate(ctx, VENUE, startAt));
+            resolved.set(dates.businessDate(ctx, venue, startAt));
         });
 
         assertThat(resolved.get()).isEqualTo(expected);
@@ -115,7 +134,7 @@ class BusinessDateIntegrationTest extends IntegrationTest {
     void theCurrentBusinessDateAt0100InsideAnOvernightSessionIsThePreviousDay() {
         Clock clock = Clock.fixed(cairo("2025-06-11T01:00"), ZoneOffset.UTC);
 
-        assertThat(BusinessDatesWithClock.of(sessions, clock).currentBusinessDate(COMMITTED))
+        assertThat(BusinessDatesWithClock.of(sessions, clock).currentBusinessDate(committed))
                 .isEqualTo("2025-06-10");
     }
 
@@ -123,7 +142,7 @@ class BusinessDateIntegrationTest extends IntegrationTest {
     void theCurrentBusinessDateAt0300AfterTheSessionEndedIsThatDay() {
         Clock clock = Clock.fixed(cairo("2025-06-11T03:00"), ZoneOffset.UTC);
 
-        assertThat(BusinessDatesWithClock.of(sessions, clock).currentBusinessDate(COMMITTED))
+        assertThat(BusinessDatesWithClock.of(sessions, clock).currentBusinessDate(committed))
                 .isEqualTo("2025-06-11");
     }
 
@@ -131,7 +150,7 @@ class BusinessDateIntegrationTest extends IntegrationTest {
     void theCurrentBusinessDateInTemplateHoursWithoutARowIsTheCalendarDate() {
         Clock clock = Clock.fixed(cairo("2025-06-10T11:00"), ZoneOffset.UTC);
 
-        assertThat(BusinessDatesWithClock.of(sessions, clock).currentBusinessDate(COMMITTED))
+        assertThat(BusinessDatesWithClock.of(sessions, clock).currentBusinessDate(committed))
                 .isEqualTo("2025-06-10");
     }
 }
