@@ -50,6 +50,8 @@ cd backend && ./gradlew check        # unit + integration (Testcontainers) + Arc
 ./gradlew bootRun --args='--spring.profiles.active=api'     # or worker; api,worker runs both (venue photo copies need worker)
 ./gradlew bootRun --args='--spring.profiles.active=admin-bootstrap --e7gz.admin-bootstrap.email=… --e7gz.admin-bootstrap.full-name=…'
                                      # one-off: first Platform Admin (password typed, or E7GZ_ADMIN_BOOTSTRAP_PASSWORD)
+./gradlew seedDev                    # fresh local DB only: 2 areas, 6 venues, 20 customers (logins: backend/src/seed/README.md)
+./gradlew seedPerf                   # fresh local DB only: launch volume x10 (150 venues, 20,000 customers), ~2 min
 pnpm install && pnpm -r build        # all frontends + packages
 pnpm api:gen                         # regenerate packages/api-client from backend OpenAPI
 pnpm mock                            # Prism mock server from openapi.json

@@ -87,3 +87,44 @@ tasks.register<Test>("generateOpenApi") {
     systemProperty("e7gz.openapi.write", "true")
     outputs.upToDateWhen { false }
 }
+
+// E7-28 seed data. backend/src/seed/java is its own source set, so the seed is never in the application jar and the
+// ArchUnit rules (which scan the main classes) do not see it. `./gradlew seedDev` / `seedPerf` boot the application
+// context against the database in E7GZ_DB_URL (default: docker compose), write through the modules' services and end.
+// The seed refuses a database that is not local or not fresh (see ps.e7gz.seed.SeedGuard).
+val seed: SourceSet by sourceSets.creating {
+    java.srcDir("src/seed/java")
+    resources.srcDir("src/seed/resources")
+    compileClasspath += sourceSets.main.get().output
+    runtimeClasspath += sourceSets.main.get().output
+}
+configurations[seed.implementationConfigurationName].extendsFrom(configurations.implementation.get())
+configurations[seed.runtimeOnlyConfigurationName].extendsFrom(configurations.runtimeOnly.get())
+
+// The seed's own test (the done-when "works on a fresh DB"): a separate source set and test task, run by `check`.
+val seedTest: SourceSet by sourceSets.creating {
+    java.srcDir("src/seed/test/java")
+    compileClasspath += seed.output + sourceSets.main.get().output + sourceSets.test.get().output
+    runtimeClasspath += seed.output + sourceSets.main.get().output + sourceSets.test.get().output
+}
+configurations[seedTest.implementationConfigurationName].extendsFrom(configurations.testImplementation.get())
+configurations[seedTest.runtimeOnlyConfigurationName].extendsFrom(configurations.testRuntimeOnly.get())
+
+val seedTestTask = tasks.register<Test>("seedTest") {
+    description = "Runs the dev and perf seeds against fresh databases (E7-28)."
+    group = "verification"
+    testClassesDirs = seedTest.output.classesDirs
+    classpath = seedTest.runtimeClasspath
+    shouldRunAfter(tasks.test)
+}
+tasks.check { dependsOn(seedTestTask) }
+
+fun registerSeed(name: String, mode: String, text: String) = tasks.register<JavaExec>(name) {
+    description = text
+    group = "seed"
+    classpath = seed.runtimeClasspath
+    mainClass = "ps.e7gz.seed.SeedApplication"
+    args(mode)
+}
+registerSeed("seedDev", "dev", "Fills a fresh local database with the dev seed: 2 areas, 6 venues, customers (E7-28).")
+registerSeed("seedPerf", "perf", "Fills a fresh local database with launch-city volume x10 (E7-28).")
