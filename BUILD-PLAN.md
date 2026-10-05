@@ -1371,6 +1371,9 @@ Done when (write these as tests first where possible):
 Carry-forward from E7-24 (do these too):
 - An admin Owner Password reset must notify the venue (FR-ADM-03, FR-VEN-05). POST /admin/venue-accounts/{id}/reset-owner-password already exists (VenueAccountCommands.ResetOwnerPassword, audit OWNER_PASSWORD_RESET); send the catalogued VENUE_OWNER_PASSWORD_RESET notification to the venue through the outbox in that same transaction once the catalogue exists. The notification never contains the password.
 
+Carry-forward from E7-39 (do these too):
+- Contract from E7-39 (packages/api-client/SPRINT-2-CONTRACT.md; stubs already in the controllers named there): implement GET /customer/notifications (newest first, cursor paging), POST /customer/notifications/{notificationId}/read (204; reading an already-read one changes nothing), POST /customer/notifications/devices {token, platform} -> 201 CustomerDevice (a token already active is seen again, not duplicated), and POST /customer/notifications/devices/{deviceId}/revoke -> 204 (sets revoked_at, never deletes; PO decision 5 Oct 2026). Controller: notification/web/CustomerNotificationController.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -1396,6 +1399,10 @@ Do:
 
 Done when (write these as tests first where possible):
 - Two API instances: an event on one reaches a stream on the other.
+
+Carry-forward from E7-39 (do these too):
+- Contract from E7-39 (packages/api-client/SPRINT-2-CONTRACT.md; stubs already in the controllers named there): GET /venue/stream sends `event: change` with data {type, id, reason} (arch 08 section 5; this replaces {type, entityId} in step 1): type BOOKING | TOURNAMENT, reason CREATED (new booking request) | REQUESTED (new tournament request) | CHANGED; `: heartbeat` every 15 s. Authentication is the ordinary Bearer header: the Dashboard reads the stream with fetch() + ReadableStream, never EventSource, and no token goes in the URL (PO decision 5 Oct 2026). Controller: notification/web/VenueStreamController.
+- Web Push routes (PO decision 5 Oct 2026): GET /venue/push-subscriptions/vapid-public-key -> {publicKey}; POST /venue/push-subscriptions {endpoint (https), keys {p256dh, auth}, userAgent?} -> 201 (an endpoint already active is seen again, not duplicated); POST /venue/push-subscriptions/{subscriptionId}/revoke -> 204 (sets revoked_at, never deletes). Controller: notification/web/VenuePushSubscriptionController.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -1447,6 +1454,10 @@ Do:
 Done when (write these as tests first where possible):
 - Boundary: submit at startAt−15:00 ok, −14:59 refused; sessionEnd−11 min ok, −9 min refused.
 
+Carry-forward from E7-39 (do these too):
+- Contract from E7-39 (packages/api-client/SPRINT-2-CONTRACT.md; stubs already in the controllers named there): implement POST /customer/bookings (Idempotency-Key required; 201 CustomerBookingDetail) with the error codes declared in booking/web/CustomerBookingController.
+- Quote (PO decision 5 Oct 2026): implement GET /customer/bookings/quote?resourceId&playMode&startAt&durationMinutes -> {hourlyPrice, nominalBookedMinutes, venuePriceTotal, bookingFee {amount, currency, displayAsFree}, totalAmount}, using exactly the same price and fee code as creation (FR-BOK-06, FR-BOK-07, FR-PTS-13). It is not an availability check and holds nothing. Test: the quote equals the amounts of a booking created with the same input.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -1471,6 +1482,9 @@ Do:
 Done when (write these as tests first where possible):
 - Accept at expiresAt−1 s succeeds; at the boundary expiry wins.
 
+Carry-forward from E7-39 (do these too):
+- Contract from E7-39 (packages/api-client/SPRINT-2-CONTRACT.md; stubs already in the controllers named there): implement GET /venue/requests/pending (PENDING) and GET /venue/requests/missed (VENUE_RESPONSE_EXPIRED before startAt), and POST /venue/bookings/{bookingId}/accept, /reject {reasonText}, /reject-after-expiry (Idempotency-Key required, no Owner Password), each answering the VenueBooking DTO of booking/web/VenueBookingController.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -1493,6 +1507,9 @@ Do:
 
 Done when (write these as tests first where possible):
 - Manual booking at 3 AM for a venue closing at 2 AM succeeds with a businessDate.
+
+Carry-forward from E7-39 (do these too):
+- Contract from E7-39 (packages/api-client/SPRINT-2-CONTRACT.md; stubs already in the controllers named there): implement POST /venue/bookings {resourceId, playMode?, startAt?, durationMinutes, customerName?, customerPhone?} -> 201 VenueBooking (startAt absent = walk-in starting now at server time, FR-MAN-04; customerPhone normalised to E.164 like the venue phone) and POST /venue/bookings/{bookingId}/cancel-manual (FR-MAN-08: CANCELLED / VENUE_CANCELLED_MANUAL_BOOKING before startAt, no Owner Password). Idempotency-Key required on both. Controller: booking/web/VenueBookingController.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -1518,6 +1535,10 @@ Do:
 
 Done when (write these as tests first where possible):
 - Contact redaction tested in every retention case; integrity sweep clean after a seeded run; J1 and J8 end-to-end tests.
+
+Carry-forward from E7-39 (do these too):
+- Contract from E7-39 (packages/api-client/SPRINT-2-CONTRACT.md; stubs already in the controllers named there): implement GET /customer/bookings?bucket=upcoming|completed|cancelled, GET /customer/bookings/{bookingId}, POST /customer/bookings/{bookingId}/cancel (Idempotency-Key required; DEADLINE_PASSED at or after startAt), GET /venue/bookings (filters of FR-VEN-38; from/to are business dates, inclusive) and GET /venue/bookings/{bookingId} with its history. Controllers: booking/web/CustomerBookingController, VenueBookingController.
+- The venue booking history never shows LATE_CONFIRM_FAILED_BOOKING_LIMIT or LATE_CONFIRM_FAILED_CUSTOMER_CONFLICT (NFR-19, arch 10 section 5.2). Add a test.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
