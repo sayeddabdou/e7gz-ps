@@ -645,6 +645,7 @@
           "REVIEW_ALREADY_EXISTS",
           "REVIEW_REMOVED_NOT_RESTORABLE",
           "IDEMPOTENCY_KEY_REUSED",
+          "BOOKING_STATE_CHANGED",
           "VALIDATION_FAILED",
           "UNAUTHENTICATED",
           "FORBIDDEN",
@@ -3094,7 +3095,7 @@
         "properties": {
           "reasonText": {
             "example": "Room under maintenance",
-            "maxLength": 500,
+            "maxLength": 200,
             "minLength": 1,
             "pattern": ".*\\S.*",
             "type": "string"
@@ -14387,7 +14388,7 @@
         ]
       },
       "post": {
-        "description": "Checks the twenty creation conditions of FR-BOK-11 in one transaction. Displayed availability is not a promise: a slot taken meanwhile is 409 SLOT_NO_LONGER_AVAILABLE (FR-AVL-11). Duration and lead time are product rules, answered with their 422 codes, not VALIDATION_FAILED. playMode is required for PLAYSTATION and absent otherwise. Implemented by E7-46.",
+        "description": "Checks the twenty creation conditions of FR-BOK-11 in one transaction. Displayed availability is not a promise: a slot taken meanwhile is 409 SLOT_NO_LONGER_AVAILABLE (FR-AVL-11). Duration and lead time are product rules, answered with their 422 codes, not VALIDATION_FAILED. playMode is required for PLAYSTATION and absent otherwise. A venue with no price for the activity fails under FR-BOK-11 item 20 as RESOURCE_NOT_ELIGIBLE (PO decision 5 Oct 2026). Implemented by E7-46.",
         "operationId": "customerCreateBooking",
         "parameters": [
           {
@@ -15339,7 +15340,7 @@
     },
     "/api/v1/customer/bookings/{bookingId}/cancel": {
       "post": {
-        "description": "Allowed while now < startAt, also while the venue response timer is paused (FR-BOK-32). At or after startAt it is DEADLINE_PASSED. Terminal reason CUSTOMER_CANCELLED. Implemented by E7-49.",
+        "description": "Allowed while now < startAt, also while the venue response timer is paused (FR-BOK-32). At or after startAt it is DEADLINE_PASSED; a booking already terminal is BOOKING_STATE_CHANGED. Terminal reason CUSTOMER_CANCELLED. Implemented by E7-49.",
         "operationId": "customerCancelBooking",
         "parameters": [
           {
@@ -15552,6 +15553,49 @@
               }
             },
             "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "BOOKING_STATE_CHANGED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: BOOKING_STATE_CHANGED",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {
@@ -18844,7 +18888,7 @@
         ]
       },
       "post": {
-        "description": "Leave startAt out for a walk-in starting now (startAt = server time, FR-MAN-04). Opening hours do not gate it (FR-MAN-03); no back-dating (FR-MAN-05); missing pricing is MANUAL_BOOKING_PRICING_CONFIGURATION_MISSING and creates nothing (FR-MAN-10). Always has a businessDate (FR-MAN-09). customerPhone, when sent, is normalised to E.164 like the venue phone. No Owner Password. Implemented by E7-48.",
+        "description": "Leave startAt out for a walk-in starting now (startAt = server time, FR-MAN-04). Opening hours do not gate it (FR-MAN-03); no back-dating (FR-MAN-05); missing pricing is MANUAL_BOOKING_PRICING_CONFIGURATION_MISSING and creates nothing (FR-MAN-10). Always has a businessDate (FR-MAN-09). customerPhone, when sent, is normalised to E.164 like the venue phone. An ONBOARDING venue is refused with FORBIDDEN (FR-MAN-02; PO decision 5 Oct 2026). No Owner Password. Implemented by E7-48.",
         "operationId": "venueCreateManualBooking",
         "parameters": [
           {
@@ -19475,7 +19519,7 @@
     },
     "/api/v1/venue/bookings/{bookingId}/accept": {
       "post": {
-        "description": "Revalidated atomically (FR-BOK-14); marketplace ACTIVE is not required (FR-BOK-15). At or after venueResponseExpiresAt it is DEADLINE_PASSED (expiry wins at the boundary). When an emergency or owner review stops the confirmation, the booking is cancelled under that cause (FR-BOK-16). No Owner Password. Implemented by E7-47.",
+        "description": "Revalidated atomically (FR-BOK-14); marketplace ACTIVE is not required (FR-BOK-15). At or after venueResponseExpiresAt it is DEADLINE_PASSED (expiry wins at the boundary). When an emergency or owner review stops the confirmation, the booking is cancelled under that cause (FR-BOK-16) and the venue gets the matching 422 (VENUE_SELLING_BLOCK_ACTIVE, RESOURCE_SELLING_BLOCK_ACTIVE or RESOURCE_NOT_ELIGIBLE; PO decision 5 Oct 2026). A booking no longer PENDING is BOOKING_STATE_CHANGED. No Owner Password. Implemented by E7-47.",
         "operationId": "venueAcceptBooking",
         "parameters": [
           {
@@ -19696,6 +19740,49 @@
               }
             }
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "BOOKING_STATE_CHANGED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: BOOKING_STATE_CHANGED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "422": {
             "content": {
               "application/json": {
@@ -19817,7 +19904,7 @@
     },
     "/api/v1/venue/bookings/{bookingId}/cancel-manual": {
       "post": {
-        "description": "Only for source MANUAL and only before startAt (FR-MAN-04); at or after it is DEADLINE_PASSED. No Owner Password (FR-MAN-08). Implemented by E7-48.",
+        "description": "Only for source MANUAL and only before startAt (FR-MAN-04); at or after it is DEADLINE_PASSED; a booking already cancelled or completed is BOOKING_STATE_CHANGED. No Owner Password (FR-MAN-08). Implemented by E7-48.",
         "operationId": "venueCancelManualBooking",
         "parameters": [
           {
@@ -20038,6 +20125,49 @@
               }
             }
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "BOOKING_STATE_CHANGED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: BOOKING_STATE_CHANGED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "422": {
             "content": {
               "application/json": {
@@ -20156,7 +20286,7 @@
     },
     "/api/v1/venue/bookings/{bookingId}/reject": {
       "post": {
-        "description": "The venue's reason text is mandatory and kept apart from the reason code (ck_booking_reject_reason_text). The reservation is released at once. No Owner Password. Implemented by E7-47.",
+        "description": "The venue's reason text is mandatory and kept apart from the reason code (ck_booking_reject_reason_text). The reservation is released at once. A booking no longer PENDING is BOOKING_STATE_CHANGED. No Owner Password. Implemented by E7-47.",
         "operationId": "venueRejectBooking",
         "parameters": [
           {
@@ -20387,6 +20517,49 @@
               }
             }
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "BOOKING_STATE_CHANGED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: BOOKING_STATE_CHANGED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "422": {
             "content": {
               "application/json": {
@@ -20505,7 +20678,7 @@
     },
     "/api/v1/venue/bookings/{bookingId}/reject-after-expiry": {
       "post": {
-        "description": "Only for VENUE_RESPONSE_EXPIRED and only while now < startAt; at or after startAt it is DEADLINE_PASSED. No reservation to release. No Owner Password. Implemented by E7-47.",
+        "description": "Only for VENUE_RESPONSE_EXPIRED and only while now < startAt; at or after startAt it is DEADLINE_PASSED; a booking no longer VENUE_RESPONSE_EXPIRED is BOOKING_STATE_CHANGED. No reservation to release. No Owner Password. Implemented by E7-47.",
         "operationId": "venueRejectBookingAfterExpiry",
         "parameters": [
           {
@@ -20718,6 +20891,49 @@
               }
             },
             "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "BOOKING_STATE_CHANGED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: BOOKING_STATE_CHANGED",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {

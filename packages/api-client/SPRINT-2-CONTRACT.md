@@ -24,7 +24,7 @@ Not in Sprint 2: Late Confirm, attendance and `cancel-confirmed` (E7-54, Sprint 
 |---|---|
 | Push tokens and browser subscriptions can be switched off through the API. They are **revoked, never deleted** (arch 08 §4). | `POST /customer/notifications/devices/{id}/revoke` and `POST /venue/push-subscriptions/{id}/revoke` → 204. No `DELETE`. |
 | Add every endpoint a Sprint 2 task needs, beyond the E7-39 step list. | Request lists, reject after expiry, venue bookings list and detail, notifications inbox, cancel manual booking. |
-| The app gets the price from the server before booking. | `GET /customer/bookings/quote?resourceId&playMode&startAt&durationMinutes` → `{hourlyPrice, nominalBookedMinutes, venuePriceTotal, bookingFee, totalAmount}`. Not an availability check and not a hold; the created booking's own amounts are authoritative. **New route — not yet in arch 09 §3.3.** |
+| The app gets the price from the server before booking. | `GET /customer/bookings/quote?resourceId&playMode&startAt&durationMinutes` → `{hourlyPrice, nominalBookedMinutes, venuePriceTotal, bookingFee, totalAmount}`. Not an availability check and not a hold; the created booking's own amounts are authoritative. Recorded in arch 09 §3.3. |
 | The live feed uses the ordinary Bearer header. | The Dashboard reads `GET /venue/stream` with `fetch()` + `ReadableStream` (a browser `EventSource` cannot send headers). No token in any URL. |
 
 ## 2. Conventions (resolved from the documents)
@@ -40,16 +40,18 @@ Not in Sprint 2: Late Confirm, attendance and `cancel-confirmed` (E7-54, Sprint 
 | Timers | `venueResponseExpiresAt` is an instant, never a countdown (NFR-10); `venueResponsePaused` is true while an emergency pauses it (FR-BOK-32). |
 | History | arch 09 §3.3's `{at, code}` is illustrative; the contract carries the `booking.booking_history` row as codes: `{at, kind, fromStatus, toStatus, terminalReason, eventType}`. |
 | Manual booking | `startAt` absent = walk-in starting now (server time, FR-MAN-04). `playMode` required for PLAYSTATION only. |
-| Reject reason | `reasonText` required, not blank, at most 500 characters (FR-BOK-17, `ck_booking_reject_reason_text`; the 500 cap is a contract choice). |
+| Reject reason | `reasonText` required, not blank, at most 200 characters (FR-BOK-17, `ck_booking_reject_reason_text`; the cap is a PO decision, 5 Oct 2026). |
 | SSE | `event: change` + `data: {type, id, reason}`; `: heartbeat` every 15 s (arch 08 §5). `type` = `BOOKING` / `TOURNAMENT`. `reason` = `CREATED` (new booking request), `REQUESTED` (new tournament request), `CHANGED` (anything else). The Dashboard plays the alert on `CREATED` / `REQUESTED`. `pnpm mock` serves one literal event. |
 | Push | Customer: `{token, platform}` (`notification.device_token`). Venue: `PushSubscription.toJSON()` = `{endpoint (https), keys: {p256dh, auth}}` + optional `userAgent` (`notification.venue_push_subscription`); the VAPID public key comes from `GET /venue/push-subscriptions/vapid-public-key`. |
 
-## 3. Open questions for the PO
+## 3. PO decisions on the open questions (5 Oct 2026), recorded in arch 09 / arch 08
 
-| # | Question | Who needs it |
-|---|---|---|
-| Q1 | Accept / reject / cancel on a booking that is **no longer in the needed state** (e.g. already rejected, or cancelled by the customer a second earlier). arch 09 §1.5 has no code for it. Proposal: a new `BOOKING_STATE_CHANGED` (409, "refresh and look again"). | E7-47, E7-48, E7-49 |
-| Q2 | Accept that hits **FR-BOK-16** (an emergency or owner review stops it): answer 200 with the now-CANCELLED booking, or a 422 code? | E7-47 |
-| Q3 | **Manual booking on an ONBOARDING venue** (FR-MAN-02 forbids it): which code? `VENUE_NOT_ELIGIBLE_FOR_NEW_ACTIVITY` is category A (online). Proposal: `FORBIDDEN`, since the Dashboard is not usable for ONBOARDING anyway. | E7-48 |
-| Q4 | Online create when the venue has **no price** for the activity (FR-BOK-11 item 20): which code? Proposal: `RESOURCE_NOT_ELIGIBLE`. | E7-46 |
-| Q5 | Record the quote route, the push and revoke routes, and the SSE reasons in arch 09 / arch 08 (E7-39 does not edit `docs/`). | PO |
+| # | Question | Decision | In the contract |
+|---|---|---|---|
+| Q1 | An action on a booking that is no longer in the needed state (e.g. the customer cancelled a second before the venue's Accept) | **New code `BOOKING_STATE_CHANGED` (409)**: refresh and look again | On customer cancel, venue accept, reject, reject after expiry and cancel manual |
+| Q2 | Accept stopped by an emergency or owner review (FR-BOK-16) | **An error.** The booking is cancelled under the operational cause, and the venue gets the matching 422 | `VENUE_SELLING_BLOCK_ACTIVE`, `RESOURCE_SELLING_BLOCK_ACTIVE` or `RESOURCE_NOT_ELIGIBLE` |
+| Q3 | Manual booking on an ONBOARDING venue (FR-MAN-02) | **`FORBIDDEN` (403)** | Described on `POST /venue/bookings` |
+| Q4 | Online booking when the venue has no price for the activity (FR-BOK-11 item 20) | **`RESOURCE_NOT_ELIGIBLE` (422)** | Described on `POST /customer/bookings` |
+| Q5 | Record the new routes and decisions in the docs | **Yes** | arch 09 §1.5, §3.3, §3.4, §4.1; arch 08 §5 |
+| Q6 | The three SSE reasons `CREATED` / `REQUESTED` / `CHANGED` | **Kept** | `VenueStreamSignalReason` |
+| Q7 | Length of the venue's reject reason | **At most 200 characters** | `VenueBookingRejectRequest.reasonText` |

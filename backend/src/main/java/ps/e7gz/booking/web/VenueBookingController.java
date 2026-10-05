@@ -80,7 +80,10 @@ public class VenueBookingController {
             description = "Revalidated atomically (FR-BOK-14); marketplace ACTIVE is not required (FR-BOK-15). At or "
                     + "after venueResponseExpiresAt it is DEADLINE_PASSED (expiry wins at the boundary). When an "
                     + "emergency or owner review stops the confirmation, the booking is cancelled under that cause "
-                    + "(FR-BOK-16). No Owner Password. Implemented by E7-47.")
+                    + "(FR-BOK-16) and the venue gets the matching 422 (VENUE_SELLING_BLOCK_ACTIVE, "
+                    + "RESOURCE_SELLING_BLOCK_ACTIVE or RESOURCE_NOT_ELIGIBLE; PO decision 5 Oct 2026). A booking no "
+                    + "longer PENDING is BOOKING_STATE_CHANGED. No Owner Password. Implemented by E7-47.")
+    @ApiError(status = 409, codes = ApiErrorCode.BOOKING_STATE_CHANGED)
     @ApiError(status = 422, codes = {ApiErrorCode.DEADLINE_PASSED, ApiErrorCode.RESOURCE_NOT_ELIGIBLE,
             ApiErrorCode.VENUE_SELLING_BLOCK_ACTIVE, ApiErrorCode.RESOURCE_SELLING_BLOCK_ACTIVE,
             ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
@@ -94,8 +97,9 @@ public class VenueBookingController {
     @Operation(operationId = "venueRejectBooking",
             summary = "Reject a PENDING request with a reason: REJECTED / VENUE_REJECTED (FR-BOK-17)",
             description = "The venue's reason text is mandatory and kept apart from the reason code "
-                    + "(ck_booking_reject_reason_text). The reservation is released at once. No Owner Password. "
-                    + "Implemented by E7-47.")
+                    + "(ck_booking_reject_reason_text). The reservation is released at once. A booking no longer "
+                    + "PENDING is BOOKING_STATE_CHANGED. No Owner Password. Implemented by E7-47.")
+    @ApiError(status = 409, codes = ApiErrorCode.BOOKING_STATE_CHANGED)
     @ApiError(status = 422, codes = {ApiErrorCode.DEADLINE_PASSED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
     public DataResponse<VenueBooking> reject(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
@@ -108,7 +112,9 @@ public class VenueBookingController {
     @Operation(operationId = "venueRejectBookingAfterExpiry",
             summary = "Reject a missed request before its start: REJECTED / REJECTED_AFTER_EXPIRY (FR-BOK-21)",
             description = "Only for VENUE_RESPONSE_EXPIRED and only while now < startAt; at or after startAt it is "
-                    + "DEADLINE_PASSED. No reservation to release. No Owner Password. Implemented by E7-47.")
+                    + "DEADLINE_PASSED; a booking no longer VENUE_RESPONSE_EXPIRED is BOOKING_STATE_CHANGED. No "
+                    + "reservation to release. No Owner Password. Implemented by E7-47.")
+    @ApiError(status = 409, codes = ApiErrorCode.BOOKING_STATE_CHANGED)
     @ApiError(status = 422, codes = {ApiErrorCode.DEADLINE_PASSED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
     public DataResponse<VenueBooking> rejectAfterExpiry(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
@@ -124,7 +130,8 @@ public class VenueBookingController {
                     + "hours do not gate it (FR-MAN-03); no back-dating (FR-MAN-05); missing pricing is "
                     + "MANUAL_BOOKING_PRICING_CONFIGURATION_MISSING and creates nothing (FR-MAN-10). Always has a "
                     + "businessDate (FR-MAN-09). customerPhone, when sent, is normalised to E.164 like the venue phone. "
-                    + "No Owner Password. Implemented by E7-48.")
+                    + "An ONBOARDING venue is refused with FORBIDDEN (FR-MAN-02; PO decision 5 Oct 2026). No Owner "
+                    + "Password. Implemented by E7-48.")
     @ApiError(status = 409, codes = ApiErrorCode.SLOT_NO_LONGER_AVAILABLE)
     @ApiError(status = 422, codes = {ApiErrorCode.MANUAL_BOOKING_PRICING_CONFIGURATION_MISSING,
             ApiErrorCode.MANUAL_BOOKING_BACKDATING_NOT_ALLOWED, ApiErrorCode.BOOKING_DURATION_INVALID,
@@ -140,7 +147,9 @@ public class VenueBookingController {
     @Operation(operationId = "venueCancelManualBooking",
             summary = "Cancel a manual booking before its start: CANCELLED / VENUE_CANCELLED_MANUAL_BOOKING (FR-MAN-08)",
             description = "Only for source MANUAL and only before startAt (FR-MAN-04); at or after it is "
-                    + "DEADLINE_PASSED. No Owner Password (FR-MAN-08). Implemented by E7-48.")
+                    + "DEADLINE_PASSED; a booking already cancelled or completed is BOOKING_STATE_CHANGED. No Owner "
+                    + "Password (FR-MAN-08). Implemented by E7-48.")
+    @ApiError(status = 409, codes = ApiErrorCode.BOOKING_STATE_CHANGED)
     @ApiError(status = 422, codes = {ApiErrorCode.DEADLINE_PASSED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
     public DataResponse<VenueBooking> cancelManual(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
@@ -176,10 +185,10 @@ public class VenueBookingController {
         throw NotImplementedYet.stub();
     }
 
-    /** FR-BOK-17: mandatory, free text, separate from the reason code. */
+    /** FR-BOK-17: mandatory free text, separate from the reason code; max 200 characters (PO, 5 Oct 2026). */
     @Schema(name = "VenueBookingRejectRequest")
     public record VenueBookingRejectRequest(
-            @NotBlank @Size(min = 1, max = 500) @Pattern(regexp = ".*\\S.*", flags = Pattern.Flag.DOTALL)
+            @NotBlank @Size(min = 1, max = 200) @Pattern(regexp = ".*\\S.*", flags = Pattern.Flag.DOTALL)
             @Schema(example = "Room under maintenance") String reasonText) {
     }
 

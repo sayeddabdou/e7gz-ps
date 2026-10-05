@@ -3,6 +3,7 @@
 
 **Updated:** 25 September 2026 — names and mechanics aligned to physical model v1.1.27 (`04`, `ADR-026`–`ADR-028`).
 **Updated:** 2 October 2026 — Venue/Admin browser session in an HttpOnly cookie (`§2`, `ADR-029`); Sprint 1 contract decisions (E7-22): venue marketplace status actions, venue account creation, resource creation, Activities view-only, three new error codes (`§1.5`, `§4.2`, `§5`).
+**Updated:** 5 October 2026 — Sprint 2 contract decisions (E7-39): `BOOKING_STATE_CHANGED` (`§1.5`), booking price quote (`§3.3`), device revoke (`§3.4`), venue booking detail, Web Push subscription routes and stream authentication (`§4.1`).
 
 **Style.** REST + JSON over HTTPS, base `/api/v1`, OpenAPI 3.1 generated from code, typed TypeScript clients generated for all three surfaces (`ADR-012`).
 
@@ -126,6 +127,7 @@ Representative members, each traced:
 | `REVIEW_ALREADY_EXISTS` | 422 | `FR-REV-03` |
 | `REVIEW_REMOVED_NOT_RESTORABLE` | 422 | `FR-REV-04` |
 | `IDEMPOTENCY_KEY_REUSED` | 422 | `ADR-015` |
+| `BOOKING_STATE_CHANGED` | **409** | the booking is no longer in the state the action needs (e.g. the customer cancelled a second before the venue's Accept): refresh and look again. Used by customer cancel, venue accept / reject / reject after expiry and cancel manual. Product Owner decision, 5 Oct 2026 (E7-39) |
 
 **General codes** — Product Owner decision, 29 Sep 2026 (E7-12). Used only where no more specific code above applies:
 
@@ -235,6 +237,7 @@ Venues with marketplace `ONBOARDING`, `INACTIVE` or `SUSPENDED` are absent from 
 | Method | Path | Idem. | FR |
 |---|---|---|---|
 | `POST` | `/customer/bookings` | **yes** | `FR-BOK-11` — the 20 conditions |
+| `GET` | `/customer/bookings/quote?resourceId=&playMode=&startAt=&durationMinutes=` | — | `FR-BOK-06`, `FR-BOK-07`, `FR-PTS-13` — the price the booking would snapshot now; not an availability check, holds nothing. Product Owner decision, 5 Oct 2026 (E7-39) |
 | `GET` | `/customer/bookings?bucket=upcoming\|completed\|cancelled` | — | `FR-BOK-19` |
 | `GET` | `/customer/bookings/{id}` | — | `FR-BOK-20`, `FR-PTS-20` |
 | `POST` | `/customer/bookings/{id}/cancel` | **yes** | `FR-BOK-31`, `FR-BOK-32` |
@@ -294,6 +297,7 @@ Venues with marketplace `ONBOARDING`, `INACTIVE` or `SUSPENDED` are absent from 
 | `GET` | `/customer/wallet` — balance + transactions, read-only | `FR-PTS-10`, `FR-PTS-11` as amended by PCR-004 |
 | `POST` `PATCH` `DELETE` | `/customer/venues/{id}/review` | `FR-REV-01`…`FR-REV-07` |
 | `GET` `POST` | `/customer/notifications` · `/{id}/read` · `/devices` | `FR-NTF-02` |
+| `POST` | `/customer/notifications/devices/{id}/revoke` — revoked, never deleted (`08 §4`) | Product Owner decision, 5 Oct 2026 (E7-39) |
 
 > The customer wallet is **read-only** at launch (PCR-004): no top-up, no pay-with-wallet, no withdrawal. `POST /admin/wallet/adjust` still does not exist (`FR-PTS-11`).
 
@@ -321,7 +325,10 @@ Venues with marketplace `ONBOARDING`, `INACTIVE` or `SUSPENDED` are absent from 
 | `GET` | `/venue/bookings?from=&to=&activity=&source=&resourceId=&status=&q=` | — | — | `FR-VEN-38` |
 | `GET` | `/venue/availability?date=` | — | — | `FR-VEN-37` |
 | `GET` | `/venue/revenue?from=&to=&breakdown=activity` | — | — | `FR-VEN-36`, `FR-AUD-08` |
-| `GET` | `/venue/stream` — SSE | — | — | `ADR-014` |
+| `GET` | `/venue/bookings/{id}` — one booking with its history | — | — | `FR-VEN-34`; Product Owner decision, 5 Oct 2026 (E7-39) |
+| `GET` | `/venue/stream` — SSE; ordinary Bearer header, read with `fetch()` (never `EventSource`, no token in the URL) | — | — | `ADR-014`; authentication: Product Owner decision, 5 Oct 2026 (E7-39) |
+| `GET` | `/venue/push-subscriptions/vapid-public-key` | — | — | `ADR-014`, `01 §14` A6 |
+| `POST` | `/venue/push-subscriptions` `{endpoint, keys {p256dh, auth}, userAgent?}` · `/{id}/revoke` — revoked, never deleted (`08 §4`) | — | — | `ADR-014`, `01 §14` A6; routes: Product Owner decision, 5 Oct 2026 (E7-39) |
 
 **The neutral Late Confirm failure** (`NFR-19`, `FR-LCF-05`):
 

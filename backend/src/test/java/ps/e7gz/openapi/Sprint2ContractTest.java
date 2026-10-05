@@ -89,6 +89,19 @@ class Sprint2ContractTest {
         assertThat(fieldNames(body.path("required"))).containsExactly("reasonText");
         assertThat(body.path("properties").path("reasonText").path("minLength").asInt()).isEqualTo(1);
         assertThat(body.path("properties").path("reasonText").path("pattern").asText()).isNotEmpty();
+        assertThat(body.path("properties").path("reasonText").path("maxLength").asInt()).isEqualTo(200);
+    }
+
+    @Test
+    void anActionOnABookingThatChangedMeanwhileIs409BookingStateChanged() {
+        // PO decision 5 Oct 2026 (E7-39), arch 09 §1.5.
+        List.of("post /api/v1/customer/bookings/{bookingId}/cancel",
+                "post /api/v1/venue/bookings/{bookingId}/accept",
+                "post /api/v1/venue/bookings/{bookingId}/reject",
+                "post /api/v1/venue/bookings/{bookingId}/reject-after-expiry",
+                "post /api/v1/venue/bookings/{bookingId}/cancel-manual").forEach(key ->
+                assertThat(operation(key).path("responses").path("409").path("description").asText()).as(key)
+                        .isEqualTo("error.code: BOOKING_STATE_CHANGED"));
     }
 
     @Test

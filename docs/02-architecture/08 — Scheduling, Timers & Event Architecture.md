@@ -277,6 +277,8 @@ data: {"type":"TOURNAMENT","id":"018f…","reason":"REQUESTED"}
 : heartbeat every 15s
 ```
 
+- `type` is `BOOKING` or `TOURNAMENT`; `reason` is `CREATED` (a new booking request), `REQUESTED` (a new tournament request) or `CHANGED` (anything else). The Dashboard plays the audible alert on `CREATED` and `REQUESTED`. Product Owner decision, 5 Oct 2026 (E7-39).
+- Authentication is the ordinary `Authorization: Bearer` header: the Dashboard reads the stream with `fetch()` and a `ReadableStream`, never `EventSource` (which cannot send headers); no token ever travels in the URL. Product Owner decision, 5 Oct 2026 (E7-39).
 - **Signals only, never business payloads.** The client refetches the affected resource, so an at-most-once transport carries no correctness weight.
 - Fan-out across API replicas via PostgreSQL `LISTEN`/`NOTIFY` on channel `venue_{venueAccountId}` — no broker, no shared cache.
 - The stream closes immediately when the venue account becomes `DISABLED` (`FR-VEN-08`).

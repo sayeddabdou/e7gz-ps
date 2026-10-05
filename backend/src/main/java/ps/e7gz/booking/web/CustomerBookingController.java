@@ -57,7 +57,9 @@ public class CustomerBookingController {
             description = "Checks the twenty creation conditions of FR-BOK-11 in one transaction. Displayed "
                     + "availability is not a promise: a slot taken meanwhile is 409 SLOT_NO_LONGER_AVAILABLE "
                     + "(FR-AVL-11). Duration and lead time are product rules, answered with their 422 codes, not "
-                    + "VALIDATION_FAILED. playMode is required for PLAYSTATION and absent otherwise. Implemented by E7-46.")
+                    + "VALIDATION_FAILED. playMode is required for PLAYSTATION and absent otherwise. A venue with no "
+                    + "price for the activity fails under FR-BOK-11 item 20 as RESOURCE_NOT_ELIGIBLE (PO decision 5 Oct "
+                    + "2026). Implemented by E7-46.")
     @ApiError(status = 403, codes = {ApiErrorCode.PHONE_VERIFICATION_REQUIRED, ApiErrorCode.ACCOUNT_BANNED_FOR_THIS_ACTION,
             ApiErrorCode.ACCOUNT_DELETED})
     @ApiError(status = 409, codes = ApiErrorCode.SLOT_NO_LONGER_AVAILABLE)
@@ -116,8 +118,9 @@ public class CustomerBookingController {
     @Operation(operationId = "customerCancelBooking",
             summary = "Cancel before the start time, free and without penalty (FR-BOK-31, FR-BOK-32)",
             description = "Allowed while now < startAt, also while the venue response timer is paused (FR-BOK-32). "
-                    + "At or after startAt it is DEADLINE_PASSED. Terminal reason CUSTOMER_CANCELLED. Implemented by "
-                    + "E7-49.")
+                    + "At or after startAt it is DEADLINE_PASSED; a booking already terminal is BOOKING_STATE_CHANGED. "
+                    + "Terminal reason CUSTOMER_CANCELLED. Implemented by E7-49.")
+    @ApiError(status = 409, codes = ApiErrorCode.BOOKING_STATE_CHANGED)
     @ApiError(status = 422, codes = {ApiErrorCode.DEADLINE_PASSED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
     public DataResponse<CustomerBookingDetail> cancel(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
