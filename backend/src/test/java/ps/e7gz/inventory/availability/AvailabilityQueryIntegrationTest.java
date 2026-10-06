@@ -70,7 +70,6 @@ class AvailabilityQueryIntegrationTest extends IntegrationTest {
     private static final UUID VENUE_EMERGENCY_VENUE = id(0x022);
     private static final UUID VENUE_EMERGENCY_ROOM = id(0x121);
     private static final UUID VENUE_EMERGENCY = id(0x027);
-    private static final UUID RESOURCE_EMERGENCY_VENUE = id(0x032);
     private static final UUID FAILED_ROOM = id(0x131);
     private static final UUID WORKING_ROOM = id(0x132);
     private static final UUID RESOURCE_EMERGENCY = id(0x037);
