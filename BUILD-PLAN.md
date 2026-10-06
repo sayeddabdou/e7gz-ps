@@ -180,7 +180,7 @@ Reviews and reporting, account deletion, admin modules, reports, observability, 
 | S7-P3 | E7-101 | Platform | Deployment, backup and restore drill | Put it online (staging and production), backups and a restore test. | S0-P3 |
 | S7-E1 | E7-102 | Engine | Reviews, reporting and moderation | Reviews: write, edit, report, and admin moderation. | S3-E4 |
 | S7-E2 | E7-103 | Engine | Account deletion and O19 | Customer asks to delete the account; admin completes it. | S6-E3 |
-| S7-E3 | E7-104 | Engine | Reports FR-AUD-11/12 and metrics | Admin reports: why bookings end, attendance per venue. | S3-E4 |
+| S7-E3 | E7-104 | Engine | Reports FR-AUD-11/12 and metrics | Admin reports: why bookings end, attendance per venue. | S3-E4, S3-E7 |
 | S7-E4 | E7-105 | Engine | Load test at 10× | Load test at 10 times the expected traffic. | S1-P6, S7-P3 |
 
 ### Sprint 8 — Frontend catch-up and launch (17 – 28 Jan 2027)
@@ -3195,7 +3195,7 @@ Finish by running the checks in CLAUDE.md §4, then give me a short summary, the
 
 **What this task does:** Admin reports: why bookings end, attendance per venue.
 
-Lane: Engine · Depends on: S3-E4
+Lane: Engine · Depends on: S3-E4, S3-E7
 
 ```text
 Read CLAUDE.md first. You are implementing task S7-E3 — "Reports FR-AUD-11/12 and metrics" (Engine lane) of the E7GZ PS build plan.

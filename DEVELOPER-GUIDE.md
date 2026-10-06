@@ -288,7 +288,7 @@ e7gz-ps/
 | E7-101 | Sayed | **Deployment, backup and restore drill** | Put it online (staging and production), backups and a restore test. | E7-11 | `infra/` |
 | E7-102 | Amr | **Reviews, reporting and moderation** | Reviews: write, edit, report, and admin moderation. | E7-61 | `…/review/` |
 | E7-103 | Amr | **Account deletion and O19** | Customer asks to delete the account; admin completes it. | E7-93 | `…/identity/ (deletion)` |
-| E7-104 | Amr | **Reports FR-AUD-11/12 and metrics** | Admin reports: why bookings end, attendance per venue. | E7-61 | `…/admin/ (reports)` |
+| E7-104 | Amr | **Reports FR-AUD-11/12 and metrics** | Admin reports: why bookings end, attendance per venue. | E7-61, E7-115 | `…/admin/ (reports)` |
 | E7-105 | Amr | **Load test at 10×** | Load test at 10 times the expected traffic. | E7-28, E7-101 | `tools/load-tests/` |
 
 #### Sprint 8 — Frontend catch-up and launch · 17 – 28 Jan 2027
