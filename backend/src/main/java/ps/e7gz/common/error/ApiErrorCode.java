@@ -90,6 +90,11 @@ public enum ApiErrorCode {
     REVIEW_ALREADY_EXISTS(422),
     REVIEW_REMOVED_NOT_RESTORABLE(422),
     IDEMPOTENCY_KEY_REUSED(422),
+    /**
+     * The booking is no longer in the state the action needs (e.g. the customer cancelled a second earlier): refresh
+     * and look again. PO decision 5 Oct 2026 (E7-39).
+     */
+    BOOKING_STATE_CHANGED(409),
 
     // General codes (arch 09 §1.4; Product Owner decision 29 Sep 2026, E7-12).
     /** A malformed or invalid request: unreadable body, bad parameter, failed bean validation. */

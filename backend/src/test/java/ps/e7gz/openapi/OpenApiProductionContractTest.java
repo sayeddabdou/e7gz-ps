@@ -20,7 +20,14 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import ps.e7gz.common.codes.Activity;
+import ps.e7gz.common.codes.AttendanceResult;
+import ps.e7gz.common.codes.BookingEventType;
+import ps.e7gz.common.codes.BookingHistoryEntryKind;
+import ps.e7gz.common.codes.BookingSource;
+import ps.e7gz.common.codes.BookingStatus;
+import ps.e7gz.common.codes.BookingTerminalReason;
 import ps.e7gz.common.codes.ConsoleType;
+import ps.e7gz.common.codes.DevicePlatform;
 import ps.e7gz.common.codes.MarketplaceStatus;
 import ps.e7gz.common.codes.OpeningDayMode;
 import ps.e7gz.common.codes.OperationalRestriction;
@@ -127,6 +134,9 @@ class OpenApiProductionContractTest extends IntegrationTest {
     @Test
     void successBodiesUseTheDataEnvelopeAndErrorsTheErrorEnvelope() {
         operations().forEach((key, operation) -> operation.path("responses").properties().forEach(entry -> {
+            if (entry.getValue().path("content").has("text/event-stream")) {
+                return; // GET /venue/stream: an SSE stream of change signals, not a JSON body (ADR-014, arch 08 §5)
+            }
             JsonNode schema = entry.getValue().path("content").path("application/json").path("schema");
             if (schema.isMissingNode()) {
                 assertThat(entry.getKey()).as(key + " without a body").isIn("204", "501");
@@ -252,26 +262,41 @@ class OpenApiProductionContractTest extends IntegrationTest {
 
     @Test
     void publishedEnumsAreSpelledExactlyAsTheDatabaseCheckLists() {
-        Map<String, Enum<?>[]> enums = Map.of(
-                "Activity", Activity.values(),
-                "ConsoleType", ConsoleType.values(),
-                "PlayMode", PlayMode.values(),
-                "MarketplaceStatus", MarketplaceStatus.values(),
-                "VenueAccountStatus", VenueAccountStatus.values(),
-                "ResourceBaseState", ResourceBaseState.values(),
-                "OperationalRestriction", OperationalRestriction.values(),
-                "OpeningDayMode", OpeningDayMode.values(),
-                "VenueAccountLanguage", VenueAccountLanguage.values());
-        Map<String, String> checks = Map.of(
-                "Activity", "ck_resource_activity",
-                "ConsoleType", "ck_resource_console_type",
-                "PlayMode", "ck_default_price_play_mode",
-                "MarketplaceStatus", "ck_venue_marketplace_status",
-                "VenueAccountStatus", "ck_venue_account_status",
-                "ResourceBaseState", "ck_resource_base_state",
-                "OperationalRestriction", "ck_resource_restriction",
-                "OpeningDayMode", "ck_opening_day_mode",
-                "VenueAccountLanguage", "ck_venue_account_language");
+        Map<String, Enum<?>[]> enums = Map.ofEntries(
+                Map.entry("Activity", Activity.values()),
+                Map.entry("ConsoleType", ConsoleType.values()),
+                Map.entry("PlayMode", PlayMode.values()),
+                Map.entry("MarketplaceStatus", MarketplaceStatus.values()),
+                Map.entry("VenueAccountStatus", VenueAccountStatus.values()),
+                Map.entry("ResourceBaseState", ResourceBaseState.values()),
+                Map.entry("OperationalRestriction", OperationalRestriction.values()),
+                Map.entry("OpeningDayMode", OpeningDayMode.values()),
+                Map.entry("VenueAccountLanguage", VenueAccountLanguage.values()),
+                // Sprint 2 (E7-39)
+                Map.entry("BookingStatus", BookingStatus.values()),
+                Map.entry("BookingSource", BookingSource.values()),
+                Map.entry("BookingTerminalReason", BookingTerminalReason.values()),
+                Map.entry("BookingHistoryEntryKind", BookingHistoryEntryKind.values()),
+                Map.entry("BookingEventType", BookingEventType.values()),
+                Map.entry("AttendanceResult", AttendanceResult.values()),
+                Map.entry("DevicePlatform", DevicePlatform.values()));
+        Map<String, String> checks = Map.ofEntries(
+                Map.entry("Activity", "ck_resource_activity"),
+                Map.entry("ConsoleType", "ck_resource_console_type"),
+                Map.entry("PlayMode", "ck_default_price_play_mode"),
+                Map.entry("MarketplaceStatus", "ck_venue_marketplace_status"),
+                Map.entry("VenueAccountStatus", "ck_venue_account_status"),
+                Map.entry("ResourceBaseState", "ck_resource_base_state"),
+                Map.entry("OperationalRestriction", "ck_resource_restriction"),
+                Map.entry("OpeningDayMode", "ck_opening_day_mode"),
+                Map.entry("VenueAccountLanguage", "ck_venue_account_language"),
+                Map.entry("BookingStatus", "ck_booking_status_values"),
+                Map.entry("BookingSource", "ck_booking_source_values"),
+                Map.entry("BookingTerminalReason", "ck_booking_terminal_reason_values"),
+                Map.entry("BookingHistoryEntryKind", "ck_booking_history_entry_kind"),
+                Map.entry("BookingEventType", "ck_booking_history_event_type_values"),
+                Map.entry("AttendanceResult", "ck_attendance_result_values"),
+                Map.entry("DevicePlatform", "ck_device_token_platform"));
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 
         enums.forEach((name, values) -> {

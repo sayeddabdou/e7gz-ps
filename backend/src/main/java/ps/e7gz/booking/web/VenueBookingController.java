@@ -1,0 +1,280 @@
+package ps.e7gz.booking.web;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
+import ps.e7gz.common.codes.Activity;
+import ps.e7gz.common.codes.AttendanceResult;
+import ps.e7gz.common.codes.BookingEventType;
+import ps.e7gz.common.codes.BookingHistoryEntryKind;
+import ps.e7gz.common.codes.BookingSource;
+import ps.e7gz.common.codes.BookingStatus;
+import ps.e7gz.common.codes.BookingTerminalReason;
+import ps.e7gz.common.codes.ConsoleType;
+import ps.e7gz.common.codes.PlayMode;
+import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.web.ApiError;
+import ps.e7gz.common.web.DataResponse;
+import ps.e7gz.common.web.MoneyView;
+import ps.e7gz.common.web.NotImplementedYet;
+import ps.e7gz.common.web.OpenApiConfig;
+import ps.e7gz.common.web.PageView;
+
+/**
+ * Venue Dashboard — booking requests and bookings (arch 09 §4.1). Stubs until E7-47 (request lists, accept, reject,
+ * reject after expiry), E7-48 (manual booking and its cancel) and E7-49 (bookings list and detail). None of these
+ * actions needs the Owner Password; each is in ADR-015's scope, so the Idempotency-Key is required. The venue DTOs
+ * are separate from the customer ones (arch 09 §1.1): they carry nothing about the customer's other commitments
+ * (NFR-19), and the customer phone is absent when the retention rule hides it (NFR-18, arch 10 §5.1).
+ */
+@RestController
+@RequestMapping("/api/v1/venue")
+@Tag(name = "venue-bookings")
+@SecurityRequirement(name = OpenApiConfig.BEARER)
+public class VenueBookingController {
+
+    @GetMapping("/requests/pending")
+    @Operation(operationId = "venueListPendingRequests",
+            summary = "Online requests waiting for an answer (FR-VEN-34, FR-BOK-13)",
+            description = "PENDING bookings. Each carries venueResponseExpiresAt, an instant, for the countdown "
+                    + "(NFR-10). Implemented by E7-47.")
+    public DataResponse<List<VenueBooking>> listPendingRequests() {
+        throw NotImplementedYet.stub();
+    }
+
+    @GetMapping("/requests/missed")
+    @Operation(operationId = "venueListMissedRequests",
+            summary = "Requests the venue did not answer in time, still before their start (FR-VEN-34, FR-BOK-20)",
+            description = "VENUE_RESPONSE_EXPIRED bookings whose startAt has not passed: the venue may still reject "
+                    + "them (FR-BOK-21) or, from Sprint 3, send a Late Confirm. Implemented by E7-47.")
+    public DataResponse<List<VenueBooking>> listMissedRequests() {
+        throw NotImplementedYet.stub();
+    }
+
+    @PostMapping("/bookings/{bookingId}/accept")
+    @Operation(operationId = "venueAcceptBooking",
+            summary = "Accept a PENDING request: it becomes CONFIRMED (FR-BOK-14, FR-BOK-15)",
+            description = "Revalidated atomically (FR-BOK-14); marketplace ACTIVE is not required (FR-BOK-15). At or "
+                    + "after venueResponseExpiresAt it is DEADLINE_PASSED (expiry wins at the boundary). When an "
+                    + "emergency or owner review stops the confirmation, the booking is cancelled under that cause "
+                    + "(FR-BOK-16) and the venue gets the matching 422 (VENUE_SELLING_BLOCK_ACTIVE, "
+                    + "RESOURCE_SELLING_BLOCK_ACTIVE or RESOURCE_NOT_ELIGIBLE; PO decision 5 Oct 2026). A booking no "
+                    + "longer PENDING is BOOKING_STATE_CHANGED. No Owner Password. Implemented by E7-47.")
+    @ApiError(status = 409, codes = ApiErrorCode.BOOKING_STATE_CHANGED)
+    @ApiError(status = 422, codes = {ApiErrorCode.DEADLINE_PASSED, ApiErrorCode.RESOURCE_NOT_ELIGIBLE,
+            ApiErrorCode.VENUE_SELLING_BLOCK_ACTIVE, ApiErrorCode.RESOURCE_SELLING_BLOCK_ACTIVE,
+            ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
+    public DataResponse<VenueBooking> accept(
+            @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+            @PathVariable UUID bookingId) {
+        throw NotImplementedYet.stub();
+    }
+
+    @PostMapping("/bookings/{bookingId}/reject")
+    @Operation(operationId = "venueRejectBooking",
+            summary = "Reject a PENDING request with a reason: REJECTED / VENUE_REJECTED (FR-BOK-17)",
+            description = "The venue's reason text is mandatory and kept apart from the reason code "
+                    + "(ck_booking_reject_reason_text). The reservation is released at once. A booking no longer "
+                    + "PENDING is BOOKING_STATE_CHANGED. No Owner Password. Implemented by E7-47.")
+    @ApiError(status = 409, codes = ApiErrorCode.BOOKING_STATE_CHANGED)
+    @ApiError(status = 422, codes = {ApiErrorCode.DEADLINE_PASSED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
+    public DataResponse<VenueBooking> reject(
+            @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+            @PathVariable UUID bookingId,
+            @Valid @RequestBody VenueBookingRejectRequest request) {
+        throw NotImplementedYet.stub();
+    }
+
+    @PostMapping("/bookings/{bookingId}/reject-after-expiry")
+    @Operation(operationId = "venueRejectBookingAfterExpiry",
+            summary = "Reject a missed request before its start: REJECTED / REJECTED_AFTER_EXPIRY (FR-BOK-21)",
+            description = "Only for VENUE_RESPONSE_EXPIRED and only while now < startAt; at or after startAt it is "
+                    + "DEADLINE_PASSED; a booking no longer VENUE_RESPONSE_EXPIRED is BOOKING_STATE_CHANGED. No "
+                    + "reservation to release. No Owner Password. Implemented by E7-47.")
+    @ApiError(status = 409, codes = ApiErrorCode.BOOKING_STATE_CHANGED)
+    @ApiError(status = 422, codes = {ApiErrorCode.DEADLINE_PASSED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
+    public DataResponse<VenueBooking> rejectAfterExpiry(
+            @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+            @PathVariable UUID bookingId) {
+        throw NotImplementedYet.stub();
+    }
+
+    @PostMapping("/bookings")
+    @ResponseStatus(HttpStatus.CREATED)
+    @Operation(operationId = "venueCreateManualBooking",
+            summary = "Walk-in / manual booking: CONFIRMED for a future start, ACTIVE when it starts now (FR-MAN-01…FR-MAN-04)",
+            description = "Leave startAt out for a walk-in starting now (startAt = server time, FR-MAN-04). Opening "
+                    + "hours do not gate it (FR-MAN-03); no back-dating (FR-MAN-05); missing pricing is "
+                    + "MANUAL_BOOKING_PRICING_CONFIGURATION_MISSING and creates nothing (FR-MAN-10). Always has a "
+                    + "businessDate (FR-MAN-09). customerPhone, when sent, is normalised to E.164 like the venue phone. "
+                    + "An ONBOARDING venue is refused with FORBIDDEN (FR-MAN-02; PO decision 5 Oct 2026). No Owner "
+                    + "Password. Implemented by E7-48.")
+    @ApiError(status = 409, codes = ApiErrorCode.SLOT_NO_LONGER_AVAILABLE)
+    @ApiError(status = 422, codes = {ApiErrorCode.MANUAL_BOOKING_PRICING_CONFIGURATION_MISSING,
+            ApiErrorCode.MANUAL_BOOKING_BACKDATING_NOT_ALLOWED, ApiErrorCode.BOOKING_DURATION_INVALID,
+            ApiErrorCode.RESOURCE_NOT_ELIGIBLE, ApiErrorCode.VENUE_SELLING_BLOCK_ACTIVE,
+            ApiErrorCode.RESOURCE_SELLING_BLOCK_ACTIVE, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
+    public DataResponse<VenueBooking> createManual(
+            @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+            @Valid @RequestBody VenueManualBookingRequest request) {
+        throw NotImplementedYet.stub();
+    }
+
+    @PostMapping("/bookings/{bookingId}/cancel-manual")
+    @Operation(operationId = "venueCancelManualBooking",
+            summary = "Cancel a manual booking before its start: CANCELLED / VENUE_CANCELLED_MANUAL_BOOKING (FR-MAN-08)",
+            description = "Only for source MANUAL and only before startAt (FR-MAN-04); at or after it is "
+                    + "DEADLINE_PASSED; a booking already cancelled or completed is BOOKING_STATE_CHANGED. No Owner "
+                    + "Password (FR-MAN-08). Implemented by E7-48.")
+    @ApiError(status = 409, codes = ApiErrorCode.BOOKING_STATE_CHANGED)
+    @ApiError(status = 422, codes = {ApiErrorCode.DEADLINE_PASSED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
+    public DataResponse<VenueBooking> cancelManual(
+            @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+            @PathVariable UUID bookingId) {
+        throw NotImplementedYet.stub();
+    }
+
+    @GetMapping("/bookings")
+    @Operation(operationId = "venueListBookings",
+            summary = "Booking history with filters (FR-VEN-38)",
+            description = "from and to are business dates, inclusive (arch 04 §4.3); q is the free-text search of "
+                    + "FR-VEN-38. Implemented by E7-49.")
+    public DataResponse<PageView<VenueBooking>> list(
+            @Parameter(description = "First business date, inclusive.") @RequestParam(required = false) LocalDate from,
+            @Parameter(description = "Last business date, inclusive.") @RequestParam(required = false) LocalDate to,
+            @RequestParam(required = false) Activity activity,
+            @RequestParam(required = false) BookingSource source,
+            @RequestParam(required = false) UUID resourceId,
+            @RequestParam(required = false) BookingStatus status,
+            @RequestParam(required = false) @Size(max = 100) String q,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(required = false) @Min(1) @Max(100) Integer limit) {
+        throw NotImplementedYet.stub();
+    }
+
+    @GetMapping("/bookings/{bookingId}")
+    @Operation(operationId = "venueGetBooking",
+            summary = "One booking of this venue with its history (FR-VEN-34)",
+            description = "The customer phone is absent when the retention rule hides it (arch 10 §5.1). The history "
+                    + "never shows LATE_CONFIRM_FAILED_BOOKING_LIMIT or LATE_CONFIRM_FAILED_CUSTOMER_CONFLICT: the "
+                    + "venue is never told why a customer is ineligible (NFR-19, arch 10 §5.2). Implemented by E7-49.")
+    public DataResponse<VenueBookingDetail> get(@PathVariable UUID bookingId) {
+        throw NotImplementedYet.stub();
+    }
+
+    /** FR-BOK-17: mandatory free text, separate from the reason code; max 200 characters (PO, 5 Oct 2026). */
+    @Schema(name = "VenueBookingRejectRequest")
+    public record VenueBookingRejectRequest(
+            @NotBlank @Size(min = 1, max = 200) @Pattern(regexp = ".*\\S.*", flags = Pattern.Flag.DOTALL)
+            @Schema(example = "Room under maintenance") String reasonText) {
+    }
+
+    /** F-16: a NOW or FUTURE internal booking, optionally with the customer's name and phone (FR-MAN-01). */
+    @Schema(name = "VenueManualBookingRequest")
+    public record VenueManualBookingRequest(
+            @NotNull @Schema(example = "c2d3e4f5-a6b7-4c8d-9e0f-1a2b3c4d5e6f") UUID resourceId,
+            @Schema(nullable = true, description = "Required for PLAYSTATION, absent otherwise.") PlayMode playMode,
+            @Schema(nullable = true, description = "Absent for a walk-in starting now (FR-MAN-04).",
+                    example = "2026-10-12T18:00:00Z") Instant startAt,
+            @NotNull @Schema(description = "Nominal minutes: 60–360 in steps of 30 (FR-MAN-02).", example = "120")
+            Integer durationMinutes,
+            @Size(max = 200) @Schema(nullable = true, example = "Omar") String customerName,
+            @Size(max = 40) @Schema(nullable = true, example = "01001234567") String customerPhone) {
+    }
+
+    /** The resource as snapshotted on the booking. */
+    @Schema(name = "VenueBookingResource")
+    public record VenueBookingResource(
+            @NotNull @Schema(example = "c2d3e4f5-a6b7-4c8d-9e0f-1a2b3c4d5e6f") UUID id,
+            @NotNull @Schema(example = "Room 3") String name,
+            @NotNull Activity activity,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) ConsoleType consoleType,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) PlayMode playMode) {
+    }
+
+    /** The customer of an online booking. {@code phone} is absent, never null, when hidden (arch 10 §5.1). */
+    @Schema(name = "VenueBookingCustomer")
+    public record VenueBookingCustomer(
+            @NotNull @Schema(example = "omar_k") String username,
+            @Schema(requiredMode = Schema.RequiredMode.NOT_REQUIRED,
+                    description = "E.164; absent when the retention rule hides it (arch 10 §5.1).",
+                    example = "+201001234567") String phone) {
+    }
+
+    /** What the venue typed on a manual booking; exempt from the retention rule (FR-DIS-09). */
+    @Schema(name = "VenueBookingWalkIn")
+    public record VenueBookingWalkIn(
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true, example = "Omar") String name,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true, example = "+201001234567") String phone) {
+    }
+
+    /** A booking as the venue sees it: request lists, bookings list and every action's response. */
+    @Schema(name = "VenueBooking")
+    public record VenueBooking(
+            @NotNull @Schema(example = "018f3c2a-7b1e-7c4d-9e0f-1a2b3c4d5e6f") UUID bookingId,
+            @NotNull BookingSource source,
+            @NotNull BookingStatus status,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true,
+                    description = "Exactly one when REJECTED or CANCELLED (NFR-26).") BookingTerminalReason terminalReason,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true,
+                    description = "The venue's own reason, with VENUE_REJECTED only (FR-BOK-17).") String rejectReasonText,
+            @NotNull VenueBookingResource resource,
+            @NotNull @Schema(example = "2026-10-12T18:00:00Z") Instant startAt,
+            @NotNull @Schema(example = "2026-10-12T20:00:00Z") Instant endAt,
+            @NotNull @Schema(description = "The revenue day (arch 04 §4.3, FR-MAN-09).", example = "2026-10-12")
+            LocalDate businessDate,
+            @NotNull @Schema(example = "120") Integer nominalBookedMinutes,
+            @NotNull MoneyView venuePriceTotal,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true,
+                    description = "While PENDING: the answer deadline, an instant — never a countdown (NFR-10).",
+                    example = "2026-10-12T15:10:00Z") Instant venueResponseExpiresAt,
+            @NotNull @Schema(description = "True while an emergency pauses the response timer.") Boolean venueResponsePaused,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true,
+                    description = "ONLINE bookings only.") VenueBookingCustomer customer,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true,
+                    description = "MANUAL bookings only.") VenueBookingWalkIn walkIn,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) AttendanceResult attendanceResult,
+            @NotNull @Schema(example = "2026-10-12T15:00:00Z") Instant createdAt) {
+    }
+
+    /** One booking with its history (append-only, oldest first; FR-AUD-05). */
+    @Schema(name = "VenueBookingDetail")
+    public record VenueBookingDetail(
+            @NotNull VenueBooking booking,
+            @NotNull List<VenueBookingHistoryEntry> history) {
+    }
+
+    /** A {@code booking.booking_history} row as the venue sees it (see {@link #get} for what is left out). */
+    @Schema(name = "VenueBookingHistoryEntry")
+    public record VenueBookingHistoryEntry(
+            @NotNull @Schema(example = "2026-10-12T15:00:00Z") Instant at,
+            @NotNull BookingHistoryEntryKind kind,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) BookingStatus fromStatus,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) BookingStatus toStatus,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) BookingTerminalReason terminalReason,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) BookingEventType eventType) {
+    }
+}
