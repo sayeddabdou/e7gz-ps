@@ -5,11 +5,11 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { DefaultTheme, NavigationContainer } from "@react-navigation/native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
-import { nativeLogicalSpacing, nativeTokens } from "@e7gz/tokens/native";
+import { nativeTokens } from "@e7gz/tokens/native";
 import { createCustomerApiClient, type ApiClient, type RefreshAccessToken } from "../api";
 import { createSecureTokenStore, type TokenStore } from "../auth/tokenStore";
 import type { ConfigResult } from "../config";
-import { AreaList } from "../features/discovery/AreaList";
+import { DiscoveryScreen } from "../features/discovery";
 import { AuthFlow, createCustomerAuthApi } from "../features/auth";
 import type { CustomerAuthApi } from "../features/auth/api";
 import { en as t } from "../i18n/en";
@@ -87,8 +87,7 @@ const profileIcon = tabIcon("tab-icon-profile", "person", "person-outline");
 function HomeScreen({ api }: { api: ApiClient }) {
   return (
     <SafeAreaView edges={["top"]} style={styles.screen}>
-      <Text accessibilityRole="header" style={styles.title}>{t.appTitle}</Text>
-      <AreaList api={api} />
+      <DiscoveryScreen api={api} />
     </SafeAreaView>
   );
 }
@@ -222,8 +221,6 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: nativeTokens.color.surface.raised,
-    ...nativeLogicalSpacing.paddingInline(nativeTokens.spacing["5xl"]),
-    paddingTop: nativeTokens.spacing["3xl"],
   },
   title: {
     color: nativeTokens.color.text.customer,

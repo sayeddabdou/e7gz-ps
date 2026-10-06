@@ -9,3 +9,17 @@ jest.mock("@expo/vector-icons/Ionicons", () => {
   return ({ name, ...props }: { name: string } & import("react-native").TextProps) =>
     React.createElement(Text, props, name);
 });
+
+jest.mock("react-native-maps", () => {
+  const React = jest.requireActual<typeof import("react")>("react");
+  const { Pressable, View } = jest.requireActual<typeof import("react-native")>("react-native");
+
+  const MapView = ({ children, ...props }: {
+    children?: import("react").ReactNode;
+    onRegionChangeComplete?: unknown;
+  }) => React.createElement(View, props, children);
+  const Marker = ({ onPress, ...props }: { onPress?: () => void }) =>
+    React.createElement(Pressable, { ...props, onPress });
+
+  return { __esModule: true, default: MapView, Marker };
+});
