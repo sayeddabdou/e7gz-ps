@@ -244,6 +244,29 @@ class OpenApiProductionContractTest extends IntegrationTest {
     }
 
     @Test
+    void customerMapKeepsTheManualAreaFilterAndPublishesThePreviewPhoto() {
+        JsonNode operation = operations().get("get /api/v1/customer/venues/map");
+        List<String> queryNames = new ArrayList<>();
+        operation.path("parameters").forEach(parameter -> {
+            if ("query".equals(parameter.path("in").asText())) {
+                queryNames.add(parameter.path("name").asText());
+            }
+        });
+
+        // FR-DIS-02: choosing an area stays a hard filter in both List and Map views.
+        assertThat(queryNames).contains("areaId", "bounds", "activity", "lat", "lng");
+        JsonNode areaId = queryParameter(operation, "areaId");
+        assertThat(areaId).isNotNull();
+        assertThat(areaId.path("required").asBoolean()).isFalse();
+
+        // PO decision 3 Oct 2026: a map preview uses the venue-card photo and can show its placeholder when null.
+        JsonNode marker = contract.path("components").path("schemas").path("CustomerVenueMarker");
+        assertThat(fieldNames(marker.path("required"))).contains("imageUrl");
+        assertThat(marker.path("properties").path("imageUrl").path("type").toString()).contains("string", "null");
+        assertThat(marker.path("properties").path("imageUrl").path("format").asText()).isEqualTo("uri");
+    }
+
+    @Test
     void nullableReferencesAreWrittenAsAnyOfWithNull() {
         List<String> nullableRefs = new ArrayList<>();
         contract.path("components").path("schemas").properties().forEach(schema ->
@@ -332,6 +355,16 @@ class OpenApiProductionContractTest extends IntegrationTest {
             }
         });
         return names;
+    }
+
+    private static JsonNode queryParameter(JsonNode operation, String name) {
+        for (JsonNode parameter : operation.path("parameters")) {
+            if ("query".equals(parameter.path("in").asText())
+                    && name.equals(parameter.path("name").asText())) {
+                return parameter;
+            }
+        }
+        return null;
     }
 
     private static List<String> fieldNames(JsonNode array) {

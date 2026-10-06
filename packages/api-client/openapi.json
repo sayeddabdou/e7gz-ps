@@ -1726,6 +1726,14 @@
             "format": "uuid",
             "type": "string"
           },
+          "imageUrl": {
+            "example": "https://files.example.test/venues/level-up/1.jpg",
+            "format": "uri",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "location": {
             "$ref": "#/components/schemas/GeoPoint"
           },
@@ -1761,6 +1769,7 @@
           "averageRating",
           "distanceMeters",
           "id",
+          "imageUrl",
           "location",
           "name",
           "nearestAvailableAt",
@@ -17205,6 +17214,16 @@
             "name": "bounds",
             "required": true,
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Manual area selection; remains a hard filter in Map view (FR-DIS-02).",
+            "in": "query",
+            "name": "areaId",
+            "required": false,
+            "schema": {
+              "format": "uuid",
               "type": "string"
             }
           },
