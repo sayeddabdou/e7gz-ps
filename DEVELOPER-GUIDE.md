@@ -215,6 +215,8 @@ e7gz-ps/
 | E7-59 | Amr | **Check-in, late present, no-show (O13)** | Check-in, "arrived late", and no-show. | E7-47 | `…/attendance/` |
 | E7-60 | Amr | **Start-time revalidation (O11)** | Re-check everything at start time and cancel with the right reason if needed. | E7-59 | `…/booking/ (start revalidation)` |
 | E7-61 | Amr | **Completion and attendance defaults (O12)** | Finish bookings automatically and set the final attendance result. | E7-59 | `…/attendance/ (completion)` |
+| E7-114 | Amr | **Venue cancels a confirmed booking (FR-VEN-03)** | The venue cancels a CONFIRMED online booking with the Owner PIN; the customer gets a full refund classification and a notification. | E7-54, E7-47, E7-55 | `…/booking/ (venue cancel confirmed)` |
+| E7-115 | Amr | **Venue Overview API (FR-VEN-35)** | The backend for the Dashboard home page: today's and this month's revenue, today's bookings and pending requests. | E7-54, E7-49 | `…/booking/ (overview, revenue read)` |
 
 #### Sprint 4 — Trust, bans and rewards · 22 Nov – 3 Dec 2026
 
@@ -225,6 +227,7 @@ e7gz-ps/
 | E7-62 | Abdallah | **Customer app: Late Confirm and status** | App: Late Confirm screen with countdown and booking status timeline. | E7-54 | `apps/customer/src/features/late-confirm/` |
 | E7-63 | Abdallah | **Dashboard: attendance and Late Confirm** | Dashboard: check-in, late, no-show and Late Confirm buttons. | E7-54 | `apps/venue-dashboard/src/features/attendance/` |
 | E7-64 | Abdallah | **Customer app: profile and account** | App: profile and account screens. | E7-54 | `apps/customer/src/features/profile/` |
+| E7-116 | Abdallah | **Dashboard: Overview home page** | Dashboard home page: today's and this month's revenue, today's bookings, pending requests, today's schedule and quick actions. | E7-54 | `apps/venue-dashboard/src/features/overview/` |
 | E7-65 | Sayed | **Sprint 4 API contract** | Add all Sprint 4 API endpoints as stubs by day 2. | E7-54 | */web/ stubs<br>`packages/api-client/openapi.json` |
 | E7-66 | Sayed | **Loyalty ledgers and fee treatment** | Points and wallet ledgers, and what happens to the booking fee in every case. | E7-49 | `…/loyalty/` |
 | E7-67 | Sayed | **Referrals** | Invite a friend: referral rewards and reversals. | E7-66, E7-13 | `…/loyalty/ (referral)` |
@@ -299,6 +302,7 @@ e7gz-ps/
 | E7-108 | Abdallah | **Dashboard: final RTL pass and reviews view** | Final Arabic pass on the dashboard and venue reviews page. | E7-96 | `apps/venue-dashboard/src/ (all features)`<br>`apps/venue-dashboard/src/features/reviews/` |
 | E7-109 | Abdallah | **Store and web release readiness** | Store builds for testers (Play + TestFlight), dashboards online. | E7-101 | `apps/customer/ (app config, assets)`<br>`infra/` |
 | E7-110 | Sayed | **Launch readiness checklist (PO)** | Go through the launch checklist and sign it off. | E7-105, E7-101 | `docs/launch-readiness.md` |
+| E7-117 | Abdallah | **Dashboard: revenue screen** | Dashboard revenue screen: online, manual and tournament revenue by business date, with an optional activity breakdown. | E7-98 | `apps/venue-dashboard/src/features/revenue/` |
 
 `…/` = `backend/src/main/java/ps/e7gz/`. The full Claude Code prompt of each task is in its Jira description and in `BUILD-PLAN.md`.
 

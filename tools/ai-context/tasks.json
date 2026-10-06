@@ -1229,7 +1229,8 @@
    "arch 09 §3.3, §4.1"
   ],
   "steps": [
-   "Stubs + DTOs for Late Confirm, attendance actions, profile/account endpoints; regenerate client."
+   "Stubs + DTOs for Late Confirm, attendance actions, profile/account endpoints; regenerate client.",
+   "Carry-forward from E7-39 review: Contract for the plan gaps (PO decision 6 Oct 2026 (E7-39 review: arch 09 §4.1 lists the route, but no task owned it)): add stubs POST /venue/bookings/{bookingId}/cancel-confirmed {ownerPassword} (Idempotency-Key required; 423 OWNER_PASSWORD_REQUIRED / OWNER_PASSWORD_INVALID; 409 BOOKING_STATE_CHANGED) for S3-E6, and GET /venue/overview -> {todayRevenue, monthRevenue, todayBookings, pendingRequests} (Money as in SPRINT-2-CONTRACT.md) for S3-E7 and S3-C4."
   ],
   "done": [
    "Merged by day 2."
@@ -1237,7 +1238,7 @@
   "folders": [
    "packages/api-client/openapi.json"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S3-P0 — \"Sprint 3 API contract\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 09 §3.3, §4.1\n\nDo:\n1. Stubs + DTOs for Late Confirm, attendance actions, profile/account endpoints; regenerate client.\n\nDone when (write these as tests first where possible):\n- Merged by day 2.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S3-P0 — \"Sprint 3 API contract\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 09 §3.3, §4.1\n\nDo:\n1. Stubs + DTOs for Late Confirm, attendance actions, profile/account endpoints; regenerate client.\n\nDone when (write these as tests first where possible):\n- Merged by day 2.\n\nCarry-forward from E7-39 review (do these too):\n- Contract for the plan gaps (PO decision 6 Oct 2026 (E7-39 review: arch 09 §4.1 lists the route, but no task owned it)): add stubs POST /venue/bookings/{bookingId}/cancel-confirmed {ownerPassword} (Idempotency-Key required; 423 OWNER_PASSWORD_REQUIRED / OWNER_PASSWORD_INVALID; 409 BOOKING_STATE_CHANGED) for S3-E6, and GET /venue/overview -> {todayRevenue, monthRevenue, todayBookings, pendingRequests} (Money as in SPRINT-2-CONTRACT.md) for S3-E7 and S3-C4.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-55": {
   "id": "S3-P1",
@@ -1425,6 +1426,55 @@
   ],
   "prompt": "Read CLAUDE.md first. You are implementing task S3-E4 — \"Completion and attendance defaults (O12)\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 07 §7.3\n\nDo:\n1. Completion job; the eight attendance-default rules; ATTENDANCE_UNCONFIRMED path with no points.\n2. Enable all four timer boundary tests (±1 s) and journeys J2–J5.\n\nDone when (write these as tests first where possible):\n- Boundary pack green.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
+ "E7-114": {
+  "id": "S3-E6",
+  "title": "Venue cancels a confirmed booking (FR-VEN-03)",
+  "owner": "Amr",
+  "what": "The venue cancels a CONFIRMED online booking with the Owner PIN; the customer gets a full refund classification and a notification.",
+  "read": [
+   "FR-VEN-03, FR-VEN-05",
+   "FRS §2.4 (Owner Password) and the FRS state table row CONFIRMED → CANCELLED (VENUE_CANCELLED_CONFIRMED_BOOKING)",
+   "FR-PTS-15 (full refund classification)",
+   "arch 09 §4.1, §4.3",
+   "packages/api-client/SPRINT-2-CONTRACT.md §3 (BOOKING_STATE_CHANGED)"
+  ],
+  "steps": [
+   "Fill the POST /venue/bookings/{bookingId}/cancel-confirmed {ownerPassword} stub (E7-54): CONFIRMED Online booking → CANCELLED with terminal reason VENUE_CANCELLED_CONFIRMED_BOOKING; release the reservation and the customer commitment; fee treatment FULL_REFUND (FR-PTS-15). Idempotency-Key required.",
+   "Owner Password (FR-VEN-03): a separate @OwnerProtected(\"CANCEL_CONFIRMED_ONLINE_BOOKING\") command; flip that row of backend/src/test/resources/architecture/owner-password-actions.tsv to built=yes. Missing: 423 OWNER_PASSWORD_REQUIRED; wrong: 423 OWNER_PASSWORD_INVALID; every attempt audited (FR-VEN-05).",
+   "A booking that is not CONFIRMED (already cancelled, ACTIVE, a Manual booking, another venue's booking) is 409 BOOKING_STATE_CHANGED or 404; Manual bookings use cancel-manual (FR-MAN-08). Notify the customer through the outbox in the same transaction (catalogue code from E7-55).",
+   "No time limit (PO decision 6 Oct 2026): allowed while the booking is CONFIRMED, even if startAt has passed and the start job has not run yet. An ACTIVE booking is not cancelled this way (operational termination belongs to emergencies, Sprint 5)."
+  ],
+  "done": [
+   "Tests: cancel with the PIN → CANCELLED / VENUE_CANCELLED_CONFIRMED_BOOKING, reservation released, one customer notification; no PIN → 423 REQUIRED; wrong PIN → 423 INVALID and audited; a PENDING or already-cancelled booking → 409 BOOKING_STATE_CHANGED; a Manual booking is refused; OwnerPasswordMatrixTest green."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/booking/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S3-E6 — \"Venue cancels a confirmed booking (FR-VEN-03)\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- FR-VEN-03, FR-VEN-05\n- FRS §2.4 (Owner Password) and the FRS state table row CONFIRMED → CANCELLED (VENUE_CANCELLED_CONFIRMED_BOOKING)\n- FR-PTS-15 (full refund classification)\n- arch 09 §4.1, §4.3\n- packages/api-client/SPRINT-2-CONTRACT.md §3 (BOOKING_STATE_CHANGED)\n\nDo:\n1. Fill the POST /venue/bookings/{bookingId}/cancel-confirmed {ownerPassword} stub (E7-54): CONFIRMED Online booking → CANCELLED with terminal reason VENUE_CANCELLED_CONFIRMED_BOOKING; release the reservation and the customer commitment; fee treatment FULL_REFUND (FR-PTS-15). Idempotency-Key required.\n2. Owner Password (FR-VEN-03): a separate @OwnerProtected(\"CANCEL_CONFIRMED_ONLINE_BOOKING\") command; flip that row of backend/src/test/resources/architecture/owner-password-actions.tsv to built=yes. Missing: 423 OWNER_PASSWORD_REQUIRED; wrong: 423 OWNER_PASSWORD_INVALID; every attempt audited (FR-VEN-05).\n3. A booking that is not CONFIRMED (already cancelled, ACTIVE, a Manual booking, another venue's booking) is 409 BOOKING_STATE_CHANGED or 404; Manual bookings use cancel-manual (FR-MAN-08). Notify the customer through the outbox in the same transaction (catalogue code from E7-55).\n4. No time limit (PO decision 6 Oct 2026): allowed while the booking is CONFIRMED, even if startAt has passed and the start job has not run yet. An ACTIVE booking is not cancelled this way (operational termination belongs to emergencies, Sprint 5).\n\nDone when (write these as tests first where possible):\n- Tests: cancel with the PIN → CANCELLED / VENUE_CANCELLED_CONFIRMED_BOOKING, reservation released, one customer notification; no PIN → 423 REQUIRED; wrong PIN → 423 INVALID and audited; a PENDING or already-cancelled booking → 409 BOOKING_STATE_CHANGED; a Manual booking is refused; OwnerPasswordMatrixTest green.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-115": {
+  "id": "S3-E7",
+  "title": "Venue Overview API (FR-VEN-35)",
+  "owner": "Amr",
+  "what": "The backend for the Dashboard home page: today's and this month's revenue, today's bookings and pending requests.",
+  "read": [
+   "FR-VEN-35, FR-VEN-36",
+   "arch 09 §4.1 (revenue payload rules)",
+   "arch 04 §4.3 (business date)"
+  ],
+  "steps": [
+   "Fill the GET /venue/overview stub (E7-54): todayRevenue and monthRevenue (Money, aggregated on businessDate in the venue's time zone), today's bookings count, pending requests count. Today's schedule stays GET /venue/availability (E7-112); quick manual booking and quick create tournament are Dashboard buttons, not data.",
+   "Build the revenue sum once, as a read in the booking module's api package (online + manual now; tournament revenue joins in Sprint 6), so Revenue (GET /venue/revenue, Sprint 7, E7-104) reuses it. No payment method, cash/card split or reconciliation fields (FR-VEN-36).",
+   "Revenue counts only COMPLETED bookings (PO decision 6 Oct 2026); CONFIRMED, ACTIVE and every cancelled or rejected booking count nothing."
+  ],
+  "done": [
+   "Tests: a seeded day with completed, confirmed, active, cancelled and other-venue bookings (online and manual) gives exactly the hand-computed numbers (only COMPLETED counts); a booking after midnight inside the previous business day counts on that day; money is BigDecimal scale 2."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/booking/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S3-E7 — \"Venue Overview API (FR-VEN-35)\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- FR-VEN-35, FR-VEN-36\n- arch 09 §4.1 (revenue payload rules)\n- arch 04 §4.3 (business date)\n\nDo:\n1. Fill the GET /venue/overview stub (E7-54): todayRevenue and monthRevenue (Money, aggregated on businessDate in the venue's time zone), today's bookings count, pending requests count. Today's schedule stays GET /venue/availability (E7-112); quick manual booking and quick create tournament are Dashboard buttons, not data.\n2. Build the revenue sum once, as a read in the booking module's api package (online + manual now; tournament revenue joins in Sprint 6), so Revenue (GET /venue/revenue, Sprint 7, E7-104) reuses it. No payment method, cash/card split or reconciliation fields (FR-VEN-36).\n3. Revenue counts only COMPLETED bookings (PO decision 6 Oct 2026); CONFIRMED, ACTIVE and every cancelled or rejected booking count nothing.\n\nDone when (write these as tests first where possible):\n- Tests: a seeded day with completed, confirmed, active, cancelled and other-venue bookings (online and manual) gives exactly the hand-computed numbers (only COMPLETED counts); a booking after midnight inside the previous business day counts on that day; money is BigDecimal scale 2.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
  "E7-62": {
   "id": "S3-C1",
   "title": "Customer app: Late Confirm and status",
@@ -1465,7 +1515,8 @@
   ],
   "steps": [
    "Check-in, Mark Present — Late, no-show actions with their windows; initiate Late Confirm; neutral failure message.",
-   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary.",
+   "Carry-forward from E7-39 review: Add the \"Cancel booking\" action on a CONFIRMED online booking (PO decision 6 Oct 2026 (E7-39 review: arch 09 §4.1 lists the route, but no task owned it)): POST /venue/bookings/{bookingId}/cancel-confirmed asks for the Owner PIN in the body, shows 423 REQUIRED/INVALID and 409 BOOKING_STATE_CHANGED from the code map; not offered on Manual bookings (they use cancel-manual)."
   ],
   "done": [
    "Actions disabled outside windows returned by the API."
@@ -1473,7 +1524,7 @@
   "folders": [
    "apps/venue-dashboard/src/features/attendance/"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S3-C2 — \"Dashboard: attendance and Late Confirm\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Venue Dashboard prototype\n- FRS §3.2 (Venue Dashboard)\n- FRS F-09, F-12, F-13, F-14 (Late Confirmation, check-in, Present — Late, no-show)\n- FRS §4.5, §4.6 (Late Confirmation; Attendance)\n- FRS §2.5 (timer and boundary matrix)\n- arch 09 §4.1\n\nDo:\n1. Check-in, Mark Present — Late, no-show actions with their windows; initiate Late Confirm; neutral failure message.\n\nDone when (write these as tests first where possible):\n- Actions disabled outside windows returned by the API.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Every screen you add works in English and Arabic (RTL, CSS logical properties only).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S3-C2 — \"Dashboard: attendance and Late Confirm\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Venue Dashboard prototype\n- FRS §3.2 (Venue Dashboard)\n- FRS F-09, F-12, F-13, F-14 (Late Confirmation, check-in, Present — Late, no-show)\n- FRS §4.5, §4.6 (Late Confirmation; Attendance)\n- FRS §2.5 (timer and boundary matrix)\n- arch 09 §4.1\n\nDo:\n1. Check-in, Mark Present — Late, no-show actions with their windows; initiate Late Confirm; neutral failure message.\n\nDone when (write these as tests first where possible):\n- Actions disabled outside windows returned by the API.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Every screen you add works in English and Arabic (RTL, CSS logical properties only).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nCarry-forward from E7-39 review (do these too):\n- Add the \"Cancel booking\" action on a CONFIRMED online booking (PO decision 6 Oct 2026 (E7-39 review: arch 09 §4.1 lists the route, but no task owned it)): POST /venue/bookings/{bookingId}/cancel-confirmed asks for the Owner PIN in the body, shows 423 REQUIRED/INVALID and 409 BOOKING_STATE_CHANGED from the code map; not offered on Manual bookings (they use cancel-manual).\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-64": {
   "id": "S3-C3",
@@ -1497,6 +1548,29 @@
    "apps/customer/src/features/profile/"
   ],
   "prompt": "Read CLAUDE.md first. You are implementing task S3-C3 — \"Customer app: profile and account\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Customer App prototype profile\n- FRS §3.1 (Customer Mobile App)\n- FRS §4.1 (Accounts, Identity and Verification)\n- arch 09 §3.1\n\nDo:\n1. Profile edit, username change with cooldown message, phone/email change with OTP, password reset.\n\nDone when (write these as tests first where possible):\n- All error codes mapped.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Customer app is English at launch, all text in the i18n resource files (FRS §3.1).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-116": {
+  "id": "S3-C4",
+  "title": "Dashboard: Overview home page",
+  "owner": "Abdallah",
+  "what": "Dashboard home page: today's and this month's revenue, today's bookings, pending requests, today's schedule and quick actions.",
+  "read": [
+   "Venue Dashboard prototype",
+   "FRS §3.2 (Venue Dashboard)",
+   "FR-VEN-34, FR-VEN-35",
+   "arch 09 §4.1"
+  ],
+  "steps": [
+   "Overview page from GET /venue/overview: today's revenue, this month's revenue, today's bookings, pending requests (links to the requests list of E7-52); today's schedule reusing the schedule component of E7-36; a quick manual booking button that opens the walk-in form of E7-53; a quick create tournament button only once tournaments exist (Sprint 6) — until then leave it out.",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
+  ],
+  "done": [
+   "Every number comes from the API (no sums in the browser); money shown from the API string; RTL checked."
+  ],
+  "folders": [
+   "apps/venue-dashboard/src/features/overview/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S3-C4 — \"Dashboard: Overview home page\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Venue Dashboard prototype\n- FRS §3.2 (Venue Dashboard)\n- FR-VEN-34, FR-VEN-35\n- arch 09 §4.1\n\nDo:\n1. Overview page from GET /venue/overview: today's revenue, this month's revenue, today's bookings, pending requests (links to the requests list of E7-52); today's schedule reusing the schedule component of E7-36; a quick manual booking button that opens the walk-in form of E7-53; a quick create tournament button only once tournaments exist (Sprint 6) — until then leave it out.\n\nDone when (write these as tests first where possible):\n- Every number comes from the API (no sums in the browser); money shown from the API string; RTL checked.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Every screen you add works in English and Arabic (RTL, CSS logical properties only).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-65": {
   "id": "S4-P0",
@@ -2223,7 +2297,8 @@
    "docs/03-design Compliance UI Addendum"
   ],
   "steps": [
-   "Stubs + DTOs for reviews, review reports, account deletion, remaining admin modules, reports FR-AUD-11/12; regenerate client."
+   "Stubs + DTOs for reviews, review reports, account deletion, remaining admin modules, reports FR-AUD-11/12; regenerate client.",
+   "Carry-forward from E7-39 review: Contract for the plan gap (PO decision 6 Oct 2026 (E7-39 review: arch 09 §4.1 lists the route, but no task owned it)): add the stub GET /venue/revenue?from=&to=&breakdown=activity (business dates, inclusive) -> totals for online, manual and tournament revenue per business date with an optional activity breakdown; no payment-method fields (FR-VEN-36). Used by E7-104 and S7-C6."
   ],
   "done": [
    "Merged by day 2."
@@ -2231,7 +2306,7 @@
   "folders": [
    "packages/api-client/openapi.json"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S7-P0 — \"Sprint 7 API contract\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 09 §3.4, §5\n- docs/03-design Compliance UI Addendum\n\nDo:\n1. Stubs + DTOs for reviews, review reports, account deletion, remaining admin modules, reports FR-AUD-11/12; regenerate client.\n\nDone when (write these as tests first where possible):\n- Merged by day 2.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-P0 — \"Sprint 7 API contract\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 09 §3.4, §5\n- docs/03-design Compliance UI Addendum\n\nDo:\n1. Stubs + DTOs for reviews, review reports, account deletion, remaining admin modules, reports FR-AUD-11/12; regenerate client.\n\nDone when (write these as tests first where possible):\n- Merged by day 2.\n\nCarry-forward from E7-39 review (do these too):\n- Contract for the plan gap (PO decision 6 Oct 2026 (E7-39 review: arch 09 §4.1 lists the route, but no task owned it)): add the stub GET /venue/revenue?from=&to=&breakdown=activity (business dates, inclusive) -> totals for online, manual and tournament revenue per business date with an optional activity breakdown; no payment-method fields (FR-VEN-36). Used by E7-104 and S7-C6.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-99": {
   "id": "S7-P1",
@@ -2362,7 +2437,8 @@
    "PRD §4.2"
   ],
   "steps": [
-   "Terminal-reason distribution (customer/venue/operational split) and attendance mix + check-in capture rate per venue; admin API."
+   "Terminal-reason distribution (customer/venue/operational split) and attendance mix + check-in capture rate per venue; admin API.",
+   "Carry-forward from E7-39 review: Also implement GET /venue/revenue (PO decision 6 Oct 2026 (E7-39 review: arch 09 §4.1 lists the route, but no task owned it); FR-VEN-36): online + manual + tournament revenue aggregated on businessDate with an optional activity breakdown, reusing the revenue read built in S3-E7 (Overview); only COMPLETED bookings count (PO decision 6 Oct 2026). No payment method, cash/card split or reconciliation fields. Test against a hand-computed seeded dataset."
   ],
   "done": [
    "Numbers match a hand-computed seeded dataset."
@@ -2370,7 +2446,7 @@
   "folders": [
    "backend/src/main/java/ps/e7gz/admin/ (reports)"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S7-E3 — \"Reports FR-AUD-11/12 and metrics\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 13 (FR-AUD-11, FR-AUD-12)\n- PRD §4.2\n\nDo:\n1. Terminal-reason distribution (customer/venue/operational split) and attendance mix + check-in capture rate per venue; admin API.\n\nDone when (write these as tests first where possible):\n- Numbers match a hand-computed seeded dataset.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-E3 — \"Reports FR-AUD-11/12 and metrics\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 13 (FR-AUD-11, FR-AUD-12)\n- PRD §4.2\n\nDo:\n1. Terminal-reason distribution (customer/venue/operational split) and attendance mix + check-in capture rate per venue; admin API.\n\nDone when (write these as tests first where possible):\n- Numbers match a hand-computed seeded dataset.\n\nCarry-forward from E7-39 review (do these too):\n- Also implement GET /venue/revenue (PO decision 6 Oct 2026 (E7-39 review: arch 09 §4.1 lists the route, but no task owned it); FR-VEN-36): online + manual + tournament revenue aggregated on businessDate with an optional activity breakdown, reusing the revenue read built in S3-E7 (Overview); only COMPLETED bookings count (PO decision 6 Oct 2026). No payment method, cash/card split or reconciliation fields. Test against a hand-computed seeded dataset.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-105": {
   "id": "S7-E4",
@@ -2512,5 +2588,28 @@
    "docs/launch-readiness.md"
   ],
   "prompt": "Read CLAUDE.md first. You are implementing task S7-C5 — \"Launch readiness checklist (PO)\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 14 §8 (launch readiness bar)\n- arch 13\n\nDo:\n1. Walk the 10 launch criteria; confirm every M requirement in the traceability matrix has a merged task and a passing test; list gaps as new Jira tasks.\n\nDone when (write these as tests first where possible):\n- Signed-off checklist in docs/.\n\nCarry-forward from E7-13 (do these too):\n- Check the SMS Misr result codes (identity SmsMisrSmsSender.RESULT_CODES, success 4901) against SMS Misr's official API document.\n- Confirm with the PO: customer phone numbers are limited to Egyptian mobiles (010/011/012/015; identity PhoneNumbers).\n- Confirm with the Engine lane: eligibility category A for the account commands (register, send OTP, verify phone), which have no Venue in scope.\n\nCarry-forward from the Sprint 0 review (do these too):\n- Re-confirm two accepted risks from the Sprint 0 review (PO, 2 Oct 2026): (1) no MFA for Platform Admin at launch (S-5); (2) registration and resend reveal whether a phone is registered, accepted for MVP and slowed by the per-IP limit (S-16).\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
+ "E7-117": {
+  "id": "S7-C6",
+  "title": "Dashboard: revenue screen",
+  "owner": "Abdallah",
+  "what": "Dashboard revenue screen: online, manual and tournament revenue by business date, with an optional activity breakdown.",
+  "read": [
+   "Venue Dashboard prototype",
+   "FRS §3.2 (Venue Dashboard)",
+   "FR-VEN-36",
+   "arch 09 §4.1 (revenue payload)"
+  ],
+  "steps": [
+   "Revenue page from GET /venue/revenue?from=&to=&breakdown=activity: totals for online, manual and tournament revenue per business date, optional activity breakdown, date-range filter. Never show a payment method, cash/card split or reconciliation (FR-VEN-36).",
+   "Requirements first, prototype for the look: build every screen and state the listed FRS/PCR sections need, including ones the prototype does not show, in the same design; never take rules or text from the prototype; list the added screens in the summary."
+  ],
+  "done": [
+   "Every number comes from the API; date ranges are business dates; RTL checked."
+  ],
+  "folders": [
+   "apps/venue-dashboard/src/features/revenue/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-C6 — \"Dashboard: revenue screen\" (Clients lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- Venue Dashboard prototype\n- FRS §3.2 (Venue Dashboard)\n- FR-VEN-36\n- arch 09 §4.1 (revenue payload)\n\nDo:\n1. Revenue page from GET /venue/revenue?from=&to=&breakdown=activity: totals for online, manual and tournament revenue per business date, optional activity breakdown, date-range filter. Never show a payment method, cash/card split or reconciliation (FR-VEN-36).\n\nDone when (write these as tests first where possible):\n- Every number comes from the API; date ranges are business dates; RTL checked.\n\nRequirements first, prototype for the look (PO decision 2 Oct 2026):\n- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.\n- Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.\n- Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.\n- Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.\n- Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.\n- Every screen you add works in English and Arabic (RTL, CSS logical properties only).\n- In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  }
 }
