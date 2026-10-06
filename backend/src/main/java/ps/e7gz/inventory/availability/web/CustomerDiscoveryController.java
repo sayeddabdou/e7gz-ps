@@ -57,6 +57,8 @@ public class CustomerDiscoveryController {
     public DataResponse<List<CustomerVenueMarker>> listVenueMarkers(
             @Parameter(description = "Visible map area as minLng,minLat,maxLng,maxLat.", example = "31.20,29.95,31.45,30.15")
             @RequestParam String bounds,
+            @Parameter(description = "Manual area selection; remains a hard filter in Map view (FR-DIS-02).")
+            @RequestParam(required = false) UUID areaId,
             @RequestParam Activity activity,
             @Parameter(description = "Customer latitude, for distance; send with lng.") @RequestParam(required = false) Double lat,
             @Parameter(description = "Customer longitude, for distance; send with lat.") @RequestParam(required = false) Double lng) {
@@ -115,6 +117,8 @@ public class CustomerDiscoveryController {
     public record CustomerVenueMarker(
             @NotNull @Schema(example = "7b1f0c9e-2d3a-4e5b-8c6d-9e0f1a2b3c4d") UUID id,
             @NotNull @Schema(example = "Level Up Lounge") String name,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true, format = "uri",
+                    example = "https://files.example.test/venues/level-up/1.jpg") String imageUrl,
             @NotNull GeoPoint location,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true, example = "1250") Integer distanceMeters,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) MoneyView startingPrice,
