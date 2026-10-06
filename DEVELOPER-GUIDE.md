@@ -91,12 +91,12 @@ e7gz-ps/
 │           └── <module>/        tests mirror main packages
 ├── apps/
 │   ├── customer/                React Native + TS (Expo)
-│   │   └── src/ app/ components/ api/ i18n/ theme/
+│   │   └── src/ app/ components/ api/ i18n/
 │   │       features/ auth/ discovery/ booking/ my-bookings/ late-confirm/ profile/
 │   │                 rewards/ tournaments/ reviews/ notifications/
 │   ├── venue-dashboard/         React + TS + Vite · EN/AR
 │   │   ├── public/              service worker, alert sound
-│   │   └── src/ app/ components/ api/ i18n/ styles/
+│   │   └── src/ app/ components/ api/ i18n/
 │   │       features/ auth/ requests/ today/ walk-in/ schedule/ attendance/ setup/
 │   │                 operations/ tournaments/ reviews/ settings/
 │   └── admin-web/               React + TS + Vite · EN
