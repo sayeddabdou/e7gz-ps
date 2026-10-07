@@ -10,7 +10,7 @@
     "build": "expo export --platform web --platform android --output-dir dist",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "jest"
+    "test": "jest --runInBand"
   },
   "dependencies": {
     "@e7gz/api-client": "workspace:*",
