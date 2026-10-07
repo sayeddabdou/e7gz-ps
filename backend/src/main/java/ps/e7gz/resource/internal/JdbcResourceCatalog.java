@@ -11,6 +11,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import ps.e7gz.common.codes.Activity;
 import ps.e7gz.common.codes.ConsoleType;
+import ps.e7gz.common.codes.ResourceBaseState;
 import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.resource.api.ResourceCatalog;
 
@@ -58,6 +59,24 @@ class JdbcResourceCatalog implements ResourceCatalog {
                     String console = rs.getString("console_type");
                     return new Shown(rs.getObject("id", UUID.class), rs.getString("name"),
                             console == null ? null : ConsoleType.valueOf(console));
+                })
+                .list();
+    }
+
+    @Override
+    public List<Scheduled> onSchedule(UUID venueId) {
+        Objects.requireNonNull(venueId, "venueId");
+        return jdbc.sql("""
+                        SELECT id, name, activity, console_type, base_state FROM resource.resource
+                         WHERE venue_id = :venue AND base_state <> 'ARCHIVED'
+                         ORDER BY activity, name, id""")
+                .param("venue", venueId)
+                .query((rs, n) -> {
+                    String console = rs.getString("console_type");
+                    return new Scheduled(rs.getObject("id", UUID.class), rs.getString("name"),
+                            Activity.valueOf(rs.getString("activity")),
+                            console == null ? null : ConsoleType.valueOf(console),
+                            ResourceBaseState.valueOf(rs.getString("base_state")));
                 })
                 .list();
     }

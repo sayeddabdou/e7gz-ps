@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -17,31 +18,56 @@ import org.springframework.web.bind.annotation.RestController;
 import ps.e7gz.common.codes.Activity;
 import ps.e7gz.common.codes.ConsoleType;
 import ps.e7gz.common.codes.ScheduleDisplayState;
+import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.DataResponse;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
+import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.inventory.availability.internal.VenueSchedules;
 
-/** Venue Dashboard availability schedule (arch 09 §4.1, FR-VEN-37). Stub until the schedule task. */
+/**
+ * Venue Dashboard availability schedule (arch 09 §4.1, FR-VEN-37). Implemented by E7-112: the signed-in venue only, a
+ * read (no command, no Idempotency-Key).
+ */
 @RestController
 @RequestMapping("/api/v1/venue/availability")
 @Tag(name = "venue-schedule")
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class VenueAvailabilityController {
 
+    private final VenueSchedules schedules;
+    private final ResponseMetaFactory meta;
+
+    public VenueAvailabilityController(VenueSchedules schedules, ResponseMetaFactory meta) {
+        this.schedules = schedules;
+        this.meta = meta;
+    }
+
     @GetMapping
-    @Operation(operationId = "venueGetAvailability", summary = "Resource × time schedule for one business date (FR-VEN-37)")
+    @Operation(operationId = "venueGetAvailability", summary = "Resource × time schedule for one business date (FR-VEN-37)",
+            description = "Every non-archived resource of the signed-in venue with its spans for the business date. "
+                    + "FREE only inside the Operating Session and never on a DISABLED resource; time with no slot is "
+                    + "blank. Spans may overlap (e.g. an emergency CLOSURE over a booking). With no Operating Session "
+                    + "on the date, closed is true and every resource has no slots.")
     public DataResponse<VenueSchedule> get(
+            @AuthenticationPrincipal AuthenticatedSubject venue,
             @Parameter(description = "Business date (arch 04 §4.3). Optional: when absent, the Venue's current business "
                     + "date; the date used is returned as VenueSchedule.businessDate.")
             @RequestParam(required = false) LocalDate date) {
-        throw NotImplementedYet.stub();
+        return meta.data(VenueSchedule.of(schedules.of(venue.id(), date)));
     }
 
     @Schema(name = "VenueSchedule")
     public record VenueSchedule(
             @NotNull @Schema(example = "2026-10-12",
                     description = "The business date actually used (arch 04 §4.3).") LocalDate businessDate,
+            @NotNull @Schema(description = "True when the business date has no Operating Session: every resource is "
+                    + "listed with no slots.") Boolean closed,
             @NotNull List<VenueScheduleResource> resources) {
+
+        static VenueSchedule of(VenueSchedules.Schedule schedule) {
+            return new VenueSchedule(schedule.businessDate(), schedule.closed(),
+                    schedule.resources().stream().map(VenueScheduleResource::of).toList());
+        }
     }
 
     @Schema(name = "VenueScheduleResource")
@@ -51,6 +77,12 @@ public class VenueAvailabilityController {
             @NotNull Activity activity,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) ConsoleType consoleType,
             @NotNull List<VenueScheduleSlot> slots) {
+
+        static VenueScheduleResource of(VenueSchedules.ResourceSchedule row) {
+            return new VenueScheduleResource(row.resource().resourceId(), row.resource().name(),
+                    row.resource().activity(), row.resource().consoleType(),
+                    row.slots().stream().map(VenueScheduleSlot::of).toList());
+        }
     }
 
     /** One contiguous span of a resource in exactly one display state (arch 09 §4.1). */
@@ -61,5 +93,9 @@ public class VenueAvailabilityController {
             @NotNull ScheduleDisplayState state,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true,
                     description = "The booking behind the span, when there is one.") UUID bookingId) {
+
+        static VenueScheduleSlot of(VenueSchedules.Slot slot) {
+            return new VenueScheduleSlot(slot.startAt(), slot.endAt(), slot.state(), slot.bookingId());
+        }
     }
 }

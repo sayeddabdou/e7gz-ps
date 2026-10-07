@@ -53,6 +53,33 @@ final class FreeWindows {
     }
 
     /**
+     * {@code base} minus {@code busy}, both a {@link #union}, in start order (E7-112: the free time of the Dashboard
+     * schedule and the business-day instants). Half-open: a busy span ending at {@code t} leaves {@code t} free.
+     */
+    static List<Span> minus(List<Span> base, List<Span> busy) {
+        List<Span> left = new ArrayList<>();
+        for (Span span : base) {
+            Instant cursor = span.start();
+            for (Span cut : busy) {
+                if (!cut.end().isAfter(cursor) || !cut.start().isBefore(span.end())) {
+                    continue;                               // before the cursor or after the span
+                }
+                if (cut.start().isAfter(cursor)) {
+                    left.add(new Span(cursor, cut.start()));
+                }
+                cursor = cut.end();
+                if (!cursor.isBefore(span.end())) {
+                    break;
+                }
+            }
+            if (cursor.isBefore(span.end())) {
+                left.add(new Span(cursor, span.end()));
+            }
+        }
+        return left;
+    }
+
+    /**
      * The earliest {@code t >= from} with {@code [t, t + length)} inside {@code [from, until)} and clear of every span
      * of {@code busy}, which must be a {@link #union}. Each busy span is looked at once: one that overlaps the window
      * moves {@code t} to its end, the next free-gap boundary.

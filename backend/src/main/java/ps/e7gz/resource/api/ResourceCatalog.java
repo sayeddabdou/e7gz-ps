@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.UUID;
 import ps.e7gz.common.codes.Activity;
 import ps.e7gz.common.codes.ConsoleType;
+import ps.e7gz.common.codes.ResourceBaseState;
 import ps.e7gz.common.command.CommandContext;
 
 /**
@@ -30,11 +31,28 @@ public interface ResourceCatalog {
      */
     List<Shown> customerVisible(UUID venueId, Activity activity);
 
+    /**
+     * The venue's Resources on the Dashboard schedule (FR-VEN-37, E7-112), by activity, name, id: every Resource except
+     * ARCHIVED ones (PO decision 3 Oct 2026), with its base state. One read outside any command.
+     */
+    List<Scheduled> onSchedule(UUID venueId);
+
     /** A Resource as a customer sees it: its name (FR-VEN-41) and console (PlayStation only). */
     record Shown(UUID resourceId, String name, ConsoleType consoleType) {
         public Shown {
             Objects.requireNonNull(resourceId, "resourceId");
             Objects.requireNonNull(name, "name");
+        }
+    }
+
+    /** A Resource on the Dashboard schedule: name (FR-VEN-41), activity, console and base state. */
+    record Scheduled(UUID resourceId, String name, Activity activity, ConsoleType consoleType,
+                     ResourceBaseState baseState) {
+        public Scheduled {
+            Objects.requireNonNull(resourceId, "resourceId");
+            Objects.requireNonNull(name, "name");
+            Objects.requireNonNull(activity, "activity");
+            Objects.requireNonNull(baseState, "baseState");
         }
     }
 

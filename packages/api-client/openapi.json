@@ -3878,6 +3878,10 @@
             "format": "date",
             "type": "string"
           },
+          "closed": {
+            "description": "True when the business date has no Operating Session: every resource is listed with no slots.",
+            "type": "boolean"
+          },
           "resources": {
             "items": {
               "$ref": "#/components/schemas/VenueScheduleResource"
@@ -3887,6 +3891,7 @@
         },
         "required": [
           "businessDate",
+          "closed",
           "resources"
         ],
         "type": "object"
@@ -18350,6 +18355,7 @@
     },
     "/api/v1/venue/availability": {
       "get": {
+        "description": "Every non-archived resource of the signed-in venue with its spans for the business date. FREE only inside the Operating Session and never on a DISABLED resource; time with no slot is blank. Spans may overlap (e.g. an emergency CLOSURE over a booking). With no Operating Session on the date, closed is true and every resource has no slots.",
         "operationId": "venueGetAvailability",
         "parameters": [
           {
