@@ -36,6 +36,16 @@ class JdbcResourceCatalog implements ResourceCatalog {
 
     @Override
     public List<Entry> ofVenue(UUID venueId) {
+        return ofVenue(jdbc, venueId);
+    }
+
+    @Override
+    public List<Entry> ofVenue(CommandContext command, UUID venueId) {
+        Objects.requireNonNull(command, "command");
+        return ofVenue(command.jdbc(), venueId);
+    }
+
+    private static List<Entry> ofVenue(JdbcClient jdbc, UUID venueId) {
         Objects.requireNonNull(venueId, "venueId");
         return jdbc.sql(SELECT + " WHERE venue_id = :venue ORDER BY activity, name, id").param("venue", venueId)
                 .query(JdbcResourceCatalog::map).list();
