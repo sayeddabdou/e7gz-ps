@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
+import java.net.URI;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -22,21 +23,41 @@ import org.springframework.web.bind.annotation.RestController;
 import ps.e7gz.common.codes.Activity;
 import ps.e7gz.common.codes.ConsoleType;
 import ps.e7gz.common.codes.PlayMode;
+import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.error.ApiException;
+import ps.e7gz.common.geo.Coordinates;
+import ps.e7gz.common.money.Money;
 import ps.e7gz.common.web.DataResponse;
 import ps.e7gz.common.web.GeoPoint;
 import ps.e7gz.common.web.MoneyView;
 import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.PageView;
+import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.geography.api.AreaLookup;
+import ps.e7gz.inventory.availability.internal.CustomerDiscovery;
 
 /**
- * Customer discovery (arch 09 §3.2, FR-DIS-*). Public — no access token (arch 09 §1.2). Stub until E7-34.
- * Venues that are not marketplace ACTIVE are absent from list, map and search; a deep-linked venue page still
- * answers 200 with {@code bookingEnabled: false} (FR-DIS-08). The venue phone never appears here (FR-DIS-09).
+ * Customer discovery (arch 09 §3.2, FR-DIS-*). Public — no access token (arch 09 §1.2). The list and the details are
+ * E7-34's; the map and Find Available are still stubs. Venues that are not marketplace ACTIVE are absent from list,
+ * map and search; a deep-linked venue page still answers 200 with {@code bookingEnabled: false} (FR-DIS-08). The venue
+ * phone never appears here (FR-DIS-09): no DTO below has a field for it.
+ *
+ * <p>{@code lat} and {@code lng} are one position: one without the other is VALIDATION_FAILED on the missing one, and
+ * each must be in its WGS 84 range ({@link GeoPoint}). The list needs {@code areaId} when no position is sent
+ * (VALIDATION_FAILED on {@code areaId}; PO decisions 7 Oct 2026).
  */
 @RestController
 @RequestMapping("/api/v1/customer")
 @Tag(name = "customer-discovery")
 public class CustomerDiscoveryController {
+
+    private final CustomerDiscovery discovery;
+    private final ResponseMetaFactory meta;
+
+    public CustomerDiscoveryController(CustomerDiscovery discovery, ResponseMetaFactory meta) {
+        this.discovery = discovery;
+        this.meta = meta;
+    }
 
     @GetMapping("/venues")
     @Operation(operationId = "customerListVenues",
@@ -48,7 +69,13 @@ public class CustomerDiscoveryController {
             @Parameter(description = "Customer longitude; send with lat.") @RequestParam(required = false) Double lng,
             @RequestParam(required = false) String cursor,
             @RequestParam(required = false) @Min(1) @Max(100) Integer limit) {
-        throw NotImplementedYet.stub();
+        Coordinates near = position(lat, lng);
+        if (areaId == null && near == null) {
+            throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "areaId");
+        }
+        CustomerDiscovery.CardPage page = discovery.list(areaId, activity, near, cursor, limit);
+        return meta.data(new PageView<>(page.items().stream().map(CustomerDiscoveryController::card).toList(),
+                page.nextCursor()));
     }
 
     @GetMapping("/venues/map")
@@ -73,7 +100,58 @@ public class CustomerDiscoveryController {
             @RequestParam(required = false) Activity activity,
             @Parameter(description = "Customer latitude, for distance; send with lng.") @RequestParam(required = false) Double lat,
             @Parameter(description = "Customer longitude, for distance; send with lat.") @RequestParam(required = false) Double lng) {
-        throw NotImplementedYet.stub();
+        return meta.data(details(discovery.details(venueId, activity, position(lat, lng))));
+    }
+
+    /** The customer position, or null without one; half a position or one out of range is VALIDATION_FAILED. */
+    static Coordinates position(Double lat, Double lng) {
+        if (lat == null && lng == null) {
+            return null;
+        }
+        if (lng == null) {
+            throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "lng");
+        }
+        if (lat == null) {
+            throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "lat");
+        }
+        if (!(lat >= -90 && lat <= 90)) {
+            throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "lat");
+        }
+        if (!(lng >= -180 && lng <= 180)) {
+            throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "lng");
+        }
+        return new GeoPoint(lat, lng).toCoordinates();
+    }
+
+    private static CustomerVenueCard card(CustomerDiscovery.Card card) {
+        return new CustomerVenueCard(card.id(), card.name(), url(card.imageUrl()), area(card.area()),
+                card.distanceMeters(), money(card.startingPrice()), card.nearestAvailableAt(), card.averageRating(),
+                card.reviewCount());
+    }
+
+    private static CustomerVenueDetails details(CustomerDiscovery.Details d) {
+        return new CustomerVenueDetails(d.id(), d.name(), d.imageUrls().stream().map(URI::toString).toList(),
+                area(d.area()), d.address(), GeoPoint.of(d.location()), d.distanceMeters(),
+                d.openingHours().stream().map(day -> new CustomerOpeningDay(day.weekday(), day.closed(),
+                        day.opensAtLocal(), day.closesAtLocal())).toList(),
+                d.openNow(), d.opensAt(), d.activities(), d.selectedActivity(),
+                d.resources().stream().map(r -> new CustomerVenueResource(r.resourceId(), r.name(), r.consoleType()))
+                        .toList(),
+                d.prices().stream().map(p -> new CustomerVenuePrice(p.consoleType(), p.playMode(),
+                        MoneyView.of(p.hourlyPrice()))).toList(),
+                d.nearestAvailableAt(), d.averageRating(), d.reviewCount(), d.bookingEnabled());
+    }
+
+    private static CustomerVenueArea area(AreaLookup.AreaName area) {
+        return new CustomerVenueArea(area.id(), area.name(), area.nameAr());
+    }
+
+    private static MoneyView money(Money money) {
+        return money == null ? null : MoneyView.of(money);
+    }
+
+    private static String url(URI uri) {
+        return uri == null ? null : uri.toString();
     }
 
     @GetMapping("/find-available")

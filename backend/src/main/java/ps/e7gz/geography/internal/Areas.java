@@ -1,6 +1,9 @@
 package ps.e7gz.geography.internal;
 
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import javax.sql.DataSource;
@@ -55,6 +58,21 @@ public class Areas implements AreaLookup {
     @Override
     public Optional<String> name(UUID areaId) {
         return jdbc.sql("SELECT name FROM geo.area WHERE id = :id").param("id", areaId).query(String.class).optional();
+    }
+
+    @Override
+    public Map<UUID, AreaName> names(Collection<UUID> areaIds) {
+        if (areaIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, AreaName> names = new LinkedHashMap<>();
+        jdbc.sql("SELECT id, name, name_ar FROM geo.area WHERE id = ANY(:ids)")
+                .param("ids", areaIds.stream().distinct().toArray(UUID[]::new))
+                .query(rs -> {
+                    UUID id = rs.getObject("id", UUID.class);
+                    names.put(id, new AreaName(id, rs.getString("name"), rs.getString("name_ar")));
+                });
+        return names;
     }
 
     public Area create(UUID adminId, String name, String nameAr, Coordinates centroid) {

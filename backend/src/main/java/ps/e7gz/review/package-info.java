@@ -14,6 +14,7 @@
  * <p>Filled by:
  * <ul>
  *   <li>E7-102 Reviews, reporting and moderation</li>
+ *   <li>E7-34 implements Availability's read-only {@code DiscoveryRatings} port (reads {@code venue_rating_stats})</li>
  *   <li>web/ stubs: E7-22, E7-39, E7-54, E7-65, E7-77, E7-88, E7-98 (Sx-P0 contract stubs)</li>
  * </ul>
  */

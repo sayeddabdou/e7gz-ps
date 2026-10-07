@@ -45,6 +45,23 @@ class JdbcResourceCatalog implements ResourceCatalog {
         return ofVenue(command.jdbc(), venueId);
     }
 
+    @Override
+    public List<Shown> customerVisible(UUID venueId, Activity activity) {
+        Objects.requireNonNull(venueId, "venueId");
+        Objects.requireNonNull(activity, "activity");
+        return jdbc.sql("""
+                        SELECT id, name, console_type FROM resource.resource
+                         WHERE venue_id = :venue AND activity = :activity AND base_state NOT IN ('DISABLED', 'ARCHIVED')
+                         ORDER BY name, id""")
+                .param("venue", venueId).param("activity", activity.name())
+                .query((rs, n) -> {
+                    String console = rs.getString("console_type");
+                    return new Shown(rs.getObject("id", UUID.class), rs.getString("name"),
+                            console == null ? null : ConsoleType.valueOf(console));
+                })
+                .list();
+    }
+
     private static List<Entry> ofVenue(JdbcClient jdbc, UUID venueId) {
         Objects.requireNonNull(venueId, "venueId");
         return jdbc.sql(SELECT + " WHERE venue_id = :venue ORDER BY activity, name, id").param("venue", venueId)

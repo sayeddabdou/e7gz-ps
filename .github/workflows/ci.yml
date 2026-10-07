@@ -50,6 +50,51 @@ jobs:
             backend/build/test-results/
           retention-days: 7
 
+  # E7-34 done-when: the venue list's p95 on the perf seed (NFR-11, target < 1 s), recorded as a NON-BLOCKING report.
+  # Its own job, so the backend job stays as fast as before. Non-blocking at two levels:
+  #  - job-level continue-on-error: no failure anywhere in this job (setup, Docker, seed, start-up, measurement, report
+  #    or artifact upload) fails the workflow run; no other job needs this one;
+  #  - the measuring step's own continue-on-error keeps the job's later steps running, and its outcome and the p95 are
+  #    written to the log and the job summary, so a failure is reported, not hidden.
+  discovery-perf:
+    name: Discovery p95 on the perf seed (report, non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: docker info --format 'Docker {{.ServerVersion}}'
+      - id: measure
+        continue-on-error: true
+        run: ./gradlew discoveryPerf
+      - if: always()
+        run: |
+          {
+            echo "discoveryPerf outcome: ${{ steps.measure.outcome || 'not run (setup failed)' }} (non-blocking report)"
+            echo
+            if [ -f build/reports/discovery-perf.md ]; then
+              cat build/reports/discovery-perf.md
+            else
+              echo "Discovery p95 report was not produced; see the discoveryPerf step log."
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: discovery-perf-report
+          path: backend/build/reports/discovery-perf.md
+          if-no-files-found: ignore
+          retention-days: 14
+
   frontend:
     name: Frontends — lint, typecheck, build, test
     runs-on: ubuntu-latest
