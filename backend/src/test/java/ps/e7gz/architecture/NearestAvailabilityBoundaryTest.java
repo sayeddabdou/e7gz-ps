@@ -17,6 +17,8 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import ps.e7gz.inventory.availability.api.AvailabilityQuery;
+import ps.e7gz.inventory.availability.api.AvailabilitySnapshots;
+import ps.e7gz.inventory.availability.api.DiscoveryRatings;
 import ps.e7gz.inventory.availability.api.NearestAvailabilityProjection;
 import ps.e7gz.inventory.ledger.api.ReservationLedger;
 import ps.e7gz.operations.api.OperationalOverlaps;
@@ -64,6 +66,7 @@ class NearestAvailabilityBoundaryTest {
                     ROOT + ".attendance..", ROOT + ".inventory.ledger..")
             .or().haveFullyQualifiedName(AVAILABILITY_INTERNAL + "CanonicalAvailabilityQuery")
             .should().dependOnClassesThat().areAssignableTo(NearestAvailabilityProjection.class)
+            .orShould().dependOnClassesThat().areAssignableTo(AvailabilitySnapshots.class)
             .orShould().dependOnClassesThat().haveNameMatching(".*AvailabilityProjection.*")
             .as("booking, tournament, operations, attendance, the ledger and isFree never read the projection");
 
@@ -80,6 +83,51 @@ class NearestAvailabilityBoundaryTest {
             .should().dependOnClassesThat().areAssignableTo(AvailabilityQuery.class)
             .allowEmptyShould(false)
             .as("the Nearest Availability calculation exists and asks AvailabilityQuery");
+
+    /** E7-34: the customer discovery request path and its HTTP controller. */
+    static final String[] DISCOVERY = {AVAILABILITY_INTERNAL + "CustomerDiscovery",
+            ROOT + ".inventory.availability.web.CustomerDiscoveryController"};
+
+    static final ArchRule DISCOVERY_NEVER_ASKS_THE_PREDICATE_OR_REFRESHES = noClasses()
+            .that().haveFullyQualifiedName(DISCOVERY[0]).or().haveFullyQualifiedName(DISCOVERY[1])
+            .should().dependOnClassesThat().areAssignableTo(AvailabilityQuery.class)
+            .orShould().dependOnClassesThat().areAssignableTo(NearestAvailabilityProjection.class)
+            .orShould().dependOnClassesThat().areAssignableTo(ReservationLedger.class)
+            .orShould().dependOnClassesThat().haveSimpleName("JdbcAvailabilityProjectionStore")
+            .as("discovery neither asks isFree nor refreshes or rebuilds the projection (E7-34, FR-AVL-11)");
+
+    static final ArchRule DISCOVERY_READS_THE_SNAPSHOTS = classes()
+            .that().haveFullyQualifiedName(DISCOVERY[0])
+            .should().dependOnClassesThat().areAssignableTo(AvailabilitySnapshots.class)
+            .allowEmptyShould(false)
+            .as("discovery reads Nearest Availability and starting price through AvailabilitySnapshots");
+
+    /**
+     * E7-34, arch 03 section 2.1: Availability (layer 2) composes discovery but never depends upward on Reviews (layer
+     * 4). Ratings arrive through the {@link DiscoveryRatings} port Availability declares and Reviews implements.
+     */
+    static final ArchRule AVAILABILITY_NEVER_DEPENDS_ON_REVIEWS = noClasses()
+            .that().resideInAPackage(ROOT + ".inventory.availability..")
+            .should().dependOnClassesThat().resideInAPackage(ROOT + ".review..")
+            .as("Availability never depends upward on Reviews (arch 03 section 2.1, E7-34)");
+
+    static final ArchRule THE_RATING_PORT_IS_IMPLEMENTED_BY_REVIEWS = classes()
+            .that().implement(DiscoveryRatings.class)
+            .should().resideInAPackage(ROOT + ".review.internal")
+            .allowEmptyShould(false)
+            .as("the discovery rating port is implemented by the Reviews module, which owns venue_rating_stats");
+
+    @Test
+    void discoveryReadsRatingsWithoutAnUpwardDependency() {
+        AVAILABILITY_NEVER_DEPENDS_ON_REVIEWS.check(PRODUCTION.get());
+        THE_RATING_PORT_IS_IMPLEMENTED_BY_REVIEWS.check(PRODUCTION.get());
+    }
+
+    @Test
+    void discoveryIsAnAdvisoryReadOfTheProjection() {
+        DISCOVERY_READS_THE_SNAPSHOTS.check(PRODUCTION.get());
+        DISCOVERY_NEVER_ASKS_THE_PREDICATE_OR_REFRESHES.check(PRODUCTION.get());
+    }
 
     @Test
     void noCommitPathDependsOnTheProjection() {

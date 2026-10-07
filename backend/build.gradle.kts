@@ -115,9 +115,25 @@ val seedTestTask = tasks.register<Test>("seedTest") {
     group = "verification"
     testClassesDirs = seedTest.output.classesDirs
     classpath = seedTest.runtimeClasspath
+    useJUnitPlatform { excludeTags("discovery-perf") }
     shouldRunAfter(tasks.test)
 }
 tasks.check { dependsOn(seedTestTask) }
+
+// E7-34 done-when: the venue list's p95 on the perf seed, reported in CI and never blocking it (NFR-11). Not part of
+// `check`: it seeds 150 venues and 20,000 customers into a fresh Testcontainers database (a few minutes), rebuilds the
+// Nearest Availability projection and times GET /customer/venues over HTTP. The report is printed and written to
+// build/reports/discovery-perf.md.
+tasks.register<Test>("discoveryPerf") {
+    description = "Reports the customer venue list's p95 on the perf seed (E7-34, NFR-11); fails when p95 >= 1 s."
+    group = "verification"
+    testClassesDirs = seedTest.output.classesDirs
+    classpath = seedTest.runtimeClasspath
+    useJUnitPlatform { includeTags("discovery-perf") }
+    systemProperty("e7gz.discoveryPerf.report", layout.buildDirectory.file("reports/discovery-perf.md").get().asFile.absolutePath)
+    testLogging { showStandardStreams = true }
+    outputs.upToDateWhen { false }
+}
 
 fun registerSeed(name: String, mode: String, text: String) = tasks.register<JavaExec>(name) {
     description = text

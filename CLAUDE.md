@@ -54,6 +54,7 @@ cd backend && ./gradlew check        # unit + integration (Testcontainers) + Arc
                                      # one-off: recompute every Nearest Availability projection row (safe to rerun)
 ./gradlew seedDev                    # fresh local DB only: 2 areas, 6 venues, 20 customers (logins: backend/src/seed/README.md)
 ./gradlew seedPerf                   # fresh local DB only: launch volume x10 (150 venues, 20,000 customers), ~2 min
+./gradlew discoveryPerf              # E7-34 venue-list p95 on the perf seed (Testcontainers, ~3 min; not in check; CI non-blocking)
 pnpm install && pnpm -r build        # all frontends + packages
 pnpm api:gen                         # regenerate packages/api-client from backend OpenAPI
 pnpm mock                            # Prism mock server from openapi.json
