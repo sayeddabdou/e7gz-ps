@@ -71,7 +71,7 @@ jobs:
       # Vite builds of the two web apps; Expo export (web + Android bundle) of the customer app.
       - run: pnpm -r build
       # api-client: the `pnpm mock` launcher on the committed contract. Apps: loading / success / error screens.
-      - run: pnpm -r test
+      - run: pnpm --workspace-concurrency=1 -r test
 
   contract-chain:
     name: Contract chain — Java sample contract → TS types → client + mock
