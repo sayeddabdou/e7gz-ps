@@ -48,6 +48,12 @@ class SessionBusinessDatesTest {
             return rows.stream().filter(s -> !at.isBefore(s.start()) && at.isBefore(s.end()))
                     .map(Session::operatingDay).findFirst();
         }
+
+        /** E7-33's read; the business date never uses it. */
+        @Override
+        public List<SessionPeriod> endingAfter(CommandContext command, UUID venueId, Instant after) {
+            throw new UnsupportedOperationException("not a business-date read");
+        }
     }
 
     private static Instant cairo(String localDateTime) {

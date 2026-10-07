@@ -1,0 +1,10 @@
+# Profile "availability-rebuild" (E7-33, arch 08 section 7): recomputes every Nearest Availability projection row,
+# then the application ends. See ps.e7gz.inventory.availability.internal.NearestAvailabilityRebuildRunner.
+# No web server, no workers.
+spring:
+  main:
+    web-application-type: none
+# A one-off command: it never prepares the photo bucket.
+e7gz:
+  object-store:
+    create-bucket: false

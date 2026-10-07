@@ -20,6 +20,9 @@ public interface ResourceCatalog {
     /** Every Resource of the venue, archived ones included, for a read outside a command. */
     List<Entry> ofVenue(UUID venueId);
 
+    /** The same list on the command's own transaction (E7-33 Nearest Availability). */
+    List<Entry> ofVenue(CommandContext command, UUID venueId);
+
     /** {@code consoleType} is set exactly for PlayStation ({@code ck_console_iff_playstation}). */
     record Entry(UUID resourceId, UUID venueId, Activity activity, ConsoleType consoleType) {
         public Entry {
