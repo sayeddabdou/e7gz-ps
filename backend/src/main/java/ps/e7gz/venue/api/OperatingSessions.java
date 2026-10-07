@@ -32,6 +32,13 @@ public interface OperatingSessions {
      */
     List<SessionPeriod> endingAfter(CommandContext command, UUID venueId, Instant after);
 
+    /**
+     * The Venue's materialized sessions whose {@code operating_day} is in {@code [first, last]}, in start order, for the
+     * Dashboard schedule's business day (E7-112, arch 04 section 4.3). {@code uq_operating_session_day} makes it at most
+     * one per day. One statement on the app connection, outside any command.
+     */
+    List<SessionPeriod> onOperatingDays(UUID venueId, LocalDate first, LocalDate last);
+
     /** One session's absolute {@code session_period} {@code [start, end)}. */
     record SessionPeriod(LocalDate operatingDay, Instant start, Instant end) {
 

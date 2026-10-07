@@ -46,6 +46,40 @@ class FreeWindowsTest {
                 .containsExactly(span("12:00:00", "15:00:00"), span("16:00:00", "17:00:00"));
     }
 
+    // ---- minus (E7-112) -----------------------------------------------------------------------------------------
+
+    @Test
+    void minusWithNothingBusyLeavesTheBaseWhole() {
+        assertThat(FreeWindows.minus(List.of(span("10:00:00", "23:00:00")), List.of()))
+                .containsExactly(span("10:00:00", "23:00:00"));
+    }
+
+    @Test
+    void minusCutsHalfOpenHolesAndKeepsTheEdgesFree() {
+        List<Span> busy = FreeWindows.union(List.of(span("12:00:00", "13:00:00"), span("12:30:00", "13:30:00"),
+                span("15:00:00", "16:00:00")));
+
+        assertThat(FreeWindows.minus(List.of(span("10:00:00", "23:00:00")), busy))
+                .containsExactly(span("10:00:00", "12:00:00"), span("13:30:00", "15:00:00"),
+                        span("16:00:00", "23:00:00"));
+    }
+
+    @Test
+    void minusIgnoresBusyTimeOutsideTheBaseAndClipsBusyTimeAcrossItsEdges() {
+        List<Span> busy = List.of(span("03:00:00", "04:00:00"), span("09:00:00", "11:00:00"),
+                span("22:00:00", "23:30:00"));
+
+        assertThat(FreeWindows.minus(List.of(span("10:00:00", "23:00:00")), busy))
+                .as("03:00-04:00 outside the session creates no FREE around it")
+                .containsExactly(span("11:00:00", "22:00:00"));
+    }
+
+    @Test
+    void minusOfAFullyCoveredBaseIsEmpty() {
+        assertThat(FreeWindows.minus(List.of(span("10:00:00", "12:00:00")), List.of(span("09:00:00", "13:00:00"))))
+                .isEmpty();
+    }
+
     // ---- firstFit -----------------------------------------------------------------------------------------------
 
     @Test

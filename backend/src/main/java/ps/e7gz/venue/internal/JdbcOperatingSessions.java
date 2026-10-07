@@ -1,5 +1,7 @@
 package ps.e7gz.venue.internal;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -38,6 +40,15 @@ class JdbcOperatingSessions implements OperatingSessions {
              ORDER BY lower(s.session_period)
             """;
 
+    /** E7-112: the sessions of a few operating days, keyed by the canonical day, not by calendar overlap. */
+    static final String ON_OPERATING_DAYS = """
+            SELECT s.operating_day, lower(s.session_period) AS start_at, upper(s.session_period) AS end_at
+              FROM venue.operating_session s
+             WHERE s.venue_id = :venueId
+               AND s.operating_day BETWEEN :first AND :last
+             ORDER BY lower(s.session_period)
+            """;
+
     private final JdbcClient jdbc;
 
     JdbcOperatingSessions(DataSource appDataSource) {
@@ -63,10 +74,27 @@ class JdbcOperatingSessions implements OperatingSessions {
         return command.jdbc().sql(ENDING_AFTER)
                 .param("venueId", venueId)
                 .param("after", OffsetDateTime.ofInstant(after, ZoneOffset.UTC))
-                .query((rs, n) -> new SessionPeriod(rs.getObject("operating_day", LocalDate.class),
-                        rs.getObject("start_at", OffsetDateTime.class).toInstant(),
-                        rs.getObject("end_at", OffsetDateTime.class).toInstant()))
+                .query(JdbcOperatingSessions::period)
                 .list();
+    }
+
+    @Override
+    public List<SessionPeriod> onOperatingDays(UUID venueId, LocalDate first, LocalDate last) {
+        Objects.requireNonNull(venueId, "venueId");
+        Objects.requireNonNull(first, "first");
+        Objects.requireNonNull(last, "last");
+        return jdbc.sql(ON_OPERATING_DAYS)
+                .param("venueId", venueId)
+                .param("first", first)
+                .param("last", last)
+                .query(JdbcOperatingSessions::period)
+                .list();
+    }
+
+    private static SessionPeriod period(ResultSet rs, int row) throws SQLException {
+        return new SessionPeriod(rs.getObject("operating_day", LocalDate.class),
+                rs.getObject("start_at", OffsetDateTime.class).toInstant(),
+                rs.getObject("end_at", OffsetDateTime.class).toInstant());
     }
 
     private static Optional<LocalDate> operatingDayAt(JdbcClient jdbc, UUID venueId, Instant at) {

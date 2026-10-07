@@ -28,4 +28,25 @@ class VenueAvailabilityContractTest {
         JsonNode schedule = contract.path("components").path("schemas").path("VenueSchedule");
         assertThat(schedule.path("required")).anyMatch(field -> "businessDate".equals(field.asText()));
     }
+
+    /** E7-112: {@code closed} is a required boolean; a closed day lists every room with no slots. */
+    @Test
+    void theScheduleCarriesARequiredClosedFlag() throws Exception {
+        JsonNode schedule = OpenApiDocument.parse(Files.readString(OpenApiDocument.COMMITTED))
+                .path("components").path("schemas").path("VenueSchedule");
+
+        assertThat(schedule.path("required")).anyMatch(field -> "closed".equals(field.asText()));
+        assertThat(schedule.path("properties").path("closed").path("type").asText()).isEqualTo("boolean");
+    }
+
+    /** E7-112: no display state was added; the contract carries exactly the nine of FR-VEN-37 / arch 09 section 4.1. */
+    @Test
+    void theSlotStatesAreExactlyTheNineDisplayStates() throws Exception {
+        JsonNode states = OpenApiDocument.parse(Files.readString(OpenApiDocument.COMMITTED))
+                .path("components").path("schemas").path("ScheduleDisplayState").path("enum");
+
+        assertThat(StreamSupport.stream(states.spliterator(), false).map(JsonNode::asText)).containsExactly("FREE",
+                "PENDING", "AWAITING_CUSTOMER_CONFIRMATION", "CONFIRMED", "ACTIVE", "MANUAL", "TOURNAMENT_HOLD",
+                "MAINTENANCE", "CLOSURE");
+    }
 }

@@ -3,6 +3,8 @@ package ps.e7gz.inventory.availability.api;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import ps.e7gz.common.command.CommandContext;
 
@@ -29,4 +31,41 @@ public interface BusinessDates {
 
     /** The Venue's business date now, the instant taken from the injected {@code Clock}. */
     LocalDate currentBusinessDate(UUID venueId);
+
+    /**
+     * Every instant that belongs to {@code date} at the Venue under the same two rules, for a read outside any command
+     * (the Venue Dashboard schedule, FR-VEN-37, E7-112): the date's own Operating Session, if it has one (rule 1), and
+     * the instants of its {@link #FALLBACK_ZONE} calendar day that no other day's session covers (rule 2). So the
+     * after-midnight part of a session crossing midnight belongs to the session's day, not to the next calendar date.
+     */
+    BusinessDay businessDay(UUID venueId, LocalDate date);
+
+    /**
+     * {@code session} is the date's Operating Session, null when it has none; {@code instants} are the disjoint,
+     * ordered periods that belong to the date (never empty: the calendar day is never fully covered by other days).
+     */
+    record BusinessDay(LocalDate date, Period session, List<Period> instants) {
+
+        public BusinessDay {
+            Objects.requireNonNull(date, "date");
+            instants = List.copyOf(instants);
+        }
+
+        /** No Operating Session on this business date. */
+        public boolean closed() {
+            return session == null;
+        }
+    }
+
+    /** A half-open interval {@code [start, end)}. */
+    record Period(Instant start, Instant end) {
+
+        public Period {
+            Objects.requireNonNull(start, "start");
+            Objects.requireNonNull(end, "end");
+            if (!end.isAfter(start)) {
+                throw new IllegalArgumentException("end must be after start: [" + start + ", " + end + ")");
+            }
+        }
+    }
 }

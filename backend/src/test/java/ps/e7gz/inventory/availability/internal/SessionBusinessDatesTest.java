@@ -13,11 +13,13 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.inventory.availability.api.BusinessDates;
+import ps.e7gz.inventory.availability.api.BusinessDates.BusinessDay;
 import ps.e7gz.venue.api.OperatingSessions;
 
 /**
@@ -53,6 +55,13 @@ class SessionBusinessDatesTest {
         @Override
         public List<SessionPeriod> endingAfter(CommandContext command, UUID venueId, Instant after) {
             throw new UnsupportedOperationException("not a business-date read");
+        }
+
+        /** E7-112's read, by the canonical day. */
+        @Override
+        public List<SessionPeriod> onOperatingDays(UUID venueId, LocalDate first, LocalDate last) {
+            return rows.stream().filter(s -> !s.operatingDay().isBefore(first) && !s.operatingDay().isAfter(last))
+                    .map(s -> new SessionPeriod(s.operatingDay(), s.start(), s.end())).toList();
         }
     }
 
@@ -113,6 +122,45 @@ class SessionBusinessDatesTest {
 
         assertThat(dates.businessDate(mock(CommandContext.class), VENUE, startAt)).isEqualTo(expected);
         assertThat(dates.currentBusinessDate(VENUE)).as("the same rule from the Clock").isEqualTo(expected);
+    }
+
+    // ---- businessDay (E7-112) ------------------------------------------------------------------------------------
+
+    private static BusinessDates.Period period(Instant start, Instant end) {
+        return new BusinessDates.Period(start, end);
+    }
+
+    @Test
+    void aSameDaySessionDayIsItsCalendarDayWithTheSessionInside() {
+        BusinessDay day = new SessionBusinessDates(new FakeSessions(ROWS), Clock.systemUTC())
+                .businessDay(VENUE, LocalDate.parse("2026-10-07"));
+
+        assertThat(day.closed()).isFalse();
+        assertThat(day.session()).isEqualTo(period(SAME_DAY.start(), SAME_DAY.end()));
+        assertThat(day.instants()).containsExactly(period(cairo("2026-10-07T00:00"), cairo("2026-10-08T00:00")));
+    }
+
+    @Test
+    void aCrossMidnightSessionTakesItsAfterMidnightHoursFromTheNextCalendarDay() {
+        BusinessDates dates = new SessionBusinessDates(new FakeSessions(ROWS), Clock.systemUTC());
+
+        assertThat(dates.businessDay(VENUE, LocalDate.parse("2026-10-08")).instants())
+                .as("8 October: its calendar day and its session up to 02:00 on the 9th")
+                .containsExactly(period(cairo("2026-10-08T00:00"), cairo("2026-10-09T02:00")));
+        BusinessDay next = dates.businessDay(VENUE, LocalDate.parse("2026-10-09"));
+        assertThat(next.closed()).as("9 October has no session").isTrue();
+        assertThat(next.instants()).as("00:00-02:00 on the 9th belongs to the 8th's session")
+                .containsExactly(period(cairo("2026-10-09T02:00"), cairo("2026-10-10T00:00")));
+    }
+
+    @Test
+    void aDstNightUsesTheRealInstantsOfTheCairoCalendarDay() {
+        BusinessDay springForward = new SessionBusinessDates(new FakeSessions(ROWS), Clock.systemUTC())
+                .businessDay(VENUE, LocalDate.parse("2026-04-24"));
+
+        assertThat(springForward.closed()).isTrue();
+        assertThat(springForward.instants()).as("Friday 24 April: after Thursday's session, to midnight (+03)")
+                .containsExactly(period(SPRING_FORWARD.end(), Instant.parse("2026-04-24T21:00:00Z")));
     }
 
     static Stream<Arguments> outOfSession() {
