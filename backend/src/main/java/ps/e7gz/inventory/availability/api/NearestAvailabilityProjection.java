@@ -17,8 +17,9 @@ import ps.e7gz.common.money.Money;
  * 2026): the Resource already keeps the activity in use, so the projection never is the only thing that stops the
  * activity being removed ({@code fk_venue_activity_availability_venue_activity}).
  *
- * <p>Nothing triggers these operations yet: the inventory-affecting events of arch 05 section 5.3 will call
- * {@link #refresh} once the outbox exists (E7-41).
+ * <p>The worker profile refreshes every pair every minute ({@code e7gz.availability.projection.refresh-every}; PO
+ * decision 8 Oct 2026), which also moves rows forward as time passes. Once the outbox exists (E7-41), the
+ * inventory-affecting events of arch 05 section 5.3 also call {@link #refresh} for the pairs they touch.
  */
 public interface NearestAvailabilityProjection {
 
