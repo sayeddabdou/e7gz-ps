@@ -15736,6 +15736,7 @@
     },
     "/api/v1/customer/find-available": {
       "get": {
+        "description": "Only intervals inside one Operating Session of the venue, starting at least 15 minutes ahead (FR-BOK-02), are searched; an earlier start finds nothing (PO decisions 8 Oct 2026).",
         "operationId": "customerFindAvailable",
         "parameters": [
           {
@@ -15778,12 +15779,15 @@
             }
           },
           {
+            "description": "60 to 360 minutes in steps of 30 (FR-BOK-01).",
+            "example": 90,
             "in": "query",
             "name": "durationMinutes",
             "required": true,
             "schema": {
               "format": "int32",
-              "minimum": 1,
+              "maximum": 360,
+              "minimum": 60,
               "type": "integer"
             }
           },

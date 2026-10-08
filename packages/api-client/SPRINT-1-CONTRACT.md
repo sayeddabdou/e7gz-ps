@@ -175,3 +175,14 @@ E7-22 missed `GET PATCH /venue/settings` (arch 09 §4.2); E7-35 needs it for the
 - A future Tournament hold the new hours no longer cover is `422 TOURNAMENT_CONFLICT_BLOCKS_SAVE` (preview and commit).
 - **Not built yet:** cancelling affected Bookings (E7-113, Sprint 3; it needs the Booking, Late Confirm and Messaging modules). Until then the preview lists them, but a commit with a non-empty `affected` answers `501` and changes nothing. A commit with nothing affected saves the hours and regenerates the sessions; it never needs the Owner Password.
 - Sessions are generated 120 days ahead (`E7GZ_SESSION_HORIZON_DAYS`) and extended nightly by the worker profile.
+
+### 5.8 Map and Find Available (E7-34 follow-up, Sprint 1 review, 8 Oct 2026)
+
+`GET /customer/venues/map` and `GET /customer/find-available` work (they answered 501 after E7-34).
+
+- **Map** (FR-DIS-10, ADR-019): the list's eligibility (ACTIVE, offers `activity`, `areaId` a hard filter when sent) plus the viewport. `bounds=minLng,minLat,maxLng,maxLat`, edges included; four decimals in their WGS 84 range with each minimum not above its maximum, otherwise `VALIDATION_FAILED` on `bounds` (a box across the antimeridian is not supported). Not paged. With `lat`/`lng`: nearest first, `distanceMeters` as in the list; without: by name, `distanceMeters` null. Marker values (photo, starting price, Nearest Availability, rating) are the venue card's.
+- **Find Available** (FR-DIS-12, arch 05 §5.4): the area's ACTIVE venues offering the activity, by name, each with the Resources the canonical predicate finds free for the whole interval (live, never the projection). A venue with none is left out; an unknown area finds nothing. **PO decisions 8 Oct 2026:**
+  - the interval must also lie inside one Operating Session of the venue (it may end exactly at closing);
+  - `durationMinutes` is 60–360 in steps of 30 (FR-BOK-01), otherwise `VALIDATION_FAILED` on `durationMinutes` (contract: `minimum` 60, `maximum` 360);
+  - a start less than 15 minutes ahead (FR-BOK-02), or in the past, returns an empty list.
+- `date` + `startTime` are Africa/Cairo wall-clock time: a time skipped by a DST change is `VALIDATION_FAILED` on `startTime`; a repeated time is its first occurrence.

@@ -30,8 +30,9 @@ import ps.e7gz.venue.api.VenueDiscovery.Profile;
 import ps.e7gz.venue.api.VenuePhotos;
 
 /**
- * Customer discovery (arch 09 section 3.2, E7-34): the venue list and Venue Details, each composed from a fixed number
- * of set reads through the owning modules' published APIs (arch 03 section 2.2) - never one read per venue:
+ * Customer discovery (arch 09 section 3.2, E7-34): the venue list, the map markers and Venue Details, each composed from
+ * a fixed number of set reads through the owning modules' published APIs (arch 03 section 2.2) - never one read per
+ * venue:
  * <ol>
  *   <li>the page of venues, filtered, ordered and keyset-bounded by PostGIS in the venue module (ADR-019);</li>
  *   <li>their area names (geography);</li>
@@ -78,6 +79,11 @@ public class CustomerDiscovery {
     public record CardPage(List<Card> items, String nextCursor) {
     }
 
+    /** A map marker and its preview (FR-DIS-10): the card's values plus the venue's position. */
+    public record Marker(UUID id, String name, URI imageUrl, Coordinates location, Integer distanceMeters,
+                         Money startingPrice, Instant nearestAvailableAt, BigDecimal averageRating, int reviewCount) {
+    }
+
     /** Venue Details (FR-DIS-06, FR-DIS-11); resources, prices and Nearest Availability are of the selected activity. */
     public record Details(UUID id, String name, List<URI> imageUrls, AreaName area, String address,
                           Coordinates location, Integer distanceMeters, List<OpeningDay> openingHours, boolean openNow,
@@ -111,6 +117,31 @@ public class CustomerDiscovery {
         }).toList();
         String next = page.more() ? DiscoveryCursor.encode(page.items().getLast().venueId()) : null;
         return new CardPage(cards, next);
+    }
+
+    /**
+     * FR-DIS-10, ADR-019: the venues inside the map viewport under the list's eligibility rules, each with the card's
+     * values, read the same way as {@link #list} - one set read per source, never one per venue.
+     */
+    public List<Marker> markers(VenueDiscovery.Viewport viewport, UUID areaId, Activity activity, Coordinates near) {
+        List<VenueDiscovery.Marker> found =
+                venues.markers(new VenueDiscovery.MapSearch(viewport, areaId, activity, near));
+        if (found.isEmpty()) {
+            return List.of();
+        }
+        List<UUID> ids = found.stream().map(VenueDiscovery.Marker::venueId).toList();
+        Map<UUID, Snapshot> projection = snapshots.of(ids, activity);
+        Map<UUID, Rating> stats = ratings.of(ids);
+        Map<UUID, VenuePhotos.SignedLink> images = photos.cardImages(ids);
+        return found.stream().map(venue -> {
+            Snapshot snapshot = projection.get(venue.venueId());
+            Rating rating = stats.getOrDefault(venue.venueId(), Rating.NONE);
+            VenuePhotos.SignedLink image = images.get(venue.venueId());
+            return new Marker(venue.venueId(), venue.name(), image == null ? null : image.url(), venue.location(),
+                    venue.distanceMeters(), snapshot == null ? null : snapshot.startingPrice(),
+                    snapshot == null ? null : snapshot.nearestAvailableAt(), rating.averageRating(),
+                    rating.reviewCount());
+        }).toList();
     }
 
     /**
