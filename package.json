@@ -12,6 +12,7 @@
     "test": "pnpm -r test",
     "api:gen": "node packages/api-client/scripts/api-gen.mjs",
     "mock": "node packages/api-client/scripts/mock.mjs",
+    "mock:customer": "node packages/api-client/scripts/customer-mock.mjs",
     "test:chain": "node packages/api-client/scripts/test-chain.mjs --backend"
   }
 }

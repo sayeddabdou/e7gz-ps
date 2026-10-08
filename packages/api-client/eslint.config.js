@@ -8,7 +8,17 @@ export default tseslint.config(
   {
     files: ["**/*.mjs"],
     languageOptions: {
-      globals: { process: "readonly", console: "readonly", setTimeout: "readonly", clearTimeout: "readonly", fetch: "readonly" },
+      globals: {
+        process: "readonly",
+        console: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        fetch: "readonly",
+        Buffer: "readonly",
+        URL: "readonly",
+        Headers: "readonly",
+        structuredClone: "readonly",
+      },
     },
   },
 );
