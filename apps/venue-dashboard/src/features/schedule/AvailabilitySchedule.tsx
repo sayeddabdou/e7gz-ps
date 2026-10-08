@@ -169,7 +169,8 @@ export function AvailabilitySchedule({
             ))}
           </div>
 
-          {schedule.resources.length === 0 ? <p style={styles.status}>{t.schedule.empty}</p> : (
+          {/* E7-112: a business date without an Operating Session is closed; its resources carry no slots. */}
+          {schedule.closed ? <p role="status" style={styles.status}>{t.schedule.closed}</p> : schedule.resources.length === 0 ? <p style={styles.status}>{t.schedule.empty}</p> : (
             <div style={styles.scroller}>
               <div data-testid="availability-grid" dir={direction} style={styles.grid}>
                 <div style={styles.axisRow}>
