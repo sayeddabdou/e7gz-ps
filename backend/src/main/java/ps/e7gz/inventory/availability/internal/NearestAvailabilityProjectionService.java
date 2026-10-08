@@ -67,6 +67,31 @@ class NearestAvailabilityProjectionService implements NearestAvailabilityProject
         return report;
     }
 
+    /** What one worker pass did: pairs looked at, and how many of them failed and were skipped. */
+    record RefreshPass(int pairs, int failed) {
+    }
+
+    /**
+     * The worker's periodic pass ({@link NearestAvailabilityJobs}): every pair, each in its own command, as
+     * {@link #rebuild()} does - but a pair that fails is logged and skipped, so one bad pair never stops the others
+     * and the next pass tries it again.
+     */
+    RefreshPass refreshEveryPair() {
+        int pairs = 0;
+        int failed = 0;
+        for (VenueActivities.Offering offering : venueActivities.all()) {
+            pairs++;
+            try {
+                refresh(offering.venueId(), offering.activity());
+            } catch (RuntimeException e) {
+                failed++;
+                log.warn("Nearest Availability refresh failed for venue {} / {}", offering.venueId(),
+                        offering.activity(), e);
+            }
+        }
+        return new RefreshPass(pairs, failed);
+    }
+
     /**
      * Reads only, then writes the derived row; it locks no business row. Category C: a technical refresh, not a
      * marketplace or commitment action.

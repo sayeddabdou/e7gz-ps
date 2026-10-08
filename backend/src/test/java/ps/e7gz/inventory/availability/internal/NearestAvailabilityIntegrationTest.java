@@ -76,6 +76,9 @@ class NearestAvailabilityIntegrationTest extends IntegrationTest {
     NearestAvailabilityProjection projection;
 
     @Autowired
+    NearestAvailabilityProjectionService service;
+
+    @Autowired
     ReservationLedger ledger;
 
     @Autowired
@@ -615,6 +618,26 @@ class NearestAvailabilityIntegrationTest extends IntegrationTest {
                     .as(row.venueId() + " " + row.activity()).isEqualTo(fresh);
         }
         return stored;
+    }
+
+    // ---- worker pass (Sprint 1 review, PO decision 8 Oct 2026) --------------------------------------------------
+
+    @Test
+    void theWorkerPassRefreshesAStaleRowWithoutAnyEvent() {
+        Fixtures.Venue venue = venue();
+        aResource().at(venue).create();
+        OWNER.sql("""
+                        INSERT INTO inventory.venue_activity_availability (venue_id, activity, nearest_available_at,
+                                                                           refreshed_at)
+                        VALUES (:venue, 'PLAYSTATION', '2020-01-01 10:00:00+00', '2020-01-01 00:00:00+00')""")
+                .param("venue", venue.id()).update();
+
+        new NearestAvailabilityJobs(service).refreshEveryPair();     // the worker profile's timer, run by hand
+
+        Row row = storedRow(venue.id(), Activity.PLAYSTATION).orElseThrow();
+        assertThat(row.nearestAvailableAt()).as("the first 2031 session, not the stale 2020 start")
+                .isEqualTo(at("2031-02-03T10:00:00Z"));
+        assertThat(row.refreshedAt()).isAfter(at("2020-01-01T00:00:00Z"));
     }
 
     @Test
