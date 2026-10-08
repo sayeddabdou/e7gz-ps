@@ -1289,6 +1289,9 @@ Carry-forward from the E7-32 review (PO decisions 4 Oct 2026, do these too):
 - Move every Spring timer onto technical.scheduled_job: the nightly invariant sweep (E7-32), the venue photo clean-up, and the nightly operating-session extension (venue/internal/OperatingSessionJobs, E7-25), plus the photo copies above. Afterwards no @Scheduled / @EnableScheduling remains.
 - Invariant sweep handler: calls only ps.e7gz.inventory.sweep.api.InvariantSweep.run() (no copied SQL, no sweep.internal imports, no single InvariantCheck calls). It runs outside any transaction, because the sweep opens its own read-only REPEATABLE READ snapshot; the job is finished in its own transaction afterwards. Add one line to ReadOnlyInvariantSweep so it fails when called inside an existing transaction (PROPAGATION_NEVER); Amr reviews that line. Tests: the sweep runs through the registered handler with a correlation scope open, is not run by @Scheduled, and does not start in the api profile.
 
+Carry-forward from the Sprint 1 review (PO decision 8 Oct 2026, do these too):
+- Also move the Nearest Availability refresh timer (inventory/availability/internal/NearestAvailabilityJobs, E7-33 follow-up: every venue / activity pair every minute, e7gz.availability.projection.refresh-every) onto technical.scheduled_job, keeping its behaviour and tests: a failing pair is logged and skipped, and the pass repeats every interval. It counts among the timers of the line above: afterwards no @Scheduled / @EnableScheduling remains.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -1322,6 +1325,9 @@ Carry-forward from the Sprint 0 review (do these too):
 - LoggingSmsSender: mask the phone number (keep the last 3 digits, arch 10 section 6), even in development.
 
 Carry-forward from E7-23 (do these too): publish the two integration events E7-23 could not, because the outbox did not exist yet - VenueMarketplaceStatusChanged {venueId, previousStatus, newStatus} from VenueCommands.ChangeStatus (arch 08 section 3.2), and AreaDeactivated {areaId} from AreaCommands.SetActive when an area is deactivated (arch 03 section 4: availability projection refresh). Write each in the same command transaction; the code marks both places with a comment naming E7-41.
+
+Carry-forward from the Sprint 1 review (PO decision 8 Oct 2026, do these too):
+- Event-driven Nearest Availability refresh (arch 05 section 5.3, arch 08 section 7): the projection worker refreshes the venue / activity pairs an inventory-affecting event touches (reservation hold or release, Resource state change, selling-block change, maintenance, closure, emergency, opening-hours change, pricing change, VenueMarketplaceStatusChanged, AreaDeactivated), for every such event the outbox carries, through ps.e7gz.inventory.availability.api.NearestAvailabilityProjection.refresh. Keep the one-minute worker pass (NearestAvailabilityJobs, E7-33 follow-up) as the safety net: time passing also moves rows. Test: an event refreshes its pair without waiting for the pass.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
