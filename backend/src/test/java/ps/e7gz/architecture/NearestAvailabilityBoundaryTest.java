@@ -102,6 +102,31 @@ class NearestAvailabilityBoundaryTest {
             .allowEmptyShould(false)
             .as("discovery reads Nearest Availability and starting price through AvailabilitySnapshots");
 
+    /** FR-DIS-12, arch 05 section 5.4: Find Available, and the command class nested in it. */
+    static final String FIND_AVAILABLE = AVAILABILITY_INTERNAL + "FindAvailable";
+
+    static final ArchRule FIND_AVAILABLE_ASKS_THE_CANONICAL_PREDICATE = classes()
+            .that().haveFullyQualifiedName(FIND_AVAILABLE)
+            .should().dependOnClassesThat().areAssignableTo(AvailabilityQuery.class)
+            .allowEmptyShould(false)
+            .as("Find Available exists and asks AvailabilityQuery live (FR-DIS-12, arch 05 section 5.4)");
+
+    static final ArchRule FIND_AVAILABLE_IS_LIVE_AND_NOT_A_SECOND_PREDICATE = noClasses()
+            .that().haveNameMatching(Pattern.quote(FIND_AVAILABLE) + "(\\$.*)?")
+            .should().dependOnClassesThat().areAssignableTo(AvailabilitySnapshots.class)
+            .orShould().dependOnClassesThat().areAssignableTo(NearestAvailabilityProjection.class)
+            .orShould().dependOnClassesThat().areAssignableTo(VenueSellingBlocks.class)
+            .orShould().dependOnClassesThat().areAssignableTo(ResourceStates.class)
+            .orShould().dependOnClassesThat().areAssignableTo(OperationalOverlaps.class)
+            .orShould().dependOnClassesThat().areAssignableTo(ReservationLedger.class)
+            .as("Find Available reads neither the projection nor the eight checks' owner reads");
+
+    @Test
+    void findAvailableAsksTheCanonicalPredicateLive() {
+        FIND_AVAILABLE_ASKS_THE_CANONICAL_PREDICATE.check(PRODUCTION.get());
+        FIND_AVAILABLE_IS_LIVE_AND_NOT_A_SECOND_PREDICATE.check(PRODUCTION.get());
+    }
+
     /**
      * E7-34, arch 03 section 2.1: Availability (layer 2) composes discovery but never depends upward on Reviews (layer
      * 4). Ratings arrive through the {@link DiscoveryRatings} port Availability declares and Reviews implements.

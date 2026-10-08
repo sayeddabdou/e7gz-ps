@@ -1,5 +1,6 @@
 package ps.e7gz.venue.api;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.util.List;
@@ -29,6 +30,20 @@ public interface VenueDiscovery {
      */
     Page search(Search search);
 
+    /**
+     * Map markers (FR-DIS-10): the same eligibility as {@link #search} - marketplace-ACTIVE venues offering
+     * {@code activity}, {@code areaId} a hard filter when set (FR-DIS-02) - whose location lies inside the viewport
+     * (edges included). With {@code near}: nearest first by {@code location <-> near}, then id; without it by name,
+     * then id. Not paged: the viewport bounds the set.
+     */
+    List<Marker> markers(MapSearch search);
+
+    /**
+     * Every marketplace-ACTIVE venue of {@code areaId} offering {@code activity}, by name then id: the venues Find
+     * Available searches (FR-DIS-12). An unknown area has none.
+     */
+    List<Listed> inArea(UUID areaId, Activity activity);
+
     /** Any venue in any marketplace status (FR-DIS-08: a deep link still opens it); empty when there is none. */
     Optional<Profile> profile(UUID venueId, Coordinates from);
 
@@ -54,6 +69,36 @@ public interface VenueDiscovery {
                 throw new IllegalArgumentException("limit");
             }
         }
+    }
+
+    /**
+     * The visible map area in WGS 84 degrees ({@code bounds=minLng,minLat,maxLng,maxLat}, SPRINT-1-CONTRACT section 2).
+     * A box that crosses the antimeridian is not supported: {@code minLng <= maxLng}.
+     */
+    record Viewport(BigDecimal minLng, BigDecimal minLat, BigDecimal maxLng, BigDecimal maxLat) {
+
+        public Viewport {
+            Objects.requireNonNull(minLng, "minLng");
+            Objects.requireNonNull(minLat, "minLat");
+            Objects.requireNonNull(maxLng, "maxLng");
+            Objects.requireNonNull(maxLat, "maxLat");
+            if (minLng.compareTo(maxLng) > 0 || minLat.compareTo(maxLat) > 0) {
+                throw new IllegalArgumentException("min must not be greater than max");
+            }
+        }
+    }
+
+    /** {@code near} null orders by name; {@code areaId} null searches every area. */
+    record MapSearch(Viewport viewport, UUID areaId, Activity activity, Coordinates near) {
+
+        public MapSearch {
+            Objects.requireNonNull(viewport, "viewport");
+            Objects.requireNonNull(activity, "activity");
+        }
+    }
+
+    /** {@code distanceMeters} is null without a customer location. */
+    record Marker(UUID venueId, String name, Coordinates location, Integer distanceMeters) {
     }
 
     /** {@code more}: another page follows the last item. */

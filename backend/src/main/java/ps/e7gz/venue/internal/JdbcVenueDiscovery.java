@@ -87,6 +87,28 @@ class JdbcVenueDiscovery implements VenueDiscovery {
              ORDER BY v.name, v.id
              LIMIT :limit""";
 
+    /**
+     * Inside the map viewport, edges included. The viewport is a longitude/latitude rectangle, as the map draws it, so
+     * the test is planar on the point's coordinates ({@code geometry}), not on the sphere.
+     */
+    static final String IN_VIEWPORT = """
+
+               AND ST_Intersects(v.location::geometry,
+                                 ST_MakeEnvelope(CAST(:minLng AS double precision), CAST(:minLat AS double precision),
+                                                 CAST(:maxLng AS double precision), CAST(:maxLat AS double precision),
+                                                 4326))""";
+
+    /** {@code %1$s}: the location columns; {@code %2$s}: the distance; {@code %3$s}: eligibility; {@code %4$s}: order. */
+    static final String MARKERS = """
+            SELECT v.id, v.name, %1$s, %2$s AS distance_meters
+            %3$s
+             ORDER BY %4$s""";
+
+    static final String IN_AREA_BY_NAME = """
+            SELECT v.id, v.name, v.area_id, NULL::integer AS distance_meters
+            %s
+             ORDER BY v.name, v.id""";
+
     static final String PROFILE = """
             SELECT v.id, v.name, v.area_id, v.address, v.marketplace_status, %s, %s AS distance_meters,
                    ARRAY(SELECT a.activity FROM venue.venue_activity a WHERE a.venue_id = v.id) AS activities
@@ -135,6 +157,40 @@ class JdbcVenueDiscovery implements VenueDiscovery {
                 rs.getObject("area_id", UUID.class), (Integer) rs.getObject("distance_meters"))).list();
         boolean more = rows.size() > search.limit();
         return new Page(more ? List.copyOf(rows.subList(0, search.limit())) : rows, more);
+    }
+
+    @Override
+    public List<Marker> markers(MapSearch search) {
+        boolean near = search.near() != null;
+        String eligible = ELIGIBLE.formatted((search.areaId() != null ? IN_AREA : "") + IN_VIEWPORT);
+        String sql = MARKERS.formatted(Coordinates.sqlColumns("v.location", "location"),
+                near ? "round" + DISTANCE + "::integer" : "NULL::integer", eligible,
+                near ? DISTANCE + ", v.id" : "v.name, v.id");
+        Viewport viewport = search.viewport();
+        JdbcClient.StatementSpec statement = jdbc.sql(sql)
+                .param("activity", search.activity().name())
+                .param("minLng", viewport.minLng()).param("minLat", viewport.minLat())
+                .param("maxLng", viewport.maxLng()).param("maxLat", viewport.maxLat());
+        if (near) {
+            statement = statement.param("lat", search.near().lat()).param("lng", search.near().lng());
+        }
+        if (search.areaId() != null) {
+            statement = statement.param("areaId", search.areaId());
+        }
+        return statement.query((rs, n) -> new Marker(rs.getObject("id", UUID.class), rs.getString("name"),
+                new Coordinates(rs.getBigDecimal("location_lat"), rs.getBigDecimal("location_lng")),
+                (Integer) rs.getObject("distance_meters"))).list();
+    }
+
+    @Override
+    public List<Listed> inArea(UUID areaId, Activity activity) {
+        Objects.requireNonNull(areaId, "areaId");
+        Objects.requireNonNull(activity, "activity");
+        return jdbc.sql(IN_AREA_BY_NAME.formatted(ELIGIBLE.formatted(IN_AREA)))
+                .param("activity", activity.name()).param("areaId", areaId)
+                .query((rs, n) -> new Listed(rs.getObject("id", UUID.class), rs.getString("name"),
+                        rs.getObject("area_id", UUID.class), null))
+                .list();
     }
 
     @Override

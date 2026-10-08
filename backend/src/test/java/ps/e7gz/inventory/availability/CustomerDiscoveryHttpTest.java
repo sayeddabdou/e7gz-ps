@@ -54,8 +54,9 @@ import ps.e7gz.support.PostgresTestContainer;
 import ps.e7gz.support.fixtures.Fixtures;
 
 /**
- * E7-34 Discovery API over HTTP (arch 09 section 3.2, ADR-019, FR-DIS-01…FR-DIS-03, FR-DIS-08, FR-DIS-09, FR-DIS-11,
- * PCR-005; PO decisions 7 Oct 2026 on ordering without a location, the area / location rules and visible Resources).
+ * E7-34 Discovery API over HTTP (arch 09 section 3.2, ADR-019, FR-DIS-01…FR-DIS-03, FR-DIS-08…FR-DIS-11, PCR-005; PO
+ * decisions 7 Oct 2026 on ordering without a location, the area / location rules and visible Resources). The map
+ * markers (FR-DIS-10) were added in the Sprint 1 review (8 Oct 2026). Find Available: {@code CustomerFindAvailableHttpTest}.
  *
  * <p>The database is shared with other tests, so every case works in its own new area, or around its own random point
  * far from every other test's venues (the fixtures put venues in Cairo).
@@ -64,6 +65,7 @@ import ps.e7gz.support.fixtures.Fixtures;
 class CustomerDiscoveryHttpTest extends IntegrationTest {
 
     private static final String VENUES = "/api/v1/customer/venues";
+    private static final String MAP = VENUES + "/map";
     private static final JdbcClient OWNER = JdbcClient.create(new SimpleDriverDataSource(new Driver(),
             PostgresTestContainer.jdbcUrl(DATABASE), MIGRATOR, MIGRATOR));
 
@@ -319,6 +321,135 @@ class CustomerDiscoveryHttpTest extends IntegrationTest {
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("lng"));
     }
 
+    // ------------------------------------------------------------------------------------------ map (FR-DIS-10)
+
+    @Test
+    void theMapShowsTheListsEligibleVenuesInsideTheViewportOnly() throws Exception {
+        Fixtures.Venue inside = aVenue().inArea(area).active().at(lat(0.01), lng(0.01)).create();
+        aVenue().inArea(area).active().at(lat(0.2), lng(0.01)).create();
+        aVenue().inArea(area).status(MarketplaceStatus.ONBOARDING).at(lat(0.01), lng(0.02)).create();
+        aVenue().inArea(area).inactive().at(lat(0.02), lng(0.01)).create();
+        aVenue().inArea(area).suspended().at(lat(0.02), lng(0.02)).create();
+        aVenue().inArea(area).active().offering(Activity.BILLIARDS).at(lat(0.03), lng(0.03)).create();
+
+        JsonNode markers = map(viewport(0, 0, 0.05, 0.05), "areaId", area.id().toString(), "activity", "PLAYSTATION");
+
+        assertThat(markerIds(markers)).containsExactly(inside.id().toString());
+    }
+
+    @Test
+    void theViewportEdgesAreInside() throws Exception {
+        Fixtures.Venue southWest = aVenue().inArea(area).active().named("A").at(lat(0), lng(0)).create();
+        Fixtures.Venue northEast = aVenue().inArea(area).active().named("B").at(lat(0.05), lng(0.05)).create();
+        aVenue().inArea(area).active().named("C").at(lat(0.0501), lng(0.05)).create();
+        aVenue().inArea(area).active().named("D").at(lat(0.05), lng(-0.0001)).create();
+
+        JsonNode markers = map(viewport(0, 0, 0.05, 0.05), "areaId", area.id().toString(), "activity", "PLAYSTATION");
+
+        assertThat(markerIds(markers)).containsExactly(southWest.id().toString(), northEast.id().toString());
+    }
+
+    @Test
+    void theAreaStaysAHardFilterOnTheMap() throws Exception {
+        Fixtures.Area other = anArea().create();
+        Fixtures.Venue here = aVenue().inArea(area).active().at(lat(0.001), lng(0.001)).create();
+        Fixtures.Venue there = aVenue().inArea(other).active().at(lat(0.002), lng(0.002)).create();
+
+        assertThat(markerIds(map(viewport(0, 0, 0.003, 0.003), "areaId", area.id().toString(),
+                "activity", "PLAYSTATION"))).containsExactly(here.id().toString());
+        assertThat(markerIds(map(viewport(0, 0, 0.003, 0.003), "activity", "PLAYSTATION")))
+                .contains(here.id().toString(), there.id().toString());
+    }
+
+    @Test
+    void withALocationMarkersComeNearestFirstWithTheListsDistances() throws Exception {
+        Fixtures.Venue third = aVenue().inArea(area).active().named("A third").at(lat(0.03), lng(0)).create();
+        Fixtures.Venue first = aVenue().inArea(area).active().named("C first").at(lat(0.001), lng(0)).create();
+        Fixtures.Venue second = aVenue().inArea(area).active().named("B second").at(lat(0.01), lng(0)).create();
+
+        JsonNode markers = map(viewport(-0.01, -0.01, 0.05, 0.05), "areaId", area.id().toString(),
+                "activity", "PLAYSTATION", "lat", lat(0), "lng", lng(0));
+
+        assertThat(markerIds(markers)).containsExactly(first.id().toString(), second.id().toString(),
+                third.id().toString());
+        assertThat(markerItems(markers).stream().map(m -> m.path("distanceMeters").asInt()).toList())
+                .containsExactlyElementsOf(sphereDistances(List.of(first, second, third)));
+        JsonNode card = items(list("areaId", area.id().toString(), "activity", "PLAYSTATION", "lat", lat(0),
+                "lng", lng(0))).getFirst();
+        assertThat(markerItems(markers).getFirst().path("distanceMeters").asInt())
+                .as("list and map agree (ADR-019)").isEqualTo(card.path("distanceMeters").asInt());
+    }
+
+    @Test
+    void withoutALocationMarkersAreByNameThenIdWithNoDistance() throws Exception {
+        Fixtures.Venue zed = aVenue().inArea(area).active().named("Zed").at(lat(0.001), lng(0)).create();
+        Fixtures.Venue alpha = aVenue().inArea(area).active().named("Alpha").at(lat(0.002), lng(0)).create();
+
+        JsonNode markers = map(viewport(-0.01, -0.01, 0.01, 0.01), "areaId", area.id().toString(),
+                "activity", "PLAYSTATION");
+
+        assertThat(markerIds(markers)).containsExactly(alpha.id().toString(), zed.id().toString());
+        assertThat(markerItems(markers)).allSatisfy(m -> assertThat(m.path("distanceMeters").isNull()).isTrue());
+    }
+
+    @Test
+    void aMarkerCarriesTheCardValuesAndItsPosition() throws Exception {
+        Fixtures.Venue venue = aVenue().inArea(area).active().named("Marker venue").at(lat(0.001), lng(0.002))
+                .create();
+        project(venue.id(), Activity.PLAYSTATION, Instant.parse("2031-03-04T18:15:00Z"), "85.50");
+        UUID image = photo(venue.id(), 0, true, false);
+        review(venue.id(), 4);
+
+        JsonNode marker = markerItems(map(viewport(0, 0, 0.003, 0.003), "areaId", area.id().toString(),
+                "activity", "PLAYSTATION")).getFirst();
+
+        assertThat(marker.path("id").asText()).isEqualTo(venue.id().toString());
+        assertThat(marker.path("name").asText()).isEqualTo("Marker venue");
+        assertThat(marker.path("location").path("lat").decimalValue()).isEqualByComparingTo(lat(0.001));
+        assertThat(marker.path("location").path("lng").decimalValue()).isEqualByComparingTo(lng(0.002));
+        assertThat(marker.path("nearestAvailableAt").asText()).isEqualTo("2031-03-04T18:15:00Z");
+        assertThat(marker.path("startingPrice").path("amount").asText()).isEqualTo("85.50");
+        assertThat(marker.path("imageUrl").asText()).contains(image + "-small.jpg");
+        assertThat(marker.path("averageRating").decimalValue()).isEqualByComparingTo("4.00");
+        assertThat(marker.path("reviewCount").asInt()).isEqualTo(1);
+    }
+
+    @Test
+    void aMarkerWithoutProjectionPhotoOrReviewsHasNulls() throws Exception {
+        aVenue().inArea(area).active().at(lat(0.001), lng(0.001)).create();
+
+        JsonNode marker = markerItems(map(viewport(0, 0, 0.003, 0.003), "areaId", area.id().toString(),
+                "activity", "PLAYSTATION")).getFirst();
+
+        assertThat(marker.path("imageUrl").isNull()).isTrue();
+        assertThat(marker.path("startingPrice").isNull()).isTrue();
+        assertThat(marker.path("nearestAvailableAt").isNull()).isTrue();
+        assertThat(marker.path("averageRating").isNull()).isTrue();
+        assertThat(marker.path("reviewCount").asInt()).isZero();
+    }
+
+    @Test
+    void aMalformedViewportIsValidationFailedOnBounds() throws Exception {
+        for (String bounds : new String[] {"", "31.2,29.9,31.4", "31.2,29.9,31.4,30.1,1", "a,b,c,d", "31.2,,31.4,30.1",
+                "31.4,29.9,31.2,30.1", "31.2,30.1,31.4,29.9", "-180.5,29.9,31.4,30.1", "31.2,29.9,31.4,90.5", "NaN,0,1,1"}) {
+            call(MAP, "bounds", bounds, "activity", "PLAYSTATION").andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"))
+                    .andExpect(jsonPath("$.error.field").value("bounds"));
+        }
+        call(MAP, "activity", "PLAYSTATION").andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.field").value("bounds"));
+        call(MAP, "bounds", "31.2,29.9,31.4,30.1", "activity", "PLAYSTATION", "lat", "30.05")
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("lng"));
+    }
+
+    @Test
+    void anEmptyViewportHasNoMarkers() throws Exception {
+        aVenue().inArea(area).active().at(lat(0.5), lng(0.5)).create();
+
+        assertThat(markerItems(map(viewport(0, 0, 0.001, 0.001), "areaId", area.id().toString(),
+                "activity", "PLAYSTATION"))).isEmpty();
+    }
+
     // ------------------------------------------------------------------------------------------ projection
 
     @Test
@@ -361,6 +492,7 @@ class CustomerDiscoveryHttpTest extends IntegrationTest {
 
         list("areaId", area.id().toString(), "activity", "PLAYSTATION");
         details(venue.id(), "activity", "PLAYSTATION").andExpect(status().isOk());
+        map("-180,-90,180,90", "areaId", area.id().toString(), "activity", "PLAYSTATION");
 
         assertThat(refreshedAt(venue.id())).isEqualTo(refreshedAt);
     }
@@ -593,8 +725,9 @@ class CustomerDiscoveryHttpTest extends IntegrationTest {
 
         String card = items(list("areaId", area.id().toString(), "activity", "PLAYSTATION")).getFirst().toString();
         String detail = body(details(venue.id(), "activity", "PLAYSTATION")).path("data").toString();
+        String marker = map("-180,-90,180,90", "areaId", area.id().toString(), "activity", "PLAYSTATION").toString();
 
-        for (String json : List.of(card, detail)) {
+        for (String json : List.of(card, detail, marker)) {
             assertThat(json).doesNotContain("+20229998877").doesNotContain("29998877")
                     .doesNotContainIgnoringCase("\"phone").doesNotContain("marketplaceStatus")
                     .doesNotContain("timezone").doesNotContain("objectKey").doesNotContain("baseState")
@@ -676,6 +809,28 @@ class CustomerDiscoveryHttpTest extends IntegrationTest {
 
     private JsonNode list(String... params) throws Exception {
         return body(call(VENUES, params).andExpect(status().isOk())).path("data");
+    }
+
+    /** {@code bounds=minLng,minLat,maxLng,maxLat}, each an offset from the case's own point. */
+    private String viewport(double minLng, double minLat, double maxLng, double maxLat) {
+        return lng(minLng) + "," + lat(minLat) + "," + lng(maxLng) + "," + lat(maxLat);
+    }
+
+    /** The markers array ({@code data}) for the viewport. */
+    private JsonNode map(String bounds, String... params) throws Exception {
+        String[] all = new String[params.length + 2];
+        all[0] = "bounds";
+        all[1] = bounds;
+        System.arraycopy(params, 0, all, 2, params.length);
+        return body(call(MAP, all).andExpect(status().isOk())).path("data");
+    }
+
+    private static List<JsonNode> markerItems(JsonNode markers) {
+        return StreamSupport.stream(markers.spliterator(), false).toList();
+    }
+
+    private static List<String> markerIds(JsonNode markers) {
+        return markerItems(markers).stream().map(marker -> marker.path("id").asText()).toList();
     }
 
     private ResultActions details(UUID venueId, String... params) throws Exception {

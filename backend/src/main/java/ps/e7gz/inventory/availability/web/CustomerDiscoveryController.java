@@ -30,17 +30,19 @@ import ps.e7gz.common.money.Money;
 import ps.e7gz.common.web.DataResponse;
 import ps.e7gz.common.web.GeoPoint;
 import ps.e7gz.common.web.MoneyView;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.PageView;
 import ps.e7gz.common.web.ResponseMetaFactory;
 import ps.e7gz.geography.api.AreaLookup;
 import ps.e7gz.inventory.availability.internal.CustomerDiscovery;
+import ps.e7gz.inventory.availability.internal.FindAvailable;
+import ps.e7gz.venue.api.VenueDiscovery;
 
 /**
- * Customer discovery (arch 09 §3.2, FR-DIS-*). Public — no access token (arch 09 §1.2). The list and the details are
- * E7-34's; the map and Find Available are still stubs. Venues that are not marketplace ACTIVE are absent from list,
- * map and search; a deep-linked venue page still answers 200 with {@code bookingEnabled: false} (FR-DIS-08). The venue
- * phone never appears here (FR-DIS-09): no DTO below has a field for it.
+ * Customer discovery (arch 09 §3.2, FR-DIS-*). Public — no access token (arch 09 §1.2). List, map and details read
+ * the Nearest Availability projection (advisory, FR-AVL-11); Find Available asks the canonical predicate live
+ * ({@link FindAvailable}, arch 05 §5.4). Venues that are not marketplace ACTIVE are absent from list, map and search; a
+ * deep-linked venue page still answers 200 with {@code bookingEnabled: false} (FR-DIS-08). The venue phone never
+ * appears here (FR-DIS-09): no DTO below has a field for it.
  *
  * <p>{@code lat} and {@code lng} are one position: one without the other is VALIDATION_FAILED on the missing one, and
  * each must be in its WGS 84 range ({@link GeoPoint}). The list needs {@code areaId} when no position is sent
@@ -52,10 +54,13 @@ import ps.e7gz.inventory.availability.internal.CustomerDiscovery;
 public class CustomerDiscoveryController {
 
     private final CustomerDiscovery discovery;
+    private final FindAvailable findAvailable;
     private final ResponseMetaFactory meta;
 
-    public CustomerDiscoveryController(CustomerDiscovery discovery, ResponseMetaFactory meta) {
+    public CustomerDiscoveryController(CustomerDiscovery discovery, FindAvailable findAvailable,
+                                       ResponseMetaFactory meta) {
         this.discovery = discovery;
+        this.findAvailable = findAvailable;
         this.meta = meta;
     }
 
@@ -89,7 +94,37 @@ public class CustomerDiscoveryController {
             @RequestParam Activity activity,
             @Parameter(description = "Customer latitude, for distance; send with lng.") @RequestParam(required = false) Double lat,
             @Parameter(description = "Customer longitude, for distance; send with lat.") @RequestParam(required = false) Double lng) {
-        throw NotImplementedYet.stub();
+        return meta.data(discovery.markers(viewport(bounds), areaId, activity, position(lat, lng)).stream()
+                .map(CustomerDiscoveryController::marker).toList());
+    }
+
+    /**
+     * {@code minLng,minLat,maxLng,maxLat} (SPRINT-1-CONTRACT section 2): four decimals, each in its WGS 84 range, a
+     * minimum never above its maximum; anything else is VALIDATION_FAILED on {@code bounds}.
+     */
+    static VenueDiscovery.Viewport viewport(String bounds) {
+        String[] parts = bounds.split(",", -1);
+        if (parts.length != 4) {
+            throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "bounds");
+        }
+        BigDecimal[] values = new BigDecimal[4];
+        try {
+            for (int i = 0; i < 4; i++) {
+                values[i] = new BigDecimal(parts[i].trim());
+            }
+        } catch (NumberFormatException e) {
+            throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "bounds");
+        }
+        boolean inRange = within(values[0], 180) && within(values[1], 90) && within(values[2], 180)
+                && within(values[3], 90);
+        if (!inRange || values[0].compareTo(values[2]) > 0 || values[1].compareTo(values[3]) > 0) {
+            throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "bounds");
+        }
+        return new VenueDiscovery.Viewport(values[0], values[1], values[2], values[3]);
+    }
+
+    private static boolean within(BigDecimal value, int limit) {
+        return value.abs().compareTo(BigDecimal.valueOf(limit)) <= 0;
     }
 
     @GetMapping("/venues/{venueId}")
@@ -129,6 +164,17 @@ public class CustomerDiscoveryController {
                 card.reviewCount());
     }
 
+    private static CustomerVenueMarker marker(CustomerDiscovery.Marker marker) {
+        return new CustomerVenueMarker(marker.id(), marker.name(), url(marker.imageUrl()), GeoPoint.of(marker.location()),
+                marker.distanceMeters(), money(marker.startingPrice()), marker.nearestAvailableAt(),
+                marker.averageRating(), marker.reviewCount());
+    }
+
+    private static CustomerAvailableVenue available(FindAvailable.Result result) {
+        return new CustomerAvailableVenue(result.venueId(), result.venueName(), result.resources().stream()
+                .map(r -> new CustomerVenueResource(r.resourceId(), r.name(), r.consoleType())).toList());
+    }
+
     private static CustomerVenueDetails details(CustomerDiscovery.Details d) {
         return new CustomerVenueDetails(d.id(), d.name(), d.imageUrls().stream().map(URI::toString).toList(),
                 area(d.area()), d.address(), GeoPoint.of(d.location()), d.distanceMeters(),
@@ -156,14 +202,18 @@ public class CustomerDiscoveryController {
 
     @GetMapping("/find-available")
     @Operation(operationId = "customerFindAvailable",
-            summary = "Resources free for the whole requested interval; no price filter (FR-DIS-12)")
+            summary = "Resources free for the whole requested interval; no price filter (FR-DIS-12)",
+            description = "Only intervals inside one Operating Session of the venue, starting at least 15 minutes "
+                    + "ahead (FR-BOK-02), are searched; an earlier start finds nothing (PO decisions 8 Oct 2026).")
     public DataResponse<List<CustomerAvailableVenue>> findAvailable(
             @RequestParam UUID areaId,
             @RequestParam Activity activity,
             @Parameter(description = "Local date (Africa/Cairo).") @RequestParam LocalDate date,
             @Parameter(description = "Local start time (Africa/Cairo).", example = "18:00:00") @RequestParam LocalTime startTime,
-            @RequestParam @Min(1) Integer durationMinutes) {
-        throw NotImplementedYet.stub();
+            @Parameter(description = "60 to 360 minutes in steps of 30 (FR-BOK-01).", example = "90")
+            @RequestParam @Min(60) @Max(360) Integer durationMinutes) {
+        return meta.data(findAvailable.search(areaId, activity, date, startTime, durationMinutes).stream()
+                .map(CustomerDiscoveryController::available).toList());
     }
 
     @Schema(name = "CustomerVenueArea")
