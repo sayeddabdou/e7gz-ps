@@ -36,6 +36,7 @@ function renderSchedule(
 
 const schedule = {
   businessDate: "2026-10-12",
+  closed: false,
   resources: [
     {
       resourceId: "c2d3e4f5-a6b7-4c8d-9e0f-1a2b3c4d5e6f",
@@ -85,6 +86,7 @@ describe("AvailabilitySchedule", () => {
     renderSchedule(async () => json(200, {
       data: {
         businessDate: "2026-10-12",
+        closed: false,
         resources: [{
           ...schedule.resources[0],
           slots: [{
@@ -105,7 +107,7 @@ describe("AvailabilitySchedule", () => {
   it("navigates by business date without using the device timezone", async () => {
     const requests = renderSchedule(async (request) => {
       const date = new URL(request.url).searchParams.get("date") ?? "2026-10-12";
-      return json(200, { data: { businessDate: date, resources: [] }, meta });
+      return json(200, { data: { businessDate: date, closed: false, resources: [] }, meta });
     });
 
     await screen.findByText("No resources are scheduled for this business date.");
@@ -129,11 +131,33 @@ describe("AvailabilitySchedule", () => {
     expect(screen.getByLabelText("تاريخ يوم التشغيل")).toBeTruthy();
   });
 
+  it("shows a closed business date as closed, without a grid (E7-112 closed = true)", async () => {
+    const closedDay = {
+      businessDate: "2026-10-16",
+      closed: true,
+      resources: schedule.resources.map((resource) => ({ ...resource, slots: [] })),
+    };
+    renderSchedule(async () => json(200, { data: closedDay, meta }));
+
+    expect((await screen.findByText("The venue is closed on this business date: it has no opening hours."))
+      .getAttribute("role")).toBe("status");
+    expect(screen.queryByTestId("availability-grid")).toBeNull();
+    expect(screen.queryByText("No resources are scheduled for this business date.")).toBeNull();
+    expect((screen.getByLabelText("Business date") as HTMLInputElement).value).toBe("2026-10-16");
+  });
+
+  it("shows the closed business date in Arabic", async () => {
+    renderSchedule(async () => json(200, { data: { businessDate: "2026-10-16", closed: true, resources: [] }, meta }), "ar");
+
+    expect(await screen.findByText("المكان مغلق في يوم التشغيل هذا: لا توجد ساعات عمل.")).toBeTruthy();
+    expect(screen.queryByTestId("availability-grid")).toBeNull();
+  });
+
   it("maps API failures through the message catalogue and retries", async () => {
     let calls = 0;
     renderSchedule(async () => ++calls === 1
       ? json(403, { error: { code: "FORBIDDEN" }, meta })
-      : json(200, { data: { businessDate: "2026-10-12", resources: [] }, meta }));
+      : json(200, { data: { businessDate: "2026-10-12", closed: false, resources: [] }, meta }));
 
     expect((await screen.findByRole("alert")).textContent).toContain("This action is not available for this account.");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
