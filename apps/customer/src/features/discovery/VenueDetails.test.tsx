@@ -47,16 +47,18 @@ describe("VenueDetails", () => {
     const { requests } = renderDetails();
 
     expect(await screen.findByText("Game Zone")).toBeTruthy();
-    expect(screen.getByText("170.50 EGP")).toBeTruthy();
+    expect(screen.getByText(/170\.50 EGP/u)).toBeTruthy();
     expect(screen.getByText("Closed now")).toBeTruthy();
     expect(screen.getByText(/Opens at 12:00 PM/u)).toBeTruthy();
-    expect(screen.getByText("Room 1 · PS5")).toBeTruthy();
+    expect(screen.getByText("Room 1")).toBeTruthy();
+    expect(screen.getByText("PS5")).toBeTruthy();
     expect(screen.getByText("Monday: 12:00 PM–2:00 AM")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Booking unavailable" }).props.accessibilityState.disabled).toBe(true);
     expect(requests[0]?.url).toContain("activity=PLAYSTATION");
     expect(requests[0]?.url).toContain("lat=30");
     expect(requests[0]?.url).toContain("lng=31");
-    expect(screen.queryByText(/phone/iu)).toBeNull();
+    expect(screen.getByText("The venue's phone number becomes available once your booking is created.")).toBeTruthy();
+    expect(screen.queryByText("+201001234567")).toBeNull();
   });
 
   it("shows every signed gallery URL and reloads it with each screen instance", async () => {
@@ -83,10 +85,37 @@ describe("VenueDetails", () => {
     await waitFor(() => expect(requests.some((request) => request.url.includes("activity=BILLIARDS"))).toBe(true));
   });
 
+  it("does not display resources when the server returns details for another activity", async () => {
+    const api = createCustomerApiClient(config, async () => json(details));
+    render(<VenueDetails api={api} venueId="v-1" activity="BILLIARDS" onBack={() => {}} />);
+
+    expect(await screen.findByText("This venue does not offer the selected activity.")).toBeTruthy();
+    expect(screen.queryByText("Room 1")).toBeNull();
+    expect(screen.queryByText("PS5")).toBeNull();
+  });
+
   it("opens the returned coordinates without exposing a phone number", async () => {
     jest.spyOn(Linking, "openURL").mockResolvedValue(undefined);
     renderDetails();
     fireEvent.press(await screen.findByText("View location"));
     expect(Linking.openURL).toHaveBeenCalledWith("https://www.openstreetmap.org/?mlat=30.05&mlon=31.33#map=17/30.05/31.33");
+  });
+
+  it("opens the E7-50 booking flow when booking is enabled", async () => {
+    renderDetails({ ...details, bookingEnabled: true });
+    fireEvent.press(await screen.findByRole("button", { name: "View availability" }));
+    expect(screen.getByRole("header", { name: "Room 1" })).toBeTruthy();
+    expect(screen.getByText("Game Zone")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Today, Monday 12 October" })).toBeTruthy();
+  });
+
+  it("keeps View availability disabled when the server disables booking", async () => {
+    const { requests } = renderDetails({ ...details, bookingEnabled: false });
+    const button = await screen.findByRole("button", { name: "Booking unavailable" });
+
+    expect(button.props.accessibilityState.disabled).toBe(true);
+    fireEvent.press(button);
+    expect(screen.queryByRole("header", { name: "Room 1" })).toBeNull();
+    expect(requests).toHaveLength(1);
   });
 });

@@ -231,10 +231,15 @@ const styles = StyleSheet.create({
   tabBar: {
     backgroundColor: nativeTokens.color.surface.raised,
     borderTopColor: nativeTokens.color.border.subtle,
+    borderTopWidth: nativeTokens.spacing.hairline,
+    height: 74,
+    paddingBottom: nativeTokens.spacing.md,
+    paddingTop: nativeTokens.spacing.md,
   },
   tabLabel: {
     fontSize: nativeTokens.typography.fontSize.caption,
     fontWeight: nativeTokens.typography.fontWeight.bold,
+    marginTop: nativeTokens.spacing.xs,
   },
   logoutButton: {
     alignItems: "center",

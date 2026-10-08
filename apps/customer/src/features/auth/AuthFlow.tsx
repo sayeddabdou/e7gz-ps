@@ -1,5 +1,5 @@
 import { useEffect, useState, type ComponentProps } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { nativeLogicalSpacing, nativeTokens } from "@e7gz/tokens/native";
 import type { TokenStore } from "../../auth/tokenStore";
 import { en as t } from "../../i18n/en";
@@ -77,35 +77,40 @@ export function AuthFlow({ api, tokenStore, onAuthenticated }: { api: CustomerAu
   const title = step === "login" ? t.auth.login.title : step === "register" ? t.auth.register.title : t.auth.otp.title;
   const submitLabel = step === "login" ? t.auth.login.submit : step === "register" ? t.auth.register.submit : t.auth.otp.submit;
   return (
-    <View style={styles.screen}>
-      <Text accessibilityRole="header" style={styles.title}>{title}</Text>
-      {step === "register" ? (
-        <>
-          <Field label={t.auth.fields.fullName} value={form.fullName} onChangeText={update("fullName")} />
-          <Field label={t.auth.fields.phone} value={form.phone} onChangeText={update("phone")} keyboardType="phone-pad" />
-          <Field label={t.auth.fields.email} value={form.email} onChangeText={update("email")} keyboardType="email-address" />
-        </>
-      ) : null}
-      {step !== "otp" ? (
-        <>
-          <Field label={t.auth.fields.username} value={form.username} onChangeText={update("username")} />
-          <Field label={t.auth.fields.password} value={form.password} onChangeText={update("password")} secureTextEntry />
-        </>
-      ) : <Field label={t.auth.fields.code} value={form.code} onChangeText={update("code")} keyboardType="number-pad" />}
-      {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
-      <Pressable accessibilityRole="button" disabled={busy} onPress={step === "login" ? submitLogin : step === "register" ? submitRegistration : submitOtp} style={styles.primaryButton}>
-        <Text style={styles.primaryButtonText}>{busy ? t.auth.working : submitLabel}</Text>
-      </Pressable>
-      {step === "otp" ? (
-        <Pressable accessibilityRole="button" disabled={busy || remaining > 0} onPress={resend} style={styles.linkButton}>
-          <Text style={styles.linkText}>{remaining > 0 ? t.auth.otp.resendCountdown.replace("{seconds}", String(remaining)) : t.auth.otp.resend}</Text>
-        </Pressable>
-      ) : (
-        <Pressable accessibilityRole="button" onPress={() => { setError(undefined); setStep(step === "login" ? "register" : "login"); }} style={styles.linkButton}>
-          <Text style={styles.linkText}>{step === "login" ? t.auth.login.createAccount : t.auth.register.haveAccount}</Text>
-        </Pressable>
-      )}
-    </View>
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.screen}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <View style={styles.brandMark}><Text style={styles.brandText}>{t.brandMark}</Text></View>
+        <Text accessibilityRole="header" style={styles.title}>{title}</Text>
+        <View style={styles.formCard}>
+          {step === "register" ? (
+            <>
+              <Field label={t.auth.fields.fullName} value={form.fullName} onChangeText={update("fullName")} />
+              <Field label={t.auth.fields.phone} value={form.phone} onChangeText={update("phone")} keyboardType="phone-pad" />
+              <Field label={t.auth.fields.email} value={form.email} onChangeText={update("email")} keyboardType="email-address" />
+            </>
+          ) : null}
+          {step !== "otp" ? (
+            <>
+              <Field label={t.auth.fields.username} value={form.username} onChangeText={update("username")} />
+              <Field label={t.auth.fields.password} value={form.password} onChangeText={update("password")} secureTextEntry />
+            </>
+          ) : <Field label={t.auth.fields.code} value={form.code} onChangeText={update("code")} keyboardType="number-pad" />}
+          {error ? <View style={styles.errorBox}><Text accessibilityRole="alert" style={styles.error}>{error}</Text></View> : null}
+          <Pressable accessibilityRole="button" disabled={busy} onPress={step === "login" ? submitLogin : step === "register" ? submitRegistration : submitOtp} style={styles.primaryButton}>
+            <Text style={styles.primaryButtonText}>{busy ? t.auth.working : submitLabel}</Text>
+          </Pressable>
+        </View>
+        {step === "otp" ? (
+          <Pressable accessibilityRole="button" disabled={busy || remaining > 0} onPress={resend} style={styles.linkButton}>
+            <Text style={styles.linkText}>{remaining > 0 ? t.auth.otp.resendCountdown.replace("{seconds}", String(remaining)) : t.auth.otp.resend}</Text>
+          </Pressable>
+        ) : (
+          <Pressable accessibilityRole="button" onPress={() => { setError(undefined); setStep(step === "login" ? "register" : "login"); }} style={styles.linkButton}>
+            <Text style={styles.linkText}>{step === "login" ? t.auth.login.createAccount : t.auth.register.haveAccount}</Text>
+          </Pressable>
+        )}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -119,14 +124,19 @@ function Field({ label, ...props }: { label: string } & ComponentProps<typeof Te
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: nativeTokens.color.surface.raised, justifyContent: "center", ...nativeLogicalSpacing.paddingInline(nativeTokens.spacing["3xl"]) },
-  title: { color: nativeTokens.color.text.customer, fontSize: nativeTokens.typography.fontSize.heading, fontWeight: nativeTokens.typography.fontWeight.extrabold, marginBottom: nativeTokens.spacing["2xl"] },
-  field: { gap: nativeTokens.spacing.xs, marginBottom: nativeTokens.spacing.md },
-  label: { color: nativeTokens.color.text.subtle, fontSize: nativeTokens.typography.fontSize.caption, fontWeight: nativeTokens.typography.fontWeight.semibold },
-  input: { backgroundColor: nativeTokens.color.surface.canvas, borderColor: nativeTokens.color.border.customer, borderRadius: nativeTokens.radius["2xl"], borderWidth: nativeTokens.spacing.hairline, color: nativeTokens.color.text.customer, minHeight: 52, paddingHorizontal: nativeTokens.spacing.lg },
-  error: { color: nativeTokens.color.feedback.danger, marginBottom: nativeTokens.spacing.md },
-  primaryButton: { alignItems: "center", backgroundColor: nativeTokens.color.brand.primary, borderRadius: nativeTokens.radius["3xl"], minHeight: 54, justifyContent: "center", marginTop: nativeTokens.spacing.sm },
+  screen: { flex: 1, backgroundColor: nativeTokens.color.surface.raised },
+  content: { flexGrow: 1, justifyContent: "center", paddingBottom: nativeTokens.spacing["8xl"], paddingTop: nativeTokens.spacing["8xl"], ...nativeLogicalSpacing.paddingInline(nativeTokens.spacing["7xl"]) },
+  brandMark: { alignItems: "center", backgroundColor: nativeTokens.color.brand.primary, borderRadius: nativeTokens.radius["3xl"], height: 52, justifyContent: "center", marginBottom: nativeTokens.spacing["7xl"], width: 52 },
+  brandText: { color: nativeTokens.color.text.inverse, fontSize: nativeTokens.typography.fontSize.title, fontWeight: nativeTokens.typography.fontWeight.extrabold },
+  title: { color: nativeTokens.color.text.customer, fontSize: nativeTokens.typography.fontSize.displaySmall, fontWeight: nativeTokens.typography.fontWeight.extrabold, marginBottom: nativeTokens.spacing["5xl"] },
+  formCard: { backgroundColor: nativeTokens.color.surface.raised },
+  field: { gap: nativeTokens.spacing.sm, marginBottom: nativeTokens.spacing["2xl"] },
+  label: { color: nativeTokens.color.text.muted, fontSize: nativeTokens.typography.fontSize.label, fontWeight: nativeTokens.typography.fontWeight.semibold },
+  input: { backgroundColor: nativeTokens.color.surface.canvas, borderColor: nativeTokens.color.border.customer, borderRadius: nativeTokens.radius["2xl"], borderWidth: nativeTokens.spacing.hairline, color: nativeTokens.color.text.customer, fontSize: nativeTokens.typography.fontSize.bodyLarge, minHeight: 52, paddingHorizontal: nativeTokens.spacing["3xl"] },
+  errorBox: { backgroundColor: nativeTokens.color.feedback.dangerSurface, borderRadius: nativeTokens.radius["2xl"], marginBottom: nativeTokens.spacing.md, padding: nativeTokens.spacing["2xl"] },
+  error: { color: nativeTokens.color.feedback.danger, fontSize: nativeTokens.typography.fontSize.bodySmall },
+  primaryButton: { alignItems: "center", backgroundColor: nativeTokens.color.brand.primary, borderRadius: nativeTokens.radius["3xl"], minHeight: 54, justifyContent: "center", marginTop: nativeTokens.spacing.md, ...nativeTokens.shadow.action },
   primaryButtonText: { color: nativeTokens.color.text.inverse, fontWeight: nativeTokens.typography.fontWeight.bold },
-  linkButton: { alignItems: "center", padding: nativeTokens.spacing.lg },
-  linkText: { color: nativeTokens.color.brand.primary, fontWeight: nativeTokens.typography.fontWeight.semibold },
+  linkButton: { alignItems: "center", padding: nativeTokens.spacing["4xl"] },
+  linkText: { color: nativeTokens.color.brand.primary, fontSize: nativeTokens.typography.fontSize.bodySmall, fontWeight: nativeTokens.typography.fontWeight.bold },
 });

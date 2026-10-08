@@ -212,7 +212,8 @@ describe("DiscoveryScreen", () => {
     fireEvent.press(screen.getByRole("button", { name: "View venue" }));
     expect(await screen.findByText("Nasr City · 12 Test Street · 1.3 km")).toBeTruthy();
     expect(requests.some((request) => request.url.includes("/customer/venues/v-1?"))).toBe(true);
-    expect(screen.queryByText(/phone/iu)).toBeNull();
+    expect(screen.getByText("The venue's phone number becomes available once your booking is created.")).toBeTruthy();
+    expect(screen.queryByText("+201001234567")).toBeNull();
   });
 
   it("shows a map placeholder when the marker photo is absent", async () => {
