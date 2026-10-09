@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, AppState, Image, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { components } from "@e7gz/api-client";
 import { nativeLogicalSpacing, nativeTokens } from "@e7gz/tokens/native";
 import { errorCodeOf, type ApiClient } from "../../api";
@@ -17,12 +17,14 @@ export function VenueDetails({
   venueId,
   activity: initialActivity,
   coordinates,
+  focusVersion = 0,
   onBack,
 }: {
   api: ApiClient;
   venueId: string;
   activity: Activity;
   coordinates?: Coordinates | undefined;
+  focusVersion?: number;
   onBack(): void;
 }) {
   const [activity, setActivity] = useState<Activity>(initialActivity);
@@ -32,6 +34,14 @@ export function VenueDetails({
   const [bookingOpen, setBookingOpen] = useState(false);
   const [bookingResourceId, setBookingResourceId] = useState<string>();
   const [serverTime, setServerTime] = useState<string>();
+  const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") setVersion((value) => value + 1);
+    });
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -50,7 +60,7 @@ export function VenueDetails({
       if (!controller.signal.aborted) setError(t.discovery.errors.network);
     });
     return () => controller.abort();
-  }, [activity, api, coordinates, venueId, version]);
+  }, [activity, api, coordinates, focusVersion, venueId, version]);
 
   if (!details && !error) {
     return <View accessibilityRole="progressbar" style={styles.center}><ActivityIndicator /><Text>{t.loading}</Text></View>;
@@ -76,7 +86,7 @@ export function VenueDetails({
   const locationUrl = `https://www.openstreetmap.org/?mlat=${details.location.lat}&mlon=${details.location.lng}#map=17/${details.location.lat}/${details.location.lng}`;
 
   return (
-    <ScrollView contentContainerStyle={styles.page}>
+    <ScrollView contentContainerStyle={styles.page} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); setVersion((value) => value + 1); setTimeout(() => setRefreshing(false), 400); }} title={t.discovery.refreshing} />}>
       <View style={styles.heroShell}>
         {details.imageUrls.length ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.gallery}>

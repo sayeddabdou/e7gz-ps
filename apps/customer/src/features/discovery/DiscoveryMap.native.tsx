@@ -1,21 +1,39 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import MapView, { Marker, type Region } from "react-native-maps";
 import { nativeTokens } from "@e7gz/tokens/native";
 import { en as t } from "../../i18n/en";
 import { formatDistance, formatInstant, formatMoney } from "./format";
-import type { DiscoveryMapProps, MapBounds, VenueMarker } from "./mapTypes";
+import { boundsDiffer, type DiscoveryMapProps, type MapBounds, type VenueMarker } from "./mapTypes";
 
 export function DiscoveryMap({ markers, bounds, onBoundsChange, onViewVenue }: DiscoveryMapProps) {
   const [selectedId, setSelectedId] = useState<string>();
   const selected = markers.find((marker) => marker.id === selectedId) ?? markers[0];
   const region = regionOf(bounds);
+  const latestBounds = useRef(bounds);
+  const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    latestBounds.current = bounds;
+  }, [bounds]);
+
+  useEffect(() => () => {
+    if (debounce.current) clearTimeout(debounce.current);
+  }, []);
 
   return (
     <View accessibilityLabel={t.discovery.mapLabel} style={styles.shell}>
       <MapView
         initialRegion={region}
-        onRegionChangeComplete={(next) => onBoundsChange(boundsOf(next))}
+        onRegionChangeComplete={(next) => {
+          const nextBounds = boundsOf(next);
+          if (!boundsDiffer(latestBounds.current, nextBounds)) return;
+          if (debounce.current) clearTimeout(debounce.current);
+          debounce.current = setTimeout(() => {
+            latestBounds.current = nextBounds;
+            onBoundsChange(nextBounds);
+          }, 300);
+        }}
         style={styles.map}
         testID="discovery-map"
       >
@@ -69,8 +87,8 @@ function MarkerPreview({ marker, onViewVenue }: { marker: VenueMarker; onViewVen
         <Text style={styles.title}>{marker.name}</Text>
         {distance ? <Text style={styles.muted}>{distance}</Text> : null}
         <Text style={styles.rating}>{marker.averageRating === null ? t.discovery.noRating : `${marker.averageRating} ★ · ${t.discovery.reviews(marker.reviewCount)}`}</Text>
-        <Text style={styles.price}>{price ?? t.discovery.priceUnavailable}</Text>
-        <Text style={styles.available}>{nearest ? t.discovery.nearest(nearest) : t.discovery.noAvailability}</Text>
+        <Text style={styles.price}>{price ? t.discovery.fromPerHour(price) : t.discovery.priceUnavailable}</Text>
+        <Text style={nearest ? styles.available : styles.muted}>{nearest ? t.discovery.nearest(nearest) : t.discovery.noAvailability}</Text>
         <Pressable accessibilityRole="button" onPress={() => onViewVenue(marker.id)} style={styles.action}>
           <Text style={styles.actionText}>{t.discovery.viewVenue}</Text>
         </Pressable>

@@ -1,4 +1,5 @@
 import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
 
 const accessTokenKey = "e7gz.customer.accessToken";
 const refreshTokenKey = "e7gz.customer.refreshToken";
@@ -15,8 +16,14 @@ export interface TokenStore {
 }
 
 /** Mobile credentials stay in the platform keychain/keystore, never AsyncStorage. */
-export function createSecureTokenStore(): TokenStore {
+export function createSecureTokenStore(options: { platform?: typeof Platform.OS; development?: boolean } = {}): TokenStore {
+  let webTokens: TokenPair | null = null;
+  const useDevelopmentWebMemory = (options.platform ?? Platform.OS) === "web" && (options.development ?? process.env.NODE_ENV !== "production");
   const clear = async () => {
+    if (useDevelopmentWebMemory) {
+      webTokens = null;
+      return;
+    }
     if (!(await SecureStore.isAvailableAsync())) return;
     await Promise.all([
       SecureStore.deleteItemAsync(accessTokenKey),
@@ -26,6 +33,7 @@ export function createSecureTokenStore(): TokenStore {
 
   return {
     async read() {
+      if (useDevelopmentWebMemory) return webTokens;
       if (!(await SecureStore.isAvailableAsync())) return null;
       const [accessToken, refreshToken] = await Promise.all([
         SecureStore.getItemAsync(accessTokenKey),
@@ -36,6 +44,10 @@ export function createSecureTokenStore(): TokenStore {
       return null;
     },
     async write(tokens) {
+      if (useDevelopmentWebMemory) {
+        webTokens = tokens;
+        return;
+      }
       if (!(await SecureStore.isAvailableAsync())) {
         throw new Error("Secure token storage is unavailable on this platform.");
       }

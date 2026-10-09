@@ -9,6 +9,7 @@ import { setupStyles as styles } from "./styles";
 type Proposal = components["schemas"]["VenueOpeningHoursProposal"];
 type Preview = components["schemas"]["VenueOpeningHoursPreview"];
 type OpeningDayMode = components["schemas"]["OpeningDayMode"];
+type VenueResource = components["schemas"]["VenueResource"];
 
 const toInputTime = (time: string | null) => time?.slice(0, 5) ?? "";
 const toApiTime = (time: string) => `${time}:00`;
@@ -20,11 +21,13 @@ export function OpeningHoursEditor({ api }: { api: ApiClient }) {
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState<"preview" | "commit">();
   const [error, setError] = useState<string>();
+  const [dayError, setDayError] = useState<number>();
   const [notice, setNotice] = useState<string>();
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [passwordError, setPasswordError] = useState<string>();
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [timezone, setTimezone] = useState("Africa/Cairo");
+  const [resourceNames, setResourceNames] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let active = true;
@@ -42,18 +45,39 @@ export function OpeningHoursEditor({ api }: { api: ApiClient }) {
     return () => { active = false; };
   }, [api, refreshVersion, t]);
 
+  useEffect(() => {
+    let active = true;
+    void api.GET("/api/v1/venue/resources").then(({ data }) => {
+      if (!active || !data) return;
+      setResourceNames(Object.fromEntries(data.data.map((resource: VenueResource) => [resource.id, resource.name])));
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [api, refreshVersion]);
+
   const retry = () => {
     setLoading(true);
     setError(undefined);
+    setDayError(undefined);
     setRefreshVersion((version) => version + 1);
   };
 
   const requestPreview = useCallback(async (nextProposal: Proposal, refreshed = false): Promise<Preview | undefined> => {
     const result = await api.POST("/api/v1/venue/opening-hours/preview", { body: { proposal: nextProposal } });
     if (!result.data) {
-      setError(setupErrorMessage(apiErrorOf(result.error).code, t));
+      const apiError = apiErrorOf(result.error);
+      const weekday = apiError.field === "days" && typeof apiError.details?.weekday === "number" && Number.isInteger(apiError.details.weekday)
+        ? apiError.details.weekday
+        : undefined;
+      if (weekday !== undefined && weekday >= 0 && weekday < t.setup.hours.weekdays.length) {
+        setDayError(weekday);
+        setError(t.setup.hours.dayOverlap(t.setup.hours.weekdays[weekday]!, t.setup.hours.weekdays[(weekday + 1) % 7]!));
+      } else {
+        setDayError(undefined);
+        setError(setupErrorMessage(apiError.code, t));
+      }
       return undefined;
     }
+    setDayError(undefined);
     setPreview(result.data.data);
     setNotice(refreshed ? t.setup.hours.refreshed : undefined);
     return result.data.data;
@@ -103,6 +127,8 @@ export function OpeningHoursEditor({ api }: { api: ApiClient }) {
   const updateDay = (weekday: number, patch: Partial<Proposal["days"][number]>) => {
     if (!proposal) return;
     setPreview(undefined);
+    setDayError(undefined);
+    setError(undefined);
     setProposal({ ...proposal, days: proposal.days.map((day) => day.weekday === weekday ? { ...day, ...patch } : day) });
   };
 
@@ -126,22 +152,23 @@ export function OpeningHoursEditor({ api }: { api: ApiClient }) {
           <fieldset style={styles.card}>
             <legend style={styles.label}>{t.setup.hours.defaultSchedule}</legend>
             <div style={styles.grid}>
-              <label style={styles.field}><span style={styles.label}>{t.setup.hours.opens}</span><input disabled={proposal.defaultFullDay} required={!proposal.defaultFullDay} style={styles.input} type="time" value={toInputTime(proposal.defaultOpen)} onChange={(event) => { setPreview(undefined); setProposal({ ...proposal, defaultOpen: toApiTime(event.target.value) }); }} /></label>
-              <label style={styles.field}><span style={styles.label}>{t.setup.hours.closes}</span><input disabled={proposal.defaultFullDay} required={!proposal.defaultFullDay} style={styles.input} type="time" value={toInputTime(proposal.defaultClose)} onChange={(event) => { setPreview(undefined); setProposal({ ...proposal, defaultClose: toApiTime(event.target.value) }); }} /></label>
+              <label style={styles.field}><span style={styles.label}>{t.setup.hours.opens}</span><input disabled={proposal.defaultFullDay} required={!proposal.defaultFullDay} style={styles.input} type="time" value={toInputTime(proposal.defaultOpen)} onChange={(event) => { setPreview(undefined); setDayError(undefined); setError(undefined); setProposal({ ...proposal, defaultOpen: toApiTime(event.target.value) }); }} /></label>
+              <label style={styles.field}><span style={styles.label}>{t.setup.hours.closes}</span><input disabled={proposal.defaultFullDay} required={!proposal.defaultFullDay} style={styles.input} type="time" value={toInputTime(proposal.defaultClose)} onChange={(event) => { setPreview(undefined); setDayError(undefined); setError(undefined); setProposal({ ...proposal, defaultClose: toApiTime(event.target.value) }); }} /></label>
             </div>
-            <label><input checked={proposal.defaultFullDay} type="checkbox" onChange={(event) => { setPreview(undefined); setProposal({ ...proposal, defaultFullDay: event.target.checked }); }} /> {t.setup.hours.fullDay}</label>
+            <label><input checked={proposal.defaultFullDay} type="checkbox" onChange={(event) => { setPreview(undefined); setDayError(undefined); setError(undefined); setProposal({ ...proposal, defaultFullDay: event.target.checked }); }} /> {t.setup.hours.fullDay}</label>
           </fieldset>
           <div style={styles.list}>
             {proposal.days.map((day) => (
               <div key={day.weekday} style={styles.row}>
                 <strong>{t.setup.hours.weekdays[day.weekday]}</strong>
-                <select aria-label={`${t.setup.hours.weekdays[day.weekday]} ${t.setup.hours.dayMode}`} style={styles.input} value={day.mode} onChange={(event) => updateDay(day.weekday, { mode: event.target.value as OpeningDayMode })}>
+                <select aria-describedby={dayError === day.weekday ? `opening-day-${day.weekday}-error` : undefined} aria-invalid={dayError === day.weekday} aria-label={`${t.setup.hours.weekdays[day.weekday]} ${t.setup.hours.dayMode}`} style={{ ...styles.input, ...(dayError === day.weekday ? styles.invalidInput : {}) }} value={day.mode} onChange={(event) => updateDay(day.weekday, { mode: event.target.value as OpeningDayMode })}>
                   {Object.entries(t.setup.hours.modes).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
                 {day.mode === "CUSTOM" ? <>
-                  <input aria-label={`${t.setup.hours.weekdays[day.weekday]} ${t.setup.hours.opens}`} required style={styles.input} type="time" value={toInputTime(day.customOpen)} onChange={(event) => updateDay(day.weekday, { customOpen: toApiTime(event.target.value) })} />
-                  <input aria-label={`${t.setup.hours.weekdays[day.weekday]} ${t.setup.hours.closes}`} required style={styles.input} type="time" value={toInputTime(day.customClose)} onChange={(event) => updateDay(day.weekday, { customClose: toApiTime(event.target.value) })} />
+                  <input aria-describedby={dayError === day.weekday ? `opening-day-${day.weekday}-error` : undefined} aria-invalid={dayError === day.weekday} aria-label={`${t.setup.hours.weekdays[day.weekday]} ${t.setup.hours.opens}`} required style={{ ...styles.input, ...(dayError === day.weekday ? styles.invalidInput : {}) }} type="time" value={toInputTime(day.customOpen)} onChange={(event) => updateDay(day.weekday, { customOpen: toApiTime(event.target.value) })} />
+                  <input aria-describedby={dayError === day.weekday ? `opening-day-${day.weekday}-error` : undefined} aria-invalid={dayError === day.weekday} aria-label={`${t.setup.hours.weekdays[day.weekday]} ${t.setup.hours.closes}`} required style={{ ...styles.input, ...(dayError === day.weekday ? styles.invalidInput : {}) }} type="time" value={toInputTime(day.customClose)} onChange={(event) => updateDay(day.weekday, { customClose: toApiTime(event.target.value) })} />
                 </> : null}
+                {dayError === day.weekday ? <p id={`opening-day-${day.weekday}-error`} style={{ ...styles.fieldError, flexBasis: "100%" }}>{t.setup.hours.dayOverlap(t.setup.hours.weekdays[day.weekday]!, t.setup.hours.weekdays[(day.weekday + 1) % 7]!)}</p> : null}
               </div>
             ))}
           </div>
@@ -156,13 +183,13 @@ export function OpeningHoursEditor({ api }: { api: ApiClient }) {
             const start = new Date(item.startAt);
             const end = new Date(item.endAt);
             return <li key={item.bookingId} style={styles.field}>
-              <strong>{t.setup.hours.booking} {item.bookingId}</strong>
-              <span>{t.setup.hours.resource} {item.resourceId}</span>
+              <strong>{resourceNames[item.resourceId] ?? t.setup.hours.resource}</strong>
               <span><time dateTime={item.startAt}>{affectedDateFormatter.format(start)}, {affectedTimeFormatter.format(start)}</time> – <time dateTime={item.endAt}>{affectedTimeFormatter.format(end)}</time></span>
             </li>;
           })}</ul> : <p>{t.setup.hours.noAffected}</p>}
-          {preview.ownerPasswordRequired ? <p style={styles.info}>{t.setup.hours.protectedNotice}</p> : null}
-          <button disabled={working === "commit"} style={styles.primaryButton} type="button" onClick={() => preview.ownerPasswordRequired ? setPasswordOpen(true) : void commit()}>{working === "commit" ? t.setup.hours.committing : t.setup.hours.commit}</button>
+          {preview.affected.length ? <p role="status" style={styles.info}>{t.setup.hours.affectedUnsupported}</p> : preview.ownerPasswordRequired ? <p style={styles.info}>{t.setup.hours.protectedNotice}</p> : null}
+          {/* E7-113 will replace this guard with the backend's protected affected-booking commit flow. */}
+          <button disabled={working === "commit" || preview.affected.length > 0} style={styles.primaryButton} type="button" onClick={() => preview.ownerPasswordRequired ? setPasswordOpen(true) : void commit()}>{working === "commit" ? t.setup.hours.committing : t.setup.hours.commit}</button>
         </section>
       ) : null}
       <OwnerPasswordDialog actionLabel={t.setup.hours.commit} error={passwordError} open={passwordOpen} onCancel={() => { setPasswordOpen(false); setPasswordError(undefined); }} onConfirm={commit} />

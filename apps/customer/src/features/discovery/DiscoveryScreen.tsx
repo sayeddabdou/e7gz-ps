@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, AppState, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { components } from "@e7gz/api-client";
 import { nativeLogicalSpacing, nativeTokens } from "@e7gz/tokens/native";
 import { errorCodeOf, type ApiClient } from "../../api";
@@ -8,8 +8,9 @@ import { discoveryErrorMessage } from "./errorMessages";
 import { DiscoveryMap } from "./DiscoveryMap";
 import { formatDistance, formatInstant, formatMoney } from "./format";
 import { expoLocationAccess, type LocationAccess, type LocationResult } from "./location";
-import { boundsQuery, defaultMapBounds, type MapBounds, type VenueMarker } from "./mapTypes";
+import { boundsAround, boundsDiffer, boundsQuery, defaultMapBounds, type MapBounds, type VenueMarker } from "./mapTypes";
 import { VenueDetails } from "./VenueDetails";
+import { FindAvailableScreen } from "./FindAvailableScreen";
 
 type Activity = components["schemas"]["Activity"];
 type CustomerArea = components["schemas"]["CustomerArea"];
@@ -19,8 +20,8 @@ type ListState =
   | { status: "error"; message: string }
   | { status: "success"; venues: VenueCard[]; nextCursor: string | null; loadingMore: boolean };
 type MapState =
-  | { status: "idle" | "loading" }
-  | { status: "error"; message: string }
+  | { status: "idle" | "loading"; markers: VenueMarker[] }
+  | { status: "error"; message: string; markers: VenueMarker[] }
   | { status: "success"; markers: VenueMarker[] };
 
 const activities: Activity[] = ["PLAYSTATION", "BILLIARDS", "PING_PONG"];
@@ -28,13 +29,16 @@ const activities: Activity[] = ["PLAYSTATION", "BILLIARDS", "PING_PONG"];
 export function DiscoveryScreen({
   api,
   location = expoLocationAccess,
+  focusVersion = 0,
 }: {
   api: ApiClient;
   location?: LocationAccess;
+  focusVersion?: number;
 }) {
   const [locationResult, setLocationResult] = useState<LocationResult>();
   const [manual, setManual] = useState(false);
   const [areas, setAreas] = useState<CustomerArea[]>();
+  const [serverTime, setServerTime] = useState<string>();
   const [areasError, setAreasError] = useState<string>();
   const [areasVersion, setAreasVersion] = useState(0);
   const [selectedArea, setSelectedArea] = useState<CustomerArea>();
@@ -43,9 +47,12 @@ export function DiscoveryScreen({
   const [requestVersion, setRequestVersion] = useState(0);
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [mapBounds, setMapBounds] = useState<MapBounds>(defaultMapBounds);
-  const [mapState, setMapState] = useState<MapState>({ status: "idle" });
+  const [mapState, setMapState] = useState<MapState>({ status: "idle", markers: [] });
   const [mapRequestVersion, setMapRequestVersion] = useState(0);
   const [venueId, setVenueId] = useState<string>();
+  const [findingAvailable, setFindingAvailable] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const centeredOnLocation = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -60,13 +67,16 @@ export function DiscoveryScreen({
   useEffect(() => {
     const controller = new AbortController();
     void api.GET("/api/v1/customer/areas", { signal: controller.signal }).then(({ data, error }) => {
-      if (data) setAreas(data.data);
+      if (data) {
+        setAreas(data.data);
+        setServerTime(data.meta.serverTime);
+      }
       else setAreasError(discoveryErrorMessage(errorCodeOf(error)));
     }).catch(() => {
       if (!controller.signal.aborted) setAreasError(t.discovery.errors.network);
     });
     return () => controller.abort();
-  }, [api, areasVersion]);
+  }, [api, areasVersion, focusVersion]);
 
   const coordinates = locationResult?.status === "granted" ? locationResult.coordinates : undefined;
   const canDiscover = Boolean(coordinates || selectedArea);
@@ -75,6 +85,21 @@ export function DiscoveryScreen({
     ...(selectedArea ? { areaId: selectedArea.id } : {}),
     ...(coordinates ? { lat: coordinates.lat, lng: coordinates.lng } : {}),
   }), [activity, coordinates, selectedArea]);
+
+  useEffect(() => {
+    if (!coordinates || selectedArea || centeredOnLocation.current) return;
+    centeredOnLocation.current = true;
+    setMapBounds(boundsAround(coordinates.lat, coordinates.lng));
+  }, [coordinates, selectedArea]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState !== "active") return;
+      setRequestVersion((version) => version + 1);
+      setMapRequestVersion((version) => version + 1);
+    });
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     if (!canDiscover) return undefined;
@@ -86,7 +111,7 @@ export function DiscoveryScreen({
       if (!controller.signal.aborted) setState({ status: "error", message: t.discovery.errors.network });
     });
     return () => controller.abort();
-  }, [api, canDiscover, query, requestVersion]);
+  }, [api, canDiscover, focusVersion, query, requestVersion]);
 
   useEffect(() => {
     if (!canDiscover || viewMode !== "map") return undefined;
@@ -94,12 +119,12 @@ export function DiscoveryScreen({
     const mapQuery = { bounds: boundsQuery(mapBounds), ...query };
     void api.GET("/api/v1/customer/venues/map", { params: { query: mapQuery }, signal: controller.signal }).then(({ data, error }) => {
       if (data) setMapState({ status: "success", markers: data.data });
-      else setMapState({ status: "error", message: discoveryErrorMessage(errorCodeOf(error)) });
+      else setMapState((current) => ({ status: "error", message: discoveryErrorMessage(errorCodeOf(error)), markers: current.markers }));
     }).catch(() => {
-      if (!controller.signal.aborted) setMapState({ status: "error", message: t.discovery.errors.network });
+      if (!controller.signal.aborted) setMapState((current) => ({ status: "error", message: t.discovery.errors.network, markers: current.markers }));
     });
     return () => controller.abort();
-  }, [api, canDiscover, mapBounds, mapRequestVersion, query, viewMode]);
+  }, [api, canDiscover, focusVersion, mapBounds, mapRequestVersion, query, viewMode]);
 
   const requestLocation = async () => {
     const result = await location.request();
@@ -109,6 +134,13 @@ export function DiscoveryScreen({
   const chooseManual = () => {
     setManual(true);
     setLocationResult((current) => current ?? { status: "denied" });
+  };
+
+  const refresh = () => {
+    setRefreshing(true);
+    setRequestVersion((version) => version + 1);
+    setMapRequestVersion((version) => version + 1);
+    setTimeout(() => setRefreshing(false), 400);
   };
 
   const loadMore = async () => {
@@ -134,7 +166,11 @@ export function DiscoveryScreen({
   };
 
   if (venueId) {
-    return <VenueDetails api={api} venueId={venueId} activity={activity} coordinates={coordinates} onBack={() => setVenueId(undefined)} />;
+    return <VenueDetails api={api} venueId={venueId} activity={activity} coordinates={coordinates} focusVersion={focusVersion} onBack={() => setVenueId(undefined)} />;
+  }
+
+  if (findingAvailable && serverTime) {
+    return <FindAvailableScreen api={api} areas={areas ?? []} initialActivity={activity} referenceDate={new Date(serverTime)} onBack={() => setFindingAvailable(false)} onViewVenue={(nextVenueId, nextActivity) => { setActivity(nextActivity); setFindingAvailable(false); setVenueId(nextVenueId); }} />;
   }
 
   if (!locationResult || (!manual && locationResult.status !== "granted")) {
@@ -154,7 +190,7 @@ export function DiscoveryScreen({
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.page}>
+    <ScrollView contentContainerStyle={styles.page} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} title={t.discovery.refreshing} />}>
       <Text style={styles.eyebrow}>{t.discovery.ready}</Text>
       <Text accessibilityRole="header" style={styles.title}>{selectedArea?.name ?? t.discovery.currentLocation}</Text>
 
@@ -167,19 +203,20 @@ export function DiscoveryScreen({
         </View>
       ) : null}
       <ScrollView horizontal contentContainerStyle={styles.chips} showsHorizontalScrollIndicator={false}>
-        {coordinates ? <FilterChip label={t.discovery.currentLocation} selected={!selectedArea} onPress={() => { setState({ status: "loading" }); setMapState({ status: "loading" }); setSelectedArea(undefined); }} /> : null}
-        {areas?.map((area) => <FilterChip key={area.id} label={area.name} selected={selectedArea?.id === area.id} onPress={() => { setState({ status: "loading" }); setMapState({ status: "loading" }); setSelectedArea(area); }} />)}
+        {coordinates ? <FilterChip label={t.discovery.currentLocation} selected={!selectedArea} onPress={() => { setState({ status: "loading" }); setMapState((current) => ({ status: "loading", markers: current.markers })); setSelectedArea(undefined); }} /> : null}
+        {areas?.map((area) => <FilterChip key={area.id} label={area.name} selected={selectedArea?.id === area.id} onPress={() => { setState({ status: "loading" }); setMapState((current) => ({ status: "loading", markers: current.markers })); setSelectedArea(area); }} />)}
       </ScrollView>
 
       <Text style={styles.label}>{t.discovery.activity}</Text>
       <ScrollView horizontal contentContainerStyle={styles.chips} showsHorizontalScrollIndicator={false}>
-        {activities.map((value) => <FilterChip key={value} label={t.discovery.activities[value]} selected={activity === value} onPress={() => { setState({ status: "loading" }); setMapState({ status: "loading" }); setActivity(value); }} />)}
+        {activities.map((value) => <FilterChip key={value} label={t.discovery.activities[value]} selected={activity === value} onPress={() => { setState({ status: "loading" }); setMapState((current) => ({ status: "loading", markers: current.markers })); setActivity(value); }} />)}
       </ScrollView>
 
       <View accessibilityRole="tablist" style={styles.viewSwitch}>
         <FilterChip label={t.discovery.listView} selected={viewMode === "list"} onPress={() => setViewMode("list")} />
-        <FilterChip label={t.discovery.mapView} selected={viewMode === "map"} onPress={() => { setMapState({ status: "loading" }); setViewMode("map"); }} />
+        <FilterChip label={t.discovery.mapView} selected={viewMode === "map"} onPress={() => { setMapState((current) => ({ status: "loading", markers: current.markers })); setViewMode("map"); }} />
       </View>
+      <Pressable accessibilityRole="button" disabled={!areas?.length || !serverTime} onPress={() => setFindingAvailable(true)} style={styles.findAvailableButton}><Text style={styles.findAvailableText}>{t.findAvailable.title}</Text></Pressable>
 
       {!canDiscover ? <Text style={styles.notice}>{t.discovery.chooseArea}</Text> : null}
       {viewMode === "list" && state.status === "loading" ? <View accessibilityRole="progressbar" style={styles.loading}><ActivityIndicator /><Text>{t.loading}</Text></View> : null}
@@ -198,26 +235,23 @@ export function DiscoveryScreen({
           <Text style={styles.secondaryButtonText}>{state.loadingMore ? t.loading : t.discovery.loadMore}</Text>
         </Pressable>
       ) : null}
-      {viewMode === "map" && mapState.status === "loading" ? <View accessibilityRole="progressbar" style={styles.loading}><ActivityIndicator /><Text>{t.loading}</Text></View> : null}
-      {viewMode === "map" && mapState.status === "error" ? (
-        <View accessibilityRole="alert" style={styles.errorBox}>
-          <Text style={styles.errorText}>{mapState.message}</Text>
-          <Pressable onPress={() => { setMapState({ status: "loading" }); setMapRequestVersion((version) => version + 1); }}><Text style={styles.linkText}>{t.retry}</Text></Pressable>
+      {viewMode === "map" && canDiscover ? (
+        <View style={styles.mapShell}>
+          <DiscoveryMap
+            bounds={mapBounds}
+            markers={mapState.markers}
+            onBoundsChange={(nextBounds) => {
+              if (boundsDiffer(mapBounds, nextBounds)) {
+                setMapState((current) => ({ status: "loading", markers: current.markers }));
+                setMapBounds(nextBounds);
+              }
+            }}
+            onViewVenue={setVenueId}
+          />
+          {mapState.status === "loading" ? <View accessibilityRole="progressbar" style={styles.mapOverlay}><ActivityIndicator /><Text>{t.loading}</Text></View> : null}
+          {mapState.status === "error" ? <View accessibilityRole="alert" style={[styles.mapOverlay, styles.mapErrorOverlay]}><Text style={styles.errorText}>{mapState.message}</Text><Pressable onPress={() => { setMapState((current) => ({ status: "loading", markers: current.markers })); setMapRequestVersion((version) => version + 1); }}><Text style={styles.linkText}>{t.retry}</Text></Pressable></View> : null}
+          {mapState.status === "success" && mapState.markers.length === 0 ? <View style={styles.mapOverlay}><Text style={styles.empty}>{t.discovery.mapEmpty}</Text></View> : null}
         </View>
-      ) : null}
-      {viewMode === "map" && mapState.status === "success" && mapState.markers.length === 0 ? <Text style={styles.empty}>{t.discovery.mapEmpty}</Text> : null}
-      {viewMode === "map" && mapState.status === "success" && mapState.markers.length ? (
-        <DiscoveryMap
-          bounds={mapBounds}
-          markers={mapState.markers}
-          onBoundsChange={(nextBounds) => {
-            if (boundsQuery(nextBounds) !== boundsQuery(mapBounds)) {
-              setMapState({ status: "loading" });
-              setMapBounds(nextBounds);
-            }
-          }}
-          onViewVenue={setVenueId}
-        />
       ) : null}
     </ScrollView>
   );
@@ -250,8 +284,8 @@ function VenueCardView({ venue, onPress }: { venue: VenueCard; onPress(): void }
         <Text style={styles.cardTitle}>{venue.name}</Text>
         <Text style={styles.muted}>{[venue.area.name, distance].filter(Boolean).join(" · ")}</Text>
         <Text style={styles.rating}>{venue.averageRating === null ? t.discovery.noRating : `${venue.averageRating} ★ · ${t.discovery.reviews(venue.reviewCount)}`}</Text>
-        <Text style={styles.price}>{price ?? t.discovery.priceUnavailable}</Text>
-        <Text style={styles.available}>{nearest ? t.discovery.nearest(nearest) : t.discovery.noAvailability}</Text>
+        <Text style={styles.price}>{price ? t.discovery.fromPerHour(price) : t.discovery.priceUnavailable}</Text>
+        <Text style={nearest ? styles.available : styles.muted}>{nearest ? t.discovery.nearest(nearest) : t.discovery.noAvailability}</Text>
       </View>
     </Pressable>
   );
@@ -292,4 +326,9 @@ const styles = StyleSheet.create({
   rating: { color: nativeTokens.color.text.muted, fontSize: nativeTokens.typography.fontSize.label, fontWeight: nativeTokens.typography.fontWeight.semibold },
   price: { color: nativeTokens.color.brand.primary, fontSize: nativeTokens.typography.fontSize.bodySmall, fontWeight: nativeTokens.typography.fontWeight.bold },
   available: { color: nativeTokens.color.feedback.success, fontSize: nativeTokens.typography.fontSize.label, fontWeight: nativeTokens.typography.fontWeight.semibold },
+  mapShell: { minHeight: 360, position: "relative" },
+  mapOverlay: { alignItems: "center", backgroundColor: nativeTokens.color.surface.raised, borderRadius: nativeTokens.radius["3xl"], gap: nativeTokens.spacing.md, justifyContent: "center", left: nativeTokens.spacing.xl, opacity: 0.92, padding: nativeTokens.spacing.xl, position: "absolute", right: nativeTokens.spacing.xl, top: nativeTokens.spacing.xl },
+  mapErrorOverlay: { backgroundColor: nativeTokens.color.feedback.dangerSurface },
+  findAvailableButton: { alignItems: "center", borderColor: nativeTokens.color.brand.primary, borderRadius: nativeTokens.radius["3xl"], borderWidth: nativeTokens.spacing.hairline, justifyContent: "center", minHeight: 48 },
+  findAvailableText: { color: nativeTokens.color.brand.primary, fontWeight: nativeTokens.typography.fontWeight.bold },
 });

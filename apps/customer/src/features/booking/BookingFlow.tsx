@@ -7,6 +7,7 @@ import { en as t } from "../../i18n/en";
 import { formatMoney } from "../discovery/format";
 import { discoveryErrorMessage } from "../discovery/errorMessages";
 import { bookingErrorMessage } from "./errorMessages";
+import { allHalfHourTimes, buildDateOptions, durationOptions, formatTwelveHourTime, minutesToTime } from "./selectionOptions";
 import { cairoLocalToInstant, countdownSeconds, countdownSecondsAt, formatCountdown, serverClockOffset } from "./time";
 
 type Activity = components["schemas"]["Activity"];
@@ -16,10 +17,6 @@ type Quote = components["schemas"]["CustomerBookingQuote"];
 type Booking = components["schemas"]["CustomerBookingDetail"];
 type BookingRequest = components["schemas"]["CustomerBookingCreateRequest"];
 type StartOption = { date: string; key: string; time: string };
-
-// FR-BOK-01: online duration is 60–360 minutes in 30-minute increments.
-const durationOptions = Array.from({ length: 11 }, (_, index) => 60 + index * 30);
-const allHalfHourTimes = Array.from({ length: 48 }, (_, index) => minutesToTime(index * 30));
 
 export function BookingFlow({
   api,
@@ -375,29 +372,6 @@ function createIdempotencyKey(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-function buildDateOptions(referenceDate: Date) {
-  const cairoDate = new Intl.DateTimeFormat("en-CA", { day: "2-digit", month: "2-digit", timeZone: "Africa/Cairo", year: "numeric" })
-    .formatToParts(referenceDate)
-    .reduce<Record<string, string>>((parts, part) => ({ ...parts, [part.type]: part.value }), {});
-  const firstDay = Date.UTC(Number(cairoDate.year), Number(cairoDate.month) - 1, Number(cairoDate.day));
-  return Array.from({ length: 7 }, (_, index) => {
-    const value = new Date(firstDay + index * 86_400_000);
-    const isoDate = value.toISOString().slice(0, 10);
-    const weekday = new Intl.DateTimeFormat("en", { timeZone: "UTC", weekday: "short" }).format(value).toUpperCase();
-    const weekdayLong = new Intl.DateTimeFormat("en", { timeZone: "UTC", weekday: "long" }).format(value);
-    const day = new Intl.DateTimeFormat("en", { day: "numeric", timeZone: "UTC" }).format(value);
-    const month = new Intl.DateTimeFormat("en", { month: "short", timeZone: "UTC" }).format(value).toUpperCase();
-    const monthLong = new Intl.DateTimeFormat("en", { month: "long", timeZone: "UTC" }).format(value);
-    return {
-      accessibilityLabel: index === 0 ? t.booking.todayDate(weekdayLong, day, monthLong) : t.booking.dateValue(weekdayLong, day, monthLong),
-      day,
-      month,
-      value: isoDate,
-      weekday: index === 0 ? t.booking.today : weekday,
-    };
-  });
-}
-
 function venueSessionForDate(date: string, openingHours: Details["openingHours"]) {
   if (!date) return undefined;
   const selectedDate = new Date(`${date}T00:00:00.000Z`);
@@ -429,17 +403,6 @@ function addCalendarDays(date: string, days: number) {
 function timeToMinutes(value: string) {
   const [hours = "0", minutes = "0"] = value.split(":");
   return Number(hours) * 60 + Number(minutes);
-}
-
-function minutesToTime(value: number) {
-  const normalized = value % (24 * 60);
-  return `${String(Math.floor(normalized / 60)).padStart(2, "0")}:${String(normalized % 60).padStart(2, "0")}`;
-}
-
-function formatTwelveHourTime(value: string) {
-  const [hourText, minuteText] = value.split(":");
-  const hour = Number(hourText);
-  return `${hour % 12 || 12}:${minuteText} ${hour < 12 ? "AM" : "PM"}`;
 }
 
 function formatBookingDate(value: string) {

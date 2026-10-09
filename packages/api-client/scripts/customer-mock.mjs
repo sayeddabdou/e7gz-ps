@@ -3,6 +3,7 @@
 import { spawn } from "node:child_process";
 import http from "node:http";
 import path from "node:path";
+import { clearInterval, setInterval } from "node:timers";
 import { fileURLToPath } from "node:url";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -29,21 +30,55 @@ const prism = spawn(process.execPath, [prismLauncher, "--host", "127.0.0.1", "--
 let ready = false;
 let startupOutput = "";
 const readyPromise = new Promise((resolve, reject) => {
-  const timeout = setTimeout(() => reject(new Error(`Prism did not start:\n${startupOutput}`)), 20_000);
+  let settled = false;
+  let probe;
+  let timeout;
+  const finish = (callback) => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timeout);
+    clearInterval(probe);
+    callback();
+  };
+  const failStartup = (error) => finish(() => {
+    if (prism.exitCode === null) prism.kill();
+    reject(error);
+  });
+  timeout = setTimeout(
+    () => failStartup(new Error(`Prism did not start within 60 seconds:\n${startupOutput || "No output was received from Prism."}`)),
+    60_000,
+  );
+  // Prism's logger can remain buffered when its stdout is piped on Windows. Probe the
+  // private HTTP port as the source of truth instead of waiting only for log text.
+  const probePrism = () => {
+    const request = http.get(prismOrigin, (response) => {
+      response.resume();
+      if (!ready) {
+        ready = true;
+        finish(resolve);
+      }
+    });
+    request.setTimeout(500, () => request.destroy());
+    request.on("error", () => undefined);
+  };
+  probe = setInterval(probePrism, 100);
+  probePrism();
   const receive = (chunk) => {
     const text = chunk.toString();
     startupOutput += text;
     process.stdout.write(text);
     if (!ready && /Prism is listening/u.test(startupOutput)) {
       ready = true;
-      clearTimeout(timeout);
-      resolve();
+      finish(resolve);
     }
   };
   prism.stdout.on("data", receive);
   prism.stderr.on("data", receive);
+  prism.once("error", (error) => {
+    if (!ready) failStartup(new Error(`Prism could not be started: ${error.message}`));
+  });
   prism.once("exit", (code) => {
-    if (!ready) reject(new Error(`Prism exited with ${code}:\n${startupOutput}`));
+    if (!ready) failStartup(new Error(`Prism exited with ${code}:\n${startupOutput}`));
   });
 });
 
