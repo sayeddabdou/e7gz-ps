@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -48,6 +49,8 @@ import ps.e7gz.audit.AuditFixtures;
 import ps.e7gz.common.codes.AuthSubjectType;
 import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.security.AccessTokens;
+import ps.e7gz.scheduling.api.Recurrence;
+import ps.e7gz.scheduling.api.RecurringJob;
 import ps.e7gz.support.IntegrationTest;
 import ps.e7gz.support.ObjectStoreTestContainer;
 import ps.e7gz.support.PostgresTestContainer;
@@ -162,6 +165,22 @@ class VenuePhotosHttpTest extends IntegrationTest {
         byte[] small = download(listed.path("smallUrl").asText());
         assertThat(contains(small, "PNG")).isTrue();
         assertThat(size(small)).isEqualTo(new int[] {300, 200});
+    }
+
+    /** E7-40: both photo jobs are recurring system jobs of the worker (technical.scheduled_job), no Spring timers. */
+    @Test
+    void theCopiesAndTheCleanUpAreRecurringJobsOfTheWorker() throws Exception {
+        RecurringJob copies = jobs.venuePhotoCopiesJob();
+        RecurringJob cleanUp = jobs.venuePhotoCleanupJob();
+        assertThat(copies.type()).isEqualTo("VENUE_PHOTO_COPIES");
+        assertThat(copies.recurrence()).isEqualTo(Recurrence.every(Duration.ofSeconds(30)));
+        assertThat(cleanUp.type()).isEqualTo("VENUE_PHOTO_CLEANUP");
+        assertThat(cleanUp.recurrence()).isEqualTo(Recurrence.nightlyAt(LocalTime.of(3, 30)));
+
+        UUID id = uploadAndConfirm(jpeg(800, 600), "image/jpeg");
+        copies.run(null);                                              // what the worker runs each time it is due
+
+        assertThat(processed(id)).isTrue();
     }
 
     // ------------------------------------------------------------------------------------------ refusals

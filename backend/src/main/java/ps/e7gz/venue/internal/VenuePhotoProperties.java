@@ -1,6 +1,7 @@
 package ps.e7gz.venue.internal;
 
 import java.time.Duration;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Set;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -22,7 +23,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param mediumMaxSide    Venue Details copy: longest side in pixels
  * @param abandonAfter     an upload not confirmed within this time is hidden and its file deleted (24 hours)
  * @param processEvery     how often the worker looks for photos without copies
- * @param cleanupCron      when the nightly clean-up runs (Africa/Cairo)
+ * @param cleanupAt        when the nightly clean-up runs (Africa/Cairo)
  */
 @ConfigurationProperties("e7gz.venue-photos")
 public record VenuePhotoProperties(
@@ -36,7 +37,7 @@ public record VenuePhotoProperties(
         @DefaultValue("1280") int mediumMaxSide,
         @DefaultValue("24h") Duration abandonAfter,
         @DefaultValue("30s") Duration processEvery,
-        @DefaultValue("0 30 3 * * *") String cleanupCron) {
+        @DefaultValue("03:30") LocalTime cleanupAt) {
 
     Set<String> acceptedTypes() {
         return Set.copyOf(contentTypes);

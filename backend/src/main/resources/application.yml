@@ -68,15 +68,27 @@ e7gz:
     max-visible: 10
     upload-link-ttl: 10m
     view-link-ttl: 1h
+    cleanup-at: "03:30"            # nightly, Africa/Cairo (quoted: YAML would read 03:30 as a number)
   # Operating Sessions are materialized this many operating days ahead (ADR-009, arch 01 §14 A2): a deployment
   # setting, not a Product booking limit. The worker extends the horizon nightly (see OperatingSessionProperties).
   operating-sessions:
     horizon-days: ${E7GZ_SESSION_HORIZON_DAYS:120}
+    extend-at: "03:15"             # nightly, Africa/Cairo
   # Nearest Availability (arch 05 §5.3): the worker refreshes every venue / activity pair this often (PO decision
   # 8 Oct 2026), until the outbox (E7-41) also refreshes on inventory events; it also keeps up with time passing.
   availability:
     projection:
       refresh-every: ${E7GZ_AVAILABILITY_REFRESH_EVERY:1m}
+  # The deadline worker of the worker profile (arch 08 §2, ADR-006; see SchedulerProperties). Every timer, Product
+  # deadlines and system jobs alike, is a row of technical.scheduled_job; there is no @Scheduled anywhere (E7-40).
+  scheduler:
+    tick: 1s                       # idle poll; pg_notify('sched') wakes the workers sooner
+    threads: 2
+    lease: 5m
+    max-attempts: 5
+    first-backoff: 10s
+    max-backoff: 10m
+    invariant-sweep-at: "04:00"    # nightly integrity sweep, Africa/Cairo (arch 11 §4)
 
 # Every log line carries the correlation ID of its request or job (NFR-32; CorrelationId puts it in the MDC).
 # JSON log output is the observability task's (arch 11 §5.1, E7-100); this only adds the field to the default pattern.

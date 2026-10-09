@@ -120,6 +120,43 @@ class MigrationFilesTest {
                 .doesNotContain("DROP ");
     }
 
+    /**
+     * v1.1.33 (E7-40): the column and table comment are modelled on {@code technical.scheduled_job}, and the migration
+     * ends with the model's own function block, byte for byte: job_finish takes SUPERSEDED, a later due time and a next
+     * run (attempt back to 0), and the guard lets due_at and attempt change that way only inside job_finish.
+     */
+    @Test
+    void scheduledJobFinishAndCorrelationIsTheModelsV1133Block() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String migration = classpath("db/migration/V202610091200__scheduled_job_finish_and_correlation.sql");
+        int tableStart = model.indexOf("<table name=\"scheduled_job\" layers");
+        String table = model.substring(tableStart, model.indexOf("</table>", tableStart));
+        String open = "<genericsql name=\"v1_1_33_scheduled_job_finish_and_correlation\">\n\t<definition> <![CDATA[\n";
+        int start = model.indexOf(open);
+        assertThat(start).as("v1.1.33 block in the .dbm").isPositive();
+        String block = model.substring(start + open.length(), model.indexOf("]]> </definition>", start));
+
+        assertThat(table).contains("<column name=\"correlation_id\" not-null=\"true\">\n\t\t<type name=\"uuid\"")
+                .contains("type/subject/idempotency_key/correlation_id are immutable; due_at moves only through "
+                        + "job_rearm or job_finish.");
+        assertThat(migration).contains("ADD COLUMN correlation_id uuid;")
+                .contains("UPDATE technical.scheduled_job SET correlation_id = id WHERE correlation_id IS NULL;")
+                .contains("ALTER COLUMN correlation_id SET NOT NULL;")
+                .contains("type/subject/idempotency_key/correlation_id are immutable; due_at moves only through "
+                        + "job_rearm or job_finish.")
+                .endsWith(block);
+        for (String trigger : new String[] {"tr_125_scheduled_job_guard", "tr_guard_tournament_scheduled_job",
+                "tr_tournament_job_final_state"}) {
+            assertThat(migration).contains("DISABLE TRIGGER " + trigger + ";").contains("ENABLE TRIGGER " + trigger + ";");
+        }
+        assertThat(block).contains("DROP FUNCTION technical.job_finish(uuid,text,text,text);")
+                .contains("p_status NOT IN ('DONE','SUPERSEDED','FAILED','PENDING')")
+                .contains("technical.has_write('technical.scheduled_job',OLD.id::text)")
+                .contains("attempt=CASE WHEN p_next_run THEN 0 ELSE j.attempt END")
+                .contains("NEW.attempt=0 AND NEW.status='PENDING' AND OLD.status='LEASED'")
+                .contains("REVOKE ALL ON FUNCTION technical.job_finish(uuid,text,text,text,timestamptz,boolean) FROM PUBLIC;");
+    }
+
     private static String classpath(String resource) throws IOException {
         try (InputStream in = MigrationFilesTest.class.getClassLoader().getResourceAsStream(resource)) {
             assertThat(in).as(resource).isNotNull();
