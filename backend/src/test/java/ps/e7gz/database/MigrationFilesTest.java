@@ -122,8 +122,8 @@ class MigrationFilesTest {
 
     /**
      * v1.1.33 (E7-40): the column and table comment are modelled on {@code technical.scheduled_job}, and the migration
-     * ends with the model's own function block, byte for byte: job_finish takes SUPERSEDED and a later due time, and the
-     * guard lets due_at move on LEASED -> PENDING only inside job_finish.
+     * ends with the model's own function block, byte for byte: job_finish takes SUPERSEDED, a later due time and a next
+     * run (attempt back to 0), and the guard lets due_at and attempt change that way only inside job_finish.
      */
     @Test
     void scheduledJobFinishAndCorrelationIsTheModelsV1133Block() throws IOException {
@@ -152,7 +152,9 @@ class MigrationFilesTest {
         assertThat(block).contains("DROP FUNCTION technical.job_finish(uuid,text,text,text);")
                 .contains("p_status NOT IN ('DONE','SUPERSEDED','FAILED','PENDING')")
                 .contains("technical.has_write('technical.scheduled_job',OLD.id::text)")
-                .contains("REVOKE ALL ON FUNCTION technical.job_finish(uuid,text,text,text,timestamptz) FROM PUBLIC;");
+                .contains("attempt=CASE WHEN p_next_run THEN 0 ELSE j.attempt END")
+                .contains("NEW.attempt=0 AND NEW.status='PENDING' AND OLD.status='LEASED'")
+                .contains("REVOKE ALL ON FUNCTION technical.job_finish(uuid,text,text,text,timestamptz,boolean) FROM PUBLIC;");
     }
 
     private static String classpath(String resource) throws IOException {

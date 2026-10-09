@@ -8,8 +8,13 @@ import java.time.ZonedDateTime;
 import java.util.Objects;
 
 /**
- * When a {@link RecurringJob} runs. Every occurrence has its own key ({@code TYPE:{occurrence}}), so workers that start
- * together or run late always agree on the next row: inserting it twice changes nothing.
+ * When a {@link RecurringJob} runs, and how its runs are stored:
+ * <ul>
+ *   <li>{@link Nightly} - one row per night, keyed {@code TYPE:{business date}} (PO decision 4 Oct 2026); workers that
+ *       start together or run late always agree on the next row, so inserting it twice changes nothing;</li>
+ *   <li>{@link Every} - a frequent job keeps ONE row, keyed {@code TYPE:EVERY}, that moves to its next run after each run
+ *       (PO decision 9 Oct 2026): no row per run piles up, and nothing is ever deleted.</li>
+ * </ul>
  */
 public sealed interface Recurrence {
 
@@ -32,6 +37,9 @@ public sealed interface Recurrence {
     /** The occurrence part of the idempotency key of the run due at {@code dueAt}. */
     String occurrence(Instant dueAt);
 
+    /** True when every run reuses the job's one row ({@link Every}); false for one row per run ({@link Nightly}). */
+    boolean movesOneRow();
+
     record Nightly(LocalTime at) implements Recurrence {
 
         public Nightly {
@@ -52,6 +60,11 @@ public sealed interface Recurrence {
         public String occurrence(Instant dueAt) {
             return dueAt.atZone(ZONE).toLocalDate().toString();
         }
+
+        @Override
+        public boolean movesOneRow() {
+            return false;
+        }
     }
 
     record Every(Duration interval) implements Recurrence {
@@ -69,10 +82,15 @@ public sealed interface Recurrence {
             return Instant.ofEpochMilli((Math.floorDiv(after.toEpochMilli(), step) + 1) * step);
         }
 
-        /** The slot instant (UTC, ISO-8601). */
+        /** Always {@code EVERY}: the job's one row serves every run. */
         @Override
         public String occurrence(Instant dueAt) {
-            return dueAt.toString();
+            return "EVERY";
+        }
+
+        @Override
+        public boolean movesOneRow() {
+            return true;
         }
     }
 }

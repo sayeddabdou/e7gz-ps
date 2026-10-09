@@ -7,13 +7,16 @@
 --    logs under the same ID (NFR-32, arch 11 section 5.1). Existing rows take their own id. The lifecycle guards
 --    refuse any UPDATE of a DONE or SUPERSEDED job and a PENDING -> PENDING rewrite, so the three row triggers are
 --    off for the one backfill statement only, inside this migration's transaction.
--- 2. technical.job_finish(p_job, p_worker, p_status, p_error, p_due_at): the lease holder can also mark the job
---    SUPERSEDED (completed_at set), and send it back to PENDING at a later due time (p_due_at) when it fired too
---    early or must back off. p_due_at goes with PENDING only and must be later than the current due_at. The old
---    four-argument function is dropped first, so no call can be ambiguous.
+-- 2. technical.job_finish(p_job, p_worker, p_status, p_error, p_due_at, p_next_run): the lease holder can also mark
+--    the job SUPERSEDED (completed_at set), and send it back to PENDING at a later due time (p_due_at) when it fired
+--    too early or must back off. p_due_at goes with PENDING only and must be later than the current due_at.
+--    p_next_run (PO decision 9 Oct 2026): a frequent system job (every 30 s, every minute) keeps ONE row that moves
+--    to its next run instead of a new row per run, so no finished rows pile up and nothing is ever deleted; its
+--    attempt count starts again at 0 for the new run. Only with PENDING and a later p_due_at. The old four-argument
+--    function is dropped first, so no call can be ambiguous.
 -- 3. technical.guard_scheduled_job(): correlation_id is immutable like the job's identity; due_at may change on
---    LEASED -> PENDING only inside job_finish (its private write token, the Outbox's pattern), never through a
---    plain UPDATE.
+--    LEASED -> PENDING, and attempt go back to 0 on a next run, only inside job_finish (its private write token, the
+--    Outbox's pattern), never through a plain UPDATE.
 --
 -- Unchanged on purpose: every other column, constraint, index and trigger; job_lease and job_rearm; the Tournament
 -- guards on top (a Tournament job's due_at stays immutable). Grants: PUBLIC is revoked here; the security baseline
@@ -61,7 +64,9 @@ BEGIN
  IF NOT ok THEN RAISE EXCEPTION 'Invalid job transition % -> %',OLD.status,NEW.status; END IF;
  IF NEW.status='LEASED' THEN
    IF NEW.attempt<>OLD.attempt+1 THEN RAISE EXCEPTION 'A lease records exactly one attempt'; END IF;
- ELSIF NEW.attempt<>OLD.attempt THEN RAISE EXCEPTION 'attempt changes only when a lease is taken';
+ ELSIF NEW.attempt<>OLD.attempt AND NOT (NEW.attempt=0 AND NEW.status='PENDING' AND OLD.status='LEASED'
+      AND NEW.due_at>OLD.due_at AND technical.has_write('technical.scheduled_job',OLD.id::text)) THEN
+   RAISE EXCEPTION 'attempt changes only when a lease is taken, or starts again on a next run through job_finish';
  END IF;
  IF NEW.due_at<>OLD.due_at AND NOT (NEW.status='PENDING' AND (OLD.status IN ('PAUSED','FAILED')
       OR (OLD.status='LEASED' AND technical.has_write('technical.scheduled_job',OLD.id::text)))) THEN
@@ -72,7 +77,7 @@ END;
 $function$;
 
 DROP FUNCTION technical.job_finish(uuid,text,text,text);
-CREATE OR REPLACE FUNCTION technical.job_finish(p_job uuid,p_worker text,p_status text,p_error text DEFAULT NULL,p_due_at timestamptz DEFAULT NULL)
+CREATE OR REPLACE FUNCTION technical.job_finish(p_job uuid,p_worker text,p_status text,p_error text DEFAULT NULL,p_due_at timestamptz DEFAULT NULL,p_next_run boolean DEFAULT false)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $function$
 DECLARE j technical.scheduled_job%ROWTYPE; tok uuid;
 BEGIN
@@ -83,12 +88,14 @@ BEGIN
  IF p_status NOT IN ('DONE','SUPERSEDED','FAILED','PENDING') THEN RAISE EXCEPTION 'Invalid job outcome'; END IF;
  IF p_due_at IS NOT NULL AND p_status<>'PENDING' THEN RAISE EXCEPTION 'Only a job sent back to PENDING takes a new due time'; END IF;
  IF p_due_at IS NOT NULL AND p_due_at<=j.due_at THEN RAISE EXCEPTION 'A job is only ever moved later'; END IF;
+ IF p_next_run AND p_due_at IS NULL THEN RAISE EXCEPTION 'A next run is PENDING at a later due time'; END IF;
  IF p_due_at IS NOT NULL THEN tok:=technical.enter_write('technical.scheduled_job',j.id::text); END IF;
  UPDATE technical.scheduled_job SET status=p_status,due_at=COALESCE(p_due_at,j.due_at),leased_at=NULL,leased_until=NULL,leased_by=NULL,
+   attempt=CASE WHEN p_next_run THEN 0 ELSE j.attempt END,
    completed_at=CASE WHEN p_status IN ('DONE','SUPERSEDED','FAILED') THEN clock_timestamp() END,
    last_error=CASE WHEN p_status IN ('DONE','SUPERSEDED') THEN j.last_error ELSE p_error END
   WHERE id=j.id;
  IF tok IS NOT NULL THEN PERFORM technical.leave_write(tok); END IF;
 END;
 $function$;
-REVOKE ALL ON FUNCTION technical.job_finish(uuid,text,text,text,timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION technical.job_finish(uuid,text,text,text,timestamptz,boolean) FROM PUBLIC;

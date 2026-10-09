@@ -180,8 +180,15 @@ class MigrationSafetyTest {
                 .as("versioned migrations still pending after the upgrade").isEmpty();
         assertThat(rowCounts().get("venue.venue_image")).as("seeded photos survived every migration").isEqualTo(5L);
         // v1.1.33 (E7-40): every job written before the column existed took its own id, whatever its state.
-        assertThat(count("SELECT count(*) FROM technical.scheduled_job WHERE correlation_id = id"))
+        assertThat(count("""
+                SELECT count(*) FROM technical.scheduled_job
+                 WHERE correlation_id = id
+                   AND id BETWEEN '5afe0000-0000-4000-8000-000000000101' AND '5afe0000-0000-4000-8000-000000000105'"""))
                 .as("jobs backfilled with their own id").isEqualTo(5L);
+        assertThat(count("""
+                SELECT count(*) FROM technical.scheduled_job
+                 WHERE id = '5afe0000-0000-4000-8000-000000000109' AND status = 'PENDING' AND attempt = 0"""))
+                .as("a frequent job's one row moved to its next run").isEqualTo(1L);
         assertThat(count("SELECT count(*) FROM technical.scheduled_job"
                 + " WHERE correlation_id = '5afe0000-0000-4000-8000-000000000107'"))
                 .as("jobs that kept their creating command's correlation ID").isEqualTo(2L);

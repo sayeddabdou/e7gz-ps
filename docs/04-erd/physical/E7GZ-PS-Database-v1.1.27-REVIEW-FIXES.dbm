@@ -24455,7 +24455,9 @@ BEGIN
  IF NOT ok THEN RAISE EXCEPTION 'Invalid job transition % -> %',OLD.status,NEW.status; END IF;
  IF NEW.status='LEASED' THEN
    IF NEW.attempt<>OLD.attempt+1 THEN RAISE EXCEPTION 'A lease records exactly one attempt'; END IF;
- ELSIF NEW.attempt<>OLD.attempt THEN RAISE EXCEPTION 'attempt changes only when a lease is taken';
+ ELSIF NEW.attempt<>OLD.attempt AND NOT (NEW.attempt=0 AND NEW.status='PENDING' AND OLD.status='LEASED'
+      AND NEW.due_at>OLD.due_at AND technical.has_write('technical.scheduled_job',OLD.id::text)) THEN
+   RAISE EXCEPTION 'attempt changes only when a lease is taken, or starts again on a next run through job_finish';
  END IF;
  IF NEW.due_at<>OLD.due_at AND NOT (NEW.status='PENDING' AND (OLD.status IN ('PAUSED','FAILED')
       OR (OLD.status='LEASED' AND technical.has_write('technical.scheduled_job',OLD.id::text)))) THEN
@@ -24466,7 +24468,7 @@ END;
 $function$;
 
 DROP FUNCTION technical.job_finish(uuid,text,text,text);
-CREATE OR REPLACE FUNCTION technical.job_finish(p_job uuid,p_worker text,p_status text,p_error text DEFAULT NULL,p_due_at timestamptz DEFAULT NULL)
+CREATE OR REPLACE FUNCTION technical.job_finish(p_job uuid,p_worker text,p_status text,p_error text DEFAULT NULL,p_due_at timestamptz DEFAULT NULL,p_next_run boolean DEFAULT false)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $function$
 DECLARE j technical.scheduled_job%ROWTYPE; tok uuid;
 BEGIN
@@ -24477,15 +24479,17 @@ BEGIN
  IF p_status NOT IN ('DONE','SUPERSEDED','FAILED','PENDING') THEN RAISE EXCEPTION 'Invalid job outcome'; END IF;
  IF p_due_at IS NOT NULL AND p_status<>'PENDING' THEN RAISE EXCEPTION 'Only a job sent back to PENDING takes a new due time'; END IF;
  IF p_due_at IS NOT NULL AND p_due_at<=j.due_at THEN RAISE EXCEPTION 'A job is only ever moved later'; END IF;
+ IF p_next_run AND p_due_at IS NULL THEN RAISE EXCEPTION 'A next run is PENDING at a later due time'; END IF;
  IF p_due_at IS NOT NULL THEN tok:=technical.enter_write('technical.scheduled_job',j.id::text); END IF;
  UPDATE technical.scheduled_job SET status=p_status,due_at=COALESCE(p_due_at,j.due_at),leased_at=NULL,leased_until=NULL,leased_by=NULL,
+   attempt=CASE WHEN p_next_run THEN 0 ELSE j.attempt END,
    completed_at=CASE WHEN p_status IN ('DONE','SUPERSEDED','FAILED') THEN clock_timestamp() END,
    last_error=CASE WHEN p_status IN ('DONE','SUPERSEDED') THEN j.last_error ELSE p_error END
   WHERE id=j.id;
  IF tok IS NOT NULL THEN PERFORM technical.leave_write(tok); END IF;
 END;
 $function$;
-REVOKE ALL ON FUNCTION technical.job_finish(uuid,text,text,text,timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION technical.job_finish(uuid,text,text,text,timestamptz,boolean) FROM PUBLIC;
 ]]> </definition>
 </genericsql>
 

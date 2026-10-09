@@ -43,7 +43,10 @@ class RecurrenceTest {
         assertThat(everyMinute.next(Instant.parse("2026-10-09T10:15:42.123Z")))
                 .isEqualTo(Instant.parse("2026-10-09T10:16:00Z"));
         assertThat(everyMinute.next(Instant.parse("2026-10-09T10:16:00Z"))).isEqualTo(Instant.parse("2026-10-09T10:17:00Z"));
-        assertThat(everyMinute.occurrence(Instant.parse("2026-10-09T10:16:00Z"))).isEqualTo("2026-10-09T10:16:00Z");
+        assertThat(everyMinute.occurrence(Instant.parse("2026-10-09T10:16:00Z"))).as("one row for every run")
+                .isEqualTo("EVERY");
+        assertThat(everyMinute.movesOneRow()).isTrue();
+        assertThat(nightly.movesOneRow()).as("one row per night").isFalse();
         assertThatThrownBy(() -> Recurrence.every(Duration.ZERO)).isInstanceOf(IllegalArgumentException.class);
     }
 

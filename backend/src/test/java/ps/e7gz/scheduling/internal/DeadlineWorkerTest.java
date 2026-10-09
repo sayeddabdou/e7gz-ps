@@ -287,9 +287,30 @@ class DeadlineWorkerTest extends IntegrationTest {
 
     // ---------------------------------------------------------------------------------------- recurring jobs
 
+    /** PO decision 9 Oct 2026: a frequent system job keeps one row that moves to its next run; none pile up. */
     @Test
-    void aRecurringJobRunsOnceUnderItsOwnIdAndSchedulesItsNextRun() {
-        String type = newType("RECUR");
+    void aFrequentJobStartsWithOneRowOfItsOwn() {
+        String type = newType("EVERY_START");
+        RecurringJob recurring = new RecurringJob(type, Recurrence.every(Duration.ofHours(1)), () -> { });
+        DeadlineWorker worker = worker("worker-a", properties(5, Duration.ofSeconds(10)), recurring);
+
+        worker.scheduleRecurringJobs();
+        worker.scheduleRecurringJobs();                              // a second worker start changes nothing
+
+        List<Row> rows = rowsOf(type);
+        assertThat(rows).hasSize(1);
+        Row only = rows.getFirst();
+        assertThat(only.status()).isEqualTo("PENDING");
+        assertThat(only.dueAt()).isEqualTo(Recurrence.every(Duration.ofHours(1)).next(databaseNow()));
+        assertThat(only.idempotencyKey()).isEqualTo(type + ":EVERY");
+        assertThat(only.subjectType()).isEqualTo("SYSTEM");
+        assertThat(only.subjectId()).isEqualTo(recurring.subjectId());
+        assertThat(only.correlationId()).as("a system job is its own correlation").isEqualTo(only.id());
+    }
+
+    @Test
+    void aFrequentJobRunsOnceUnderItsOwnIdAndItsOneRowMovesToTheNextRun() {
+        String type = newType("EVERY_RUN");
         List<UUID> correlations = new CopyOnWriteArrayList<>();
         AtomicBoolean inTransaction = new AtomicBoolean();
         RecurringJob recurring = new RecurringJob(type, Recurrence.every(Duration.ofHours(1)), () -> {
@@ -297,42 +318,76 @@ class DeadlineWorkerTest extends IntegrationTest {
             inTransaction.set(TransactionSynchronizationManager.isActualTransactionActive());
         });
         DeadlineWorker worker = worker("worker-a", properties(5, Duration.ofSeconds(10)), recurring);
+        UUID row = insertOccurrence(recurring, databaseNow().minusSeconds(1));   // its run is due now
+        worker.scheduleRecurringJobs();                              // it has a waiting row: nothing is added
 
-        worker.scheduleRecurringJobs();
-        worker.scheduleRecurringJobs();                              // a second worker start changes nothing
-        List<Row> scheduled = rowsOf(type);
-        assertThat(scheduled).hasSize(1);
-        Row next = scheduled.getFirst();
-        Instant nextHour = Recurrence.every(Duration.ofHours(1)).next(databaseNow());
-        assertThat(next.status()).isEqualTo("PENDING");
-        assertThat(next.dueAt()).isEqualTo(nextHour);
-        assertThat(next.idempotencyKey()).isEqualTo(type + ":" + nextHour);
-        assertThat(next.subjectType()).isEqualTo("SYSTEM");
-        assertThat(next.subjectId()).isEqualTo(recurring.subjectId());
-        assertThat(next.correlationId()).as("a system job is its own correlation").isEqualTo(next.id());
-
-        UUID dueRun = insertOccurrence(recurring, databaseNow().minusSeconds(1));
         assertThat(drain(worker)).isEqualTo(1);
 
-        assertThat(correlations).containsExactly(dueRun);
+        assertThat(correlations).containsExactly(row);
         assertThat(inTransaction).as("a background job runs outside any transaction").isFalse();
-        assertThat(row(dueRun).status()).isEqualTo("DONE");
-        assertThat(rowsOf(type)).filteredOn(r -> r.status().equals("PENDING"))
-                .as("the next run, inserted twice, exists once").extracting(Row::id).containsExactly(next.id());
+        Row moved = row(row);
+        assertThat(moved.status()).isEqualTo("PENDING");
+        assertThat(moved.attempt()).as("attempts start again for the next run").isZero();
+        assertThat(moved.dueAt()).isEqualTo(Recurrence.every(Duration.ofHours(1)).next(databaseNow()));
+        assertThat(moved.lastError()).isNull();
+        assertThat(moved.completedAt()).isNull();
+        assertThat(rowsOf(type)).as("still one row").extracting(Row::id).containsExactly(row);
+        assertThat(drain(worker)).as("the next run is not due yet").isZero();
     }
 
     @Test
-    void aRecurringRunThatFailsStillSchedulesTheNextOne() {
-        String type = newType("RECUR_FAIL");
+    void aFailedFrequentRunIsLoggedAndTheNextRunIsStillOnTime() {
+        String type = newType("EVERY_FAIL");
         RecurringJob recurring = new RecurringJob(type, Recurrence.every(Duration.ofHours(1)), () -> {
             throw new IllegalStateException("broken pass");
+        });
+        UUID row = insertOccurrence(recurring, databaseNow().minusSeconds(1));
+
+        assertThat(drain(worker("worker-a", properties(1, Duration.ofSeconds(10)), recurring))).isEqualTo(1);
+
+        Row moved = row(row);
+        assertThat(moved.status()).as("never FAILED: the pass repeats every interval").isEqualTo("PENDING");
+        assertThat(moved.attempt()).isZero();
+        assertThat(moved.lastError()).contains("broken pass");
+        assertThat(moved.dueAt()).isAfter(databaseNow());
+        assertThat(rowsOf(type)).hasSize(1);
+    }
+
+    @Test
+    void aFrequentRunWhoseWorkersKeptDyingIsSkippedToTheNextRun() throws InterruptedException {
+        String type = newType("EVERY_DIED");
+        AtomicInteger ran = new AtomicInteger();
+        RecurringJob recurring = new RecurringJob(type, Recurrence.every(Duration.ofHours(1)), ran::incrementAndGet);
+        UUID row = insertOccurrence(recurring, databaseNow().minusSeconds(1));
+        JdbcClient app = JdbcClient.create(appDataSource);
+        for (String dead : List.of("dead-1", "dead-2")) {            // two workers lease it and die
+            new TransactionTemplate(new JdbcTransactionManager(appDataSource)).executeWithoutResult(status ->
+                    assertThat(store.lease(app, row, dead, Duration.ofMillis(100))).isTrue());
+            waitUntilDatabaseTime(leasedUntil(row));
+        }
+
+        assertThat(drain(worker("worker-a", properties(1, Duration.ofSeconds(10)), recurring))).isEqualTo(1);
+
+        assertThat(ran).as("not run a third time").hasValue(0);
+        Row moved = row(row);
+        assertThat(moved.status()).isEqualTo("PENDING");
+        assertThat(moved.attempt()).isZero();
+        assertThat(moved.lastError()).contains("attempts exhausted");
+        assertThat(moved.dueAt()).isAfter(databaseNow());
+    }
+
+    @Test
+    void aNightlyRunThatFailsStillSchedulesTheNextNight() {
+        String type = newType("NIGHT_FAIL");
+        RecurringJob recurring = new RecurringJob(type, Recurrence.nightlyAt(LocalTime.of(4, 0)), () -> {
+            throw new IllegalStateException("broken night");
         });
         UUID run = insertOccurrence(recurring, databaseNow().minusSeconds(1));
 
         assertThat(drain(worker("worker-a", properties(1, Duration.ofSeconds(10)), recurring))).isEqualTo(1);
 
         assertThat(row(run).status()).isEqualTo("FAILED");
-        assertThat(row(run).lastError()).contains("broken pass");
+        assertThat(row(run).lastError()).contains("broken night");
         assertThat(rowsOf(type)).filteredOn(r -> r.status().equals("PENDING")).hasSize(1)
                 .allSatisfy(r -> assertThat(r.dueAt()).isAfter(databaseNow()));
     }

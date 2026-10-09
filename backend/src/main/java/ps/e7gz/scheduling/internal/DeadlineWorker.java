@@ -46,6 +46,7 @@ final class DeadlineWorker {
 
     private static final Logger log = LoggerFactory.getLogger(DeadlineWorker.class);
     private static final int MAX_ERROR_LENGTH = 1000;
+    private static final String EXHAUSTED = "attempts exhausted: no attempt finished within its lease";
 
     private final String name;
     private final JobHandlerRegistry handlers;
@@ -104,11 +105,12 @@ final class DeadlineWorker {
      */
     void scheduleRecurringJobs() {
         for (RecurringJob job : handlers.recurring()) {
-            transaction.executeWithoutResult(status -> {
-                if (!store.hasLiveJob(jdbc, job.type())) {
-                    store.insertOccurrence(jdbc, job, job.recurrence().next(store.now(jdbc)));
-                }
-            });
+            boolean waiting = Boolean.TRUE.equals(transaction.execute(status -> store.hasLiveJob(jdbc, job.type())
+                    || store.insertOccurrence(jdbc, job, job.recurrence().next(store.now(jdbc)))));
+            if (!waiting) {
+                log.error("{} has no waiting run and its row cannot take a new one; it does not run until re-armed",
+                        job.type());
+            }
         }
     }
 
@@ -237,6 +239,10 @@ final class DeadlineWorker {
                 failure = e;
             }
         }
+        if (handler instanceof RecurringJob recurring && recurring.recurrence().movesOneRow()) {
+            moveToNextRun(recurring, leased, failure);
+            return true;
+        }
         JobOutcome result = outcome;
         RuntimeException error = failure;
         try {
@@ -264,6 +270,25 @@ final class DeadlineWorker {
         return true;
     }
 
+    /**
+     * A frequent system job keeps one row (PO decision 9 Oct 2026): whatever the run did, the row moves to the next
+     * run with its attempts starting again; a failed run is logged and kept as {@code last_error}, never FAILED.
+     */
+    private void moveToNextRun(RecurringJob job, ScheduledJob leased, RuntimeException failure) {
+        String error = failure != null ? describe(failure) : exhausted(leased) ? EXHAUSTED : null;
+        try {
+            transaction.executeWithoutResult(tx -> store.moveToNextRun(jdbc, leased.id(), name, error,
+                    job.recurrence().next(store.now(jdbc))));
+        } catch (RuntimeException unrecorded) {
+            log.warn("{} ran but could not move to its next run; it runs again when its lease expires", job.type(),
+                    unrecorded);
+            return;
+        }
+        if (error != null) {
+            log.error("{} run failed ({}); the next run is on time", job.type(), error, failure);
+        }
+    }
+
     // ------------------------------------------------------------------------------------------------ shared
 
     private boolean lease(JdbcClient on, ScheduledJob job) {
@@ -276,8 +301,7 @@ final class DeadlineWorker {
     }
 
     private ScheduledJobStatus failExhausted(JdbcClient on, ScheduledJob leased) {
-        store.finish(on, leased.id(), name, ScheduledJobStatus.FAILED,
-                "attempts exhausted: no attempt finished within its lease", null);
+        store.finish(on, leased.id(), name, ScheduledJobStatus.FAILED, EXHAUSTED, null);
         log.error("{} job {} FAILED: {} attempts never finished (Sev-2)", leased.type(), leased.id(),
                 leased.attempt() - 1);
         return ScheduledJobStatus.FAILED;

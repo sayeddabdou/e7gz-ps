@@ -31,14 +31,16 @@ class JdbcScheduledJobStore {
     /**
      * Due jobs of the given types, oldest first: {@code PENDING} and due, or {@code LEASED} by a worker whose lease ran
      * out. Rows another worker is firing right now are locked and skipped; the locks of this statement go with its
-     * transaction. Times are the database's ({@code clock_timestamp()}, arch 08 section 8).
+     * transaction. Times are the database's ({@code now()}, arch 08 sections 2.1 and 8): unlike
+     * {@code clock_timestamp()} it lets the poll use the {@code (status, due_at)} index, so it reads only due rows
+     * however many jobs wait; {@code job_lease} checks the due instant again with the exact clock.
      */
     List<ScheduledJob> due(JdbcClient jdbc, Collection<String> types, Collection<UUID> skip, int limit) {
         return jdbc.sql("SELECT " + COLUMNS + """
                          FROM technical.scheduled_job
                         WHERE type = ANY(:types)
-                          AND ((status = 'PENDING' AND due_at <= clock_timestamp())
-                               OR (status = 'LEASED' AND leased_until <= clock_timestamp()))
+                          AND ((status = 'PENDING' AND due_at <= now())
+                               OR (status = 'LEASED' AND leased_until <= now()))
                           AND NOT (id = ANY(:skip))
                         ORDER BY due_at, id
                         LIMIT :limit
@@ -66,11 +68,21 @@ class JdbcScheduledJobStore {
      * than the job's due instant; {@code error} is kept as {@code last_error} for {@code PENDING} and {@code FAILED}.
      */
     void finish(JdbcClient jdbc, UUID id, String worker, ScheduledJobStatus status, String error, Instant dueAt) {
+        finish(jdbc, id, worker, status, error, dueAt, false);
+    }
+
+    /** The job's one row moves to its next run at {@code dueAt}, attempts starting again ({@code p_next_run}). */
+    void moveToNextRun(JdbcClient jdbc, UUID id, String worker, String error, Instant dueAt) {
+        finish(jdbc, id, worker, ScheduledJobStatus.PENDING, error, dueAt, true);
+    }
+
+    private void finish(JdbcClient jdbc, UUID id, String worker, ScheduledJobStatus status, String error, Instant dueAt,
+                        boolean nextRun) {
         jdbc.sql("""
                         SELECT technical.job_finish(:id, :worker, :status, CAST(:error AS text),
-                                                    CAST(:dueAt AS timestamptz))""")
+                                                    CAST(:dueAt AS timestamptz), :nextRun)""")
                 .param("id", id).param("worker", worker).param("status", status.name())
-                .param("error", error).param("dueAt", dueAt == null ? null : utc(dueAt))
+                .param("error", error).param("dueAt", dueAt == null ? null : utc(dueAt)).param("nextRun", nextRun)
                 .query().singleRow();
     }
 
@@ -101,7 +113,7 @@ class JdbcScheduledJobStore {
                 .update() == 1;
     }
 
-    /** The run of a recurring system job due at {@code dueAt}; its correlation ID is its own id. */
+    /** The run (or, for a job of one moving row, the row) due at {@code dueAt}; its correlation ID is its own id. */
     boolean insertOccurrence(JdbcClient jdbc, RecurringJob job, Instant dueAt) {
         UUID id = UUID.randomUUID();
         return insert(jdbc, id, new NewJob(job.type(), RecurringJob.SUBJECT_TYPE, job.subjectId(), dueAt,

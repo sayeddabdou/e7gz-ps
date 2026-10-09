@@ -72,6 +72,29 @@ class ScheduledJobLifecycleTest extends IntegrationTest {
         assertThat(column("leased_by")).isNull();
     }
 
+    /** PO decision 9 Oct 2026: a frequent system job's one row moves to its next run, its attempts starting again. */
+    @Test
+    void theLeaseHolderMovesAJobToItsNextRun() {
+        OffsetDateTime due = dueAt();
+
+        inTransaction(jdbc -> finish(jdbc, "'worker-a', 'PENDING', NULL, due_at + interval '30 seconds', true"));
+
+        assertThat(column("status")).isEqualTo("PENDING");
+        assertThat(column("attempt")).isEqualTo("0");
+        assertThat(dueAt()).isEqualTo(due.plusSeconds(30));
+        assertThat(column("completed_at")).isNull();
+    }
+
+    @Test
+    void aNextRunNeedsALaterDueTime() {
+        assertRefused("A next run is PENDING at a later due time",
+                jdbc -> finish(jdbc, "'worker-a', 'PENDING', NULL, NULL, true"));
+        assertRefused("A next run is PENDING at a later due time",
+                jdbc -> finish(jdbc, "'worker-a', 'DONE', NULL, NULL, true"));
+        assertRefused("A job is only ever moved later", jdbc -> finish(jdbc, "'worker-a', 'PENDING', NULL, due_at, true"));
+        assertThat(column("attempt")).isEqualTo("1");
+    }
+
     @Test
     void theFourArgumentCallStillFinishesWithoutMovingTheJob() {
         OffsetDateTime due = dueAt();
@@ -99,7 +122,7 @@ class ScheduledJobLifecycleTest extends IntegrationTest {
     }
 
     @Test
-    void aPlainUpdateNeverMovesALeasedJobNorChangesItsCorrelation() {
+    void aPlainUpdateNeverMovesALeasedJobNorResetsItsAttemptsNorChangesItsCorrelation() {
         assertRefused("due_at changes only through the explicit pause/re-arm path or job_finish", jdbc -> jdbc.sql("""
                         UPDATE technical.scheduled_job
                            SET status = 'PENDING', leased_at = NULL, leased_until = NULL, leased_by = NULL,
@@ -108,6 +131,11 @@ class ScheduledJobLifecycleTest extends IntegrationTest {
         assertRefused("Job type/subject/idempotency/correlation identity is immutable", jdbc -> jdbc.sql(
                 "UPDATE technical.scheduled_job SET correlation_id = gen_random_uuid() WHERE id = :id")
                 .param("id", job).update());
+        assertRefused("attempt changes only when a lease is taken, or starts again on a next run through job_finish",
+                jdbc -> jdbc.sql("""
+                        UPDATE technical.scheduled_job
+                           SET status = 'PENDING', leased_at = NULL, leased_until = NULL, leased_by = NULL, attempt = 0
+                         WHERE id = :id""").param("id", job).update());
         assertThat(column("status")).isEqualTo("LEASED");
     }
 
