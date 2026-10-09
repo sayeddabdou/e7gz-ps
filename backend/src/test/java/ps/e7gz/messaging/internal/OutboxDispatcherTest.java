@@ -15,7 +15,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -272,6 +278,65 @@ class OutboxDispatcherTest extends IntegrationTest {
         assertThat(row(id).get("state")).isEqualTo("DISPATCHED");
     }
 
+    // ------------------------------------------------------------------------------------------ concurrency, nesting
+
+    @Test
+    void dispatchersRunningTogetherDeliverEveryEventExactlyOnce() throws Exception {
+        String type = newType();
+        List<Long> ids = new ArrayList<>();
+        for (int i = 0; i < 12; i++) {
+            ids.add(publishCommitted(type, CorrelationId.generate()));
+        }
+        List<Long> delivered = new CopyOnWriteArrayList<>();
+        Set<String> deliveringThreads = ConcurrentHashMap.newKeySet();
+        OutboxConsumer slow = consumer(type, event -> {
+            delivered.add(event.id());
+            deliveringThreads.add(Thread.currentThread().getName());
+            sleep(Duration.ofMillis(25));                  // holds the row lock, so the others must skip it
+        });
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(3);
+        try {
+            List<Future<Integer>> settled = new ArrayList<>();
+            for (int i = 0; i < 3; i++) {
+                settled.add(pool.submit(() -> {
+                    start.await();
+                    return drain(ARCH_08, slow);
+                }));
+            }
+            start.countDown();
+            int total = 0;
+            for (Future<Integer> each : settled) {
+                total += each.get(30, TimeUnit.SECONDS);
+            }
+            assertThat(total).isEqualTo(12);
+        } finally {
+            pool.shutdownNow();
+        }
+
+        assertThat(delivered).as("FOR UPDATE SKIP LOCKED: no event twice").containsExactlyInAnyOrderElementsOf(ids);
+        assertThat(deliveringThreads).as("the dispatchers really shared the work").hasSizeGreaterThan(1);
+        ids.forEach(id -> assertThat(row(id).get("state")).isEqualTo("DISPATCHED"));
+    }
+
+    @Test
+    void aConsumerRunsItsOwnCommandWhileTheDispatcherHoldsTheEvent() {
+        String type = newType();
+        String followUp = newType();
+        UUID correlation = CorrelationId.generate();
+        long id = publishCommitted(type, correlation);
+        long[] followUpId = new long[1];
+
+        assertThat(drain(ARCH_08, consumer(type, event ->
+                followUpId[0] = runner.run(command(context -> publish(context, followUp)))))).isEqualTo(1);
+
+        assertThat(row(id).get("state")).isEqualTo("DISPATCHED");
+        Map<String, Object> written = row(followUpId[0]);
+        assertThat(written.get("state")).isEqualTo("PENDING");
+        assertThat(written.get("correlation_id")).as("the consumer's command keeps the event's correlation ID")
+                .isEqualTo(correlation);
+    }
+
     // ------------------------------------------------------------------------------------------------------ order
 
     @Test
@@ -437,6 +502,15 @@ class OutboxDispatcherTest extends IntegrationTest {
             }
         }
         return channels;
+    }
+
+    private static void sleep(Duration duration) {
+        try {
+            Thread.sleep(duration);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
     }
 
     private static String newType() {

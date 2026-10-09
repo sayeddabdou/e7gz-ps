@@ -5,9 +5,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withBadRequest;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
@@ -104,6 +107,31 @@ class SmsMisrSmsSenderTest {
                 .satisfies(e -> {
                     assertThat(((SmsDeliveryException) e).providerCode()).isNull();
                     assertThat(e.getMessage()).doesNotContain("482913", PASSWORD);
+                });
+    }
+
+    /**
+     * E7-41 review: the outbox dispatcher logs a failed consumer's exception with its whole cause chain on every retry.
+     * An HTTP error from the client carries the response body in its message, and a provider may echo the request in
+     * it, so the failure must carry neither that message nor that exception.
+     */
+    @Test
+    void anHttpErrorEchoingTheRequestLeavesNoSecretInTheFailureOrItsCauses() {
+        String echo = "{\"error\":\"bad request\",\"request\":{\"username\":\"e7gz-user\",\"password\":\"" + PASSWORD
+                + "\",\"sender\":\"sender-token\",\"template\":\"template-token\",\"mobile\":\"201012345678\","
+                + "\"otp\":\"482913\"}}";
+        server.expect(requestTo("https://smsmisr.test/api/OTP/"))
+                .andRespond(withBadRequest().body(echo).contentType(MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> sender.sendOtp(PHONE, "482913"))
+                .isInstanceOf(SmsDeliveryException.class)
+                .satisfies(e -> {
+                    assertThat(((SmsDeliveryException) e).providerCode()).isNull();
+                    StringWriter logged = new StringWriter();
+                    e.printStackTrace(new PrintWriter(logged));          // what a log line with the exception prints
+                    assertThat(logged.toString()).doesNotContain("482913", PASSWORD, "e7gz-user", "sender-token",
+                            "template-token", "201012345678");
+                    assertThat(e.getMessage()).contains("400");
                 });
     }
 
