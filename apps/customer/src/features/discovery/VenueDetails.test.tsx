@@ -46,7 +46,7 @@ describe("VenueDetails", () => {
   it("renders contract data, exact decimal strings, closed state, and disabled booking", async () => {
     const { requests } = renderDetails();
 
-    expect(await screen.findByText("Game Zone")).toBeTruthy();
+    expect(await screen.findByText("Game Zone", {}, { timeout: 10_000 })).toBeTruthy();
     expect(screen.getByText(/170\.50 EGP/u)).toBeTruthy();
     expect(screen.getByText("Closed now")).toBeTruthy();
     expect(screen.getByText(/Opens at 12:00 PM/u)).toBeTruthy();

@@ -48,8 +48,8 @@ function MarkerPreview({ marker, onViewVenue }: { marker: VenueMarker; onViewVen
         <Text style={styles.title}>{marker.name}</Text>
         {distance ? <Text style={styles.muted}>{distance}</Text> : null}
         <Text style={styles.rating}>{marker.averageRating === null ? t.discovery.noRating : `${marker.averageRating} ★ · ${t.discovery.reviews(marker.reviewCount)}`}</Text>
-        <Text style={styles.price}>{price ?? t.discovery.priceUnavailable}</Text>
-        <Text style={styles.available}>{nearest ? t.discovery.nearest(nearest) : t.discovery.noAvailability}</Text>
+        <Text style={styles.price}>{price ? t.discovery.fromPerHour(price) : t.discovery.priceUnavailable}</Text>
+        <Text style={nearest ? styles.available : styles.muted}>{nearest ? t.discovery.nearest(nearest) : t.discovery.noAvailability}</Text>
         <Pressable accessibilityRole="button" onPress={() => onViewVenue(marker.id)} style={styles.action}>
           <Text style={styles.actionText}>{t.discovery.viewVenue}</Text>
         </Pressable>

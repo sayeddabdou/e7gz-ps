@@ -51,4 +51,15 @@ describe("secure token storage", () => {
     expect(secureStore.setItemAsync).not.toHaveBeenCalled();
     expect(secureStore.deleteItemAsync).not.toHaveBeenCalled();
   });
+
+  it("uses memory only for the development web mock", async () => {
+    secureStore.isAvailableAsync.mockResolvedValue(false);
+    const store = createSecureTokenStore({ platform: "web", development: true });
+
+    await store.write({ accessToken: "web-access", refreshToken: "web-refresh" });
+    await expect(store.read()).resolves.toEqual({ accessToken: "web-access", refreshToken: "web-refresh" });
+    await store.clear();
+    await expect(store.read()).resolves.toBeNull();
+    expect(secureStore.setItemAsync).not.toHaveBeenCalled();
+  });
 });

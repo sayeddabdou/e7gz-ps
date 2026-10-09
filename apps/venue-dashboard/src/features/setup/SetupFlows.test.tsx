@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDashboardApiClient } from "../../api";
 import { messages, MessagesContext } from "../../i18n";
@@ -10,7 +10,7 @@ import { PricingEditor } from "./PricingEditor";
 import { ResourceList } from "./ResourceList";
 import { VenueProfile } from "./VenueProfile";
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 const meta = { correlationId: "c-1", serverTime: "2026-10-03T12:00:00Z" };
 const response = (data: unknown, status = 200) => new Response(status === 204 ? undefined : JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
@@ -356,40 +356,94 @@ describe("OpeningHoursEditor", () => {
     expect(screen.queryByLabelText(/ mode$/u)).toBeNull();
   });
 
-  it("uses preview then commit, and forces a fresh password after a changed affected set", async () => {
-    let previewCalls = 0;
-    let commitCalls = 0;
+  it("identifies and highlights custom hours that overlap the next day", async () => {
+    renderWithApi((api) => <OpeningHoursEditor api={api} />, async (request) => {
+      if (request.url.endsWith("/opening-hours") && request.method === "GET") return ok({ defaultOpen: "00:00:00", defaultClose: "00:00:00", defaultFullDay: true, timezone: "Africa/Cairo", version: 1, days: Array.from({ length: 7 }, (_, weekday) => ({ weekday, mode: "DEFAULT", customOpen: null, customClose: null })) });
+      if (request.url.endsWith("/resources") && request.method === "GET") return ok([]);
+      if (request.url.endsWith("/preview")) return failure("VALIDATION_FAILED", 400, { field: "days", details: { weekday: 3 } });
+      throw new Error(`Unexpected request: ${request.method} ${request.url}`);
+    });
+
+    fireEvent.change(await screen.findByLabelText("Thursday Schedule mode"), { target: { value: "CUSTOM" } });
+    fireEvent.change(screen.getByLabelText("Thursday Opens"), { target: { value: "12:04" } });
+    fireEvent.change(screen.getByLabelText("Thursday Closes"), { target: { value: "05:05" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview changes" }));
+
+    const message = "Thursday's hours overlap Friday's schedule. Choose an earlier closing time, or change Friday's schedule.";
+    expect(await screen.findAllByText(message)).toHaveLength(2);
+    for (const label of ["Thursday Schedule mode", "Thursday Opens", "Thursday Closes"]) {
+      expect(screen.getByLabelText(label).getAttribute("aria-invalid")).toBe("true");
+    }
+  });
+
+  it("shows room names and prevents a known 501 when existing bookings are affected", async () => {
     const requests = renderWithApi((api) => <OpeningHoursEditor api={api} />, async (request) => {
       if (request.url.endsWith("/opening-hours") && request.method === "GET") return ok({ defaultOpen: "10:00:00", defaultClose: "23:00:00", defaultFullDay: false, timezone: "Africa/Cairo", version: 1, days: Array.from({ length: 7 }, (_, weekday) => ({ weekday, mode: "DEFAULT", customOpen: null, customClose: null })) });
-      if (request.url.endsWith("/preview")) { previewCalls += 1; return ok({ previewToken: `p-${previewCalls}`, ownerPasswordRequired: true, affected: [{ bookingId: `b-${previewCalls}`, resourceId: "r-1", startAt: "2026-10-04T18:00:00Z", endAt: "2026-10-04T19:00:00Z", protectedCancellation: true }] }); }
-      commitCalls += 1;
-      return commitCalls === 1 ? failure("AFFECTED_SET_CHANGED_REFRESH_PREVIEW", 409) : ok({ defaultOpen: "10:00:00", defaultClose: "23:00:00", defaultFullDay: false, timezone: "Africa/Cairo", version: 2, days: [] });
+      if (request.url.endsWith("/resources") && request.method === "GET") return ok([{ id: "r-1", name: "Room 1", activity: "PLAYSTATION", consoleType: "PS5", baseState: "ACTIVE", operationalRestriction: "NONE" }]);
+      if (request.url.endsWith("/preview")) return ok({ previewToken: "p-1", ownerPasswordRequired: true, affected: [{ bookingId: "b-1", resourceId: "r-1", startAt: "2026-10-04T18:00:00Z", endAt: "2026-10-04T19:00:00Z", protectedCancellation: true }] });
+      throw new Error(`Unexpected request: ${request.method} ${request.url}`);
     });
 
     fireEvent.click(await screen.findByRole("button", { name: "Preview changes" }));
-    expect(await screen.findByText("Booking b-1")).toBeTruthy();
-    expect(screen.getByText("Resource r-1")).toBeTruthy();
+    expect(await screen.findByText("Room 1")).toBeTruthy();
+    expect(screen.queryByText(/b-1|r-1/u)).toBeNull();
     expect(screen.getByText(/9:00 PM/u)).toBeTruthy();
     expect(screen.queryByText("2026-10-04T18:00:00Z")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Save opening hours" }));
-    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "1111" } });
-    fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
+    expect(screen.getByText(/cannot be saved yet/u)).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Save opening hours" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(requests.some((request) => request.url.endsWith("/commit"))).toBe(false);
+  });
 
-    expect(await screen.findByText(/Bookings changed/u)).toBeTruthy();
-    expect(screen.getByText("Booking b-2")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Save opening hours" }));
-    expect((screen.getByLabelText("Owner PIN") as HTMLInputElement).value).toBe("");
-    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "2222" } });
-    fireEvent.click(screen.getByRole("button", { name: "Confirm action" }));
-    await waitFor(() => expect(commitCalls).toBe(2));
+  it("refreshes an initially empty preview when commit reports a changed affected set", async () => {
+    let previewCalls = 0;
+    const requests = renderWithApi((api) => <OpeningHoursEditor api={api} />, async (request) => {
+      if (request.url.endsWith("/opening-hours") && request.method === "GET") return ok({ defaultOpen: "10:00:00", defaultClose: "23:00:00", defaultFullDay: false, timezone: "Africa/Cairo", version: 1, days: Array.from({ length: 7 }, (_, weekday) => ({ weekday, mode: "DEFAULT", customOpen: null, customClose: null })) });
+      if (request.url.endsWith("/resources") && request.method === "GET") return ok([{ id: "r-1", name: "Room 1", activity: "PLAYSTATION", consoleType: "PS5", baseState: "ACTIVE", operationalRestriction: "NONE" }]);
+      if (request.url.endsWith("/preview")) {
+        previewCalls += 1;
+        return previewCalls === 1
+          ? ok({ previewToken: "p-1", ownerPasswordRequired: false, affected: [] })
+          : ok({ previewToken: "p-2", ownerPasswordRequired: true, affected: [{ bookingId: "b-1", resourceId: "r-1", startAt: "2026-10-04T18:00:00Z", endAt: "2026-10-04T19:00:00Z", protectedCancellation: true }] });
+      }
+      if (request.url.endsWith("/commit")) return failure("AFFECTED_SET_CHANGED_REFRESH_PREVIEW", 409);
+      throw new Error(`Unexpected request: ${request.method} ${request.url}`);
+    });
 
-    const commitBodies = await Promise.all(requests.filter((request) => request.url.endsWith("/commit")).map((request) => request.clone().json()));
-    expect(commitBodies.map((body) => body.ownerPassword)).toEqual(["1111", "2222"]);
+    fireEvent.click(await screen.findByRole("button", { name: "Preview changes" }));
+    expect(await screen.findByText("No bookings are affected.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Save opening hours" }));
+
+    expect(await screen.findByText(/Bookings changed after the first preview/u)).toBeTruthy();
+    expect(screen.getByText("Room 1")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Save opening hours" }) as HTMLButtonElement).disabled).toBe(true);
     expect(previewCalls).toBe(2);
+    expect(requests.filter((request) => request.url.endsWith("/commit"))).toHaveLength(1);
   });
 });
 
 describe("PhotoManager", () => {
+  it("does not let processing-photo polling overwrite an unsaved reorder", async () => {
+    vi.useFakeTimers();
+    let listCalls = 0;
+    const images = [
+      { id: "i-1", contentType: "image/jpeg", smallUrl: "https://images.test/i-1-small", mediumUrl: "https://images.test/i-1-medium", urlsExpireAt: meta.serverTime },
+      { id: "i-2", contentType: "image/jpeg", smallUrl: null, mediumUrl: null, urlsExpireAt: null },
+    ];
+    renderWithApi((api) => <PhotoManager api={api} />, async (request) => {
+      if (request.method === "GET") { listCalls += 1; return ok(images); }
+      throw new Error(`Unexpected request: ${request.method} ${request.url}`);
+    });
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.getByAltText("Venue photos 1")).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: "Move down" })[0]!);
+    expect(screen.getAllByRole("listitem")[0]!.textContent).toContain("Photo is being prepared");
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_000); });
+    expect(listCalls).toBe(1);
+    expect(screen.getAllByRole("listitem")[0]!.textContent).toContain("Photo is being prepared");
+  });
+
   it("adds, reorders and removes photos with no Owner PIN (PCR-006)", async () => {
     let listed = false;
     const calls: string[] = [];

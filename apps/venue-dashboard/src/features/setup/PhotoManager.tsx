@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { components } from "@e7gz/api-client";
 import { apiErrorOf, type ApiClient } from "../../api";
 import { useMessages } from "../../i18n";
@@ -33,16 +33,30 @@ export function PhotoManager({ api, uploader = uploadBinary }: { api: ApiClient;
   const [dirtyOrder, setDirtyOrder] = useState(false);
   const [error, setError] = useState<string>();
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const pollAttempts = useRef(0);
 
   useEffect(() => {
     let active = true;
     void api.GET("/api/v1/venue/images").then(({ data, error: body }) => {
       if (!active) return;
-      if (data) { setImages(data.data); setDirtyOrder(false); }
+      if (data) {
+        setImages(data.data);
+        setDirtyOrder(false);
+        if (data.data.every((image) => image.smallUrl && image.mediumUrl)) pollAttempts.current = 0;
+      }
       else setError(setupErrorMessage(apiErrorOf(body).code, t));
     }).catch(() => { if (active) setError(t.setup.errors.network); });
     return () => { active = false; };
   }, [api, refreshVersion, t]);
+
+  useEffect(() => {
+    if (dirtyOrder || !images?.some((image) => !image.smallUrl || !image.mediumUrl) || pollAttempts.current >= 20) return undefined;
+    const timer = setTimeout(() => {
+      pollAttempts.current += 1;
+      setRefreshVersion((version) => version + 1);
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [dirtyOrder, images, refreshVersion]);
 
   const perform = async (work: () => Promise<boolean>) => {
     setBusy(true);
@@ -81,6 +95,7 @@ export function PhotoManager({ api, uploader = uploadBinary }: { api: ApiClient;
     setSelectedFile(undefined);
     setRetry(undefined);
     setProgress(undefined);
+    pollAttempts.current = 0;
     return true;
   });
 

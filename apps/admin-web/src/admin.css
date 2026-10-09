@@ -599,6 +599,11 @@ legend {
   color: var(--e7gz-color-text-inverse);
 }
 
+.step-strip .is-complete b {
+  background: var(--e7gz-color-feedback-success);
+  color: var(--e7gz-color-text-inverse);
+}
+
 .state-card {
   color: var(--e7gz-color-text-admin-muted);
   margin-block: var(--e7gz-space-5xl);
@@ -707,9 +712,20 @@ legend {
   background: var(--e7gz-color-surface-admin-subtle);
   border: var(--e7gz-space-hairline) solid var(--e7gz-color-border-subtle);
   border-radius: var(--e7gz-radius-lg);
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  gap: var(--e7gz-space-sm) var(--e7gz-space-xl);
+  grid-template-columns: minmax(9rem, 1.5fr) repeat(3, minmax(8rem, 1fr));
   padding: var(--e7gz-space-xl);
+}
+
+@media (max-width: 1100px) {
+  .resource-list li {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .resource-list li strong {
+    grid-column: 1 / -1;
+  }
 }
 
 .resource-list span {

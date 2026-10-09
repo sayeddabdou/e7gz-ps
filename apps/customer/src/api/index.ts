@@ -73,3 +73,12 @@ export function errorCodeOf(body: unknown): string | undefined {
   }
   return undefined;
 }
+
+/** The field associated with a validation error envelope, if supplied. */
+export function errorFieldOf(body: unknown): string | undefined {
+  if (body && typeof body === "object" && "error" in body) {
+    const error = (body as { error?: { field?: unknown } }).error;
+    return typeof error?.field === "string" ? error.field : undefined;
+  }
+  return undefined;
+}

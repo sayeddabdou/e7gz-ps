@@ -1,9 +1,9 @@
-import { type ComponentProps, useEffect, useMemo, useState } from "react";
+import { type ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { DefaultTheme, NavigationContainer } from "@react-navigation/native";
+import { DefaultTheme, NavigationContainer, useFocusEffect } from "@react-navigation/native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { nativeTokens } from "@e7gz/tokens/native";
 import { createCustomerApiClient, type ApiClient, type RefreshAccessToken } from "../api";
@@ -85,9 +85,15 @@ const bookingsIcon = tabIcon("tab-icon-bookings", "calendar", "calendar-outline"
 const profileIcon = tabIcon("tab-icon-profile", "person", "person-outline");
 
 function HomeScreen({ api }: { api: ApiClient }) {
+  const [focusVersion, setFocusVersion] = useState(0);
+  const initialFocus = useRef(true);
+  useFocusEffect(useCallback(() => {
+    if (initialFocus.current) initialFocus.current = false;
+    else setFocusVersion((version) => version + 1);
+  }, []));
   return (
     <SafeAreaView edges={["top"]} style={styles.screen}>
-      <DiscoveryScreen api={api} />
+      <DiscoveryScreen api={api} focusVersion={focusVersion} />
     </SafeAreaView>
   );
 }
