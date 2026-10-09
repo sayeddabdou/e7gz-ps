@@ -20,6 +20,9 @@ import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.geo.Coordinates;
+import ps.e7gz.messaging.api.IntegrationEvents;
+import ps.e7gz.messaging.api.NewOutboxEvent;
+import ps.e7gz.messaging.api.Outbox;
 
 /**
  * The Platform Admin's venue commands (FR-ADM-02, FR-VEN-07, FR-VEN-12; arch 09 section 5), each on the admin
@@ -130,11 +133,12 @@ final class VenueCommands {
      * E7-22 contract); the area rule stays with the database.
      */
     record ChangeStatus(UUID adminId, UUID correlationId, UUID venueId, MarketplaceAction action, String reason,
-                        AuditWriter audit) implements Command<Venue> {
+                        AuditWriter audit, Outbox outbox) implements Command<Venue> {
 
         ChangeStatus {
             Objects.requireNonNull(action, "action");
             Objects.requireNonNull(audit, "audit");
+            Objects.requireNonNull(outbox, "outbox");
         }
 
         @Override
@@ -159,8 +163,9 @@ final class VenueCommands {
             MarketplaceStatus target = action.target();
             context.jdbc().sql("UPDATE venue.venue SET marketplace_status = :status WHERE id = :id")
                     .param("status", target.name()).param("id", venueId).update();
-            // arch 08 section 3.2 publishes VenueMarketplaceStatusChanged; the outbox that carries it is E7-41, which adds
-            // the event here, in this transaction.
+            // arch 08 section 3.2, in this transaction (E7-41): it also refreshes the venue's availability projection.
+            outbox.publish(context, new NewOutboxEvent(IntegrationEvents.VENUE_MARKETPLACE_STATUS_CHANGED, "VENUE",
+                    venueId, Map.of("venueId", venueId, "previousStatus", current.name(), "newStatus", target.name())));
             audit.write(context, AuditRecord.builder(VenueAuditAction.VENUE_MARKETPLACE_STATUS_CHANGED,
                             AuditActor.admin(adminId), venueId, correlationId)
                     .reason(reason)

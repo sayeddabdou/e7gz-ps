@@ -7,15 +7,17 @@ import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
+import ps.e7gz.messaging.api.Outbox;
 
 /**
  * Registration (FR-ACC-01, FR-ACC-06, arch 09 section 2): the account, unverified, and its first phone OTP, in one
- * transaction. Username and Phone uniqueness are the database's ({@code ux_user_username_normalized},
- * {@code uq_user_account_phone_e164}); their violations reach the client as {@code USERNAME_TAKEN} /
- * {@code PHONE_TAKEN}. Every value is prepared before the command, so a retry reruns only SQL.
+ * transaction, with the outbox event that sends the code once it commits (E7-41). Username and Phone uniqueness are
+ * the database's ({@code ux_user_username_normalized}, {@code uq_user_account_phone_e164}); their violations reach
+ * the client as {@code USERNAME_TAKEN} / {@code PHONE_TAKEN}. Every value is prepared before the command, so a retry reruns only SQL.
  */
 record RegisterCustomerCommand(UUID userId, String fullName, String username, String phoneE164, String email,
-                               String passwordHash, String referralCode, UUID challengeId, String codeHash)
+                               String passwordHash, String referralCode, UUID challengeId, String codeHash,
+                               String sealedCode, Outbox outbox)
         implements Command<Void> {
 
     /** No Venue is in scope, so the category selects no venue rule (ADR-022 names none for account commands). */
@@ -48,7 +50,8 @@ record RegisterCustomerCommand(UUID userId, String fullName, String username, St
                 .param("referralCode", referralCode)
                 .param("joinedAt", OtpChallenges.utc(ctx.commandNow()))
                 .update();
-        OtpChallenges.insert(ctx, challengeId, userId, OtpPurpose.PHONE_VERIFICATION, phoneE164, codeHash);
+        OtpChallenges.issue(ctx, outbox, challengeId, userId, OtpPurpose.PHONE_VERIFICATION, phoneE164, codeHash,
+                sealedCode);
         return null;
     }
 }

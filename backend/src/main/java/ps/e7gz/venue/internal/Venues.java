@@ -23,6 +23,7 @@ import ps.e7gz.common.geo.Coordinates;
 import ps.e7gz.common.validation.TextFields;
 import ps.e7gz.common.validation.VenuePhones;
 import ps.e7gz.geography.api.AreaLookup;
+import ps.e7gz.messaging.api.Outbox;
 
 /** Venues for the Platform Admin: onboarding, venue information and marketplace status (FR-ADM-02, FR-VEN-07). */
 @Service
@@ -32,12 +33,14 @@ public class Venues {
 
     private final CommandRunner runner;
     private final AuditWriter audit;
+    private final Outbox outbox;
     private final AreaLookup areas;
     private final JdbcClient jdbc;
 
-    Venues(CommandRunner runner, AuditWriter audit, AreaLookup areas, DataSource appDataSource) {
+    Venues(CommandRunner runner, AuditWriter audit, Outbox outbox, AreaLookup areas, DataSource appDataSource) {
         this.runner = runner;
         this.audit = audit;
+        this.outbox = outbox;
         this.areas = areas;
         this.jdbc = JdbcClient.create(appDataSource);
     }
@@ -134,7 +137,7 @@ public class Venues {
     public Venue changeStatus(UUID adminId, UUID venueId, MarketplaceAction action, String reason) {
         requireVenue(venueId);
         return runner.run(new VenueCommands.ChangeStatus(adminId, CorrelationId.require(), venueId, action,
-                reason.strip(), audit));
+                reason.strip(), audit, outbox));
     }
 
     /** The venue phone in E.164 form; anything else is VALIDATION_FAILED on {@code phone}. */

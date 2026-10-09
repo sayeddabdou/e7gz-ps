@@ -1,5 +1,6 @@
 package ps.e7gz.geography.internal;
 
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -14,6 +15,9 @@ import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.geo.Coordinates;
+import ps.e7gz.messaging.api.IntegrationEvents;
+import ps.e7gz.messaging.api.NewOutboxEvent;
+import ps.e7gz.messaging.api.Outbox;
 
 /**
  * The Platform Admin's area commands (FR-VEN-12, FR-VEN-47; arch 09 section 5), each on the admin connection through
@@ -98,11 +102,12 @@ final class AreaCommands {
     /**
      * Activates or deactivates an area. Setting the status it already has changes nothing and writes no audit row.
      */
-    record SetActive(UUID adminId, UUID correlationId, UUID areaId, boolean active, AuditWriter audit)
+    record SetActive(UUID adminId, UUID correlationId, UUID areaId, boolean active, AuditWriter audit, Outbox outbox)
             implements Command<Area> {
 
         SetActive {
             Objects.requireNonNull(audit, "audit");
+            Objects.requireNonNull(outbox, "outbox");
         }
 
         @Override
@@ -126,8 +131,11 @@ final class AreaCommands {
                 // geo.guard_area_deactivation refuses while a Venue in the area is ACTIVE or SUSPENDED (FR-VEN-47).
                 context.jdbc().sql("UPDATE geo.area SET is_active = :active WHERE id = :id")
                         .param("active", active).param("id", areaId).update();
-                // arch 03 section 4 publishes AreaDeactivated (availability projection refresh); the outbox that carries
-                // it is E7-41, which adds the event here.
+                if (!active) {
+                    // arch 03 section 4: AreaDeactivated refreshes the availability projection (E7-41).
+                    outbox.publish(context, new NewOutboxEvent(IntegrationEvents.AREA_DEACTIVATED, "AREA", areaId,
+                            Map.of("areaId", areaId)));
+                }
                 audit.write(context, AuditRecord.builder(
                         active ? GeographyAuditAction.AREA_ACTIVATED : GeographyAuditAction.AREA_DEACTIVATED,
                         AuditActor.admin(adminId), areaId, correlationId).build());

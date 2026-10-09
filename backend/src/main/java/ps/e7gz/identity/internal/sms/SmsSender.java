@@ -4,8 +4,8 @@ package ps.e7gz.identity.internal.sms;
  * Sends a phone OTP by SMS (arch 01 section 6: "Behind an {@code SmsSender} port"; Spec v5 section 7.3: the OTP
  * channel is SMS). SMS is used for OTP codes only (FR-NTF-01).
  *
- * <p>Never called inside a business transaction: the OTP row commits first, then the code is sent. The adapter is
- * chosen by {@code e7gz.sms.provider} ({@link SmsProperties}).
+ * <p>Never called inside a business transaction: the OTP challenge and its outbox event commit first, then the worker's
+ * outbox dispatcher sends the code (E7-41). The adapter is chosen by {@code e7gz.sms.provider} ({@link SmsProperties}).
  */
 public interface SmsSender {
 

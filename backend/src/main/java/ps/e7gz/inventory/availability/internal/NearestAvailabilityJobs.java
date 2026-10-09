@@ -15,8 +15,9 @@ import ps.e7gz.scheduling.api.RecurringJob;
  * 2026, Sprint 1 review): every pass refreshes every venue / activity pair. Two things move a row:
  * <ul>
  *   <li>inventory-affecting changes - reservations, Resource states, selling blocks, maintenance, closures,
- *       emergencies, opening hours, prices. Refreshing on those events needs the outbox (E7-41); until then this pass
- *       bounds how stale a row can be to one interval;</li>
+ *       emergencies, opening hours, prices. Since E7-41 such an event refreshes its venue's rows as soon as it is
+ *       dispatched ({@link NearestAvailabilityEvents}); this pass is the safety net for the producers that do not
+ *       write their event yet, and bounds how stale a row can be to one interval;</li>
  *   <li>time itself: {@code now + 15 minutes} (FR-BOK-02) advances, so a stored start drifts into the past even when
  *       nothing changes.</li>
  * </ul>

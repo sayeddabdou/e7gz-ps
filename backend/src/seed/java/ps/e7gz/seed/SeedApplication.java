@@ -72,7 +72,9 @@ public final class SeedApplication {
         Map<String, Object> seed = new HashMap<>();
         seed.put("spring.main.web-application-type", WebApplicationType.NONE.name());
         // The seed issues no token, but the context needs a signing key: a random one, used for nothing.
-        seed.put("e7gz.security.jwt.secret", randomKey());
+        seed.put("e7gz.security.jwt.secret", randomKey(64));
+        // Likewise the OTP payload key (E7-41): the seed sends no OTP.
+        seed.put("e7gz.identity.otp-payload-key", randomKey(32));
         seed.put("e7gz.object-store.create-bucket", "false");
         // Several venues are onboarded at once; let them queue for the Argon2id gate instead of being refused.
         seed.put("e7gz.password-hashing.acquire-timeout", "10m");
@@ -119,8 +121,8 @@ public final class SeedApplication {
         counts.put(name, db.sql(sql).query(Long.class).single());
     }
 
-    private static String randomKey() {
-        byte[] key = new byte[64];
+    private static String randomKey(int bytes) {
+        byte[] key = new byte[bytes];
         new SecureRandom().nextBytes(key);
         return Base64.getEncoder().encodeToString(key);
     }
