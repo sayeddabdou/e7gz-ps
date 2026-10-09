@@ -122,7 +122,7 @@ describe("DiscoveryScreen", () => {
     const listRequest = requests.find((request) => request.url.includes("/customer/venues?"));
     expect(listRequest?.url).toContain("lat=30.05");
     expect(listRequest?.url).toContain("lng=31.33");
-    expect(screen.getByText("170.50 EGP")).toBeTruthy();
+    expect(screen.getByText("From 170.50 EGP / hour")).toBeTruthy();
     expect(screen.getByText(/9:00 PM/u)).toBeTruthy();
     expect(screen.getByTestId("venue-card-image").props.source.uri).toBe("https://files.example.test/card.jpg");
   });
@@ -186,7 +186,7 @@ describe("DiscoveryScreen", () => {
 
     expect(await screen.findByTestId("map-preview-v-1")).toBeTruthy();
     expect(screen.getByText("1.3 km")).toBeTruthy();
-    expect(screen.getByText("170.50 EGP")).toBeTruthy();
+    expect(screen.getByText("From 170.50 EGP / hour")).toBeTruthy();
     expect(screen.getByText(/Nearest availability: .*9:00 PM/u)).toBeTruthy();
     expect(screen.getByText("4.6 ★ · 38 reviews")).toBeTruthy();
     expect(screen.getByTestId("map-preview-image").props.source.uri).toBe("https://files.example.test/map-card.jpg");
@@ -248,5 +248,31 @@ describe("DiscoveryScreen", () => {
       resolveMap(json([]));
     });
     expect(await screen.findByText("No venues are visible in this map area.")).toBeTruthy();
+    expect(screen.getByTestId("discovery-map")).toBeTruthy();
+  });
+
+  it("finds rooms for the full server-validated interval", async () => {
+    const requests = renderDiscovery(deniedLocation, async (request) => {
+      if (request.url.endsWith("/customer/areas")) return json([area]);
+      if (request.url.includes("/customer/find-available?")) return json([{ venueId: "v-1", venueName: "Game Zone", resources: [{ id: "r-1", name: "Room 1", activity: "PLAYSTATION", consoleType: "PS5" }] }]);
+      if (request.url.includes("/customer/venues?")) return json({ items: [venue], nextCursor: null });
+      throw new Error(`Unexpected request: ${request.url}`);
+    });
+
+    fireEvent.press(await screen.findByText("Choose area manually"));
+    fireEvent.press(await screen.findByText("Nasr City"));
+    fireEvent.press(screen.getByRole("button", { name: "Find available rooms" }));
+    fireEvent.press(screen.getByRole("button", { name: "Today, Monday 12 October" }));
+    fireEvent.press(screen.getByRole("button", { name: "6:30 PM" }));
+    fireEvent.press(screen.getByRole("button", { name: "1.5 hours" }));
+    fireEvent.press(screen.getByRole("button", { name: "Find available" }));
+
+    expect(await screen.findByText("Room 1 · PS5")).toBeTruthy();
+    const request = requests.find((item) => item.url.includes("/customer/find-available?"));
+    expect(request?.url).toContain("areaId=a-1");
+    expect(request?.url).toContain("activity=PLAYSTATION");
+    expect(request?.url).toContain("date=2026-10-12");
+    expect(request?.url).toContain("startTime=18%3A30%3A00");
+    expect(request?.url).toContain("durationMinutes=90");
   });
 });

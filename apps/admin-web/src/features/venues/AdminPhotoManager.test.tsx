@@ -1,13 +1,36 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAdminApiClient } from "../../api";
 import { AdminPhotoManager } from "./AdminPhotoManager";
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 const meta = { correlationId: "c-1", serverTime: "2026-10-03T10:00:00Z" };
 const response = (status: number, body?: unknown) => new Response(body === undefined ? undefined : JSON.stringify(body), { status, headers: body === undefined ? undefined : { "Content-Type": "application/json" } });
 
 describe("AdminPhotoManager", () => {
+  it("keeps polling beyond 30 seconds until a processed photo URL is available", async () => {
+    vi.useFakeTimers();
+    let listCalls = 0;
+    const api = createAdminApiClient({ apiBaseUrl: "http://api" }, () => "token", async () => {
+      listCalls += 1;
+      const ready = listCalls >= 12;
+      return response(200, { data: [{ id: "i-1", contentType: "image/jpeg", mediumUrl: ready ? "https://signed/photo.jpg" : null, smallUrl: ready ? "https://signed/small.jpg" : null, urlsExpireAt: ready ? meta.serverTime : null }], meta });
+    });
+    render(<AdminPhotoManager api={api} venueId="v-1" />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Processing photo")).toBeTruthy();
+    for (let attempt = 0; attempt < 11; attempt += 1) {
+      await act(async () => { await vi.advanceTimersByTimeAsync(3_000); });
+    }
+
+    expect(listCalls).toBe(12);
+    expect(screen.getByRole("img").getAttribute("src")).toBe("https://signed/photo.jpg");
+  });
+
   it("shows upload failure and retries from a fresh signed upload before confirming", async () => {
     let starts = 0; let confirms = 0;
     const api = createAdminApiClient({ apiBaseUrl: "http://api" }, () => "token", async (request) => {
@@ -15,12 +38,11 @@ describe("AdminPhotoManager", () => {
       if (request.url.endsWith("/images")) { starts += 1; return response(201, { data: { image: { id: `i-${starts}`, contentType: "image/jpeg", mediumUrl: null, smallUrl: null, urlsExpireAt: null }, uploadUrl: `https://upload/${starts}`, uploadExpiresAt: meta.serverTime }, meta }); }
       confirms += 1; return response(200, { data: { id: "i-2", contentType: "image/jpeg", mediumUrl: "https://signed/photo.jpg", smallUrl: "https://signed/small.jpg", urlsExpireAt: meta.serverTime }, meta });
     });
-    const upload = vi.fn().mockResolvedValueOnce(new Response(undefined, { status: 500 })).mockResolvedValueOnce(new Response(undefined, { status: 200 }));
-    vi.stubGlobal("fetch", upload);
-    render(<AdminPhotoManager api={api} venueId="v-1" />);
+    const upload = vi.fn().mockRejectedValueOnce(new Error("upload failed")).mockResolvedValueOnce(undefined);
+    render(<AdminPhotoManager api={api} venueId="v-1" uploader={upload} />);
     await screen.findByText("No photos yet.");
     fireEvent.change(screen.getByLabelText("Add photo"), { target: { files: [new File(["bytes"], "venue.jpg", { type: "image/jpeg" })] } });
-    expect((await screen.findByRole("alert")).textContent).toContain("Something went wrong");
+    expect((await screen.findByRole("alert")).textContent).toContain("server could not be reached");
     fireEvent.click(screen.getByRole("button", { name: "Retry upload" }));
     await waitFor(() => expect(confirms).toBe(1));
     expect(starts).toBe(2);
@@ -52,19 +74,20 @@ describe("AdminPhotoManager", () => {
   });
 
   it("shows upload progress while the signed byte upload is in flight", async () => {
-    let finishUpload: (response: Response) => void = () => undefined;
+    let finishUpload: () => void = () => undefined;
     const api = createAdminApiClient({ apiBaseUrl: "http://api" }, () => "token", async (request) => {
       if (request.method === "GET") return response(200, { data: [], meta });
       if (request.url.endsWith("/images")) return response(201, { data: { image: { id: "i-1", contentType: "image/jpeg", mediumUrl: null, smallUrl: null, urlsExpireAt: null }, uploadUrl: "https://upload/1", uploadExpiresAt: meta.serverTime }, meta });
       return response(200, { data: { id: "i-1", contentType: "image/jpeg", mediumUrl: "https://signed/photo.jpg", smallUrl: "https://signed/small.jpg", urlsExpireAt: meta.serverTime }, meta });
     });
-    vi.stubGlobal("fetch", () => new Promise<Response>((resolve) => { finishUpload = resolve; }));
-    render(<AdminPhotoManager api={api} venueId="v-1" />);
+    const uploader = vi.fn((_url: string, _file: File, onProgress: (percent: number) => void) => new Promise<void>((resolve) => { onProgress(42); finishUpload = resolve; }));
+    render(<AdminPhotoManager api={api} venueId="v-1" uploader={uploader} />);
     await screen.findByText("No photos yet.");
     fireEvent.change(screen.getByLabelText("Add photo"), { target: { files: [new File(["bytes"], "venue.jpg", { type: "image/jpeg" })] } });
-    expect(await screen.findByText("Uploading…")).toBeTruthy();
-    finishUpload(new Response(undefined, { status: 200 }));
-    await waitFor(() => expect(screen.queryByText("Uploading…")).toBeNull());
+    expect(await screen.findByText("Uploading… 42%")).toBeTruthy();
+    expect(screen.getByRole("progressbar").getAttribute("value")).toBe("42");
+    finishUpload();
+    await waitFor(() => expect(screen.queryByText("Uploading… 42%")).toBeNull());
   });
 
   it("rolls back an optimistic reorder when the API refuses it", async () => {

@@ -76,11 +76,9 @@ function ProtectedShell({
             </NavLink>
           ))}
         </nav>
-        <div className="admin-sidebar-footer"><span>Cairo, Egypt</span><span>v0.9.4</span></div>
       </aside>
       <div className="admin-workspace">
         <header className="admin-topbar">
-          <div className="admin-topbar-search" aria-hidden="true"><span>⌕</span><span>Search</span></div>
           <div className="admin-topbar-spacer" />
           <div className="admin-profile"><span className="admin-avatar">PA</span><span><strong>Platform Admin</strong><small>Administrator</small></span></div>
           <button className="button button--secondary" disabled={loggingOut} type="button" onClick={onLogout}>{loggingOut ? t.auth.loggingOut : t.auth.logout}</button>
