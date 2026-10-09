@@ -45,6 +45,12 @@ e7gz:
   # environment; no default, so neither the api nor the worker starts without one.
   identity:
     otp-payload-key: ${E7GZ_OTP_PAYLOAD_KEY:}
+  # Idempotency fingerprints (ADR-015, E7-42): a secret request field (Owner Password, PIN, ...) enters the stored
+  # fingerprint only as an HMAC-SHA256 under this key. Base64 of 32 random bytes (`openssl rand -base64 32`), from the
+  # environment / secret store only (arch 12 §3), the same on every replica of an environment; no default, so the app
+  # does not start without one. Changing it makes a retry of an in-flight request that carries a secret a 422.
+  idempotency:
+    fingerprint-key: ${E7GZ_IDEMPOTENCY_FINGERPRINT_KEY:}
   # Access JWT signing key (arch 10 §2.3, HS512): Base64 of at least 64 random bytes, e.g. `openssl rand -base64 64`.
   # From the environment / secret store only (arch 12 §3); no default, so the app does not start without one.
   security:

@@ -48,7 +48,7 @@ Modules and the tables they own: arch 03 §1. A module calls another only throug
 docker compose up -d                 # postgres (postgis) on 5433, seaweedfs (S3), mailpit
 cd backend && ./gradlew check        # unit + integration (Testcontainers) + ArchUnit
 ./gradlew bootRun --args='--spring.profiles.active=api'     # or worker; api,worker runs both (photo copies, Nearest Availability refresh and every outbox event, the OTP SMS included, need worker)
-                                     # needs E7GZ_JWT_SECRET (Base64, 64 bytes) and E7GZ_OTP_PAYLOAD_KEY (Base64, 32 bytes: openssl rand -base64 32)
+                                     # needs E7GZ_JWT_SECRET (Base64, 64 bytes), E7GZ_OTP_PAYLOAD_KEY and E7GZ_IDEMPOTENCY_FINGERPRINT_KEY (Base64, 32 bytes each: openssl rand -base64 32)
 ./gradlew bootRun --args='--spring.profiles.active=admin-bootstrap --e7gz.admin-bootstrap.email=… --e7gz.admin-bootstrap.full-name=…'
                                      # one-off: first Platform Admin (password typed, or E7GZ_ADMIN_BOOTSTRAP_PASSWORD)
 ./gradlew bootRun --args='--spring.profiles.active=availability-rebuild'

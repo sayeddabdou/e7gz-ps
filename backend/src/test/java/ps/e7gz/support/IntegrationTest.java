@@ -32,6 +32,7 @@ public abstract class IntegrationTest {
         registry.add("e7gz.datasource.admin.password", () -> ADMIN_RUNTIME);
         registry.add("e7gz.security.jwt.secret", () -> TEST_JWT_SECRET);
         registry.add("e7gz.identity.otp-payload-key", () -> TEST_OTP_PAYLOAD_KEY);
+        registry.add("e7gz.idempotency.fingerprint-key", () -> TEST_IDEMPOTENCY_FINGERPRINT_KEY);
         registry.add("e7gz.security.cors.allowed-origins", () -> DASHBOARD_ORIGIN + "," + ADMIN_ORIGIN);
         // E7-23 PR 3: venue photos in a real S3 server (SeaweedFS, as in docker compose).
         registry.add("e7gz.object-store.endpoint", () -> ObjectStoreTestContainer.endpoint().toString());
@@ -53,4 +54,9 @@ public abstract class IntegrationTest {
     /** E7-41: a test-only AES-256 key (32 bytes, Base64) for the sealed OTP; production reads E7GZ_OTP_PAYLOAD_KEY. */
     public static final String TEST_OTP_PAYLOAD_KEY = Base64.getEncoder().encodeToString(
             "e7gz-test-only-otp-payload-key!!".getBytes(StandardCharsets.US_ASCII));
+
+    /** E7-42: a test-only HMAC key (32 bytes, Base64) for idempotency fingerprints; production reads
+     * E7GZ_IDEMPOTENCY_FINGERPRINT_KEY. */
+    public static final String TEST_IDEMPOTENCY_FINGERPRINT_KEY = Base64.getEncoder().encodeToString(
+            "e7gz-test-only-idempotency-key!!".getBytes(StandardCharsets.US_ASCII));
 }

@@ -39,14 +39,19 @@ PowerShell (from `backend/`):
 ```powershell
 $env:E7GZ_CORS_ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:5174"
 $env:E7GZ_JWT_SECRET = [Convert]::ToBase64String((1..64 | ForEach-Object { Get-Random -Maximum 256 }))
+$env:E7GZ_OTP_PAYLOAD_KEY = [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 }))
+$env:E7GZ_IDEMPOTENCY_FINGERPRINT_KEY = [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 }))
 ./gradlew bootRun --args='--spring.profiles.active=api'
 ```
 
 Git Bash (from `backend/`):
 
 ```bash
-E7GZ_CORS_ALLOWED_ORIGINS="http://localhost:5173,http://localhost:5174" E7GZ_JWT_SECRET="$(python -c 'import secrets,base64;print(base64.b64encode(secrets.token_bytes(64)).decode(),end="")')" ./gradlew bootRun --args='--spring.profiles.active=api'
+E7GZ_CORS_ALLOWED_ORIGINS="http://localhost:5173,http://localhost:5174" E7GZ_JWT_SECRET="$(python -c 'import secrets,base64;print(base64.b64encode(secrets.token_bytes(64)).decode(),end="")')" E7GZ_OTP_PAYLOAD_KEY="$(openssl rand -base64 32)" E7GZ_IDEMPOTENCY_FINGERPRINT_KEY="$(openssl rand -base64 32)" ./gradlew bootRun --args='--spring.profiles.active=api'
 ```
+
+The three keys are random per run, for local use only (never a deployed value). A new fingerprint key on restart only
+means an Idempotency-Key retried across the restart with an Owner Password in the body is answered 422.
 
 Keep that console visible: the OTP codes are printed there (`DEV SMS to +20…: OTP 123456`).
 

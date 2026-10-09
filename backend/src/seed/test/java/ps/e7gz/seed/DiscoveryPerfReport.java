@@ -200,6 +200,8 @@ class DiscoveryPerfReport {
         properties.put("server.port", "0");
         properties.put("e7gz.security.jwt.secret", ps.e7gz.support.IntegrationTest.TEST_JWT_SECRET);
         properties.put("e7gz.identity.otp-payload-key", ps.e7gz.support.IntegrationTest.TEST_OTP_PAYLOAD_KEY);
+        properties.put("e7gz.idempotency.fingerprint-key",
+                ps.e7gz.support.IntegrationTest.TEST_IDEMPOTENCY_FINGERPRINT_KEY);
         // Card photos are signed links; signing needs the store's address, not the store.
         properties.put("e7gz.object-store.endpoint", ObjectStoreTestContainer.endpoint().toString());
         properties.put("e7gz.object-store.bucket", ObjectStoreTestContainer.BUCKET);
