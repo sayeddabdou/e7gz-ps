@@ -1325,6 +1325,12 @@ Before you start (PO review 9 Oct 2026, do these too):
 - The database sends no NOTIFY itself: the outbox writer calls pg_notify('outbox') in the command transaction (delivered only at commit), as ScheduledJobs does for 'sched'. The writer stores CorrelationId.require() in correlation_id; the dispatcher opens CorrelationId.open(event.correlationId()) around each event.
 - A DEAD_LETTER outbox event is final in the database (DISPATCHED and DEAD_LETTER are terminal; only the technical.outbox_* functions change delivery state): log it at ERROR (Sev-2). The admin alert is E7-56. There is no 'admin recover' in this task: the admin 'try again' for a failed delivery to a person moves to E7-43 (notification.recover_dead_letter), PO decision 9 Oct 2026.
 
+PO decisions at the start of work (9 Oct 2026, do these too):
+- Order: events are taken in id order, but an event waiting for its retry does NOT hold back later events of the same aggregate. This replaces "processes one aggregate's events in sequence" of arch 08 section 4.2 for this task.
+- The Nearest Availability consumer lives in inventory.availability.internal (Engine lane: Amr reviews that part); venue.api VenueActivities gets ofVenue(venueId) and inArea(areaId) for it.
+- LoggingSmsSender (local development only) keeps writing the code to the log, with the phone masked to its last 3 digits. SmsMisrSmsSender keeps its own mask (+2010*****678).
+- E7GZ_OTP_PAYLOAD_KEY (Base64 of 32 bytes) is required: neither the api nor the worker starts without it, as with E7GZ_JWT_SECRET. Locally, run api,worker to receive an OTP.
+
 Carry-forward from E7-13 (do these too):
 - Move the OTP SMS from identity CustomerRegistration's direct post-commit call to an outbox row written in the same command transaction and delivered by the dispatcher.
 - The OTP code is never stored in plain text in outbox_event.payload (arch 10 section 2.2). PO decision 9 Oct 2026: the payload carries the code encrypted (AES-GCM) with a key from the secret store (a new setting; name it in the PR, e.g. E7GZ_OTP_PAYLOAD_KEY; a test-only key in tests); the dispatcher decrypts it only to send the SMS. An outbox payload can never change after insert (guard_outbox), so the ciphertext is not cleared: a code is useless after its 5 minutes. Never log the code or the key.
