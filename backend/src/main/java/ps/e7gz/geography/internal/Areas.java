@@ -17,6 +17,7 @@ import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.geo.Coordinates;
 import ps.e7gz.common.validation.TextFields;
 import ps.e7gz.geography.api.AreaLookup;
+import ps.e7gz.messaging.api.Outbox;
 
 /** Areas for the Platform Admin and for customer discovery (FR-VEN-12, FR-VEN-47; arch 09 sections 3.2 and 5). */
 @Service
@@ -24,11 +25,13 @@ public class Areas implements AreaLookup {
 
     private final CommandRunner runner;
     private final AuditWriter audit;
+    private final Outbox outbox;
     private final JdbcClient jdbc;
 
-    Areas(CommandRunner runner, AuditWriter audit, DataSource appDataSource) {
+    Areas(CommandRunner runner, AuditWriter audit, Outbox outbox, DataSource appDataSource) {
         this.runner = runner;
         this.audit = audit;
+        this.outbox = outbox;
         this.jdbc = JdbcClient.create(appDataSource);
     }
 
@@ -98,6 +101,6 @@ public class Areas implements AreaLookup {
     }
 
     public Area setActive(UUID adminId, UUID areaId, boolean active) {
-        return runner.run(new AreaCommands.SetActive(adminId, CorrelationId.require(), areaId, active, audit));
+        return runner.run(new AreaCommands.SetActive(adminId, CorrelationId.require(), areaId, active, audit, outbox));
     }
 }

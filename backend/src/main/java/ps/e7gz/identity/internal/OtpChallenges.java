@@ -3,10 +3,14 @@ package ps.e7gz.identity.internal;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import ps.e7gz.common.codes.OtpPurpose;
 import ps.e7gz.common.command.CommandContext;
+import ps.e7gz.messaging.api.IntegrationEvents;
+import ps.e7gz.messaging.api.NewOutboxEvent;
+import ps.e7gz.messaging.api.Outbox;
 
 /**
  * SQL for {@code iam.otp_challenge}. The FR-ACC-04 limits are the database's (arch 10 section 2.4): the insert guard
@@ -39,6 +43,17 @@ final class OtpChallenges {
                 .param("codeHash", codeHash)
                 .param("issuedAt", utc(ctx.commandNow()))
                 .update();
+    }
+
+    /**
+     * Issues a new challenge and, in the same transaction, the outbox event that sends its code by SMS once the command
+     * commits (E7-41, FR-NTF-12): the code travels sealed ({@link OtpPayloadCipher}), never in plain text.
+     */
+    static void issue(CommandContext ctx, Outbox outbox, UUID id, UUID userId, OtpPurpose purpose,
+                      String destination, String codeHash, String sealedCode) {
+        insert(ctx, id, userId, purpose, destination, codeHash);
+        outbox.publish(ctx, new NewOutboxEvent(IntegrationEvents.PHONE_OTP_ISSUED, "OTP_CHALLENGE", id,
+                Map.of("challengeId", id, "sealedCode", sealedCode)));
     }
 
     static Optional<Challenge> find(CommandContext ctx, UUID id, OtpPurpose purpose) {

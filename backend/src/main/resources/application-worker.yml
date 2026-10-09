@@ -2,4 +2,6 @@
 e7gz:
   datasource:
     app:
-      maximum-pool-size: 5         # small on purpose: SKIP LOCKED polling is cheap (arch 12 §1.4)
+      # Small on purpose: SKIP LOCKED polling is cheap (arch 12 §1.4). 8, not 5, since E7-41: the deadline worker uses 3
+      # (LISTEN sched + 2 threads), the outbox dispatcher up to 3 (LISTEN outbox + 1 thread + its consumer's command).
+      maximum-pool-size: 8

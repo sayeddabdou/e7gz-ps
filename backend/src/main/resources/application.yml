@@ -40,6 +40,11 @@ e7gz:
       password: ${E7GZ_SMS_MISR_PASSWORD:}
       sender: ${E7GZ_SMS_MISR_SENDER_TOKEN:}
       template: ${E7GZ_SMS_MISR_TEMPLATE_TOKEN:}
+  # Phone OTP in the outbox payload is sealed with AES-256-GCM (arch 10 §2.2; PO decision 9 Oct 2026, E7-41): Base64 of
+  # 32 random bytes, e.g. `openssl rand -base64 32`. From the environment / secret store only (arch 12 §3), separate per
+  # environment; no default, so neither the api nor the worker starts without one.
+  identity:
+    otp-payload-key: ${E7GZ_OTP_PAYLOAD_KEY:}
   # Access JWT signing key (arch 10 §2.3, HS512): Base64 of at least 64 random bytes, e.g. `openssl rand -base64 64`.
   # From the environment / secret store only (arch 12 §3); no default, so the app does not start without one.
   security:
@@ -75,7 +80,8 @@ e7gz:
     horizon-days: ${E7GZ_SESSION_HORIZON_DAYS:120}
     extend-at: "03:15"             # nightly, Africa/Cairo
   # Nearest Availability (arch 05 §5.3): the worker refreshes every venue / activity pair this often (PO decision
-  # 8 Oct 2026), until the outbox (E7-41) also refreshes on inventory events; it also keeps up with time passing.
+  # 8 Oct 2026), besides the refresh on each inventory event the outbox dispatches (E7-41); it also keeps up with time
+  # passing.
   availability:
     projection:
       refresh-every: ${E7GZ_AVAILABILITY_REFRESH_EVERY:1m}
@@ -89,6 +95,12 @@ e7gz:
     first-backoff: 10s
     max-backoff: 10m
     invariant-sweep-at: "04:00"    # nightly integrity sweep, Africa/Cairo (arch 11 §4)
+  # The outbox dispatcher of the worker profile (arch 08 §4, ADR-004; see OutboxProperties). Commands write events in
+  # their own transaction; pg_notify('outbox') wakes the dispatcher at commit, the tick is the safety net.
+  outbox:
+    tick: 1s
+    threads: 1
+    retry-delays: 5s, 30s, 2m, 10m, 1h   # arch 08 §4.3; the 6th attempt failing too is DEAD_LETTER (Sev-2)
 
 # Every log line carries the correlation ID of its request or job (NFR-32; CorrelationId puts it in the MDC).
 # JSON log output is the observability task's (arch 11 §5.1, E7-100); this only adds the field to the default pattern.

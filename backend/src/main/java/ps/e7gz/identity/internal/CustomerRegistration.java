@@ -3,8 +3,6 @@ package ps.e7gz.identity.internal;
 import java.util.Optional;
 import java.util.UUID;
 import javax.sql.DataSource;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -12,31 +10,31 @@ import ps.e7gz.common.codes.OtpPurpose;
 import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
-import ps.e7gz.identity.internal.sms.SmsDeliveryException;
-import ps.e7gz.identity.internal.sms.SmsSender;
+import ps.e7gz.messaging.api.Outbox;
 
 /**
  * Customer registration and phone verification (FRS F-01; FR-ACC-01…06; arch 09 section 2 and section 3.1).
  *
  * <p>Slow or external work stays outside the transaction: the Argon2id hash and the OTP are prepared before the
- * command, and the SMS is sent after it commits (arch 01 section 6: "Never called inside a business transaction").
- * A failed SMS never undoes the committed account or challenge; the customer asks for a new code after 60 s. (The
- * outbox takes over the send and its retries when it exists; Product Owner, 30 Sep 2026.)
+ * command. The command writes the challenge and an outbox event carrying the sealed code; the worker's dispatcher sends
+ * the SMS after commit, with retries (E7-41, ADR-004; arch 01 section 6: "Never called inside a business transaction").
+ * A failed SMS never undoes the committed account or challenge; the customer can also ask for a new code after 60 s.
  */
 @Service
 public class CustomerRegistration {
 
-    private static final Logger log = LoggerFactory.getLogger(CustomerRegistration.class);
-
     private final CommandRunner runner;
     private final PasswordEncoder passwords;
-    private final SmsSender sms;
+    private final OtpPayloadCipher otpCipher;
+    private final Outbox outbox;
     private final JdbcClient jdbc;
 
-    CustomerRegistration(CommandRunner runner, PasswordEncoder passwords, SmsSender sms, DataSource appDataSource) {
+    CustomerRegistration(CommandRunner runner, PasswordEncoder passwords, OtpPayloadCipher otpCipher, Outbox outbox,
+                         DataSource appDataSource) {
         this.runner = runner;
         this.passwords = passwords;
-        this.sms = sms;
+        this.otpCipher = otpCipher;
+        this.outbox = outbox;
         this.jdbc = JdbcClient.create(appDataSource);
     }
 
@@ -65,8 +63,9 @@ public class CustomerRegistration {
                 passwords.encode(customer.password()),                                       // arch 10 §2.2
                 ReferralCodes.newCode(),
                 challengeId,
-                OtpCodes.hash(code)));
-        sendAfterCommit(phone, code);
+                OtpCodes.hash(code),
+                otpCipher.seal(challengeId, code),
+                outbox));
         return new Registered(userId, challengeId);
     }
 
@@ -80,11 +79,11 @@ public class CustomerRegistration {
         String code = OtpCodes.newCode();
         UUID challengeId = UUID.randomUUID();
         SendPhoneOtpCommand.Outcome outcome =
-                runner.run(new SendPhoneOtpCommand(userId, phone, challengeId, OtpCodes.hash(code)));
+                runner.run(new SendPhoneOtpCommand(userId, phone, challengeId, OtpCodes.hash(code),
+                        otpCipher.seal(challengeId, code), outbox));
         if (outcome == SendPhoneOtpCommand.Outcome.NO_PENDING_VERIFICATION) {
             throw new ApiException(ApiErrorCode.NOT_FOUND, "phone");
         }
-        sendAfterCommit(phone, code);
         return challengeId;
     }
 
@@ -123,14 +122,5 @@ public class CustomerRegistration {
                 .param("purpose", OtpPurpose.PHONE_VERIFICATION.name())
                 .query(UUID.class)
                 .optional();
-    }
-
-    private void sendAfterCommit(String phoneE164, String code) {
-        try {
-            sms.sendOtp(phoneE164, code);
-        } catch (SmsDeliveryException e) {
-            // Logged by the adapter without the code or the full number; the customer can resend after 60 s.
-            log.error("OTP SMS was not delivered; provider code {}", e.providerCode());
-        }
     }
 }

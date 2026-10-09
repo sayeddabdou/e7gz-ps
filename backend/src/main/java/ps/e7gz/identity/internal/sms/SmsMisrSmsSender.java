@@ -11,6 +11,7 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 /**
  * SMS Misr OTP API adapter: {@code POST {baseUrl}/OTP/}, form-encoded, with {@code environment}, {@code username},
@@ -74,9 +75,14 @@ class SmsMisrSmsSender implements SmsSender {
                     .retrieve()
                     .body(String.class);
         } catch (RestClientException e) {
-            // Not the exception message: it may echo the request.
-            log.error("SMS Misr OTP send to {} failed: {}", masked(phoneE164), e.getClass().getSimpleName());
-            throw new SmsDeliveryException("SMS Misr could not be reached", null, e);
+            // Neither the exception's message nor the exception itself: an HTTP error's message is the response body,
+            // which may echo the request, and the outbox dispatcher logs a failure with its whole cause chain on every
+            // retry (E7-41). The HTTP status, or the exception's class, is all that leaves this class.
+            String failure = e instanceof RestClientResponseException response
+                    ? "HTTP " + response.getStatusCode().value()
+                    : e.getClass().getSimpleName();
+            log.error("SMS Misr OTP send to {} failed: {}", masked(phoneE164), failure);
+            throw new SmsDeliveryException("SMS Misr could not be reached (" + failure + ")", null, null);
         }
 
         String result = resultCode(body);

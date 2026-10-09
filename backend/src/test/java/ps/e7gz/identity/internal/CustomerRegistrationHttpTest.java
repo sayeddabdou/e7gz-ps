@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.Map;
 import java.util.UUID;
@@ -18,24 +19,25 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import ps.e7gz.identity.internal.sms.SmsDeliveryException;
 import ps.e7gz.identity.internal.sms.SmsSender;
+import ps.e7gz.messaging.api.OutboxEvent;
+import ps.e7gz.messaging.internal.OutboxDrain;
 import ps.e7gz.support.IntegrationTest;
 
 /**
  * E7-13 - registration, phone OTP and verification over HTTP (with the real security chain) against the migrated
  * database. Each FR-ACC-04 limit returns its code; the limits themselves are enforced by the database.
+ *
+ * <p>E7-41: the code leaves through the outbox. The test profile runs no dispatcher, so every request that issues a
+ * code is followed by a delivery of the due {@code PhoneOtpIssued} events to {@link PhoneOtpSms} with a capturing SMS
+ * sender, as the worker would do right after the commit.
  */
 @AutoConfigureMockMvc
-@Import(CustomerRegistrationHttpTest.CapturedSms.class)
 class CustomerRegistrationHttpTest extends IntegrationTest {
 
     private static final String AUTH = "/api/v1/customer/auth";
@@ -47,7 +49,9 @@ class CustomerRegistrationHttpTest extends IntegrationTest {
     ObjectMapper json;
 
     @Autowired
-    CapturingSmsSender sms;
+    OtpPayloadCipher otpCipher;
+
+    final CapturingSmsSender sms = new CapturingSmsSender();
 
     @Autowired
     DataSource appDataSource;
@@ -66,16 +70,6 @@ class CustomerRegistrationHttpTest extends IntegrationTest {
                 throw new SmsDeliveryException("test failure", "4906", null);
             }
             lastCode.put(phoneE164, code);
-        }
-    }
-
-    @TestConfiguration(proxyBeanMethods = false)
-    static class CapturedSms {
-
-        @Bean
-        @Primary
-        CapturingSmsSender capturingSmsSender() {
-            return new CapturingSmsSender();
         }
     }
 
@@ -166,9 +160,51 @@ class CustomerRegistrationHttpTest extends IntegrationTest {
     }
 
     @Test
-    void aFailedSmsDoesNotUndoTheRegistration() throws Exception {
+    void aFailedSmsDoesNotUndoTheRegistrationAndIsRetriedByTheOutbox() throws Exception {
         sms.failing.set(true);
-        register("A", randomUsername(), randomLocalPhone(), "a@example.com", "Passw0rd1").andExpect(status().isCreated());
+        String local = randomLocalPhone();
+        JsonNode body = register("A", randomUsername(), local, "a@example.com", "Passw0rd1")
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString().transform(this::read);
+        UUID challengeId = UUID.fromString(body.path("data").path("otpChallengeId").asText());
+
+        assertThat(db.sql("SELECT count(*) FROM iam.user_account WHERE phone_e164 = :phone")
+                .param("phone", e164(local)).query(Integer.class).single()).isOne();
+        Map<String, Object> event = otpEvent(challengeId);
+        assertThat(event.get("state")).isEqualTo("PENDING");                    // arch 08 section 4.3: retried
+        assertThat(((Number) event.get("attempt")).intValue()).isOne();
+        assertThat((String) event.get("last_error")).contains("SmsDeliveryException").doesNotContain(e164(local));
+    }
+
+    @Test
+    void theOtpEventCarriesTheCodeSealedNeverInPlainTextNorThePhone() throws Exception {
+        Account a = registered();
+        Map<String, Object> event = otpEvent(a.challengeId());
+
+        assertThat(event.get("state")).isEqualTo("DISPATCHED");
+        assertThat(event.get("aggregate_type")).isEqualTo("OTP_CHALLENGE");
+        String payload = (String) event.get("payload");
+        JsonNode fields = read(payload);
+        assertThat(fields.path("challengeId").asText()).isEqualTo(a.challengeId().toString());
+        assertThat(payload).doesNotContain(a.code()).doesNotContain(a.phone()).doesNotContain(a.phone().substring(1));
+        assertThat(otpCipher.open(a.challengeId(), fields.path("sealedCode").asText())).isEqualTo(a.code());
+    }
+
+    @Test
+    void aCodeNoLongerOpenWhenItsEventIsDeliveredIsNotSent() {
+        String phone = e164(randomLocalPhone());
+        UUID user = insertUnverifiedUser(phone);
+        UUID expired = insertChallenge(user, phone, "6 minutes", "111111");
+        String otherPhone = e164(randomLocalPhone());
+        UUID otherUser = insertUnverifiedUser(otherPhone);
+        UUID replaced = insertChallenge(otherUser, otherPhone, "2 minutes", "222222");
+        insertChallenge(otherUser, otherPhone, "0 seconds", "333333");          // supersedes the one before
+        PhoneOtpSms sender = new PhoneOtpSms(otpCipher, sms, appDataSource);
+
+        sender.handle(otpEvent(expired, "111111"));
+        sender.handle(otpEvent(replaced, "222222"));
+
+        assertThat(sms.lastCode).doesNotContainKeys(phone, otherPhone);
     }
 
     // ------------------------------------------------------------------------------------------------ verification
@@ -355,12 +391,37 @@ class CustomerRegistrationHttpTest extends IntegrationTest {
 
     private ResultActions register(String fullName, String username, String phone, String email, String password)
             throws Exception {
-        return postJson(AUTH + "/register", Map.of("fullName", fullName, "username", username, "phone", phone,
-                "email", email, "password", password));
+        ResultActions result = postJson(AUTH + "/register", Map.of("fullName", fullName, "username", username,
+                "phone", phone, "email", email, "password", password));
+        deliverSms();
+        return result;
     }
 
     private ResultActions sendOtp(String phone) throws Exception {
-        return postJson(AUTH + "/otp/send", Map.of("phone", phone));
+        ResultActions result = postJson(AUTH + "/otp/send", Map.of("phone", phone));
+        deliverSms();
+        return result;
+    }
+
+    /** What the worker's outbox dispatcher does right after the commit (E7-41). */
+    private void deliverSms() {
+        OutboxDrain.drain(appDataSource, json, new PhoneOtpSms(otpCipher, sms, appDataSource));
+    }
+
+    /** The event a registration would have written for this challenge, as the dispatcher hands it over. */
+    private OutboxEvent otpEvent(UUID challengeId, String code) {
+        return new OutboxEvent(1, "PhoneOtpIssued", "OTP_CHALLENGE", challengeId,
+                json.valueToTree(Map.of("challengeId", challengeId.toString(),
+                        "sealedCode", otpCipher.seal(challengeId, code))),
+                UUID.randomUUID(), Instant.EPOCH, 0);
+    }
+
+    private Map<String, Object> otpEvent(UUID challengeId) {
+        return db.sql("""
+                        SELECT state, attempt, last_error, aggregate_type, payload::text AS payload
+                          FROM technical.outbox_event
+                         WHERE event_type = 'PhoneOtpIssued' AND aggregate_id = :id""")
+                .param("id", challengeId).query().singleRow();
     }
 
     private ResultActions verify(UUID challengeId, String code) throws Exception {

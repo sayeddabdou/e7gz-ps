@@ -10,7 +10,8 @@ import ps.e7gz.common.command.CommandContext;
 /**
  * Read-only: the activities a venue offers ({@code venue.venue_activity}), which the Platform Admin manages
  * (FR-ADM-02). Pricing reads it so a price for an activity the venue does not offer is a field error, not the
- * {@code fk_default_price_venue_activity} refusal (E7-27). The Nearest Availability rebuild lists every pair (E7-33).
+ * {@code fk_default_price_venue_activity} refusal (E7-27). The Nearest Availability rebuild lists every pair (E7-33);
+ * its event consumer the pairs of one venue or one area (E7-41).
  */
 public interface VenueActivities {
 
@@ -19,6 +20,12 @@ public interface VenueActivities {
 
     /** Every venue / activity pair of any venue, ordered by venue then activity, for a read outside a command. */
     List<Offering> all();
+
+    /** The pairs of one venue, ordered by activity, for a read outside a command; empty when it does not exist. */
+    List<Offering> ofVenue(UUID venueId);
+
+    /** The pairs of every venue of one area, ordered by venue then activity, for a read outside a command. */
+    List<Offering> inArea(UUID areaId);
 
     record Offering(UUID venueId, Activity activity) {
 

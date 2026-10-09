@@ -7,13 +7,16 @@ import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
+import ps.e7gz.messaging.api.Outbox;
 
 /**
  * A new phone-verification OTP for an unverified account (FR-ACC-04). The database refuses a resend inside 60 s and a
  * 6th send in the hour, and supersedes the previous code. Under the User's lock the account is re-read: it may have
- * been verified or deleted since the caller looked it up.
+ * been verified or deleted since the caller looked it up. The code is sent through the outbox once it commits
+ * (E7-41).
  */
-record SendPhoneOtpCommand(UUID userId, String phoneE164, UUID challengeId, String codeHash)
+record SendPhoneOtpCommand(UUID userId, String phoneE164, UUID challengeId, String codeHash, String sealedCode,
+                           Outbox outbox)
         implements Command<SendPhoneOtpCommand.Outcome> {
 
     enum Outcome { SENT, NO_PENDING_VERIFICATION }
@@ -41,7 +44,8 @@ record SendPhoneOtpCommand(UUID userId, String phoneE164, UUID challengeId, Stri
         if (!pending) {
             return Outcome.NO_PENDING_VERIFICATION;
         }
-        OtpChallenges.insert(ctx, challengeId, userId, OtpPurpose.PHONE_VERIFICATION, phoneE164, codeHash);
+        OtpChallenges.issue(ctx, outbox, challengeId, userId, OtpPurpose.PHONE_VERIFICATION, phoneE164, codeHash,
+                sealedCode);
         return Outcome.SENT;
     }
 }
