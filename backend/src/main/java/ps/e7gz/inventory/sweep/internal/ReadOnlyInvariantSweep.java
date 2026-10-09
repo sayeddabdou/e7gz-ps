@@ -16,7 +16,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.IllegalTransactionStateException;
 import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import ps.e7gz.inventory.sweep.api.InvariantCheck;
 import ps.e7gz.inventory.sweep.api.InvariantSweep;
@@ -68,6 +70,10 @@ class ReadOnlyInvariantSweep implements InvariantSweep {
 
     @Override
     public SweepReport run() {
+        // E7-40: inside a caller's transaction the snapshot would silently be that transaction's; fail instead.
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalTransactionStateException("The invariant sweep never runs inside a transaction");
+        }
         Instant startedAt = clock.instant();
         List<InvariantViolation> violations = snapshot.execute(status -> {
             List<InvariantViolation> found = new ArrayList<>();

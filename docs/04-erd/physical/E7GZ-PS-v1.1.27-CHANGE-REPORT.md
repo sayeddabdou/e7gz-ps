@@ -155,6 +155,23 @@ The fix is limited to `operations.guard_emergency_selling_block()`. Signature, l
 
 - Tests: `EmergencySellingBlockGuardTest` (application role, every trigger on; the DELETE trigger refusal also as the table owner) — an Emergency-linked venue and resource block close with their Emergency; a closed block cannot reopen; subject, start and active-with-end rules unchanged on both tables; DELETE refused; a plain block still opens and closes. The `.dbm`/migration identity check in `MigrationFilesTest`.
 
+### v1.1.33 — scheduled_job outcomes and correlation ID (E7-40, 9 Oct 2026)
+
+Product Owner decisions 4 Oct 2026 (E7-32 review), built with the deadline engine (E7-40). Modelled in the `.dbm` (one column and the table comment on `technical.scheduled_job`, block `v1_1_33_scheduled_job_finish_and_correlation` for the two functions); Flyway `V202610091200__scheduled_job_finish_and_correlation.sql` = the column, its backfill and comments, then that block byte for byte. **For Product Owner review.**
+
+| Object | Change | Why |
+|---|---|---|
+| `technical.scheduled_job.correlation_id` | new `uuid NOT NULL`; existing rows take their own `id` | the worker opens the job's correlation ID around every attempt, so every retry logs under the ID of the command that created the job (NFR-32, arch 11 §5.1); a nightly system job uses its own id |
+| `technical.job_finish(uuid,text,text,text,timestamptz)` | replaces the four-argument function (dropped first, so no call is ambiguous): also `SUPERSEDED` (sets `completed_at`), and `PENDING` with an optional later due time `p_due_at` | ADR-006 / arch 08 §2.1: a fired job that is no longer applicable is marked `SUPERSEDED` in the same transaction; a job that fired before its authoritative deadline, or must back off after an error, is sent back to `PENDING` later. `p_due_at` goes with `PENDING` only and must be later than the current `due_at` |
+| `technical.guard_scheduled_job()` | `correlation_id` immutable like the rest of the job's identity; `due_at` may change on `LEASED → PENDING` only inside `job_finish` (its private write token, the Outbox's pattern); every other rule unchanged | a job's status and due time still never change through a plain `UPDATE` |
+| table comment | names the new `job_finish` path and the immutable `correlation_id` | |
+
+**Backfill.** The lifecycle guards refuse any `UPDATE` of a `DONE` or `SUPERSEDED` job and a `PENDING → PENDING` rewrite, so the migration disables the three row triggers (`tr_125_scheduled_job_guard`, `tr_guard_tournament_scheduled_job`, `tr_tournament_job_final_state`) for the one backfill statement and enables them again, inside its own transaction; it needs only the table owner.
+
+Unchanged on purpose: every other column, constraint, index and trigger; `job_lease` and `job_rearm`; the Tournament guards on top (a Tournament job's `due_at` stays immutable, so a Tournament job is never moved by `job_finish`). Grants: PUBLIC is revoked in the migration; the security baseline grants `EXECUTE` on the new `job_finish` to both runtime roles after every migration, like every other technical function.
+
+- Tests: `ScheduledJobLifecycleTest` (application role, every trigger on) — `SUPERSEDED` and moved-later `PENDING` through `job_finish`, an earlier or non-`PENDING` due time refused, a plain `UPDATE` of `due_at` or `correlation_id` refused, only the lease holder finishes; `MigrationSafetyTest` with `upgrade-seed/V1.sql` (`DONE`, `SUPERSEDED`, `FAILED`, `LEASED` and `PENDING` jobs before the backfill) and `upgrade-seed/V202610091200.sql`; the `.dbm`/migration identity check in `MigrationFilesTest`.
+
 ## Product Owner decisions (26 Sep 2026)
 
 A1 overlapping Maintenance allowed · A2 booking horizon is a deployment setting, default 120 days · A4 rate-limit table approved · A5 reports FR-AUD-11/12 at launch · A6 venue alerts = live + Web Push + audible alert · A8 configurable = fees and points only · A9 Venue never returns to ONBOARDING · A10 login limits stored as `LOGIN` rate-limit rows · A11 read-only customer wallet screen (PCR-004, no DB change) · review self-reporting allowed, duplicate open reports blocked.

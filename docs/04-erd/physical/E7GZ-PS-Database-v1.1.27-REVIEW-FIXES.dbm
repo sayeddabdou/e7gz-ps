@@ -3888,10 +3888,10 @@ Source/critical constraints:
 	</constraint>
 </table>
 
-<table name="scheduled_job" layers="0" collapse-mode="2" max-obj-count="17" z-value="0">
+<table name="scheduled_job" layers="0" collapse-mode="2" max-obj-count="18" z-value="0">
 	<schema name="technical"/>
 	<role name="postgres"/>
-	<comment> <![CDATA[Durable PostgreSQL scheduler. now < deadline permits; now >= deadline means expiry owns the state. Late workers revalidate and cannot change Product outcome. v1.1.25 generic lifecycle for every job type: PENDING -> LEASED | PAUSED | DONE | SUPERSEDED; PAUSED -> PENDING (explicit re-arm, the only path that may move due_at) | SUPERSEDED; LEASED -> DONE | FAILED | PENDING (release) | SUPERSEDED; FAILED -> PENDING (explicit re-arm) | SUPERSEDED; DONE and SUPERSEDED are terminal. type/subject/idempotency_key are immutable.]]> </comment>
+	<comment> <![CDATA[Durable PostgreSQL scheduler. now < deadline permits; now >= deadline means expiry owns the state. Late workers revalidate and cannot change Product outcome. v1.1.25 generic lifecycle for every job type: PENDING -> LEASED | PAUSED | DONE | SUPERSEDED; PAUSED -> PENDING (explicit re-arm) | SUPERSEDED; LEASED -> DONE | FAILED | PENDING (release; v1.1.33: job_finish may move due_at later) | SUPERSEDED; FAILED -> PENDING (explicit re-arm) | SUPERSEDED; DONE and SUPERSEDED are terminal. type/subject/idempotency_key/correlation_id are immutable; due_at moves only through job_rearm or job_finish.]]> </comment>
 	<position x="5400" y="11480"/>
 	<column name="id" not-null="true">
 		<type name="uuid" length="0"/>
@@ -3938,6 +3938,10 @@ Source/critical constraints:
 	</column>
 	<column name="completed_at">
 		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+	</column>
+	<column name="correlation_id" not-null="true">
+		<type name="uuid" length="0"/>
+		<comment> <![CDATA[Correlation ID of the command that created the job; a nightly system job uses its own id. The worker opens it around every attempt and every retry reuses it (v1.1.33, NFR-32).]]> </comment>
 	</column>
 	<constraint name="scheduled_job_pk" type="pk-constr" table="technical.scheduled_job">
 		<columns names="id" ref-type="src-columns"/>
@@ -24421,6 +24425,67 @@ BEGIN
     RETURN NEW;
 END;
 $function$;
+]]> </definition>
+</genericsql>
+
+<genericsql name="v1_1_33_scheduled_job_finish_and_correlation">
+	<definition> <![CDATA[
+CREATE OR REPLACE FUNCTION technical.guard_scheduled_job()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $function$
+DECLARE ok boolean;
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Scheduled jobs are SUPERSEDED, not deleted'; END IF;
+ IF TG_OP='INSERT' THEN
+   IF NEW.status NOT IN ('PENDING','PAUSED') OR NEW.attempt<>0 OR NEW.completed_at IS NOT NULL OR NEW.last_error IS NOT NULL THEN
+     RAISE EXCEPTION 'A new job starts PENDING or PAUSED with no attempt';
+   END IF;
+   IF NEW.created_at>clock_timestamp() THEN RAISE EXCEPTION 'Job created_at cannot be in the future'; END IF;
+   RETURN NEW;
+ END IF;
+ IF NEW.id<>OLD.id OR NEW.type<>OLD.type OR NEW.subject_type<>OLD.subject_type OR NEW.subject_id<>OLD.subject_id
+    OR NEW.idempotency_key<>OLD.idempotency_key OR NEW.created_at<>OLD.created_at OR NEW.correlation_id<>OLD.correlation_id THEN
+   RAISE EXCEPTION 'Job type/subject/idempotency/correlation identity is immutable';
+ END IF;
+ IF OLD.status IN ('DONE','SUPERSEDED') THEN RAISE EXCEPTION 'Job is % and can never fire again',OLD.status; END IF;
+ ok:=(OLD.status='PENDING' AND NEW.status IN ('LEASED','PAUSED','DONE','SUPERSEDED'))
+   OR (OLD.status='PAUSED' AND NEW.status IN ('PENDING','SUPERSEDED'))
+   OR (OLD.status='LEASED' AND NEW.status IN ('DONE','FAILED','PENDING','SUPERSEDED'))
+   OR (OLD.status='LEASED' AND NEW.status='LEASED' AND OLD.leased_until<=clock_timestamp())
+   OR (OLD.status='FAILED' AND NEW.status IN ('PENDING','SUPERSEDED'));
+ IF NOT ok THEN RAISE EXCEPTION 'Invalid job transition % -> %',OLD.status,NEW.status; END IF;
+ IF NEW.status='LEASED' THEN
+   IF NEW.attempt<>OLD.attempt+1 THEN RAISE EXCEPTION 'A lease records exactly one attempt'; END IF;
+ ELSIF NEW.attempt<>OLD.attempt THEN RAISE EXCEPTION 'attempt changes only when a lease is taken';
+ END IF;
+ IF NEW.due_at<>OLD.due_at AND NOT (NEW.status='PENDING' AND (OLD.status IN ('PAUSED','FAILED')
+      OR (OLD.status='LEASED' AND technical.has_write('technical.scheduled_job',OLD.id::text)))) THEN
+   RAISE EXCEPTION 'due_at changes only through the explicit pause/re-arm path or job_finish';
+ END IF;
+ RETURN NEW;
+END;
+$function$;
+
+DROP FUNCTION technical.job_finish(uuid,text,text,text);
+CREATE OR REPLACE FUNCTION technical.job_finish(p_job uuid,p_worker text,p_status text,p_error text DEFAULT NULL,p_due_at timestamptz DEFAULT NULL)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $function$
+DECLARE j technical.scheduled_job%ROWTYPE; tok uuid;
+BEGIN
+ SELECT * INTO j FROM technical.scheduled_job WHERE id=p_job FOR UPDATE;
+ IF NOT FOUND OR j.status<>'LEASED' OR j.leased_by IS DISTINCT FROM p_worker OR j.leased_until<=clock_timestamp() THEN
+   RAISE EXCEPTION 'Only the current lease holder can finish this job';
+ END IF;
+ IF p_status NOT IN ('DONE','SUPERSEDED','FAILED','PENDING') THEN RAISE EXCEPTION 'Invalid job outcome'; END IF;
+ IF p_due_at IS NOT NULL AND p_status<>'PENDING' THEN RAISE EXCEPTION 'Only a job sent back to PENDING takes a new due time'; END IF;
+ IF p_due_at IS NOT NULL AND p_due_at<=j.due_at THEN RAISE EXCEPTION 'A job is only ever moved later'; END IF;
+ IF p_due_at IS NOT NULL THEN tok:=technical.enter_write('technical.scheduled_job',j.id::text); END IF;
+ UPDATE technical.scheduled_job SET status=p_status,due_at=COALESCE(p_due_at,j.due_at),leased_at=NULL,leased_until=NULL,leased_by=NULL,
+   completed_at=CASE WHEN p_status IN ('DONE','SUPERSEDED','FAILED') THEN clock_timestamp() END,
+   last_error=CASE WHEN p_status IN ('DONE','SUPERSEDED') THEN j.last_error ELSE p_error END
+  WHERE id=j.id;
+ IF tok IS NOT NULL THEN PERFORM technical.leave_write(tok); END IF;
+END;
+$function$;
+REVOKE ALL ON FUNCTION technical.job_finish(uuid,text,text,text,timestamptz) FROM PUBLIC;
 ]]> </definition>
 </genericsql>
 

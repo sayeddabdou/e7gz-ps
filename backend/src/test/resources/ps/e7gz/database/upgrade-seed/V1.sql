@@ -59,6 +59,25 @@ INSERT INTO technical.scheduled_job (id, type, subject_id, subject_type, due_at,
 VALUES ('5afe0000-0000-4000-8000-000000000101', 'SEED_JOB', '5afe0000-0000-4000-8000-000000000081', 'BOOKING',
         '2031-02-01 18:10:00+00', 'PENDING', 'SEED_JOB:5afe0000-0000-4000-8000-000000000081');
 
+-- E7-40 (v1.1.33 adds correlation_id): jobs in every state a deployed database holds, so the backfill also runs over
+-- finished and leased rows, which the lifecycle guards would refuse to update.
+INSERT INTO technical.scheduled_job (id, type, subject_id, subject_type, due_at, status, idempotency_key)
+VALUES ('5afe0000-0000-4000-8000-000000000102', 'SEED_JOB', '5afe0000-0000-4000-8000-000000000081', 'BOOKING',
+        '2026-01-01 10:00:00+00', 'PENDING', 'SEED_JOB:done'),
+       ('5afe0000-0000-4000-8000-000000000103', 'SEED_JOB', '5afe0000-0000-4000-8000-000000000081', 'BOOKING',
+        '2026-01-01 10:00:00+00', 'PENDING', 'SEED_JOB:superseded'),
+       ('5afe0000-0000-4000-8000-000000000104', 'SEED_JOB', '5afe0000-0000-4000-8000-000000000081', 'BOOKING',
+        '2026-01-01 10:00:00+00', 'PENDING', 'SEED_JOB:failed'),
+       ('5afe0000-0000-4000-8000-000000000105', 'SEED_JOB', '5afe0000-0000-4000-8000-000000000081', 'BOOKING',
+        '2026-01-01 10:00:00+00', 'PENDING', 'SEED_JOB:leased');
+SELECT technical.job_lease('5afe0000-0000-4000-8000-000000000102', 'seed-worker', interval '1 hour');
+SELECT technical.job_finish('5afe0000-0000-4000-8000-000000000102', 'seed-worker', 'DONE');
+UPDATE technical.scheduled_job SET status = 'SUPERSEDED', completed_at = clock_timestamp()
+ WHERE id = '5afe0000-0000-4000-8000-000000000103';
+SELECT technical.job_lease('5afe0000-0000-4000-8000-000000000104', 'seed-worker', interval '1 hour');
+SELECT technical.job_finish('5afe0000-0000-4000-8000-000000000104', 'seed-worker', 'FAILED', 'seed failure');
+SELECT technical.job_lease('5afe0000-0000-4000-8000-000000000105', 'seed-worker', interval '100 years');
+
 INSERT INTO admin.admin_alert (id, kind, severity, subject_type, subject_id, payload, correlation_id)
 VALUES ('5afe0000-0000-4000-8000-000000000111', 'SEED_ALERT', 'RISK', 'VENUE', '5afe0000-0000-4000-8000-000000000011',
         '{"source": "seed"}', '5afe0000-0000-4000-8000-000000000112');
