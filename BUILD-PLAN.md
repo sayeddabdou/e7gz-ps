@@ -83,7 +83,7 @@ Online and walk-in booking, venue accept/reject, deadlines, outbox, notification
 | S2-P4 | E7-43 | Platform | Notifications: catalogue, channels, push and email | Notifications: in-app list, phone push, email, and SMS for codes only. | S2-P2 |
 | S2-P5 | E7-44 | Platform | Venue live channel: SSE + Web Push | Live updates on the dashboard, and browser push when it is closed. | S2-P2, S2-P4 |
 | S2-P6 | E7-45 | Platform | Boundary test pack scaffold | Test tools to set the clock and check timers to the exact second. | S2-P1 |
-| S2-E1 | E7-46 | Engine | Online booking creation (O1) | A customer books a room online (20 checks), the venue gets the request. | S1-E2, S2-P0, S2-P1 |
+| S2-E1 | E7-46 | Engine | Online booking creation (O1) | A customer books a room online (20 checks), the venue gets the request. | S1-E2, S2-P0, S2-P1; S2-P2, S2-P3 before the PR |
 | S2-E2 | E7-47 | Engine | Venue accept / reject / expiry (O2) | The venue accepts or rejects within 10 minutes, or the request expires. | S2-E1 |
 | S2-E3 | E7-48 | Engine | Walk-in / manual booking (O4) | The venue adds a walk-in booking. | S1-E2, S1-E3 |
 | S2-E4 | E7-49 | Engine | Cancellation, customer buckets, contact visibility | Customer cancels; booking lists; hide the phone number when not allowed. | S2-E1 |
@@ -1458,7 +1458,7 @@ Finish by running the checks in CLAUDE.md §4, then give me a short summary, the
 
 **What this task does:** A customer books a room online (20 checks), the venue gets the request.
 
-Lane: Engine · Depends on: S1-E2, S2-P0, S2-P1
+Lane: Engine · Depends on: S1-E2, S2-P0, S2-P1; S2-P2, S2-P3 before the PR
 
 ```text
 Read CLAUDE.md first. You are implementing task S2-E1 — "Online booking creation (O1)" (Engine lane) of the E7GZ PS build plan.
@@ -1471,7 +1471,7 @@ Read only these docs for this task:
 Do:
 1. CreateBookingCommand: the 20 named conditions in one ordered list, each citing its source, with a count assertion (risk I2).
 2. Reservation + booking in one command; venue response deadline job (T1); fee snapshot from config.effective_numeric.
-3. Outbox: BOOKING_CREATED (customer), VENUE_NEW_BOOKING_REQUEST (venue).
+3. Outbox: BookingCreated and ReservationHeld in the command transaction (see the PO decisions below; the customer and venue notifications are E7-43's).
 
 Done when (write these as tests first where possible):
 - Boundary: submit at startAt−15:00 ok, −14:59 refused; sessionEnd−11 min ok, −9 min refused.
@@ -1480,6 +1480,14 @@ Carry-forward from E7-39 (do these too):
 - Contract from E7-39 (packages/api-client/SPRINT-2-CONTRACT.md; stubs already in the controllers named there): implement POST /customer/bookings (Idempotency-Key required; 201 CustomerBookingDetail) with the error codes declared in booking/web/CustomerBookingController.
 - Quote (PO decision 5 Oct 2026): implement GET /customer/bookings/quote?resourceId&playMode&startAt&durationMinutes -> {hourlyPrice, nominalBookedMinutes, venuePriceTotal, bookingFee {amount, currency, displayAsFree}, totalAmount}, using exactly the same price and fee code as creation (FR-BOK-06, FR-BOK-07, FR-PTS-13). It is not an availability check and holds nothing. Test: the quote equals the amounts of a booking created with the same input.
 - Error codes (PO decision 5 Oct 2026): a venue with no price for the activity fails under FR-BOK-11 item 20 as 422 RESOURCE_NOT_ELIGIBLE.
+
+PO decisions 9 Oct 2026 (Amr's pre-implementation review; do these too):
+- Condition order: CreateBookingCommand uses the numbering and names of arch 06 section 1.3 (= FR-BOK-11); each entry also cites its Spec v5 section 22 number (e.g. arch 06 #11 = Spec 22 #17). The two lists hold the same twenty conditions and Spec 22 says all must pass, so which code wins when several fail is not a product rule: run #12-#15 (period shape) first, then one AvailabilityQuery.isFree call covers #10, #11, #16, #17 and #18. Tests: each condition failing alone, not combinations.
+- E7-41 (outbox) and E7-42 (idempotency) are Sayed's and not on main yet: start now with everything else, write no temporary outbox or idempotency code, and open the PR only after both are merged. Then merge main, write the outbox events below and wire the Idempotency-Key (replay test: same key + same body returns the same booking, no second booking).
+- Reads from other modules: same rule as E7-30 (PO decision 3 Oct 2026): small read-only interfaces in each owner's api package, SQL in one JDBC class in its internal package, the caller's CommandContext on every read, no new tables, each read tested in its owner module. Reuse VenueSellingBlocks, OperatingSessions, ResourceCatalog and ActiveCommitments; add only what is missing: venue eligibility (marketplace status, account status, area status), the Resource name, the effective booking fee (config.effective_numeric('booking.fee', at)), the customer's phone-verified and ban status. Venue, resource, config and identity are Platform: Sayed reviews those additions. Trust is Engine.
+- Outbox: BOOKING_CREATED and VENUE_NEW_BOOKING_REQUEST are notification catalogue codes (Spec v5 52.2, 52.5; seeded in V1), produced by E7-43's notification consumer, not by this task. This task writes one integration event BookingCreated {bookingId, customerId, venueId, resourceId, startAt, endAt} with correlationId and occurredAt (arch 08 section 3.2, arch 01 section 11.1), and ReservationLedger.create writes ReservationHeld {reservationId, resourceId, venueId, period} for the reservation it creates, both in the command transaction; E7-41's projection consumer refreshes that venue's Nearest Availability rows from ReservationHeld. Test: a refused or rolled-back creation writes neither event.
+- Error mapping: #1 403 PHONE_VERIFICATION_REQUIRED; #2 403 ACCOUNT_BANNED_FOR_THIS_ACTION; #3 COMMITMENT_LIMIT_REACHED; #4 OVERLAPPING_COMMITMENT; #5 marketplace not ACTIVE, #6 venue account DISABLED, #7 area not ACTIVE: 422 VENUE_NOT_ELIGIBLE_FOR_NEW_ACTIVITY (the customer is never told which); #8, #9 ONLINE_INTAKE_WINDOW_CLOSED; #10 VENUE_SELLING_BLOCK_ACTIVE; #11 RESOURCE_SELLING_BLOCK_ACTIVE; #12 BOOKING_LEAD_TIME_TOO_SHORT; #13, #14 BOOKING_DURATION_INVALID; #15 INTERVAL_NOT_WITHIN_ONE_SESSION; #16 (DISABLED or ARCHIVED), #17 owner review, #19 activity mismatch, #20 (incl. no price) 422 RESOURCE_NOT_ELIGIBLE; #18, including an emergency interval, maintenance or closure (availability checks 5-8; Spec v5 16.3 counts them as blocking reservations), 409 SLOT_NO_LONGER_AVAILABLE.
+- Unknown resourceId on create and quote: 404 NOT_FOUND (what AvailabilityQuery.isFree already throws; arch 09 section 1.5). Add @ApiError(status = 404, codes = NOT_FOUND) to both operations in CustomerBookingController and regenerate packages/api-client.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
