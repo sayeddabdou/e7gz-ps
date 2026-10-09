@@ -61,6 +61,7 @@ class FirstAdminBootstrapTest {
         registry.add("e7gz.datasource.admin.password", () -> ADMIN_RUNTIME);
         registry.add("e7gz.security.jwt.secret", () -> IntegrationTest.TEST_JWT_SECRET);
         registry.add("e7gz.identity.otp-payload-key", () -> IntegrationTest.TEST_OTP_PAYLOAD_KEY);
+        registry.add("e7gz.idempotency.fingerprint-key", () -> IntegrationTest.TEST_IDEMPOTENCY_FINGERPRINT_KEY);
     }
 
     @Autowired
