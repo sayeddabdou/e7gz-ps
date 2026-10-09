@@ -3170,6 +3170,9 @@ Carry-forward from E7-41 (PO decisions 9 Oct 2026, do these too):
 - Put the OTP payload encryption key (the setting E7-41 added, e.g. E7GZ_OTP_PAYLOAD_KEY) in the secret store for staging and production; never reuse the test key.
 - There is no start-up guard against the 'log' SMS provider (PO decision 9 Oct 2026): the release checklist verifies E7GZ_SMS_PROVIDER=sms-misr in staging and production before go-live, and a smoke test sends one real OTP.
 
+Carry-forward from E7-42 (PO decision 10 Oct 2026, do this too):
+- Put the idempotency fingerprint key (E7GZ_IDEMPOTENCY_FINGERPRINT_KEY, the setting E7-42 added: Base64 of 32 random bytes) in the secret store for staging and production, the same value on every replica of an environment; never reuse the test key. Neither the api nor the worker starts without it. Changing it later only makes a retry across the change of a request with a secret field (Owner Password) a 422.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
