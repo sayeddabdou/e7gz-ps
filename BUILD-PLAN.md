@@ -78,7 +78,7 @@ Online and walk-in booking, venue accept/reject, deadlines, outbox, notification
 | S1-C4 | E7-38 | Clients | Customer app: discovery, map and venue page | App: list of venues, map, and venue page. | S1-P0, S0-C3 |
 | S2-P0 | E7-39 | Platform | Sprint 2 API contract | Add all Sprint 2 API endpoints as stubs by day 2. | S1-P0 |
 | S2-P1 | E7-40 | Platform | Deadline engine (scheduled_job) | The timer engine that fires deadlines on time (e.g. 10-minute venue reply). | S0-E1 |
-| S2-P2 | E7-41 | Platform | Transactional outbox and dispatcher | Send messages only after the action is saved, with retries. | S0-E1 |
+| S2-P2 | E7-41 | Platform | Transactional outbox and dispatcher | Send messages only after the action is saved, with retries. | S0-E1, S2-P1 |
 | S2-P3 | E7-42 | Platform | Idempotency on writes | Pressing a button twice never creates two bookings. | S0-E1 |
 | S2-P4 | E7-43 | Platform | Notifications: catalogue, channels, push and email | Notifications: in-app list, phone push, email, and SMS for codes only. | S2-P2 |
 | S2-P5 | E7-44 | Platform | Venue live channel: SSE + Web Push | Live updates on the dashboard, and browser push when it is closed. | S2-P2, S2-P4 |
@@ -1300,34 +1300,42 @@ Finish by running the checks in CLAUDE.md §4, then give me a short summary, the
 
 **What this task does:** Send messages only after the action is saved, with retries.
 
-Lane: Platform · Depends on: S0-E1
+Lane: Platform · Depends on: S0-E1, S2-P1
 
 ```text
 Read CLAUDE.md first. You are implementing task S2-P2 — "Transactional outbox and dispatcher" (Platform lane) of the E7GZ PS build plan.
 
 Read only these docs for this task:
 - ADR-004
-- arch 08 §4.1–§4.3
+- arch 08 §3.2, §4.1–§4.3
+- arch 10 §2.4
+- arch 05 §5.3, arch 08 §7
 
 Do:
-1. Write outbox rows in the command transaction; pg_notify wake; dispatcher with exponential backoff and dead-letter; admin recover.
+1. Write outbox rows in the command transaction; pg_notify wake; dispatcher with exponential backoff and dead-letter.
 2. Nothing dispatches for a rolled-back transaction.
 
 Done when (write these as tests first where possible):
 - Tests: rollback → no dispatch; transient failure retried; permanent → dead-letter.
 
+Before you start (PO review 9 Oct 2026, do these too):
+- Branch from main only after E7-40 (PR #54, deadline engine) is merged: it turned NearestAvailabilityJobs into a recurring job on technical.scheduled_job and uses worker database connections.
+- Consumers plug in like E7-40's job handlers: an outbox consumer interface in messaging.api (the event types it takes, and handle(event)), found as beans, so notifications (E7-43) and the venue live channel (E7-44) are added without editing the dispatcher. Every consumer must be safe to run twice: a retry runs every consumer of the event again.
+- Database connections: the worker profile has 5 app connections and the deadline worker already uses 3 (one LISTEN 'sched' + 2 threads). Share one listening connection for 'sched' and 'outbox', or raise the worker pool in application-worker.yml (arch 12 section 1.4); say which in the PR.
+- The database sends no NOTIFY itself: the outbox writer calls pg_notify('outbox') in the command transaction (delivered only at commit), as ScheduledJobs does for 'sched'. The writer stores CorrelationId.require() in correlation_id; the dispatcher opens CorrelationId.open(event.correlationId()) around each event.
+- A DEAD_LETTER outbox event is final in the database (DISPATCHED and DEAD_LETTER are terminal; only the technical.outbox_* functions change delivery state): log it at ERROR (Sev-2). The admin alert is E7-56. There is no 'admin recover' in this task: the admin 'try again' for a failed delivery to a person moves to E7-43 (notification.recover_dead_letter), PO decision 9 Oct 2026.
+
 Carry-forward from E7-13 (do these too):
 - Move the OTP SMS from identity CustomerRegistration's direct post-commit call to an outbox row written in the same command transaction and delivered by the dispatcher.
-- The OTP code must never be stored in plain text in outbox_event.payload (arch 10 §2.2). Get the PO decision before coding: (a) the row carries only the otp_challenge id and the dispatcher generates the code (needs a schema change: code_hash is immutable after insert), or (b) the code is encrypted in the payload with a secret-store key and cleared after dispatch.
+- The OTP code is never stored in plain text in outbox_event.payload (arch 10 section 2.2). PO decision 9 Oct 2026: the payload carries the code encrypted (AES-GCM) with a key from the secret store (a new setting; name it in the PR, e.g. E7GZ_OTP_PAYLOAD_KEY; a test-only key in tests); the dispatcher decrypts it only to send the SMS. An outbox payload can never change after insert (guard_outbox), so the ciphertext is not cleared: a code is useless after its 5 minutes. Never log the code or the key.
 
-Carry-forward from the Sprint 0 review (do these too):
-- SMS 'log' provider safety (Sprint 0 review S-1): today a deploy without E7GZ_SMS_PROVIDER starts normally and writes every OTP to the log. Remove the default ('log') from application.yml and refuse to start when e7gz.sms.provider=log unless the active profile is local or test. Test both cases.
-- LoggingSmsSender: mask the phone number (keep the last 3 digits, arch 10 section 6), even in development.
+Carry-forward from the Sprint 0 review (do this too):
+- LoggingSmsSender: mask the phone number (keep the last 3 digits, arch 10 section 6), even in development. (PO decision 9 Oct 2026: no start-up guard against the 'log' SMS provider; the E7-101 release checklist sets and checks E7GZ_SMS_PROVIDER.)
 
 Carry-forward from E7-23 (do these too): publish the two integration events E7-23 could not, because the outbox did not exist yet - VenueMarketplaceStatusChanged {venueId, previousStatus, newStatus} from VenueCommands.ChangeStatus (arch 08 section 3.2), and AreaDeactivated {areaId} from AreaCommands.SetActive when an area is deactivated (arch 03 section 4: availability projection refresh). Write each in the same command transaction; the code marks both places with a comment naming E7-41.
 
-Carry-forward from the Sprint 1 review (PO decision 8 Oct 2026, do these too):
-- Event-driven Nearest Availability refresh (arch 05 section 5.3, arch 08 section 7): the projection worker refreshes the venue / activity pairs an inventory-affecting event touches (reservation hold or release, Resource state change, selling-block change, maintenance, closure, emergency, opening-hours change, pricing change, VenueMarketplaceStatusChanged, AreaDeactivated), for every such event the outbox carries, through ps.e7gz.inventory.availability.api.NearestAvailabilityProjection.refresh. Keep the one-minute worker pass (NearestAvailabilityJobs, E7-33 follow-up) as the safety net: time passing also moves rows. Test: an event refreshes its pair without waiting for the pass.
+Carry-forward from the Sprint 1 review (PO decisions 8 and 9 Oct 2026, do these too):
+- Event-driven Nearest Availability refresh (arch 05 section 5.3, arch 08 section 7): a projection consumer refreshes, through ps.e7gz.inventory.availability.api.NearestAvailabilityProjection.refresh, every venue / activity pair of the venue an inventory-affecting event names (AreaDeactivated: every venue of the area). It takes every inventory-affecting event type of arch 08 section 3.2 (ReservationHeld/Released, the Resource state events, MaintenanceCreated/Edited/Deleted, ClosureCreated, the Emergency events, OpeningHoursChanged, VenuePricingChanged, RoomOverrideChanged, VenueMarketplaceStatusChanged, AreaDeactivated), but this task WRITES only the two E7-23 events above (PO decision 9 Oct 2026): the other producers add their events in later tasks, and until then the one-minute pass (NearestAvailabilityJobs, a recurring job since E7-40) covers them. Keep that pass as the safety net: time passing also moves rows. Test: VenueMarketplaceStatusChanged and AreaDeactivated refresh their pairs without waiting for the pass.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -1383,10 +1391,10 @@ Carry-forward from E7-24 (do these too):
 
 Carry-forward from E7-39 (do these too):
 - Contract from E7-39 (packages/api-client/SPRINT-2-CONTRACT.md; stubs already in the controllers named there): implement GET /customer/notifications (newest first, cursor paging), POST /customer/notifications/{notificationId}/read (204; reading an already-read one changes nothing), POST /customer/notifications/devices {token, platform} -> 201 CustomerDevice (a token already active is seen again, not duplicated), and POST /customer/notifications/devices/{deviceId}/revoke -> 204 (sets revoked_at, never deletes; PO decision 5 Oct 2026). Controller: notification/web/CustomerNotificationController.
-- Error codes (PO decision 5 Oct 2026): a venue with no price for the activity fails under FR-BOK-11 item 20 as 422 RESOURCE_NOT_ELIGIBLE.
-- Error codes (PO decision 5 Oct 2026): accept, reject or reject-after-expiry on a booking no longer in the needed state (e.g. the customer cancelled a second earlier) is 409 BOOKING_STATE_CHANGED (new in ApiErrorCode and arch 09 section 1.5). An accept stopped by an emergency or owner review (FR-BOK-16) cancels the booking under that cause AND answers the matching 422 (VENUE_SELLING_BLOCK_ACTIVE, RESOURCE_SELLING_BLOCK_ACTIVE or RESOURCE_NOT_ELIGIBLE). The reject reasonText is at most 200 characters.
-- Error codes (PO decision 5 Oct 2026): a manual booking on an ONBOARDING venue is 403 FORBIDDEN; cancel-manual on a booking already cancelled or completed is 409 BOOKING_STATE_CHANGED.
-- Error codes (PO decision 5 Oct 2026): customer cancel on a booking already terminal is 409 BOOKING_STATE_CHANGED.
+
+Carry-forward from E7-41 (PO decisions 9 Oct 2026, do these too):
+- Admin 'try again' for a notification delivery in DEAD_LETTER (for example the provider was down and is back): an admin command that calls notification.recover_dead_letter(deliveryId, reason) inside admin.begin_command (admin runtime role only; the function writes the audit row). The route is not in arch 09 or the Sprint 2 contract yet: add it to the contract first (admin route group, e.g. POST /admin/notification-deliveries/{deliveryId}/recover with a reason) and regenerate the OpenAPI client. An outbox event in DEAD_LETTER stays final; only deliveries are recovered.
+- The OTP SMS already goes through the outbox since E7-41 (code encrypted in the payload, PO decision 9 Oct 2026): keep it there, and never put the code in notification params.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -1471,6 +1479,7 @@ Done when (write these as tests first where possible):
 Carry-forward from E7-39 (do these too):
 - Contract from E7-39 (packages/api-client/SPRINT-2-CONTRACT.md; stubs already in the controllers named there): implement POST /customer/bookings (Idempotency-Key required; 201 CustomerBookingDetail) with the error codes declared in booking/web/CustomerBookingController.
 - Quote (PO decision 5 Oct 2026): implement GET /customer/bookings/quote?resourceId&playMode&startAt&durationMinutes -> {hourlyPrice, nominalBookedMinutes, venuePriceTotal, bookingFee {amount, currency, displayAsFree}, totalAmount}, using exactly the same price and fee code as creation (FR-BOK-06, FR-BOK-07, FR-PTS-13). It is not an availability check and holds nothing. Test: the quote equals the amounts of a booking created with the same input.
+- Error codes (PO decision 5 Oct 2026): a venue with no price for the activity fails under FR-BOK-11 item 20 as 422 RESOURCE_NOT_ELIGIBLE.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -1498,6 +1507,7 @@ Done when (write these as tests first where possible):
 
 Carry-forward from E7-39 (do these too):
 - Contract from E7-39 (packages/api-client/SPRINT-2-CONTRACT.md; stubs already in the controllers named there): implement GET /venue/requests/pending (PENDING) and GET /venue/requests/missed (VENUE_RESPONSE_EXPIRED before startAt), and POST /venue/bookings/{bookingId}/accept, /reject {reasonText}, /reject-after-expiry (Idempotency-Key required, no Owner Password), each answering the VenueBooking DTO of booking/web/VenueBookingController.
+- Error codes (PO decision 5 Oct 2026): accept, reject or reject-after-expiry on a booking no longer in the needed state (e.g. the customer cancelled a second earlier) is 409 BOOKING_STATE_CHANGED (new in ApiErrorCode and arch 09 section 1.5). An accept stopped by an emergency or owner review (FR-BOK-16) cancels the booking under that cause AND answers the matching 422 (VENUE_SELLING_BLOCK_ACTIVE, RESOURCE_SELLING_BLOCK_ACTIVE or RESOURCE_NOT_ELIGIBLE). The reject reasonText is at most 200 characters.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -1524,6 +1534,7 @@ Done when (write these as tests first where possible):
 
 Carry-forward from E7-39 (do these too):
 - Contract from E7-39 (packages/api-client/SPRINT-2-CONTRACT.md; stubs already in the controllers named there): implement POST /venue/bookings {resourceId, playMode?, startAt?, durationMinutes, customerName?, customerPhone?} -> 201 VenueBooking (startAt absent = walk-in starting now at server time, FR-MAN-04; customerPhone normalised to E.164 like the venue phone) and POST /venue/bookings/{bookingId}/cancel-manual (FR-MAN-08: CANCELLED / VENUE_CANCELLED_MANUAL_BOOKING before startAt, no Owner Password). Idempotency-Key required on both. Controller: booking/web/VenueBookingController.
+- Error codes (PO decision 5 Oct 2026): a manual booking on an ONBOARDING venue is 403 FORBIDDEN; cancel-manual on a booking already cancelled or completed is 409 BOOKING_STATE_CHANGED.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -1553,6 +1564,7 @@ Done when (write these as tests first where possible):
 Carry-forward from E7-39 (do these too):
 - Contract from E7-39 (packages/api-client/SPRINT-2-CONTRACT.md; stubs already in the controllers named there): implement GET /customer/bookings?bucket=upcoming|completed|cancelled, GET /customer/bookings/{bookingId}, POST /customer/bookings/{bookingId}/cancel (Idempotency-Key required; DEADLINE_PASSED at or after startAt), GET /venue/bookings (filters of FR-VEN-38; from/to are business dates, inclusive) and GET /venue/bookings/{bookingId} with its history. Controllers: booking/web/CustomerBookingController, VenueBookingController.
 - The venue booking history never shows LATE_CONFIRM_FAILED_BOOKING_LIMIT or LATE_CONFIRM_FAILED_CUSTOMER_CONFLICT (NFR-19, arch 10 section 5.2). Add a test.
+- Error codes (PO decision 5 Oct 2026): customer cancel on a booking already terminal is 409 BOOKING_STATE_CHANGED.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -3139,6 +3151,10 @@ Carry-forward from the migration safety rule (PO decision 4 Oct 2026, do these t
 - Every release that carries a migration: take a backup (or PITR mark) first; restore a copy of production onto staging and run the release's migrations on it; run `flyway info` and `flyway validate` before `flyway migrate`; smoke-test the API and worker after. Production migrates only after all of this passed on the copy.
 - The release pipeline fails if `flyway validate` reports a changed, renamed or missing versioned migration, and never runs `flyway repair` or edits flyway_schema_history automatically.
 - If a production migration fails: restore the backup, keep the old release running, and ship the fix as a NEW migration (CLAUDE.md section 5, Migration safety). Write this into the release runbook and rehearse it once in the restore drill.
+
+Carry-forward from E7-41 (PO decisions 9 Oct 2026, do these too):
+- Put the OTP payload encryption key (the setting E7-41 added, e.g. E7GZ_OTP_PAYLOAD_KEY) in the secret store for staging and production; never reuse the test key.
+- There is no start-up guard against the 'log' SMS provider (PO decision 9 Oct 2026): the release checklist verifies E7GZ_SMS_PROVIDER=sms-misr in staging and production before go-live, and a smoke test sends one real OTP.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
