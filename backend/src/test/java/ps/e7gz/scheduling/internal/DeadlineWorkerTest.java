@@ -379,17 +379,22 @@ class DeadlineWorkerTest extends IntegrationTest {
     @Test
     void aNightlyRunThatFailsStillSchedulesTheNextNight() {
         String type = newType("NIGHT_FAIL");
-        RecurringJob recurring = new RecurringJob(type, Recurrence.nightlyAt(LocalTime.of(4, 0)), () -> {
+        Recurrence.Nightly at4 = new Recurrence.Nightly(LocalTime.of(4, 0));
+        RecurringJob recurring = new RecurringJob(type, at4, () -> {
             throw new IllegalStateException("broken night");
         });
-        UUID run = insertOccurrence(recurring, databaseNow().minusSeconds(1));
+        // A real past run at 04:00 Cairo: due a second ago, it would share the next night's key before 04:00 Cairo.
+        Instant lastNight = NightlyRuns.lastRunAtOrBefore(at4, databaseNow());
+        UUID run = insertOccurrence(recurring, lastNight);
 
         assertThat(drain(worker("worker-a", properties(1, Duration.ofSeconds(10)), recurring))).isEqualTo(1);
 
         assertThat(row(run).status()).isEqualTo("FAILED");
         assertThat(row(run).lastError()).contains("broken night");
         assertThat(rowsOf(type)).filteredOn(r -> r.status().equals("PENDING")).hasSize(1)
-                .allSatisfy(r -> assertThat(r.dueAt()).isAfter(databaseNow()));
+                .allSatisfy(r -> assertThat(r.dueAt()).isAfter(databaseNow()))
+                .allSatisfy(r -> assertThat(r.idempotencyKey()).isNotEqualTo(recurring.idempotencyKey(lastNight))
+                        .isEqualTo(recurring.idempotencyKey(r.dueAt())));
     }
 
     @Test
