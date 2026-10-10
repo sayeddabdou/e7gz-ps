@@ -39,13 +39,14 @@ import ps.e7gz.inventory.availability.api.AvailabilityPeriod;
 import ps.e7gz.inventory.availability.api.AvailabilityQuery;
 import ps.e7gz.inventory.availability.api.PredicateResult;
 import ps.e7gz.resource.api.ResourceCatalog;
+import ps.e7gz.support.boundary.CommandInstants;
 import ps.e7gz.trust.api.ActiveBans;
-import ps.e7gz.venue.api.OperatingSessions;
 import ps.e7gz.venue.api.OperatingSessions.SessionPeriod;
-import ps.e7gz.venue.api.SessionSnapshots;
+import ps.e7gz.venue.api.OperatingSessions;
 import ps.e7gz.venue.api.SessionSnapshots.Session;
-import ps.e7gz.venue.api.VenueEligibility;
+import ps.e7gz.venue.api.SessionSnapshots;
 import ps.e7gz.venue.api.VenueEligibility.Eligibility;
+import ps.e7gz.venue.api.VenueEligibility;
 
 /**
  * E7-46 - the twenty creation conditions on fake owner reads, at an exact command instant: every condition failing
@@ -65,7 +66,7 @@ class OnlineCreationPredicateTest {
     private static final BookingAmounts AMOUNTS =
             BookingPricing.amounts(Money.of("50.00"), 120, Money.of("0.00"));
 
-    private final CommandContext command = mock(CommandContext.class);
+    private final CommandContext command = CommandInstants.at(NOW);
     private final CustomerActivation activation = mock(CustomerActivation.class);
     private final ActiveBans bans = mock(ActiveBans.class);
     private final OnlineBookingStore store = mock(OnlineBookingStore.class);
@@ -85,7 +86,6 @@ class OnlineCreationPredicateTest {
     /** Everything passes: an open session [now-2h, now+8h) holding the requested interval. */
     @BeforeEach
     void allConditionsPass() {
-        when(command.commandNow()).thenReturn(NOW);
         when(bans.bannedAt(command, CUSTOMER, NOW)).thenReturn(false);
         when(store.countCommitments(command, CUSTOMER)).thenReturn(3L);
         when(store.overlapsCommitment(eq(command), eq(CUSTOMER), any(), any())).thenReturn(false);

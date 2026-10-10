@@ -41,6 +41,7 @@ import ps.e7gz.messaging.api.IntegrationEvents;
 import ps.e7gz.scheduling.api.JobOutcome;
 import ps.e7gz.scheduling.api.ScheduledJob;
 import ps.e7gz.support.IntegrationTest;
+import ps.e7gz.support.boundary.Deadlines;
 
 /**
  * E7-47 (O2) against the real database: Accept, Reject, Reject After Expiry and T1, each with its booking, history,
@@ -658,9 +659,7 @@ class VenueAnswerIntegrationTest extends IntegrationTest {
     BookingFeeRefunds refunds;
 
     private static void moveDeadline(CommandContext context, CreatedBooking created, Instant deadline) {
-        context.jdbc().sql("UPDATE booking.booking SET venue_response_expires_at = :at WHERE id = :id")
-                .param("at", OffsetDateTime.ofInstant(deadline, ZoneOffset.UTC))
-                .param("id", created.bookingId()).update();
+        Deadlines.move(context, "booking.booking.venue_response_expires_at", created.bookingId(), deadline);
     }
 
     private static String customerColumn(CreatedBooking created, String column) {

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static ps.e7gz.support.boundary.CommandInstants.at;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -19,7 +20,6 @@ import ps.e7gz.booking.internal.VenueAnswerStore.Facts;
 import ps.e7gz.common.codes.BookingSource;
 import ps.e7gz.common.codes.BookingStatus;
 import ps.e7gz.common.codes.BookingTerminalReason;
-import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
@@ -98,11 +98,5 @@ class RejectAfterExpiryBoundaryTest {
                 .isInstanceOfSatisfying(ApiException.class,
                         e -> assertThat(e.code()).isEqualTo(ApiErrorCode.DEADLINE_PASSED));
         verify(store, never()).terminate(any(), any(), any(), any(), any(), any(), any());
-    }
-
-    private static CommandContext at(Instant now) {
-        CommandContext context = mock(CommandContext.class);
-        when(context.commandNow()).thenReturn(now);
-        return context;
     }
 }

@@ -100,6 +100,17 @@ final class DeadlineWorker {
     }
 
     /**
+     * Fires one job by the same path as a poll, if it is due and free; returns whether it was settled. For the boundary
+     * test pack (E7-45), which must fire its own job however many other due jobs the shared test database holds.
+     */
+    boolean fireIfDue(UUID jobId) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException("The deadline worker runs outside any transaction");
+        }
+        return fire(store.get(jdbc, jobId));
+    }
+
+    /**
      * Gives every {@link RecurringJob} with no {@code PENDING} or {@code LEASED} row its next run (worker start-up). Two
      * workers starting together compute the same key, so the second insert changes nothing.
      */
