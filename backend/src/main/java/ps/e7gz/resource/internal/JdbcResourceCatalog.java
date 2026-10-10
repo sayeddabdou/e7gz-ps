@@ -36,6 +36,14 @@ class JdbcResourceCatalog implements ResourceCatalog {
     }
 
     @Override
+    public Optional<String> name(CommandContext command, UUID resourceId) {
+        Objects.requireNonNull(command, "command");
+        Objects.requireNonNull(resourceId, "resourceId");
+        return command.jdbc().sql("SELECT name FROM resource.resource WHERE id = :id").param("id", resourceId)
+                .query(String.class).optional();
+    }
+
+    @Override
     public List<Entry> ofVenue(UUID venueId) {
         return ofVenue(jdbc, venueId);
     }

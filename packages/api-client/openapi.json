@@ -14402,7 +14402,7 @@
         ]
       },
       "post": {
-        "description": "Checks the twenty creation conditions of FR-BOK-11 in one transaction. Displayed availability is not a promise: a slot taken meanwhile is 409 SLOT_NO_LONGER_AVAILABLE (FR-AVL-11). Duration and lead time are product rules, answered with their 422 codes, not VALIDATION_FAILED. playMode is required for PLAYSTATION and absent otherwise. A venue with no price for the activity fails under FR-BOK-11 item 20 as RESOURCE_NOT_ELIGIBLE (PO decision 5 Oct 2026). Implemented by E7-46.",
+        "description": "Checks the twenty creation conditions of FR-BOK-11 in one transaction. Displayed availability is not a promise: a slot taken meanwhile is 409 SLOT_NO_LONGER_AVAILABLE (FR-AVL-11). Duration and lead time are product rules, answered with their 422 codes, not VALIDATION_FAILED. playMode is required for PLAYSTATION and absent otherwise. A venue with no price for the activity fails under FR-BOK-11 item 20 as RESOURCE_NOT_ELIGIBLE (PO decision 5 Oct 2026). An unknown resourceId is NOT_FOUND (PO decision 9 Oct 2026). Implemented by E7-46.",
         "operationId": "customerCreateBooking",
         "parameters": [
           {
@@ -14584,6 +14584,49 @@
               }
             }
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NOT_FOUND"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "409": {
             "content": {
               "application/json": {
@@ -14754,7 +14797,7 @@
     },
     "/api/v1/customer/bookings/quote": {
       "get": {
-        "description": "The same price the booking would snapshot if created now: hourly price × nominal minutes ÷ 60, half-up to 2 places, plus the booking fee. Not an availability check and not a hold: the created booking's own amounts are authoritative. PO decision 5 Oct 2026 (E7-39). Implemented by E7-46.",
+        "description": "The same price the booking would snapshot if created now: hourly price × nominal minutes ÷ 60, half-up to 2 places, plus the booking fee. Not an availability check and not a hold: the created booking's own amounts are authoritative. PO decision 5 Oct 2026 (E7-39). An unknown resourceId is NOT_FOUND (PO decision 9 Oct 2026). Implemented by E7-46.",
         "operationId": "customerQuoteBooking",
         "parameters": [
           {
@@ -14942,6 +14985,49 @@
               }
             },
             "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NOT_FOUND"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NOT_FOUND",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {

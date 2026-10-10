@@ -26,6 +26,7 @@ import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
+import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.concurrency.ConcurrentRace;
 import ps.e7gz.inventory.E732Fixtures;
@@ -108,13 +109,17 @@ class ReservationLedgerRaceTest extends IntegrationTest {
         // authoritative on its own. The racers share the fixture owner Booking: with no Resource lock, a racer that
         // inserted its own Booking first (FK -> KEY SHARE on the Resource) would deadlock with the guard's
         // FOR UPDATE of the same Resource row (40P01) - the reason production commands declare the lock (ADR-003).
-        ConcurrentRace.Result<Won> race = ConcurrentRace.run(RACERS, TIMEOUT, (racer, start) ->
-                runner.run(new RaceCommand<>(LockSet.empty(), ctx -> {
+        // Each racer is its own request, with its own correlation ID (ReservationHeld carries it; E7-46).
+        ConcurrentRace.Result<Won> race = ConcurrentRace.run(RACERS, TIMEOUT, (racer, start) -> {
+            try (CorrelationId.Scope ignored = CorrelationId.open(CorrelationId.generate())) {
+                return runner.run(new RaceCommand<>(LockSet.empty(), ctx -> {
                     inside.put(racer, inside(ctx, E732Fixtures.BOOKING));
                     // Every racer is inside its own open transaction, past begin_command, when released.
                     start.await();
                     return new Won(E732Fixtures.BOOKING, ledger.create(ctx, booking(base, E732Fixtures.BOOKING)));
-                })));
+                }));
+            }
+        });
 
         // Separate real transactions and connections: N distinct backends and transaction ids, all open at once
         // (the start line opened only when all N were inside).
@@ -135,12 +140,14 @@ class ReservationLedgerRaceTest extends IntegrationTest {
         // Released together at the command boundary; begin_command then orders them on the Resource lock.
         ConcurrentRace.Result<Won> race = ConcurrentRace.run(RACERS, TIMEOUT, (racer, start) -> {
             start.await();
-            return runner.run(new RaceCommand<>(locks, ctx -> {
-                UUID owner = UUID.randomUUID();
-                inside.put(racer, inside(ctx, owner));
-                insertOwner(ctx, owner, base);
-                return new Won(owner, ledger.create(ctx, booking(base, owner)));
-            }));
+            try (CorrelationId.Scope ignored = CorrelationId.open(CorrelationId.generate())) {
+                return runner.run(new RaceCommand<>(locks, ctx -> {
+                    UUID owner = UUID.randomUUID();
+                    inside.put(racer, inside(ctx, owner));
+                    insertOwner(ctx, owner, base);
+                    return new Won(owner, ledger.create(ctx, booking(base, owner)));
+                }));
+            }
         });
 
         assertThat(inside.values()).extracting(Inside::transactionId).as("one transaction per racer")

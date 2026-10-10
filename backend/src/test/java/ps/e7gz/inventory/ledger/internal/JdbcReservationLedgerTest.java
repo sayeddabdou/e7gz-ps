@@ -25,6 +25,7 @@ import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.inventory.ledger.api.NewReservation;
 import ps.e7gz.inventory.ledger.api.ReservationOwner;
 import ps.e7gz.inventory.ledger.api.SlotTaken;
+import ps.e7gz.messaging.api.Outbox;
 
 /**
  * E7-29 - which database refusals become {@link SlotTaken}, on driver-shaped diagnostics (SQLSTATE + CONSTRAINT);
@@ -35,7 +36,8 @@ import ps.e7gz.inventory.ledger.api.SlotTaken;
  */
 class JdbcReservationLedgerTest {
 
-    private final JdbcReservationLedger ledger = new JdbcReservationLedger();
+    /** The INSERT fails in every create() case here, so nothing is published. */
+    private final JdbcReservationLedger ledger = new JdbcReservationLedger(mock(Outbox.class));
 
     private static PSQLException postgres(String sqlState, String constraint) {
         String fields = "SERROR\0VERROR\0C" + sqlState + "\0Mtest refusal\0" + (constraint == null ? "" : "n" + constraint + "\0");

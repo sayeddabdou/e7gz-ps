@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.postgresql.Driver;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +38,7 @@ import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
+import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.common.money.Money;
 import ps.e7gz.inventory.availability.api.NearestAvailabilityProjection;
 import ps.e7gz.inventory.availability.api.NearestAvailabilityProjection.RebuildReport;
@@ -89,6 +92,19 @@ class NearestAvailabilityIntegrationTest extends IntegrationTest {
 
     @Autowired
     OperationalOverlaps operations;
+
+    /** ReservationLedger.create publishes ReservationHeld, which carries the request's correlation ID (E7-46). */
+    private CorrelationId.Scope correlation;
+
+    @BeforeEach
+    void openCorrelation() {
+        correlation = CorrelationId.open(CorrelationId.generate());
+    }
+
+    @AfterEach
+    void closeCorrelation() {
+        correlation.close();
+    }
 
     record TestCommand<R>(Function<CommandContext, R> body) implements Command<R> {
 

@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
 import javax.sql.DataSource;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,6 +27,7 @@ import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
+import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.inventory.E732Fixtures;
 import ps.e7gz.inventory.ledger.api.NewReservation;
 import ps.e7gz.inventory.ledger.api.ReservationLedger;
@@ -89,8 +91,17 @@ class InvariantSweepIntegrationTest extends IntegrationTest {
 
     private static boolean rowsWritten;
 
+    /** ReservationLedger.create publishes ReservationHeld, which carries the request's correlation ID (E7-46). */
+    private CorrelationId.Scope correlation;
+
+    @AfterEach
+    void closeCorrelation() {
+        correlation.close();
+    }
+
     @BeforeEach
     void rows() {
+        correlation = CorrelationId.open(CorrelationId.generate());
         E732Fixtures.load();
         synchronized (InvariantSweepIntegrationTest.class) {
             if (rowsWritten) {
