@@ -1402,6 +1402,12 @@ Carry-forward from E7-41 (PO decisions 9 Oct 2026, do these too):
 - Admin 'try again' for a notification delivery in DEAD_LETTER (for example the provider was down and is back): an admin command that calls notification.recover_dead_letter(deliveryId, reason) inside admin.begin_command (admin runtime role only; the function writes the audit row). The route is not in arch 09 or the Sprint 2 contract yet: add it to the contract first (admin route group, e.g. POST /admin/notification-deliveries/{deliveryId}/recover with a reason) and regenerate the OpenAPI client. An outbox event in DEAD_LETTER stays final; only deliveries are recovered.
 - The OTP SMS already goes through the outbox since E7-41 (code encrypted in the payload, PO decision 9 Oct 2026): keep it there, and never put the code in notification params.
 
+PO decisions at the start of work (10 Oct 2026, do these too):
+- Any signed-in customer may register a push device and receives notifications, phone verified or not (verification gates only the actions that need it: booking, tournaments, reviews).
+- EMAIL deliveries go to the email given at registration, verified or not (email verification is deferred); revisit when email verification ships.
+- Push and email text: a template catalogue keyed by code and language in the notification worker (ADR-021); the backend stores and returns codes only. E7-43 builds the mechanism and the copy for the code it sends itself (VENUE_OWNER_PASSWORD_RESET); E7-55, E7-80 and E7-89 add the English copy for the codes they emit, and the PO reviews the wording in each PR.
+- A push token already active for another customer (shared phone) moves to the customer registering it now: the old row is revoked (revoked_at, never deleted) and a new active row is created in the same transaction.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -1773,6 +1779,9 @@ Do:
 
 Done when (write these as tests first where possible):
 - Each code has a test proving it is emitted exactly once for its event.
+
+Carry-forward from E7-43 (PO decision 10 Oct 2026, do this too):
+- Add the English push and email copy (title/body, email subject/body) for every PUSH or EMAIL notification code this task emits to the notification template catalogue E7-43 built (ADR-021: keyed by code and language, rendered in the notification worker; never stored or sent by the API). The PO reviews the wording in the PR.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2570,6 +2579,9 @@ Do:
 Done when (write these as tests first where possible):
 - Each code emitted exactly once per event.
 
+Carry-forward from E7-43 (PO decision 10 Oct 2026, do this too):
+- Add the English push and email copy (title/body, email subject/body) for every PUSH or EMAIL notification code this task emits to the notification template catalogue E7-43 built (ADR-021: keyed by code and language, rendered in the notification worker; never stored or sent by the API). The PO reviews the wording in the PR.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2821,6 +2833,9 @@ Do:
 
 Done when (write these as tests first where possible):
 - Matrix test reads the FRS list as data.
+
+Carry-forward from E7-43 (PO decision 10 Oct 2026, do this too):
+- Add the English push and email copy (title/body, email subject/body) for every PUSH or EMAIL notification code this task emits to the notification template catalogue E7-43 built (ADR-021: keyed by code and language, rendered in the notification worker; never stored or sent by the API). The PO reviews the wording in the PR.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -3169,6 +3184,9 @@ Carry-forward from the migration safety rule (PO decision 4 Oct 2026, do these t
 Carry-forward from E7-41 (PO decisions 9 Oct 2026, do these too):
 - Put the OTP payload encryption key (the setting E7-41 added, e.g. E7GZ_OTP_PAYLOAD_KEY) in the secret store for staging and production; never reuse the test key.
 - There is no start-up guard against the 'log' SMS provider (PO decision 9 Oct 2026): the release checklist verifies E7GZ_SMS_PROVIDER=sms-misr in staging and production before go-live, and a smoke test sends one real OTP.
+
+Carry-forward from E7-42 (PO decision 10 Oct 2026, do this too):
+- Put the idempotency fingerprint key (E7GZ_IDEMPOTENCY_FINGERPRINT_KEY, the setting E7-42 added: Base64 of 32 random bytes) in the secret store for staging and production, the same value on every replica of an environment; never reuse the test key. Neither the api nor the worker starts without it. Changing it later only makes a retry across the change of a request with a secret field (Owner Password) a 422.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
