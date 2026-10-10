@@ -47,6 +47,23 @@ e7gz:
     provider: ${E7GZ_PUSH_PROVIDER:log}
     fcm:
       service-account: ${E7GZ_FCM_SERVICE_ACCOUNT:}
+  # Venue Dashboard Web Push (E7-44; ADR-014, 01 §14 A6; PO decisions 10 Oct 2026). "log" writes venue pushes to the
+  # worker log, so no developer needs keys; the api then serves a development public key whose private half was never
+  # kept. Deployed environments set E7GZ_WEB_PUSH_PROVIDER=vapid and, from the secret store (E7-101), one VAPID pair
+  # per environment (`npx web-push generate-vapid-keys`: URL-safe Base64, public = 65-byte point, private = 32 bytes)
+  # and E7GZ_VAPID_SUBJECT = mailto:<the contact the PO chooses>. The vapid provider refuses to start without them.
+  web-push:
+    provider: ${E7GZ_WEB_PUSH_PROVIDER:log}
+    vapid:
+      public-key: ${E7GZ_VAPID_PUBLIC_KEY:BGZ958V3CWVr6vpUWx61GhoDuaj-RB9Vc8rmoIimFmbVbXzbF9N9PcKeBBmWb767gQlGHfIlP2Njl-IGgz3TyZM}
+      private-key: ${E7GZ_VAPID_PRIVATE_KEY:}
+      subject: ${E7GZ_VAPID_SUBJECT:mailto:dev@e7gz.local}
+  # The venue live channel (E7-44; arch 08 §5): `: heartbeat` every 15 s, which also closes the streams of an account
+  # that is no longer ENABLED; a stream ends after 1 h and the Dashboard reconnects. Each api replica holds one app
+  # connection to LISTEN once a Dashboard has connected to it.
+  venue-stream:
+    heartbeat: 15s
+    max-duration: 1h
   # Notification email (E7-43, FR-NTF-03). Locally the defaults reach Mailpit (docker compose; inbox on
   # http://localhost:8025); deployed environments set the SMTP provider from the secret store (E7-101).
   email:

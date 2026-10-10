@@ -25,6 +25,7 @@ import ps.e7gz.messaging.api.PermanentDeliveryFailure;
 import ps.e7gz.notification.internal.NotificationTemplates.Language;
 import ps.e7gz.notification.internal.email.EmailSender;
 import ps.e7gz.notification.internal.push.PushSender;
+import ps.e7gz.notification.internal.webpush.WebPushSender;
 
 /**
  * Sends the PUSH and EMAIL deliveries of a notification after its command committed (arch 08 sections 4.1-4.3,
@@ -42,8 +43,11 @@ import ps.e7gz.notification.internal.push.PushSender;
  *       notification is still in their list (PO decision 10 Oct 2026).</li>
  * </ul>
  *
- * <p>Customers get English text (the app is English at launch, FRS section 3.1). Venue Web Push arrives with E7-44;
- * until then a venue PUSH delivery waits {@code PENDING}. SMS never comes here (OTP only, E7-41).
+ * <p>Customers get English text (the app is English at launch, FRS section 3.1). A venue's PUSH is Web Push to every
+ * active Dashboard browser of its account, in the account's language (E7-44; the deliveries left {@code PENDING} before
+ * it are sent too); a subscription the push service no longer knows is revoked, never deleted. A venue has no email
+ * address. Admin deliveries wait {@code PENDING} for the admin notification surface. SMS never comes here (OTP only,
+ * E7-41).
  */
 @Component
 @Profile("worker")
@@ -58,15 +62,17 @@ class NotificationDeliveryWorker implements OutboxConsumer {
     private final JdbcClient jdbc;
     private final NotificationTemplates templates;
     private final PushSender push;
+    private final WebPushSender webPush;
     private final EmailSender email;
     private final OutboxAttempts attempts;
     private final ObjectMapper json;
 
     NotificationDeliveryWorker(DataSource appDataSource, NotificationTemplates templates, PushSender push,
-                               EmailSender email, OutboxAttempts attempts, ObjectMapper json) {
+                               WebPushSender webPush, EmailSender email, OutboxAttempts attempts, ObjectMapper json) {
         this.jdbc = JdbcClient.create(appDataSource);
         this.templates = templates;
         this.push = push;
+        this.webPush = webPush;
         this.email = email;
         this.attempts = attempts;
         this.json = json;
@@ -110,10 +116,14 @@ class NotificationDeliveryWorker implements OutboxConsumer {
                     case EMAIL -> Optional.of(customerEmail(notification));
                     case IN_APP, SMS -> Optional.of(DeliveryOutcome.permanentFailure("CHANNEL_NOT_SENT_BY_WORKER"));
                 };
-                case VENUE, ADMIN -> {
-                    log.warn("Notification {} {} {} delivery waits: no {} adapter for {} recipients yet (E7-44)",
-                            notification.code(), notification.id(), delivery.channel(), delivery.channel(),
-                            notification.recipientType());
+                case VENUE -> switch (delivery.channel()) {
+                    case PUSH -> Optional.of(venuePush(notification));
+                    case EMAIL -> Optional.of(DeliveryOutcome.permanentFailure(NO_EMAIL_ADDRESS));
+                    case IN_APP, SMS -> Optional.of(DeliveryOutcome.permanentFailure("CHANNEL_NOT_SENT_BY_WORKER"));
+                };
+                case ADMIN -> {
+                    log.warn("Notification {} {} {} delivery waits: no {} adapter for ADMIN recipients yet",
+                            notification.code(), notification.id(), delivery.channel(), delivery.channel());
                     yield Optional.empty();
                 }
             };
@@ -149,6 +159,37 @@ class NotificationDeliveryWorker implements OutboxConsumer {
         }
         return transientError != null ? DeliveryOutcome.transientFailure(transientError)
                 : DeliveryOutcome.permanentFailure(invalidError);
+    }
+
+    /** ADR-014, 01 section 14 A6: Web Push to the venue account's Dashboard browsers, in its language (FR-VEN-40). */
+    private DeliveryOutcome venuePush(Notification notification) {
+        Optional<VenueAccount> account = venueAccount(notification.recipientId());
+        List<VenueBrowser> browsers = account.map(found -> activeBrowsers(found.id())).orElse(List.of());
+        if (browsers.isEmpty()) {
+            return DeliveryOutcome.permanentFailure(NO_ACTIVE_DEVICE);
+        }
+        NotificationTemplates.Rendered text = templates.push(notification.code(), account.get().language(),
+                NotificationTemplates.textParams(notification.params()));
+        PushSender.PushMessage message = new PushSender.PushMessage(text.title(), text.body(), data(notification));
+        String sent = null;
+        String transientError = null;
+        String permanentError = null;
+        for (VenueBrowser browser : browsers) {
+            switch (webPush.send(browser.subscription(), message)) {
+                case WebPushSender.WebPushResult.Sent ok -> sent = sent == null ? ok.messageId() : sent;
+                case WebPushSender.WebPushResult.Transient failure -> transientError = failure.errorCode();
+                case WebPushSender.WebPushResult.Gone gone -> {
+                    revokeBrowser(browser.id());
+                    permanentError = gone.errorCode();
+                }
+                case WebPushSender.WebPushResult.Rejected rejected -> permanentError = rejected.errorCode();
+            }
+        }
+        if (sent != null) {
+            return DeliveryOutcome.sent(sent);
+        }
+        return transientError != null ? DeliveryOutcome.transientFailure(transientError)
+                : DeliveryOutcome.permanentFailure(permanentError);
     }
 
     private DeliveryOutcome customerEmail(Notification notification) {
@@ -193,7 +234,7 @@ class NotificationDeliveryWorker implements OutboxConsumer {
             case DeliveryOutcome.Transient failure -> log.warn("Notification {} {} {} failed for now: {}",
                     notification.code(), notification.id(), delivery.channel(), failure.errorCode());
             case DeliveryOutcome.Permanent failure when NO_ACTIVE_DEVICE.equals(failure.errorCode()) -> log.info(
-                    "Notification {} {} PUSH not sent: the customer has no active push device", notification.code(),
+                    "Notification {} {} PUSH not sent: the recipient has no active push device or browser", notification.code(),
                     notification.id());
             case DeliveryOutcome.Permanent failure -> log.warn("Notification {} {} {} DEAD_LETTER: {}",
                     notification.code(), notification.id(), delivery.channel(), failure.errorCode());
@@ -208,6 +249,12 @@ class NotificationDeliveryWorker implements OutboxConsumer {
     }
 
     private record Device(UUID id, String token) {
+    }
+
+    private record VenueAccount(UUID id, Language language) {
+    }
+
+    private record VenueBrowser(UUID id, WebPushSender.Subscription subscription) {
     }
 
     private Optional<Notification> notification(UUID id) {
@@ -240,6 +287,34 @@ class NotificationDeliveryWorker implements OutboxConsumer {
                 .param("user", userId)
                 .query((rs, row) -> new Device(rs.getObject("id", UUID.class), rs.getString("token")))
                 .list();
+    }
+
+    /** VENUE recipients are {@code venue.venue} rows; the Dashboard belongs to the venue's one account (FR-VEN-01). */
+    private Optional<VenueAccount> venueAccount(UUID venueId) {
+        return jdbc.sql("SELECT id, language_preference FROM iam.venue_account WHERE venue_id = :venue")
+                .param("venue", venueId)
+                .query((rs, row) -> new VenueAccount(rs.getObject("id", UUID.class),
+                        "ar".equals(rs.getString("language_preference")) ? Language.AR : Language.EN))
+                .optional();
+    }
+
+    private List<VenueBrowser> activeBrowsers(UUID venueAccountId) {
+        return jdbc.sql("""
+                        SELECT id, endpoint, p256dh_key, auth_key FROM notification.venue_push_subscription
+                         WHERE venue_account_id = :account AND revoked_at IS NULL ORDER BY created_at""")
+                .param("account", venueAccountId)
+                .query((rs, row) -> new VenueBrowser(rs.getObject("id", UUID.class), new WebPushSender.Subscription(
+                        rs.getString("endpoint"), rs.getString("p256dh_key"), rs.getString("auth_key"))))
+                .list();
+    }
+
+    /** arch 08 section 4.3: a subscription the push service no longer knows is revoked, never deleted. */
+    private void revokeBrowser(UUID subscriptionId) {
+        jdbc.sql("""
+                        UPDATE notification.venue_push_subscription
+                           SET revoked_at = greatest(clock_timestamp(), last_seen_at)
+                         WHERE id = :id AND revoked_at IS NULL""")
+                .param("id", subscriptionId).update();
     }
 
     /** arch 08 section 4.3: an invalid push token is revoked, never deleted. */

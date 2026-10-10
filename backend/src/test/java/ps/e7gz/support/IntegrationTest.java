@@ -7,6 +7,8 @@ import static ps.e7gz.support.PostgresTestContainer.MIGRATOR;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -20,26 +22,36 @@ public abstract class IntegrationTest {
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
+        properties().forEach((name, value) -> registry.add(name, () -> value));
+    }
+
+    /**
+     * Every setting a test context needs: the shared database and object store, and the test-only keys. E7-44: also
+     * what a test starts a second application instance with (two API replicas on one database).
+     */
+    public static Map<String, Object> properties() {
         String url = PostgresTestContainer.jdbcUrl(DATABASE);
-        registry.add("spring.flyway.url", () -> url);
-        registry.add("spring.flyway.user", () -> MIGRATOR);
-        registry.add("spring.flyway.password", () -> MIGRATOR);
-        registry.add("e7gz.datasource.app.jdbc-url", () -> url);
-        registry.add("e7gz.datasource.app.username", () -> APP_RUNTIME);
-        registry.add("e7gz.datasource.app.password", () -> APP_RUNTIME);
-        registry.add("e7gz.datasource.admin.jdbc-url", () -> url);
-        registry.add("e7gz.datasource.admin.username", () -> ADMIN_RUNTIME);
-        registry.add("e7gz.datasource.admin.password", () -> ADMIN_RUNTIME);
-        registry.add("e7gz.security.jwt.secret", () -> TEST_JWT_SECRET);
-        registry.add("e7gz.identity.otp-payload-key", () -> TEST_OTP_PAYLOAD_KEY);
-        registry.add("e7gz.idempotency.fingerprint-key", () -> TEST_IDEMPOTENCY_FINGERPRINT_KEY);
-        registry.add("e7gz.security.cors.allowed-origins", () -> DASHBOARD_ORIGIN + "," + ADMIN_ORIGIN);
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("spring.flyway.url", url);
+        properties.put("spring.flyway.user", MIGRATOR);
+        properties.put("spring.flyway.password", MIGRATOR);
+        properties.put("e7gz.datasource.app.jdbc-url", url);
+        properties.put("e7gz.datasource.app.username", APP_RUNTIME);
+        properties.put("e7gz.datasource.app.password", APP_RUNTIME);
+        properties.put("e7gz.datasource.admin.jdbc-url", url);
+        properties.put("e7gz.datasource.admin.username", ADMIN_RUNTIME);
+        properties.put("e7gz.datasource.admin.password", ADMIN_RUNTIME);
+        properties.put("e7gz.security.jwt.secret", TEST_JWT_SECRET);
+        properties.put("e7gz.identity.otp-payload-key", TEST_OTP_PAYLOAD_KEY);
+        properties.put("e7gz.idempotency.fingerprint-key", TEST_IDEMPOTENCY_FINGERPRINT_KEY);
+        properties.put("e7gz.security.cors.allowed-origins", DASHBOARD_ORIGIN + "," + ADMIN_ORIGIN);
         // E7-23 PR 3: venue photos in a real S3 server (SeaweedFS, as in docker compose).
-        registry.add("e7gz.object-store.endpoint", () -> ObjectStoreTestContainer.endpoint().toString());
-        registry.add("e7gz.object-store.bucket", () -> ObjectStoreTestContainer.BUCKET);
-        registry.add("e7gz.object-store.access-key", () -> ObjectStoreTestContainer.ACCESS_KEY);
-        registry.add("e7gz.object-store.secret-key", () -> ObjectStoreTestContainer.SECRET_KEY);
-        registry.add("e7gz.object-store.create-bucket", () -> "false");
+        properties.put("e7gz.object-store.endpoint", ObjectStoreTestContainer.endpoint().toString());
+        properties.put("e7gz.object-store.bucket", ObjectStoreTestContainer.BUCKET);
+        properties.put("e7gz.object-store.access-key", ObjectStoreTestContainer.ACCESS_KEY);
+        properties.put("e7gz.object-store.secret-key", ObjectStoreTestContainer.SECRET_KEY);
+        properties.put("e7gz.object-store.create-bucket", "false");
+        return properties;
     }
 
     /** E7-22: the browser origins the tests' Venue Dashboard and Platform Admin run on. */

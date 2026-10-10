@@ -36,6 +36,13 @@ public final class IntegrationEvents {
     public static final String BOOKING_CREATED = "BookingCreated";
 
     /**
+     * {@code {venueAccountId, venueId}}, aggregate {@code VENUE_ACCOUNT}: the Platform Admin disabled the venue's
+     * account (arch 08 sections 3.2 and 5, FR-VEN-08): the venue live channel closes its open streams at once (E7-44,
+     * PO decision 10 Oct 2026).
+     */
+    public static final String VENUE_ACCOUNT_DISABLED = "VenueAccountDisabled";
+
+    /**
      * {@code {reservationId, resourceId, venueId, period: {start, end}}}, aggregate {@code RESERVATION}: a ledger
      * row was inserted active (arch 08 section 3.2; E7-46, PO decision 9 Oct 2026).
      */
