@@ -18,6 +18,13 @@ public interface ResourceCatalog {
     /** On the command's own transaction; empty when the Resource does not exist. */
     Optional<Entry> find(CommandContext command, UUID resourceId);
 
+    /**
+     * The Resource's current name (FR-VEN-41), which a Booking snapshots ({@code resource_name_snapshot},
+     * {@code tr_20_booking_snapshot_integrity}). On the command's own transaction; empty when the Resource does not
+     * exist. Added for E7-46 (PO decision 9 Oct 2026).
+     */
+    Optional<String> name(CommandContext command, UUID resourceId);
+
     /** Every Resource of the venue, archived ones included, for a read outside a command. */
     List<Entry> ofVenue(UUID venueId);
 

@@ -1,5 +1,6 @@
 package ps.e7gz.booking.web;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -12,8 +13,11 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,6 +27,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import ps.e7gz.booking.internal.BookingAmounts;
+import ps.e7gz.booking.internal.BookingQuotes;
+import ps.e7gz.booking.internal.ContactVisibility;
+import ps.e7gz.booking.internal.CreatedBooking;
+import ps.e7gz.booking.internal.OnlineBookingCreation;
+import ps.e7gz.booking.internal.OnlineBookingRequest;
 import ps.e7gz.common.codes.Activity;
 import ps.e7gz.common.codes.AttendanceResult;
 import ps.e7gz.common.codes.BookingEventType;
@@ -32,17 +42,25 @@ import ps.e7gz.common.codes.BookingTerminalReason;
 import ps.e7gz.common.codes.ConsoleType;
 import ps.e7gz.common.codes.PlayMode;
 import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.money.Money;
+import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
 import ps.e7gz.common.web.MoneyView;
 import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.PageView;
+import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.messaging.api.Idempotency;
+import ps.e7gz.messaging.api.IdempotentResult;
+import ps.e7gz.messaging.api.ResultAggregate;
+import ps.e7gz.messaging.api.StoredResponse;
 
 /**
- * Customer bookings (arch 09 §3.3). Stubs until E7-46 (create, quote) and E7-49 (list, detail, cancel). Every write
- * here is in ADR-015's scope, so the Idempotency-Key is required. The customer DTOs are separate from the venue ones
- * (arch 09 §1.1): the venue phone is absent from the payload when the retention rule hides it (NFR-18, FR-PTS-20).
+ * Customer bookings (arch 09 §3.3). Create and quote are implemented (E7-46); list, detail and cancel stay stubs until
+ * E7-49. Every write here is in ADR-015's scope, so the Idempotency-Key is required. The customer DTOs are separate
+ * from the venue ones (arch 09 §1.1): the venue phone is absent from the payload when the retention rule hides it
+ * (NFR-18, FR-PTS-20).
  */
 @RestController
 @RequestMapping("/api/v1/customer/bookings")
@@ -50,6 +68,31 @@ import ps.e7gz.common.web.PageView;
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class CustomerBookingController {
 
+    /** {@code technical.idempotency_record.endpoint} of creation (arch 08 section 6). */
+    static final String CREATE_ENDPOINT = "POST /api/v1/customer/bookings";
+    static final String BOOKING_AGGREGATE = "BOOKING";
+
+    private final BookingQuotes quotes;
+    private final OnlineBookingCreation creation;
+    private final ContactVisibility contacts;
+    private final Idempotency idempotency;
+    private final ResponseMetaFactory meta;
+
+    public CustomerBookingController(BookingQuotes quotes, OnlineBookingCreation creation, ContactVisibility contacts,
+                                     Idempotency idempotency, ResponseMetaFactory meta) {
+        this.quotes = quotes;
+        this.creation = creation;
+        this.contacts = contacts;
+        this.idempotency = idempotency;
+        this.meta = meta;
+    }
+
+    /**
+     * One booking per (customer, Idempotency-Key): the key's record, the booking, its reservation and its
+     * {@code BookingCreated} / {@code ReservationHeld} events commit in one transaction (ADR-015, PO decision 9 Oct
+     * 2026). A replay returns the stored 201 body, with the venue phone left out once the retention rule hides it
+     * (arch 10 §5.1); the same key with another body is {@code IDEMPOTENCY_KEY_REUSED}.
+     */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(operationId = "customerCreateBooking",
@@ -59,9 +102,10 @@ public class CustomerBookingController {
                     + "(FR-AVL-11). Duration and lead time are product rules, answered with their 422 codes, not "
                     + "VALIDATION_FAILED. playMode is required for PLAYSTATION and absent otherwise. A venue with no "
                     + "price for the activity fails under FR-BOK-11 item 20 as RESOURCE_NOT_ELIGIBLE (PO decision 5 Oct "
-                    + "2026). Implemented by E7-46.")
+                    + "2026). An unknown resourceId is NOT_FOUND (PO decision 9 Oct 2026). Implemented by E7-46.")
     @ApiError(status = 403, codes = {ApiErrorCode.PHONE_VERIFICATION_REQUIRED, ApiErrorCode.ACCOUNT_BANNED_FOR_THIS_ACTION,
             ApiErrorCode.ACCOUNT_DELETED})
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     @ApiError(status = 409, codes = ApiErrorCode.SLOT_NO_LONGER_AVAILABLE)
     @ApiError(status = 422, codes = {ApiErrorCode.BOOKING_LEAD_TIME_TOO_SHORT, ApiErrorCode.BOOKING_DURATION_INVALID,
             ApiErrorCode.COMMITMENT_LIMIT_REACHED, ApiErrorCode.OVERLAPPING_COMMITMENT,
@@ -69,10 +113,20 @@ public class CustomerBookingController {
             ApiErrorCode.VENUE_NOT_ELIGIBLE_FOR_NEW_ACTIVITY, ApiErrorCode.RESOURCE_NOT_ELIGIBLE,
             ApiErrorCode.VENUE_SELLING_BLOCK_ACTIVE, ApiErrorCode.RESOURCE_SELLING_BLOCK_ACTIVE,
             ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
-    public DataResponse<CustomerBookingDetail> create(
+    public ResponseEntity<DataResponse<CustomerBookingDetail>> create(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
-            @Valid @RequestBody CustomerBookingCreateRequest request) {
-        throw NotImplementedYet.stub();
+            @Valid @RequestBody CustomerBookingCreateRequest request,
+            @AuthenticationPrincipal AuthenticatedSubject customer) {
+        StoredResponse<CustomerBookingDetail> response = StoredResponse.of(CustomerBookingDetail.class, 201,
+                        (CustomerBookingDetail detail) -> new ResultAggregate(BOOKING_AGGREGATE, detail.bookingId()))
+                .replayedThrough((context, stored) -> contacts.venuePhoneVisible(context, stored.bookingId())
+                        ? stored : stored.withoutVenuePhone());
+        IdempotentResult<CustomerBookingDetail> result = creation.create(
+                new OnlineBookingRequest(customer.id(), request.resourceId(), request.playMode(), request.startAt(),
+                        request.durationMinutes()),
+                idempotency.request(customer, CREATE_ENDPOINT, idempotencyKey, Map.of(), request),
+                response, CustomerBookingDetail::created);
+        return ResponseEntity.status(result.status()).body(meta.data(result.body()));
     }
 
     @GetMapping("/quote")
@@ -80,8 +134,9 @@ public class CustomerBookingController {
             summary = "The price a booking would have now (FR-BOK-06, FR-BOK-07, FR-PTS-13)",
             description = "The same price the booking would snapshot if created now: hourly price × nominal minutes ÷ "
                     + "60, half-up to 2 places, plus the booking fee. Not an availability check and not a hold: the "
-                    + "created booking's own amounts are authoritative. PO decision 5 Oct 2026 (E7-39). Implemented by "
-                    + "E7-46.")
+                    + "created booking's own amounts are authoritative. PO decision 5 Oct 2026 (E7-39). An unknown "
+                    + "resourceId is NOT_FOUND (PO decision 9 Oct 2026). Implemented by E7-46.")
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     @ApiError(status = 422, codes = {ApiErrorCode.BOOKING_DURATION_INVALID, ApiErrorCode.RESOURCE_NOT_ELIGIBLE})
     public DataResponse<CustomerBookingQuote> quote(
             @RequestParam UUID resourceId,
@@ -89,7 +144,8 @@ public class CustomerBookingController {
             PlayMode playMode,
             @RequestParam Instant startAt,
             @RequestParam Integer durationMinutes) {
-        throw NotImplementedYet.stub();
+        // startAt is part of the contract but not of the price: the price is the one in force now (FR-BOK-06).
+        return meta.data(CustomerBookingQuote.of(quotes.quote(resourceId, playMode, durationMinutes)));
     }
 
     @GetMapping
@@ -154,6 +210,12 @@ public class CustomerBookingController {
             @NotNull MoneyView venuePriceTotal,
             @NotNull CustomerBookingFee bookingFee,
             @NotNull MoneyView totalAmount) {
+
+        static CustomerBookingQuote of(BookingAmounts amounts) {
+            return new CustomerBookingQuote(MoneyView.of(amounts.hourlyPrice()), amounts.nominalBookedMinutes(),
+                    MoneyView.of(amounts.venuePriceTotal()), CustomerBookingFee.of(amounts.bookingFee()),
+                    MoneyView.of(amounts.totalAmount()));
+        }
     }
 
     /** The booking fee; EGP 0 at launch, shown as free (FR-PTS-13). */
@@ -162,6 +224,10 @@ public class CustomerBookingController {
             @NotNull @Pattern(regexp = "^\\d+\\.\\d{2}$") @Schema(example = "0.00") String amount,
             @NotNull MoneyView.Currency currency,
             @NotNull @Schema(description = "True when the fee is zero (FR-PTS-13).") Boolean displayAsFree) {
+
+        static CustomerBookingFee of(Money fee) {
+            return new CustomerBookingFee(fee.toString(), MoneyView.Currency.EGP, fee.isZero());
+        }
     }
 
     /** The venue on a customer booking. {@code phone} is absent, never null, when hidden (NFR-18, FR-PTS-20). */
@@ -169,6 +235,7 @@ public class CustomerBookingController {
     public record CustomerBookingVenue(
             @NotNull @Schema(example = "7b1f0c9e-2d3a-4e5b-8c6d-9e0f1a2b3c4d") UUID id,
             @NotNull @Schema(example = "Level Up Lounge") String name,
+            @JsonInclude(JsonInclude.Include.NON_NULL)
             @Schema(requiredMode = Schema.RequiredMode.NOT_REQUIRED,
                     description = "E.164; absent when the retention rule hides it (arch 10 §5.1).",
                     example = "+201001234567") String phone) {
@@ -225,6 +292,31 @@ public class CustomerBookingController {
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true,
                     description = "Independent of status (FR-ATT-07).") AttendanceResult attendanceResult,
             @NotNull @Schema(description = "Append-only, oldest first (FR-AUD-05).") List<CustomerBookingHistoryEntry> history) {
+
+        /**
+         * A booking just created: PENDING with its venue deadline, the venue phone open (FR-DIS-09), and its one
+         * history row, Booking Created → PENDING (Product v5.0 §23.5).
+         */
+        static CustomerBookingDetail created(CreatedBooking booking) {
+            BookingAmounts amounts = booking.amounts();
+            return new CustomerBookingDetail(booking.bookingId(), BookingStatus.PENDING, CustomerBookingBucket.upcoming,
+                    null, new CustomerBookingVenue(booking.venueId(), booking.venueName(), booking.venuePhone()),
+                    new CustomerBookingResource(booking.resourceName(), booking.activity(), booking.consoleType(),
+                            booking.playMode()),
+                    booking.startAt(), booking.endAt(), amounts.nominalBookedMinutes(),
+                    MoneyView.of(amounts.venuePriceTotal()), CustomerBookingFee.of(amounts.bookingFee()),
+                    MoneyView.of(amounts.totalAmount()), booking.venueResponseExpiresAt(), false, null,
+                    List.of(new CustomerBookingHistoryEntry(booking.createdAt(),
+                            BookingHistoryEntryKind.STATUS_TRANSITION, null, BookingStatus.PENDING, null, null)));
+        }
+
+        /** The same detail with the venue phone absent (arch 10 §5.1): only a member left out, nothing changed. */
+        CustomerBookingDetail withoutVenuePhone() {
+            return new CustomerBookingDetail(bookingId, status, displayBucket, terminalReason,
+                    new CustomerBookingVenue(venue.id(), venue.name(), null), resource, startAt, endAt,
+                    nominalBookedMinutes, venuePriceTotal, bookingFee, totalAmount, venueResponseExpiresAt,
+                    venueResponsePaused, attendanceResult, history);
+        }
     }
 
     /**

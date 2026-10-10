@@ -62,8 +62,9 @@ import ps.e7gz.support.fixtures.Fixtures;
 /**
  * E7-42 over HTTP: the {@code Idempotency-Key} header, the error envelope and the replayed response as a client sees
  * them, through the real security chain, exception mapping and database. A test-only write (imported only here, never
- * in the contract) uses the shared {@link Idempotency} API exactly as a feature controller will; the real ADR-015
- * operations are still 501 stubs of E7-46/47/48/49, so for them only the header contract is checked.
+ * in the contract) uses the shared {@link Idempotency} API exactly as a feature controller will. Of the real ADR-015
+ * operations only creation is implemented (E7-46, tested in its module); the others are still 501 stubs of
+ * E7-47/48/49, so for them only the header contract is checked.
  */
 @AutoConfigureMockMvc
 @Import(IdempotencyHttpTest.Probe.class)
@@ -519,7 +520,7 @@ class IdempotencyHttpTest extends IntegrationTest {
     // ------------------------------------------------------------------------- the real ADR-015 operations (stubs)
 
     @Test
-    void theRealBookingWritesRequireTheKeyAndStayContractStubs() throws Exception {
+    void theRealBookingWritesRequireTheKeyAndTheUnimplementedOnesStayStubs() throws Exception {
         String create = "{\"resourceId\":\"" + UUID.randomUUID() + "\",\"startAt\":\"2026-10-12T18:00:00Z\","
                 + "\"durationMinutes\":120}";
         UUID booking = UUID.randomUUID();
@@ -527,8 +528,10 @@ class IdempotencyHttpTest extends IntegrationTest {
         mvc.perform(write(customerToken, "/api/v1/customer/bookings", null, create))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.field").value(OpenApiConfig.IDEMPOTENCY_KEY));
+        // E7-46: creation is real; with the key its unknown resourceId reaches the route and is 404 NOT_FOUND.
         mvc.perform(write(customerToken, "/api/v1/customer/bookings", UUID.randomUUID().toString(), create))
-                .andExpect(status().isNotImplemented());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
         mvc.perform(write(customerToken, "/api/v1/customer/bookings/" + booking + "/cancel", null, null))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.field").value(OpenApiConfig.IDEMPOTENCY_KEY));

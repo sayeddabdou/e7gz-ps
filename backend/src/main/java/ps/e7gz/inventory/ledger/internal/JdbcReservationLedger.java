@@ -3,7 +3,9 @@ package ps.e7gz.inventory.ledger.internal;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import org.postgresql.util.ServerErrorMessage;
@@ -16,12 +18,18 @@ import ps.e7gz.inventory.ledger.api.NewReservation;
 import ps.e7gz.inventory.ledger.api.ReservationLedger;
 import ps.e7gz.inventory.ledger.api.ReservationOwner;
 import ps.e7gz.inventory.ledger.api.SlotTaken;
+import ps.e7gz.messaging.api.IntegrationEvents;
+import ps.e7gz.messaging.api.NewOutboxEvent;
+import ps.e7gz.messaging.api.Outbox;
 
 /**
  * Explicit SQL on the command's own transaction ({@link CommandContext#jdbc()}); no transaction, connection or clock
  * of its own. The database is the authority on occupancy (ADR-003, arch 05 section 3.1): no overlap is checked here
  * before the INSERT. {@code tr_00_prepare_resource_reservation} derives {@code planned_range} on insert and refuses
  * any later change of owner or plan, any re-activation and any rewrite of recorded release facts.
+ *
+ * <p>Every inserted row publishes {@code ReservationHeld} in the same transaction (arch 08 section 3.2; E7-46, PO
+ * decision 9 Oct 2026): E7-41's projection consumer refreshes that venue's Nearest Availability rows from it.
  */
 @Component
 class JdbcReservationLedger implements ReservationLedger {
@@ -81,6 +89,22 @@ class JdbcReservationLedger implements ReservationLedger {
      */
     static final String GD_RESERVATION_CONFLICT_BOOKING = "gd_reservation_conflict_booking";
 
+    static final String RESERVATION_AGGREGATE = "RESERVATION";
+
+    /**
+     * The venue of a row is its Resource's venue, read as {@link JdbcActiveCommitments} reads it: the resource module's
+     * {@code ResourceCatalog} cannot be called from here (the resource module already depends on this one).
+     */
+    static final String VENUE_OF_RESOURCE = """
+            SELECT r.venue_id FROM resource.resource r WHERE r.id = :resourceId
+            """;
+
+    private final Outbox outbox;
+
+    JdbcReservationLedger(Outbox outbox) {
+        this.outbox = outbox;
+    }
+
     @Override
     public UUID create(CommandContext command, NewReservation reservation) {
         Objects.requireNonNull(command, "command");
@@ -106,6 +130,7 @@ class JdbcReservationLedger implements ReservationLedger {
             }
             throw e;
         }
+        held(command, id, reservation);
         return id;
     }
 
@@ -137,6 +162,26 @@ class JdbcReservationLedger implements ReservationLedger {
                 .param("start", utc(start))
                 .param("end", utc(end))
                 .query(Boolean.class).single();
+    }
+
+    /**
+     * {@code ReservationHeld {reservationId, resourceId, venueId, period}} (PO decision 9 Oct 2026). The row's foreign
+     * key has just proven the Resource exists.
+     */
+    private void held(CommandContext command, UUID id, NewReservation reservation) {
+        UUID venueId = command.jdbc().sql(VENUE_OF_RESOURCE)
+                .param("resourceId", reservation.resourceId())
+                .query(UUID.class).single();
+        Map<String, Object> period = new LinkedHashMap<>();
+        period.put("start", reservation.plannedStart().toString());
+        period.put("end", reservation.plannedEnd().toString());
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("reservationId", id);
+        payload.put("resourceId", reservation.resourceId());
+        payload.put("venueId", venueId);
+        payload.put("period", period);
+        outbox.publish(command, new NewOutboxEvent(IntegrationEvents.RESERVATION_HELD, RESERVATION_AGGREGATE, id,
+                payload));
     }
 
     /**

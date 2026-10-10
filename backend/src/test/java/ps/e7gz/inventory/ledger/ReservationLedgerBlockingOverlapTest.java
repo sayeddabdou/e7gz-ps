@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 import java.util.function.Function;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +24,7 @@ import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
+import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.inventory.ledger.api.NewReservation;
 import ps.e7gz.inventory.ledger.api.ReservationLedger;
 import ps.e7gz.inventory.ledger.api.ReservationOwner;
@@ -60,8 +62,17 @@ class ReservationLedgerBlockingOverlapTest extends IntegrationTest {
         }
     }
 
+    /** ReservationLedger.create publishes ReservationHeld, which carries the request's correlation ID (E7-46). */
+    private CorrelationId.Scope correlation;
+
+    @AfterEach
+    void closeCorrelation() {
+        correlation.close();
+    }
+
     @BeforeEach
     void fixtures() {
+        correlation = CorrelationId.open(CorrelationId.generate());
         ReservationLedgerFixtures.load();
     }
 

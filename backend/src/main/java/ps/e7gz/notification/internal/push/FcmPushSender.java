@@ -25,6 +25,9 @@ class FcmPushSender implements PushSender {
 
     private static final Logger log = LoggerFactory.getLogger(FcmPushSender.class);
 
+    /** The Android notification channel the customer app creates (E7-51: {@code booking-updates}). */
+    static final String ANDROID_CHANNEL = "booking-updates";
+
     private final RestClient http;
     private final FcmAccessTokens tokens;
     private final ObjectMapper json;
@@ -61,7 +64,9 @@ class FcmPushSender implements PushSender {
         body.put("token", deviceToken);
         body.put("notification", Map.of("title", message.title(), "body", message.body()));
         body.put("data", message.data());
-        body.put("android", Map.of("priority", "HIGH", "notification", Map.of("sound", "default")));
+        // The customer app's Android channel (apps/customer, E7-51), created with high importance.
+        body.put("android", Map.of("priority", "HIGH",
+                "notification", Map.of("sound", "default", "channel_id", ANDROID_CHANNEL)));
         body.put("apns", Map.of(
                 "headers", Map.of("apns-priority", "10", "apns-push-type", "alert"),
                 "payload", Map.of("aps", Map.of("sound", "default"))));

@@ -4,12 +4,14 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import ps.e7gz.audit.api.AuditWriter;
+import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.common.error.ApiErrorCode;
@@ -54,6 +56,17 @@ public class Areas implements AreaLookup {
 
     @Override
     public boolean isActive(UUID areaId) {
+        return isActive(jdbc, areaId);
+    }
+
+    @Override
+    public boolean isActive(CommandContext command, UUID areaId) {
+        Objects.requireNonNull(command, "command");
+        return isActive(command.jdbc(), areaId);
+    }
+
+    private static boolean isActive(JdbcClient jdbc, UUID areaId) {
+        Objects.requireNonNull(areaId, "areaId");
         return jdbc.sql("SELECT EXISTS (SELECT 1 FROM geo.area WHERE id = :id AND is_active)").param("id", areaId)
                 .query(Boolean.class).single();
     }

@@ -1,0 +1,40 @@
+import { en } from "../../i18n/en";
+
+export const customerNotificationCodes = [
+  "BOOKING_CREATED", "BOOKING_CONFIRMED", "BOOKING_REJECTED", "VENUE_RESPONSE_EXPIRED",
+  "BOOKING_AUTO_CANCELLED", "LATE_CONFIRMATION_RECEIVED", "LATE_CONFIRMATION_EXPIRING",
+  "LATE_CONFIRMATION_PAUSED", "CUSTOMER_CONFIRMATION_EXPIRED", "REJECTED_AFTER_EXPIRY",
+  "LATE_CONFIRM_SCHEDULE_CONFLICT", "BOOKING_STARTS_SOON", "BOOKING_CANCELLED",
+  "BOOKING_CANCELLED_BAN", "VENUE_OPENING_HOURS_CHANGED", "CHECK_IN_RECORDED",
+  "ATTENDANCE_UNCONFIRMED_COMPLETION", "NO_SHOW_RECORDED", "NO_SHOW_REVERSED",
+  "ATTENDANCE_CORRECTED", "TEMPORARY_BAN_ACTIVATED", "BAN_EXPIRED", "POINTS_EARNED",
+  "VERIFIED_PLAYER_UNLOCKED", "BOOKING_CANCELLED_VENUE_EMERGENCY",
+  "BOOKING_CANCELLED_RESOURCE_EMERGENCY", "BOOKING_CANCELLED_OWNER_REVIEW",
+  "BOOKING_RESPONSE_INTERRUPTED_BY_EMERGENCY", "LATE_CONFIRM_INTERRUPTED_BY_EMERGENCY",
+  "BOOKING_CANCELLED_VENUE_ACCOUNT_DISABLED", "BOOKING_CANCELLED_SYSTEM_INTEGRITY_ERROR",
+  "BOOKING_START_CANCELLED_EMERGENCY", "ACTIVE_BOOKING_INTERRUPTED",
+  "ACTIVE_SESSION_ATTENDANCE_RECORDING_AFFECTED", "OPERATIONAL_REFUND_CONFIRMED",
+  "BOOKING_FEE_REFUND_CONFIRMED", "LATE_CONFIRM_ELIGIBILITY_RESTORED",
+  "TOURNAMENT_JOINED", "TOURNAMENT_REQUEST_APPROVED", "TOURNAMENT_REQUEST_REJECTED",
+  "TOURNAMENT_APPROVAL_EXPIRED", "TOURNAMENT_CHECKPOINT_CANCELLED", "TOURNAMENT_MINIMUM_REACHED",
+  "TOURNAMENT_CANCELLED", "TOURNAMENT_RESOURCE_AVAILABILITY_CHANGED",
+  "TOURNAMENT_CANCELLED_NO_OPERATIONAL_RESOURCES", "PASSWORD_RESET", "PHONE_CHANGED", "EMAIL_CHANGED",
+  "REVIEW_SUBMITTED_FOR_MODERATION", "REVIEW_APPROVED", "REVIEW_HIDDEN", "REVIEW_REMOVED",
+  "VERIFIED_PLAYER_SUSPENDED", "VERIFIED_PLAYER_REVOKED", "VERIFIED_PLAYER_RESTORED",
+  "ADMIN_TRUST_CORRECTION", "ADMIN_ACCOUNT_CHANGE", "ADMIN_BOOKING_CHANGE", "PHONE_VERIFICATION_OTP",
+  "EMAIL_VERIFICATION",
+] as const;
+
+type CustomerNotificationCode = typeof customerNotificationCodes[number];
+const messages = en.notifications.messages satisfies Record<CustomerNotificationCode, string>;
+
+export function notificationMessage(code: string, params: Record<string, unknown>): string {
+  const base = code in messages ? messages[code as CustomerNotificationCode] : en.notifications.unknown;
+  const venue = typeof params.venueName === "string" ? params.venueName.trim() : "";
+  const points = typeof params.points === "number" || typeof params.points === "string" ? String(params.points) : "";
+  if (code === "POINTS_EARNED" && points) return en.notifications.templates.pointsEarned(points);
+  if (venue && code === "BOOKING_CONFIRMED") return en.notifications.templates.bookingConfirmedAtVenue(venue);
+  if (venue && code === "BOOKING_REJECTED") return en.notifications.templates.bookingRejectedAtVenue(venue);
+  if (venue && code === "BOOKING_STARTS_SOON") return en.notifications.templates.bookingStartsSoonAtVenue(venue);
+  return base;
+}

@@ -25,6 +25,7 @@ import java.time.zone.ZoneOffsetTransition;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.StreamSupport;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.postgresql.Driver;
@@ -43,6 +44,7 @@ import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
+import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.inventory.ledger.api.NewReservation;
 import ps.e7gz.inventory.ledger.api.ReservationLedger;
 import ps.e7gz.inventory.ledger.api.ReservationOwner;
@@ -81,8 +83,17 @@ class CustomerFindAvailableHttpTest extends IntegrationTest {
 
     private Fixtures.Area area;
 
+    /** ReservationLedger.create publishes ReservationHeld, which carries the request's correlation ID (E7-46). */
+    private CorrelationId.Scope correlation;
+
+    @AfterEach
+    void closeCorrelation() {
+        correlation.close();
+    }
+
     @BeforeEach
     void ownArea() {
+        correlation = CorrelationId.open(CorrelationId.generate());
         area = anArea().create();
     }
 

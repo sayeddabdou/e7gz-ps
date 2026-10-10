@@ -77,6 +77,7 @@ class FcmPushSenderTest {
                 .andExpect(jsonPath("$.message.notification.title").value("Booking confirmed"))
                 .andExpect(jsonPath("$.message.data.bookingId").value("b-1"))
                 .andExpect(jsonPath("$.message.android.priority").value("HIGH"))
+                .andExpect(jsonPath("$.message.android.notification.channel_id").value("booking-updates"))
                 .andExpect(jsonPath("$.message.apns.headers['apns-push-type']").value("alert"))
                 .andExpect(jsonPath("$.message.apns.headers['apns-priority']").value("10"))
                 .andExpect(jsonPath("$.message.apns.payload.aps.sound").value("default"))
