@@ -1584,6 +1584,9 @@ Carry-forward from E7-39 (do these too):
 - Contract from E7-39 (packages/api-client/SPRINT-2-CONTRACT.md; stubs already in the controllers named there): implement POST /venue/bookings {resourceId, playMode?, startAt?, durationMinutes, customerName?, customerPhone?} -> 201 VenueBooking (startAt absent = walk-in starting now at server time, FR-MAN-04; customerPhone normalised to E.164 like the venue phone) and POST /venue/bookings/{bookingId}/cancel-manual (FR-MAN-08: CANCELLED / VENUE_CANCELLED_MANUAL_BOOKING before startAt, no Owner Password). Idempotency-Key required on both. Controller: booking/web/VenueBookingController.
 - Error codes (PO decision 5 Oct 2026): a manual booking on an ONBOARDING venue is 403 FORBIDDEN; cancel-manual on a booking already cancelled or completed is 409 BOOKING_STATE_CHANGED.
 
+Carry-forward from E7-45 (PO decision 10 Oct 2026, do this too):
+- The boundary tests of this task are already written and switched off (@Disabled("E7-48: ...")): backend/src/test/java/ps/e7gz/support/boundary/pending/ManualBookingBusinessDateBoundaryTest.java. Move the class next to this task's code, replace each fail(...) with the steps its comment names, using the boundary pack ps.e7gz.support.boundary (Boundary, CommandInstants, Deadlines, DueJobs, BoundaryAssertions; see its package-info), and remove @Disabled. The task is done only when they pass. The pack and these tests come with E7-45: merge main once E7-45 is merged.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -1912,6 +1915,9 @@ Do:
 Done when (write these as tests first where possible):
 - 7:59 PM initiation → exactly 60 s and no warning; 7:50 PM → 5 min and one warning; a customer at 4 commitments: blocked, no hold, venue message reveals nothing.
 
+Carry-forward from E7-45 (PO decision 10 Oct 2026, do this too):
+- The boundary tests of this task are already written and switched off (@Disabled("E7-58: ...")): backend/src/test/java/ps/e7gz/support/boundary/pending/LateConfirmBoundaryTest.java. Move the class next to this task's code, replace each fail(...) with the steps its comment names, using the boundary pack ps.e7gz.support.boundary (Boundary, CommandInstants, Deadlines, DueJobs, BoundaryAssertions; see its package-info), and remove @Disabled. The task is done only when they pass. The pack and these tests come with E7-45: merge main once E7-45 is merged.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -1965,6 +1971,9 @@ Do:
 Done when (write these as tests first where possible):
 - Check-in at +14:59 ok, +15:00 refused and Late Present offered; Late-Present cannot become no-show.
 
+Carry-forward from E7-45 (PO decision 10 Oct 2026, do this too):
+- The boundary tests of this task are already written and switched off (@Disabled("E7-59: ...")): backend/src/test/java/ps/e7gz/support/boundary/pending/CheckInBoundaryTest.java. Move the class next to this task's code, replace each fail(...) with the steps its comment names, using the boundary pack ps.e7gz.support.boundary (Boundary, CommandInstants, Deadlines, DueJobs, BoundaryAssertions; see its package-info), and remove @Disabled. The task is done only when they pass. The pack and these tests come with E7-45: merge main once E7-45 is merged.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -1988,6 +1997,9 @@ Do:
 Done when (write these as tests first where possible):
 - Forcing a resource DISABLED behind the predicate produces the integrity error + alert.
 
+Carry-forward from E7-45 (PO decision 10 Oct 2026, do this too):
+- The boundary tests of this task are already written and switched off (@Disabled("E7-60: ...")): backend/src/test/java/ps/e7gz/support/boundary/pending/BookingStartBoundaryTest.java. Move the class next to this task's code, replace each fail(...) with the steps its comment names, using the boundary pack ps.e7gz.support.boundary (Boundary, CommandInstants, Deadlines, DueJobs, BoundaryAssertions; see its package-info), and remove @Disabled. The task is done only when they pass. The pack and these tests come with E7-45: merge main once E7-45 is merged.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2010,6 +2022,9 @@ Do:
 
 Done when (write these as tests first where possible):
 - Boundary pack green.
+
+Carry-forward from E7-45 (PO decision 10 Oct 2026, do this too):
+- The boundary tests of this task are already written and switched off (@Disabled("E7-61: ...")): backend/src/test/java/ps/e7gz/support/boundary/pending/BookingCompletionBoundaryTest.java. Move the class next to this task's code, replace each fail(...) with the steps its comment names, using the boundary pack ps.e7gz.support.boundary (Boundary, CommandInstants, Deadlines, DueJobs, BoundaryAssertions; see its package-info), and remove @Disabled. The task is done only when they pass. The pack and these tests come with E7-45: merge main once E7-45 is merged.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2695,6 +2710,9 @@ Do:
 
 Done when (write these as tests first where possible):
 - 12 min venue + 19 min resource pause → cancels at 30 min under the resource reason; feasibility deterministic.
+
+Carry-forward from E7-45 (PO decision 10 Oct 2026, do this too):
+- The boundary tests of this task are already written and switched off (@Disabled("E7-83: ...")): backend/src/test/java/ps/e7gz/support/boundary/pending/TimerPauseResumeBoundaryTest.java. Move the class next to this task's code, replace each fail(...) with the steps its comment names, using the boundary pack ps.e7gz.support.boundary (Boundary, CommandInstants, Deadlines, DueJobs, BoundaryAssertions; see its package-info), and remove @Disabled. The task is done only when they pass. The pack and these tests come with E7-45: merge main once E7-45 is merged.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
