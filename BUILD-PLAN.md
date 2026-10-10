@@ -1441,6 +1441,12 @@ Carry-forward from E7-39 (do these too):
 Carry-forward from E7-43 (PO decision 10 Oct 2026, do this too):
 - Venue PUSH deliveries created before this task wait PENDING (E7-43's NotificationDeliveryWorker has no Web Push adapter and leaves them). Add the venue Web Push sender to that worker (render the text from the E7-43 template catalogue in the venue account's language) so these waiting deliveries and every new one are sent, through the same outbox retry and dead-letter rules.
 
+PO decisions at the start of work (10 Oct 2026, do these too):
+- Start this task only after E7-43 (notifications) is merged into main; branch from main.
+- Disabled venue account (FR-VEN-08, arch 08 section 5): publish a VenueAccountDisabled outbox event from the venue-account disable command (in the same command transaction), and its consumer tells every open stream of that venue account to close at once through NOTIFY. Backup: each 15-second heartbeat also re-reads the account status and closes the stream if it is DISABLED (only open streams are checked; a disabled account cannot log in, so nothing reconnects).
+- VAPID keys (the server's own Web Push signing keys; no provider account): new settings E7GZ_VAPID_PUBLIC_KEY, E7GZ_VAPID_PRIVATE_KEY and E7GZ_VAPID_SUBJECT, used when the Web Push provider is 'vapid'. Locally the default 'log' sender writes venue pushes to the worker log (like customer push), so no developer needs the keys, and the api serves a fixed dev public key. Name the settings in the PR.
+- VAPID subject (the contact address push services may use): a setting only, no real address in the repo; dev uses mailto:dev@e7gz.local. The real address (a team address created before launch) is chosen in E7-101.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -3201,6 +3207,10 @@ Carry-forward from E7-43 (PO decision 10 Oct 2026, do these too):
 - iPhone push (arch 01 decision A7): in the Apple Developer account create an APNs auth key (.p8) and enable Push Notifications for the customer app's bundle id; in the Firebase project register the iOS and Android apps, upload the APNs key, and create a service account for the FCM HTTP v1 API. Put the service-account credentials (the setting E7-43 added) in the secret store per environment, separate staging and production Firebase projects (arch 12: FCM test project for staging), never in the repo.
 - Email: an SMTP provider account for staging and production; its host, port, user and password (the settings E7-43 added) in the secret store.
 - Release smoke test: one real push reaches an iPhone and an Android phone through FCM, and one real email arrives.
+
+Carry-forward from E7-44 (PO decisions 10 Oct 2026, do these too):
+- Venue Web Push: generate one VAPID key pair per environment (staging and production, never the dev key) and put E7GZ_VAPID_PUBLIC_KEY and E7GZ_VAPID_PRIVATE_KEY in the secret store, the same pair on every replica; set the Web Push provider to 'vapid'. Changing the pair later makes every venue browser subscribe again.
+- VAPID subject: ask the PO for the contact address (a team address such as support@..., created before launch) and set E7GZ_VAPID_SUBJECT to mailto:<it>. Release smoke test: one real Web Push reaches a closed Venue Dashboard in Chrome.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
