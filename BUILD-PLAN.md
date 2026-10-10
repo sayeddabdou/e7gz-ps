@@ -1660,6 +1660,11 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 - Customer app is English at launch, all text in the i18n resource files (FRS §3.1).
 - In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.
 
+Carry-forward from E7-43 (PO decision 10 Oct 2026, do these too):
+- iPhone push is required (arch 01 decision A7: iOS goes through FCM to APNs). Get the FCM registration token on both iOS and Android with @react-native-firebase/messaging (expo-notifications' getDevicePushTokenAsync returns the raw APNs token on iOS, which FCM cannot use) and register it with POST /customer/notifications/devices {token, platform: IOS or ANDROID}; re-register on token refresh; revoke on logout.
+- Use an EAS development build (Expo Go cannot receive real push); add the Firebase config plugin, the iOS push-notification capability and background mode remote-notification, and ask for notification permission in the app.
+- Never show an 'iOS push disabled' banner: the in-app Notifications page is the fallback when permission is denied, on every platform. Until the PO's Apple Developer account and the APNs key exist (set up together before deployment, E7-101), 'Push received on a device in dev' is checked on Android; the iPhone check is done at the E7-101 release smoke test.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -3187,6 +3192,12 @@ Carry-forward from E7-41 (PO decisions 9 Oct 2026, do these too):
 
 Carry-forward from E7-42 (PO decision 10 Oct 2026, do this too):
 - Put the idempotency fingerprint key (E7GZ_IDEMPOTENCY_FINGERPRINT_KEY, the setting E7-42 added: Base64 of 32 random bytes) in the secret store for staging and production, the same value on every replica of an environment; never reuse the test key. Neither the api nor the worker starts without it. Changing it later only makes a retry across the change of a request with a secret field (Owner Password) a 422.
+
+Carry-forward from E7-43 (PO decision 10 Oct 2026, do these too):
+- Before deployment, ask the PO for the provider accounts and set each one up together, step by step: the Apple Developer Program account, the Firebase project, and the SMS Misr account (the PO opens them; nothing is created without him). Until then everything runs with the dev adapters (fake push, Mailpit, log SMS).
+- iPhone push (arch 01 decision A7): in the Apple Developer account create an APNs auth key (.p8) and enable Push Notifications for the customer app's bundle id; in the Firebase project register the iOS and Android apps, upload the APNs key, and create a service account for the FCM HTTP v1 API. Put the service-account credentials (the setting E7-43 added) in the secret store per environment, separate staging and production Firebase projects (arch 12: FCM test project for staging), never in the repo.
+- Email: an SMTP provider account for staging and production; its host, port, user and password (the settings E7-43 added) in the secret store.
+- Release smoke test: one real push reaches an iPhone and an Android phone through FCM, and one real email arrives.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
