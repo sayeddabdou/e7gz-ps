@@ -1,6 +1,7 @@
 package ps.e7gz.messaging.internal;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
@@ -10,6 +11,7 @@ import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
@@ -22,7 +24,10 @@ import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.correlation.CorrelationId;
+import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.security.AuthenticatedSubject;
+import ps.e7gz.messaging.api.CommandAnswer;
 import ps.e7gz.messaging.api.Idempotency;
 import ps.e7gz.messaging.api.IdempotentRequest;
 import ps.e7gz.messaging.api.IdempotentResult;
@@ -41,6 +46,14 @@ class IdempotencyService implements Idempotency {
 
     private static final Pattern ROUTE = Pattern.compile("^[A-Z]+ /api/v1/(customer|venue|admin)/\\S*$");
     private static final Pattern PATH_VARIABLE = Pattern.compile("\\{([^}/]+)}");
+
+    /** The stored error body of a committed refusal (D2): the members of arch 09 section 1.3's {@code error}. */
+    private static final String ERROR = "error";
+    private static final String CODE = "code";
+    private static final String FIELD = "field";
+    private static final String DETAILS = "details";
+    private static final TypeReference<Map<String, Object>> DETAILS_TYPE = new TypeReference<>() {
+    };
 
     private final ObjectMapper json;
     private final JdbcIdempotencyStore store;
@@ -74,9 +87,35 @@ class IdempotencyService implements Idempotency {
     @Override
     public <R> Command<IdempotentResult<R>> wrap(IdempotentRequest request, StoredResponse<R> response,
                                                  Command<R> business) {
+        Objects.requireNonNull(business, "business");
+        return wrapAnswer(request, response, new AlwaysOk<>(business));
+    }
+
+    @Override
+    public <R> Command<IdempotentResult<R>> wrapAnswer(IdempotentRequest request, StoredResponse<R> response,
+                                                       Command<CommandAnswer<R>> business) {
         responseTypes.require(Objects.requireNonNull(response, "response"));
         return new IdempotentCommand<>(Objects.requireNonNull(request, "request"),
                 Objects.requireNonNull(response, "response"), Objects.requireNonNull(business, "business"));
+    }
+
+    /** A command that never commits a refusal, as {@link #wrapAnswer} takes it: the same category and lock set. */
+    private record AlwaysOk<R>(Command<R> business) implements Command<CommandAnswer<R>> {
+
+        @Override
+        public EligibilityCategory eligibilityCategory() {
+            return business.eligibilityCategory();
+        }
+
+        @Override
+        public CommandScope scope() {
+            return business.scope();
+        }
+
+        @Override
+        public CommandAnswer<R> execute(CommandContext context) {
+            return CommandAnswer.ok(business.execute(context));
+        }
     }
 
     /** A customer writes under /customer, a venue account under /venue, an admin under /admin (arch 09 section 1.1). */
@@ -111,7 +150,25 @@ class IdempotencyService implements Idempotency {
         if (data == null) {
             return null;
         }
-        JsonNode tree = json.createObjectNode().set("data", json.valueToTree(data));
+        return storedTree(json.createObjectNode().set("data", json.valueToTree(data)), request);
+    }
+
+    /**
+     * A committed refusal as stored: {@code {"error": {code, field?, details?}}}, the error envelope of arch 09 section
+     * 1.3 without its per-request {@code meta} (optional members absent, as the envelope sends them).
+     */
+    private String storedRefusal(ApiException refusal, IdempotentRequest request) {
+        ObjectNode error = json.createObjectNode().put(CODE, refusal.code().name());
+        if (refusal.field() != null) {
+            error.put(FIELD, refusal.field());
+        }
+        if (!refusal.details().isEmpty()) {
+            error.set(DETAILS, json.valueToTree(refusal.details()));
+        }
+        return storedTree(json.createObjectNode().set(ERROR, error), request);
+    }
+
+    private String storedTree(JsonNode tree, IdempotentRequest request) {
         StoredResponseTypes.secretPath(tree, "").ifPresent(path -> {
             throw new IllegalStateException("The response of " + request.endpoint() + " has a secret field at " + path
                     + " and cannot be stored (technical.forbidden_payload_key)");
@@ -120,6 +177,26 @@ class IdempotencyService implements Idempotency {
             return json.writeValueAsString(tree);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Response of an idempotent write cannot be stored", e);
+        }
+    }
+
+    /** The committed refusal a stored body holds ({@code {"error": …}}); empty for a success body or none. */
+    private Optional<ApiException> refusalOf(String stored) {
+        if (stored == null) {
+            return Optional.empty();
+        }
+        try {
+            JsonNode error = json.readTree(stored).get(ERROR);
+            if (error == null) {
+                return Optional.empty();
+            }
+            ApiErrorCode code = ApiErrorCode.valueOf(error.get(CODE).asText());
+            String field = error.hasNonNull(FIELD) ? error.get(FIELD).asText() : null;
+            Map<String, Object> details = error.hasNonNull(DETAILS)
+                    ? json.convertValue(error.get(DETAILS), DETAILS_TYPE) : Map.of();
+            return Optional.of(new ApiException(code, field, details));
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Stored refusal of an idempotent write cannot be read", e);
         }
     }
 
@@ -143,9 +220,9 @@ class IdempotencyService implements Idempotency {
 
         private final IdempotentRequest request;
         private final StoredResponse<R> response;
-        private final Command<R> business;
+        private final Command<CommandAnswer<R>> business;
 
-        IdempotentCommand(IdempotentRequest request, StoredResponse<R> response, Command<R> business) {
+        IdempotentCommand(IdempotentRequest request, StoredResponse<R> response, Command<CommandAnswer<R>> business) {
             this.request = request;
             this.response = response;
             this.business = business;
@@ -166,9 +243,22 @@ class IdempotencyService implements Idempotency {
             JdbcIdempotencyStore.Begun begun = store.begin(context.jdbc(), request,
                     context.commandNow().plus(RETENTION), CorrelationId.require());
             if (begun instanceof JdbcIdempotencyStore.Begun.Replay replay) {
+                Optional<ApiException> refusal = refusalOf(replay.body());
+                if (refusal.isPresent()) {
+                    return new IdempotentResult<>(replay.status(), null, true, refusal.get());
+                }
                 return new IdempotentResult<>(replay.status(), replayed(context, replay.body()), true);
             }
-            R result = business.execute(context);
+            CommandAnswer<R> answer = business.execute(context);
+            if (answer instanceof CommandAnswer.Refused<R> refused) {
+                // D2: the command's writes commit with a record that stores the refusal itself, never a success status
+                ApiException refusal = refused.refusal();
+                String body = storedRefusal(refusal, request);
+                store.complete(context.jdbc(), request, refusal.code().httpStatus(), body, null);
+                return new IdempotentResult<>(refusal.code().httpStatus(), null, false,
+                        refusalOf(body).orElseThrow());
+            }
+            R result = ((CommandAnswer.Ok<R>) answer).value();
             String body = stored(result, request);
             ResultAggregate aggregate = result == null || response.aggregate() == null
                     ? null : response.aggregate().apply(result);

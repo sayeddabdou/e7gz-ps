@@ -45,12 +45,16 @@ final class OnlineBookingWorld {
     final Fixtures.Venue venue;
     final Fixtures.Resource room;
     final Fixtures.User customer;
+    /** The venue's shared account (E7-47: the venue answers as it). */
+    final Fixtures.VenueAccount account;
 
-    private OnlineBookingWorld(Instant t0, Fixtures.Venue venue, Fixtures.Resource room, Fixtures.User customer) {
+    private OnlineBookingWorld(Instant t0, Fixtures.Venue venue, Fixtures.Resource room, Fixtures.User customer,
+                               Fixtures.VenueAccount account) {
         this.t0 = t0;
         this.venue = venue;
         this.room = room;
         this.customer = customer;
+        this.account = account;
     }
 
     static OnlineBookingWorld create() {
@@ -146,17 +150,15 @@ final class OnlineBookingWorld {
         OnlineBookingWorld create() {
             Instant t0 = dbNow();
             Fixtures.Venue venue = aVenue().status(status).create();
-            if (accountDisabled) {
-                aVenueAccount().forVenue(venue).disabled().create();
-            } else {
-                aVenueAccount().forVenue(venue).create();
-            }
+            Fixtures.VenueAccount account = accountDisabled
+                    ? aVenueAccount().forVenue(venue).disabled().create()
+                    : aVenueAccount().forVenue(venue).create();
             Fixtures.Resource resource = room.apply(aResource().at(venue).playStation(ConsoleType.PS5)).create();
             if (priced) {
                 aDefaultPrice().forVenue(venue).playStation(ConsoleType.PS5, PlayMode.SINGLE).hourly(HOURLY).create();
             }
             Fixtures.User customer = verifiedCustomer ? aUser().verified().create() : aUser().unverified().create();
-            OnlineBookingWorld world = new OnlineBookingWorld(t0, venue, resource, customer);
+            OnlineBookingWorld world = new OnlineBookingWorld(t0, venue, resource, customer, account);
             if (defaultSession) {
                 world.session(t0.minus(Duration.ofHours(2)).truncatedTo(ChronoUnit.MINUTES),
                         t0.plus(Duration.ofHours(10)).truncatedTo(ChronoUnit.MINUTES), 0);

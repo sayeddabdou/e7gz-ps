@@ -201,6 +201,11 @@ class OnlineBookingCreationIntegrationTest extends IntegrationTest {
             public void rearm(CommandContext context, String idempotencyKey, Instant dueAt) {
                 throw new UnsupportedOperationException();
             }
+
+            @Override
+            public boolean supersede(CommandContext context, String idempotencyKey) {
+                throw new UnsupportedOperationException();
+            }
         };
         OnlineBookingRequest request = world.request(world.start(), 120);
 

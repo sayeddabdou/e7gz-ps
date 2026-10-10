@@ -21,4 +21,14 @@ public interface ScheduledJobs {
      * ({@code technical.job_rearm}; FR-OPS-36, FR-OPS-39). The database refuses any other state.
      */
     void rearm(CommandContext context, String idempotencyKey, Instant dueAt);
+
+    /**
+     * Withdraws a job the command's own transition made unnecessary - e.g. T1 when the venue accepts or rejects (arch
+     * 06 section 2.1; E7-47, PO decision D1 10 Oct 2026): a {@code PENDING}, {@code PAUSED} or {@code FAILED} job
+     * becomes {@code SUPERSEDED} and never fires. Returns {@code false}, changing nothing, when no job has the key, when
+     * it is already {@code DONE} or {@code SUPERSEDED}, or when a worker holds it {@code LEASED} right now: that worker's
+     * fire re-reads the authoritative state under the same locks and supersedes it itself, so a job is never taken from
+     * under its lease holder (whose {@code job_finish} would then fail).
+     */
+    boolean supersede(CommandContext context, String idempotencyKey);
 }

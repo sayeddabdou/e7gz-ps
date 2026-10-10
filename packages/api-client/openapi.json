@@ -647,6 +647,7 @@
           "IDEMPOTENCY_KEY_REUSED",
           "BOOKING_STATE_CHANGED",
           "NOTIFICATION_DELIVERY_NOT_DEAD_LETTER",
+          "CUSTOMER_NOT_ELIGIBLE",
           "VALIDATION_FAILED",
           "UNAUTHENTICATED",
           "FORBIDDEN",
@@ -19991,7 +19992,7 @@
     },
     "/api/v1/venue/bookings/{bookingId}/accept": {
       "post": {
-        "description": "Revalidated atomically (FR-BOK-14); marketplace ACTIVE is not required (FR-BOK-15). At or after venueResponseExpiresAt it is DEADLINE_PASSED (expiry wins at the boundary). When an emergency or owner review stops the confirmation, the booking is cancelled under that cause (FR-BOK-16) and the venue gets the matching 422 (VENUE_SELLING_BLOCK_ACTIVE, RESOURCE_SELLING_BLOCK_ACTIVE or RESOURCE_NOT_ELIGIBLE; PO decision 5 Oct 2026). A booking no longer PENDING is BOOKING_STATE_CHANGED. No Owner Password. Implemented by E7-47.",
+        "description": "Revalidated atomically (FR-BOK-14); marketplace ACTIVE is not required (FR-BOK-15). At or after venueResponseExpiresAt it is DEADLINE_PASSED (expiry wins at the boundary). When an emergency or owner review stops the confirmation, the booking is cancelled under that cause (FR-BOK-16) and the venue gets the matching 422 (VENUE_SELLING_BLOCK_ACTIVE, RESOURCE_SELLING_BLOCK_ACTIVE or RESOURCE_NOT_ELIGIBLE; PO decision 5 Oct 2026). A booking no longer PENDING is BOOKING_STATE_CHANGED. No Owner Password. Order (PO decision D7, 10 Oct 2026): not PENDING, then a paused response timer, then the deadline, then the revalidation. While an emergency pauses the response timer the Accept is refused and nothing changes: VENUE_SELLING_BLOCK_ACTIVE (venue-level pause) or RESOURCE_SELLING_BLOCK_ACTIVE (resource-level pause); nothing is stored, so a retry with the same key is evaluated afresh (D8). So the same 422 code can mean \"still PENDING (paused)\" or \"cancelled (FR-BOK-16)\": the dashboard must reload the booking after any 422 on Accept. A customer who is not eligible now (banned, deleted or restricted) is CUSTOMER_NOT_ELIGIBLE, the booking unchanged and the reason never told (D9). A venue account that is not ENABLED is FORBIDDEN. A booking of another venue is NOT_FOUND. A replay of an Accept that cancelled answers the same 422. Implemented by E7-47.",
         "operationId": "venueAcceptBooking",
         "parameters": [
           {
@@ -20273,6 +20274,7 @@
                                 "RESOURCE_NOT_ELIGIBLE",
                                 "VENUE_SELLING_BLOCK_ACTIVE",
                                 "RESOURCE_SELLING_BLOCK_ACTIVE",
+                                "CUSTOMER_NOT_ELIGIBLE",
                                 "IDEMPOTENCY_KEY_REUSED"
                               ],
                               "type": "string"
@@ -20293,7 +20295,7 @@
                 }
               }
             },
-            "description": "error.code: DEADLINE_PASSED | RESOURCE_NOT_ELIGIBLE | VENUE_SELLING_BLOCK_ACTIVE | RESOURCE_SELLING_BLOCK_ACTIVE | IDEMPOTENCY_KEY_REUSED",
+            "description": "error.code: DEADLINE_PASSED | RESOURCE_NOT_ELIGIBLE | VENUE_SELLING_BLOCK_ACTIVE | RESOURCE_SELLING_BLOCK_ACTIVE | CUSTOMER_NOT_ELIGIBLE | IDEMPOTENCY_KEY_REUSED",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {
@@ -20758,7 +20760,7 @@
     },
     "/api/v1/venue/bookings/{bookingId}/reject": {
       "post": {
-        "description": "The venue's reason text is mandatory and kept apart from the reason code (ck_booking_reject_reason_text). The reservation is released at once. A booking no longer PENDING is BOOKING_STATE_CHANGED. No Owner Password. Implemented by E7-47.",
+        "description": "The venue's reason text is mandatory and kept apart from the reason code (ck_booking_reject_reason_text). The reservation is released at once. A booking no longer PENDING is BOOKING_STATE_CHANGED, and so is one whose response timer an emergency pauses. At or after venueResponseExpiresAt it is DEADLINE_PASSED. A booking of another venue is NOT_FOUND. No Owner Password. Implemented by E7-47.",
         "operationId": "venueRejectBooking",
         "parameters": [
           {
@@ -21150,7 +21152,7 @@
     },
     "/api/v1/venue/bookings/{bookingId}/reject-after-expiry": {
       "post": {
-        "description": "Only for VENUE_RESPONSE_EXPIRED and only while now < startAt; at or after startAt it is DEADLINE_PASSED; a booking no longer VENUE_RESPONSE_EXPIRED is BOOKING_STATE_CHANGED. No reservation to release. No Owner Password. Implemented by E7-47.",
+        "description": "Only for VENUE_RESPONSE_EXPIRED and only while now < startAt; at or after startAt it is DEADLINE_PASSED; a booking no longer VENUE_RESPONSE_EXPIRED is BOOKING_STATE_CHANGED. No reservation to release. A booking of another venue is NOT_FOUND. No Owner Password. Implemented by E7-47.",
         "operationId": "venueRejectBookingAfterExpiry",
         "parameters": [
           {

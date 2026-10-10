@@ -19,7 +19,8 @@ import ps.e7gz.scheduling.api.ScheduledJob;
 /**
  * SQL over {@code technical.scheduled_job}. A job's status and due instant change only through the database functions
  * {@code technical.job_lease} / {@code job_finish} / {@code job_rearm}, never a plain {@code UPDATE} (arch 08 section
- * 2.4; the lifecycle guard refuses one). Every method runs on the {@link JdbcClient} it is given: the caller's command or
+ * 2.4; the lifecycle guard refuses one) - except {@link #supersede}, a status-only move to {@code SUPERSEDED} that the
+ * guard allows and no function covers. Every method runs on the {@link JdbcClient} it is given: the caller's command or
  * transaction.
  */
 @Component
@@ -97,6 +98,25 @@ class JdbcScheduledJobStore {
         if (rearmed.isEmpty()) {
             throw new IllegalStateException("No scheduled job has the key " + idempotencyKey);
         }
+    }
+
+    /**
+     * {@code PENDING} / {@code PAUSED} / {@code FAILED} {@code -> SUPERSEDED} of the job with this key, the transitions
+     * {@code guard_scheduled_job} allows a command (table comment, v1.1.25); false when nothing moved. A
+     * {@code LEASED} job is left to its lease holder: only {@code job_finish} may end a lease. There is no
+     * {@code job_supersede} producer function, so this is the one guarded {@code UPDATE} of status outside them; the
+     * guard and the lifecycle CHECK refuse anything else (E7-47, PO decision D1 10 Oct 2026).
+     */
+    boolean supersede(JdbcClient jdbc, String idempotencyKey) {
+        return jdbc.sql("""
+                        UPDATE technical.scheduled_job
+                           SET status = :superseded, completed_at = clock_timestamp()
+                         WHERE idempotency_key = :key
+                           AND status IN (:pending, :paused, :failed)""")
+                .param("superseded", ScheduledJobStatus.SUPERSEDED.name()).param("key", idempotencyKey)
+                .param("pending", ScheduledJobStatus.PENDING.name()).param("paused", ScheduledJobStatus.PAUSED.name())
+                .param("failed", ScheduledJobStatus.FAILED.name())
+                .update() == 1;
     }
 
     /** A new {@code PENDING} job; false when its idempotency key is taken (nothing changes then). */

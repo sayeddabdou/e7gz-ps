@@ -42,14 +42,47 @@ public final class IntegrationEvents {
     public static final String RESERVATION_HELD = "ReservationHeld";
 
     /**
+     * {@code {reservationId, resourceId, venueId, period: {start, end}}}, aggregate {@code RESERVATION}: an active ledger
+     * row was released (arch 08 section 3.2; E7-47, the payload of {@link #RESERVATION_HELD}).
+     */
+    public static final String RESERVATION_RELEASED = "ReservationReleased";
+
+    /**
+     * {@code {bookingId, customerId, venueId, resourceId, startAt, endAt}}, aggregate {@code BOOKING}: the venue accepted
+     * a PENDING Online Booking, now CONFIRMED (arch 06 section 2.1, arch 08 section 3.2; E7-47, PO decision D4).
+     */
+    public static final String BOOKING_CONFIRMED = "BookingConfirmed";
+
+    /**
+     * {@code {bookingId, customerId, venueId, resourceId, startAt, endAt, terminalReason}}, aggregate {@code BOOKING}:
+     * the venue rejected the booking - {@code VENUE_REJECTED} from PENDING or {@code REJECTED_AFTER_EXPIRY} from
+     * VENUE_RESPONSE_EXPIRED (FR-BOK-17, FR-BOK-21; E7-47, PO decision D4). The venue's reason text is not in it.
+     */
+    public static final String BOOKING_REJECTED = "BookingRejected";
+
+    /**
+     * {@code {bookingId, customerId, venueId, resourceId, startAt, endAt, venueResponseExpiresAt}}, aggregate
+     * {@code BOOKING}: T1 moved a PENDING booking to the non-terminal VENUE_RESPONSE_EXPIRED (FR-BOK-18; E7-47, PO
+     * decision D4).
+     */
+    public static final String VENUE_RESPONSE_EXPIRED = "VenueResponseExpired";
+
+    /**
+     * {@code {bookingId, customerId, venueId, resourceId, startAt, endAt, terminalReason}}, aggregate {@code BOOKING}: a
+     * booking was CANCELLED under {@code terminalReason} - from E7-47 the operational cause that stopped a venue's
+     * Accept (FR-BOK-16, PO decision D4).
+     */
+    public static final String BOOKING_CANCELLED = "BookingCancelled";
+
+    /**
      * Every event that can change a venue's availability and so refreshes its Nearest Availability rows (arch 05
      * section 5.3, arch 08 section 7): reservation hold or release, Resource state, selling blocks (maintenance,
      * closures, emergencies), opening hours and prices. Each carries the {@code venueId} it touches;
-     * {@link #AREA_DEACTIVATED} carries an {@code areaId} instead. Only the E7-23 events and {@link #RESERVATION_HELD}
-     * (E7-46) are written so far (PO decision 9 Oct 2026); the other producers add theirs in their own tasks.
+     * {@link #AREA_DEACTIVATED} carries an {@code areaId} instead. Only the E7-23 events, {@link #RESERVATION_HELD}
+     * (E7-46) and {@link #RESERVATION_RELEASED} (E7-47) are written so far (PO decision 9 Oct 2026); the other producers add theirs in their own tasks.
      */
     public static final Set<String> INVENTORY_AFFECTING = Set.of(
-            RESERVATION_HELD, "ReservationReleased",
+            RESERVATION_HELD, RESERVATION_RELEASED,
             "ResourceDisabled", "ResourceReEnabled", "ResourceArchived", "ResourceRestored",
             "ResourceConsoleChanged", "ResourceRestrictionChanged",
             "MaintenanceCreated", "MaintenanceEdited", "MaintenanceDeleted",

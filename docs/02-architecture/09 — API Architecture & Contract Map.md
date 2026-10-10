@@ -130,6 +130,7 @@ Representative members, each traced:
 | `IDEMPOTENCY_KEY_REUSED` | 422 | `ADR-015` |
 | `BOOKING_STATE_CHANGED` | **409** | the booking is no longer in the state the action needs (e.g. the customer cancelled a second before the venue's Accept): refresh and look again. Used by customer cancel, venue accept / reject / reject after expiry and cancel manual. Product Owner decision, 5 Oct 2026 (E7-39) |
 | `NOTIFICATION_DELIVERY_NOT_DEAD_LETTER` | **409** | admin "try again" on a delivery that is not `DEAD_LETTER` (already sent, or still being retried by the system): there is nothing to retry. Product Owner decision, 10 Oct 2026 (E7-43) |
+| `CUSTOMER_NOT_ELIGIBLE` | 422 | `FR-BOK-14` — the venue's Accept fails the always-on customer check (banned, deleted or restricted); the booking stays PENDING, nothing is cancelled. Neutral: the venue is never told why. Product Owner decision D9, 10 Oct 2026 (E7-47) |
 
 **General codes** — Product Owner decision, 29 Sep 2026 (E7-12). Used only where no more specific code above applies:
 

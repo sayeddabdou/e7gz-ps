@@ -1,5 +1,6 @@
 package ps.e7gz.booking.web;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -15,8 +16,10 @@ import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -26,6 +29,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import ps.e7gz.booking.internal.VenueBookingRow;
+import ps.e7gz.booking.internal.VenueBookings;
+import ps.e7gz.booking.internal.VenueResponses;
 import ps.e7gz.common.codes.Activity;
 import ps.e7gz.common.codes.AttendanceResult;
 import ps.e7gz.common.codes.BookingEventType;
@@ -36,17 +42,24 @@ import ps.e7gz.common.codes.BookingTerminalReason;
 import ps.e7gz.common.codes.ConsoleType;
 import ps.e7gz.common.codes.PlayMode;
 import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
 import ps.e7gz.common.web.MoneyView;
 import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.PageView;
+import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.messaging.api.Idempotency;
+import ps.e7gz.messaging.api.IdempotentResult;
+import ps.e7gz.messaging.api.ResultAggregate;
+import ps.e7gz.messaging.api.StoredResponse;
 
 /**
- * Venue Dashboard — booking requests and bookings (arch 09 §4.1). Stubs until E7-47 (request lists, accept, reject,
- * reject after expiry), E7-48 (manual booking and its cancel) and E7-49 (bookings list and detail). None of these
- * actions needs the Owner Password; each is in ADR-015's scope, so the Idempotency-Key is required. The venue DTOs
+ * Venue Dashboard — booking requests and bookings (arch 09 §4.1). The request lists, accept, reject and reject after
+ * expiry are implemented (E7-47); the rest stay stubs until E7-48 (manual booking and its cancel) and E7-49 (bookings
+ * list and detail). Every route acts for the signed-in account's own venue, never one named by the request. None of
+ * these actions needs the Owner Password; each is in ADR-015's scope, so the Idempotency-Key is required. The venue DTOs
  * are separate from the customer ones (arch 09 §1.1): they carry nothing about the customer's other commitments
  * (NFR-19), and the customer phone is absent when the retention rule hides it (NFR-18, arch 10 §5.1).
  */
@@ -56,13 +69,33 @@ import ps.e7gz.common.web.PageView;
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class VenueBookingController {
 
+    /** {@code technical.idempotency_record.endpoint} of the venue's answers (arch 08 section 6). */
+    static final String ACCEPT_ENDPOINT = "POST /api/v1/venue/bookings/{bookingId}/accept";
+    static final String REJECT_ENDPOINT = "POST /api/v1/venue/bookings/{bookingId}/reject";
+    static final String REJECT_AFTER_EXPIRY_ENDPOINT = "POST /api/v1/venue/bookings/{bookingId}/reject-after-expiry";
+    static final String BOOKING_AGGREGATE = "BOOKING";
+    static final String BOOKING_ID = "bookingId";
+
+    private final VenueBookings bookings;
+    private final VenueResponses responses;
+    private final Idempotency idempotency;
+    private final ResponseMetaFactory meta;
+
+    public VenueBookingController(VenueBookings bookings, VenueResponses responses, Idempotency idempotency,
+                                  ResponseMetaFactory meta) {
+        this.bookings = bookings;
+        this.responses = responses;
+        this.idempotency = idempotency;
+        this.meta = meta;
+    }
+
     @GetMapping("/requests/pending")
     @Operation(operationId = "venueListPendingRequests",
             summary = "Online requests waiting for an answer (FR-VEN-34, FR-BOK-13)",
             description = "PENDING bookings. Each carries venueResponseExpiresAt, an instant, for the countdown "
                     + "(NFR-10). Implemented by E7-47.")
-    public DataResponse<List<VenueBooking>> listPendingRequests() {
-        throw NotImplementedYet.stub();
+    public DataResponse<List<VenueBooking>> listPendingRequests(@AuthenticationPrincipal AuthenticatedSubject venue) {
+        return meta.data(bookings.pending(venue.id()).stream().map(VenueBooking::of).toList());
     }
 
     @GetMapping("/requests/missed")
@@ -70,8 +103,8 @@ public class VenueBookingController {
             summary = "Requests the venue did not answer in time, still before their start (FR-VEN-34, FR-BOK-20)",
             description = "VENUE_RESPONSE_EXPIRED bookings whose startAt has not passed: the venue may still reject "
                     + "them (FR-BOK-21) or, from Sprint 3, send a Late Confirm. Implemented by E7-47.")
-    public DataResponse<List<VenueBooking>> listMissedRequests() {
-        throw NotImplementedYet.stub();
+    public DataResponse<List<VenueBooking>> listMissedRequests(@AuthenticationPrincipal AuthenticatedSubject venue) {
+        return meta.data(bookings.missed(venue.id()).stream().map(VenueBooking::of).toList());
     }
 
     @PostMapping("/bookings/{bookingId}/accept")
@@ -82,15 +115,30 @@ public class VenueBookingController {
                     + "emergency or owner review stops the confirmation, the booking is cancelled under that cause "
                     + "(FR-BOK-16) and the venue gets the matching 422 (VENUE_SELLING_BLOCK_ACTIVE, "
                     + "RESOURCE_SELLING_BLOCK_ACTIVE or RESOURCE_NOT_ELIGIBLE; PO decision 5 Oct 2026). A booking no "
-                    + "longer PENDING is BOOKING_STATE_CHANGED. No Owner Password. Implemented by E7-47.")
+                    + "longer PENDING is BOOKING_STATE_CHANGED. No Owner Password. Order (PO decision D7, 10 Oct 2026): "
+                    + "not PENDING, then a paused response timer, then the deadline, then the revalidation. While an "
+                    + "emergency pauses the response timer the Accept is refused and nothing changes: "
+                    + "VENUE_SELLING_BLOCK_ACTIVE (venue-level pause) or RESOURCE_SELLING_BLOCK_ACTIVE (resource-level "
+                    + "pause); nothing is stored, so a retry with the same key is evaluated afresh (D8). So the same "
+                    + "422 code can mean \"still PENDING (paused)\" or \"cancelled (FR-BOK-16)\": the dashboard must "
+                    + "reload the booking after any 422 on Accept. A customer who is not eligible now (banned, deleted "
+                    + "or restricted) is CUSTOMER_NOT_ELIGIBLE, the booking unchanged and the reason never told (D9). A "
+                    + "venue account that is not ENABLED is FORBIDDEN. A booking of another venue is NOT_FOUND. A "
+                    + "replay of an Accept that cancelled answers the same 422. Implemented by E7-47.")
+    @ApiError(status = 403, codes = ApiErrorCode.FORBIDDEN)
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     @ApiError(status = 409, codes = ApiErrorCode.BOOKING_STATE_CHANGED)
     @ApiError(status = 422, codes = {ApiErrorCode.DEADLINE_PASSED, ApiErrorCode.RESOURCE_NOT_ELIGIBLE,
             ApiErrorCode.VENUE_SELLING_BLOCK_ACTIVE, ApiErrorCode.RESOURCE_SELLING_BLOCK_ACTIVE,
-            ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
+            ApiErrorCode.CUSTOMER_NOT_ELIGIBLE, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
     public DataResponse<VenueBooking> accept(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
-            @PathVariable UUID bookingId) {
-        throw NotImplementedYet.stub();
+            @PathVariable UUID bookingId,
+            @AuthenticationPrincipal AuthenticatedSubject venue) {
+        IdempotentResult<VenueBooking> result = responses.accept(venue.id(), bookingId,
+                idempotency.request(venue, ACCEPT_ENDPOINT, idempotencyKey, Map.of(BOOKING_ID, bookingId), null),
+                response(), VenueBooking::of);
+        return meta.data(result.throwIfRefused().body());
     }
 
     @PostMapping("/bookings/{bookingId}/reject")
@@ -98,14 +146,21 @@ public class VenueBookingController {
             summary = "Reject a PENDING request with a reason: REJECTED / VENUE_REJECTED (FR-BOK-17)",
             description = "The venue's reason text is mandatory and kept apart from the reason code "
                     + "(ck_booking_reject_reason_text). The reservation is released at once. A booking no longer "
-                    + "PENDING is BOOKING_STATE_CHANGED. No Owner Password. Implemented by E7-47.")
+                    + "PENDING is BOOKING_STATE_CHANGED, and so is one whose response timer an emergency pauses. At or "
+                    + "after venueResponseExpiresAt it is DEADLINE_PASSED. A booking of another venue is NOT_FOUND. No "
+                    + "Owner Password. Implemented by E7-47.")
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     @ApiError(status = 409, codes = ApiErrorCode.BOOKING_STATE_CHANGED)
     @ApiError(status = 422, codes = {ApiErrorCode.DEADLINE_PASSED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
     public DataResponse<VenueBooking> reject(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
             @PathVariable UUID bookingId,
-            @Valid @RequestBody VenueBookingRejectRequest request) {
-        throw NotImplementedYet.stub();
+            @Valid @RequestBody VenueBookingRejectRequest request,
+            @AuthenticationPrincipal AuthenticatedSubject venue) {
+        IdempotentResult<VenueBooking> result = responses.reject(venue.id(), bookingId, request.reasonText(),
+                idempotency.request(venue, REJECT_ENDPOINT, idempotencyKey, Map.of(BOOKING_ID, bookingId), request),
+                response(), VenueBooking::of);
+        return meta.data(result.body());
     }
 
     @PostMapping("/bookings/{bookingId}/reject-after-expiry")
@@ -113,13 +168,31 @@ public class VenueBookingController {
             summary = "Reject a missed request before its start: REJECTED / REJECTED_AFTER_EXPIRY (FR-BOK-21)",
             description = "Only for VENUE_RESPONSE_EXPIRED and only while now < startAt; at or after startAt it is "
                     + "DEADLINE_PASSED; a booking no longer VENUE_RESPONSE_EXPIRED is BOOKING_STATE_CHANGED. No "
-                    + "reservation to release. No Owner Password. Implemented by E7-47.")
+                    + "reservation to release. A booking of another venue is NOT_FOUND. No Owner Password. Implemented "
+                    + "by E7-47.")
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     @ApiError(status = 409, codes = ApiErrorCode.BOOKING_STATE_CHANGED)
     @ApiError(status = 422, codes = {ApiErrorCode.DEADLINE_PASSED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
     public DataResponse<VenueBooking> rejectAfterExpiry(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
-            @PathVariable UUID bookingId) {
-        throw NotImplementedYet.stub();
+            @PathVariable UUID bookingId,
+            @AuthenticationPrincipal AuthenticatedSubject venue) {
+        IdempotentResult<VenueBooking> result = responses.rejectAfterExpiry(venue.id(), bookingId,
+                idempotency.request(venue, REJECT_AFTER_EXPIRY_ENDPOINT, idempotencyKey,
+                        Map.of(BOOKING_ID, bookingId), null),
+                response(), VenueBooking::of);
+        return meta.data(result.body());
+    }
+
+    /**
+     * 200 with the booking; a replay leaves the customer phone out once the retention rule hides it (arch 10 §5.1),
+     * re-applying the same rule as the normal read path.
+     */
+    private StoredResponse<VenueBooking> response() {
+        return StoredResponse.of(VenueBooking.class, 200,
+                        (VenueBooking booking) -> new ResultAggregate(BOOKING_AGGREGATE, booking.bookingId()))
+                .replayedThrough((context, stored) -> bookings.customerPhoneVisible(context, stored.bookingId())
+                        ? stored : stored.withoutCustomerPhone());
     }
 
     @PostMapping("/bookings")
@@ -219,6 +292,7 @@ public class VenueBookingController {
     @Schema(name = "VenueBookingCustomer")
     public record VenueBookingCustomer(
             @NotNull @Schema(example = "omar_k") String username,
+            @JsonInclude(JsonInclude.Include.NON_NULL)
             @Schema(requiredMode = Schema.RequiredMode.NOT_REQUIRED,
                     description = "E.164; absent when the retention rule hides it (arch 10 §5.1).",
                     example = "+201001234567") String phone) {
@@ -258,6 +332,32 @@ public class VenueBookingController {
                     description = "MANUAL bookings only.") VenueBookingWalkIn walkIn,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) AttendanceResult attendanceResult,
             @NotNull @Schema(example = "2026-10-12T15:00:00Z") Instant createdAt) {
+
+        /**
+         * The venue's view of a booking row. {@code customer.phone} is already decided by the retention rule (absent
+         * when hidden). {@code attendanceResult} stays null here: no booking E7-47 answers with has started, so none has
+         * an attendance record yet (FR-ATT-07; the bookings list and detail are E7-49's).
+         */
+        public static VenueBooking of(VenueBookingRow row) {
+            VenueBookingCustomer customer = row.source() == BookingSource.ONLINE
+                    ? new VenueBookingCustomer(row.customerUsername(), row.customerPhone()) : null;
+            VenueBookingWalkIn walkIn = row.source() == BookingSource.MANUAL
+                    ? new VenueBookingWalkIn(row.walkInName(), row.walkInPhone()) : null;
+            return new VenueBooking(row.bookingId(), row.source(), row.status(), row.terminalReason(),
+                    row.rejectReasonText(), new VenueBookingResource(row.resourceId(), row.resourceName(),
+                            row.activity(), row.consoleType(), row.playMode()),
+                    row.startAt(), row.endAt(), row.businessDate(), row.nominalBookedMinutes(),
+                    MoneyView.of(row.venuePriceTotal()), row.venueResponseExpiresAt(), row.venueResponsePaused(),
+                    customer, walkIn, null, row.createdAt());
+        }
+
+        /** The same booking with the customer phone absent (arch 10 §5.1): only a member left out, nothing changed. */
+        VenueBooking withoutCustomerPhone() {
+            return customer == null ? this : new VenueBooking(bookingId, source, status, terminalReason,
+                    rejectReasonText, resource, startAt, endAt, businessDate, nominalBookedMinutes, venuePriceTotal,
+                    venueResponseExpiresAt, venueResponsePaused, new VenueBookingCustomer(customer.username(), null),
+                    walkIn, attendanceResult, createdAt);
+        }
     }
 
     /** One booking with its history (append-only, oldest first; FR-AUD-05). */

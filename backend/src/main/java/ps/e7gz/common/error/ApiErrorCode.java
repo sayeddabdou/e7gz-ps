@@ -100,6 +100,12 @@ public enum ApiErrorCode {
      * nothing to retry. PO decision 10 Oct 2026 (E7-43).
      */
     NOTIFICATION_DELIVERY_NOT_DEAD_LETTER(409),
+    /**
+     * The venue's Accept is refused because the customer is not eligible now (FR-BOK-14's always-on customer check:
+     * banned, deleted or restricted). Neutral on purpose: the venue is never told why. The booking is unchanged. PO
+     * decision D9, 10 Oct 2026 (E7-47).
+     */
+    CUSTOMER_NOT_ELIGIBLE(422),
 
     // General codes (arch 09 §1.4; Product Owner decision 29 Sep 2026, E7-12).
     /** A malformed or invalid request: unreadable body, bad parameter, failed bean validation. */
