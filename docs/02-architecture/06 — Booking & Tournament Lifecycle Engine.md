@@ -114,7 +114,7 @@ Implemented as one ordered, named list in a single class, each entry citing its 
 | Trust, points, progress | full participation | **nothing** (`FR-MAN-06`) |
 | Attendance | resolved from evidence | **NOT_APPLICABLE**, including on operational termination (`FR-MAN-06`) |
 | Booking fee | stored, EGP 0 at launch | **NOT_APPLICABLE** treatment (`FR-MAN-08`, `FR-PTS-16`) |
-| Cancellation | customer or venue with Owner Password | venue **without** Owner Password, `VENUE_CANCELLED_MANUAL_BOOKING` (`FR-MAN-08`) |
+| Cancellation | customer or venue with Owner Password | venue **without** Owner Password, `VENUE_CANCELLED_MANUAL_BOOKING`, from CONFIRMED or ACTIVE (`FR-MAN-08`; amended by PCR-007) |
 | `businessDate` | operating-day date | operating-day date inside a session; the Africa/Cairo calendar date of `startAt` outside published hours — **always present** (`FR-MAN-09`) |
 
 ## 1.5 Customer-facing projection (`FR-BOK-19`)
