@@ -157,6 +157,49 @@ class MigrationFilesTest {
                 .contains("REVOKE ALL ON FUNCTION technical.job_finish(uuid,text,text,text,timestamptz,boolean) FROM PUBLIC;");
     }
 
+    /**
+     * v1.1.34 (E7-48, PCR-007): the migration is the model's own block, byte for byte; the guard is the V1 definition
+     * with exactly one line added (ACTIVE -> CANCELLED / VENUE_CANCELLED_MANUAL_BOOKING for MANUAL only), and the
+     * commit-time provenance check is a deferred constraint trigger. No other object is touched.
+     */
+    @Test
+    void manualActiveCancelMigrationIsTheModelsV1134Block() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String open = "<genericsql name=\"v1_1_34_manual_booking_active_cancel\">\n\t<definition> <![CDATA[\n";
+        int start = model.indexOf(open);
+        assertThat(start).as("v1.1.34 block in the .dbm").isPositive();
+        String block = model.substring(start + open.length(), model.indexOf("]]> </definition>", start));
+        String migration = classpath("db/migration/V202610102240__manual_booking_active_cancel.sql");
+        assertThat(migration).isEqualTo(block);
+
+        String guardOpen = "CREATE OR REPLACE FUNCTION booking.guard_booking_transition()";
+        String baselineGuard = function(classpath("db/migration/V1__baseline.sql"), guardOpen);
+        String migratedGuard = function(migration, guardOpen);
+        String added = "    OR (NEW.source='MANUAL' AND r='VENUE_CANCELLED_MANUAL_BOOKING')"
+                + "  -- PCR-007; actor checked at commit (below)\n";
+        assertThat(migratedGuard.replace(added, "")).as("the guard is V1's, plus one line").isEqualTo(baselineGuard);
+        assertThat(migratedGuard).containsOnlyOnce(added);
+
+        assertThat(migration).contains("verifies the RECORDED actor provenance, not an independently authenticated");
+        String sql = migration.substring(migration.indexOf(guardOpen));
+        assertThat(sql)
+                .contains("CREATE CONSTRAINT TRIGGER tr_booking_manual_active_cancel_provenance\n"
+                        + "AFTER UPDATE OF status ON booking.booking\nDEFERRABLE INITIALLY DEFERRED")
+                .contains("REVOKE ALL ON FUNCTION booking.assert_manual_active_cancel_provenance() FROM PUBLIC;")
+                .doesNotContain("tr_03_booking_transition_guard")
+                .doesNotContain("begin_command")
+                .doesNotContain("ALTER TABLE")
+                .doesNotContain("set_config");
+    }
+
+    /** One {@code CREATE OR REPLACE FUNCTION ... $function$;} definition, from its first line to its end. */
+    private static String function(String sql, String open) {
+        int start = sql.indexOf(open);
+        assertThat(start).as(open).isNotNegative();
+        assertThat(sql.indexOf(open, start + 1)).as("%s defined once", open).isNegative();
+        return sql.substring(start, sql.indexOf("$function$;\n", start) + "$function$;\n".length());
+    }
+
     private static String classpath(String resource) throws IOException {
         try (InputStream in = MigrationFilesTest.class.getClassLoader().getResourceAsStream(resource)) {
             assertThat(in).as(resource).isNotNull();
