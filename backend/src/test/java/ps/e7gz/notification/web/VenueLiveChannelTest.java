@@ -140,14 +140,18 @@ class VenueLiveChannelTest extends IntegrationTest {
         onB.close();
     }
 
-    /** E7-47's answers and expiry tell the Dashboard to refetch (E7-44/E7-47 review, 10 Oct 2026). */
+    /**
+     * E7-47's answers and expiry tell the Dashboard to refetch (E7-44/E7-47 review, 10 Oct 2026); so does E7-48's
+     * BookingStarted - a walk-in the venue made itself, never the CREATED alert (PO decision 10 Oct 2026, E7-48, D6).
+     */
     @Test
     void theVenueAnswerAndExpiryEventsAreChangeSignals() throws Exception {
         Fixtures.VenueAccount venue = aVenueAccount().create();
         SseLines onB = open(portB(), venue.id(), hubB());
 
         for (String type : List.of(IntegrationEvents.BOOKING_CONFIRMED, IntegrationEvents.BOOKING_REJECTED,
-                IntegrationEvents.VENUE_RESPONSE_EXPIRED, IntegrationEvents.BOOKING_CANCELLED)) {
+                IntegrationEvents.VENUE_RESPONSE_EXPIRED, IntegrationEvents.BOOKING_CANCELLED,
+                IntegrationEvents.BOOKING_STARTED)) {
             UUID booking = UUID.randomUUID();
             bookingEvent(type, venue.venueId(), booking);
             deliver();

@@ -1,8 +1,8 @@
 # E7GZ PS — PRODUCT CHANGE REQUEST PCR-007
 # Cancel an ACTIVE Manual Booking
 
-**Status:** APPROVED  
-**Date:** 10 October 2026  
+**Status:** APPROVED\
+**Date:** 10 October 2026\
 **Applies to:** Product Specification v5.0 §30.8; amends FRS F-16 item 7, `FR-MAN-08` and arch 06 §1.4 (Cancellation row)
 
 ## Change
