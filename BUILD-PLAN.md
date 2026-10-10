@@ -1797,6 +1797,9 @@ Done when (write these as tests first where possible):
 Carry-forward from E7-43 (PO decision 10 Oct 2026, do this too):
 - Add the English push and email copy (title/body, email subject/body) for every PUSH or EMAIL notification code this task emits to the notification template catalogue E7-43 built (ADR-021: keyed by code and language, rendered in the notification worker; never stored or sent by the API). The PO reviews the wording in the PR.
 
+Carry-forward from E7-44 (PO decision 10 Oct 2026, do this too):
+- Venue notifications are Web Push in the venue account's language (FR-VEN-40), so for every VENUE notification code this task emits add both the English and the Arabic push copy (title/body) to the template catalogue (templates_en / templates_ar). Until a code has its copy, its venue push is closed TEMPLATE_MISSING and only the in-Dashboard list shows it. The PO reviews both wordings in the PR.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2596,6 +2599,9 @@ Done when (write these as tests first where possible):
 Carry-forward from E7-43 (PO decision 10 Oct 2026, do this too):
 - Add the English push and email copy (title/body, email subject/body) for every PUSH or EMAIL notification code this task emits to the notification template catalogue E7-43 built (ADR-021: keyed by code and language, rendered in the notification worker; never stored or sent by the API). The PO reviews the wording in the PR.
 
+Carry-forward from E7-44 (PO decision 10 Oct 2026, do this too):
+- Venue notifications are Web Push in the venue account's language (FR-VEN-40), so for every VENUE notification code this task emits add both the English and the Arabic push copy (title/body) to the template catalogue (templates_en / templates_ar). Until a code has its copy, its venue push is closed TEMPLATE_MISSING and only the in-Dashboard list shows it. The PO reviews both wordings in the PR.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2850,6 +2856,9 @@ Done when (write these as tests first where possible):
 
 Carry-forward from E7-43 (PO decision 10 Oct 2026, do this too):
 - Add the English push and email copy (title/body, email subject/body) for every PUSH or EMAIL notification code this task emits to the notification template catalogue E7-43 built (ADR-021: keyed by code and language, rendered in the notification worker; never stored or sent by the API). The PO reviews the wording in the PR.
+
+Carry-forward from E7-44 (PO decision 10 Oct 2026, do this too):
+- Venue notifications are Web Push in the venue account's language (FR-VEN-40), so for every VENUE notification code this task emits add both the English and the Arabic push copy (title/body) to the template catalogue (templates_en / templates_ar). Until a code has its copy, its venue push is closed TEMPLATE_MISSING and only the in-Dashboard list shows it. The PO reviews both wordings in the PR.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
