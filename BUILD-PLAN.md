@@ -1438,6 +1438,9 @@ Carry-forward from E7-39 (do these too):
 - Contract from E7-39 (packages/api-client/SPRINT-2-CONTRACT.md; stubs already in the controllers named there): GET /venue/stream sends `event: change` with data {type, id, reason} (arch 08 section 5; this replaces {type, entityId} in step 1): type BOOKING | TOURNAMENT, reason CREATED (new booking request) | REQUESTED (new tournament request) | CHANGED; `: heartbeat` every 15 s. Authentication is the ordinary Bearer header: the Dashboard reads the stream with fetch() + ReadableStream, never EventSource, and no token goes in the URL (PO decision 5 Oct 2026). Controller: notification/web/VenueStreamController.
 - Web Push routes (PO decision 5 Oct 2026): GET /venue/push-subscriptions/vapid-public-key -> {publicKey}; POST /venue/push-subscriptions {endpoint (https), keys {p256dh, auth}, userAgent?} -> 201 (an endpoint already active is seen again, not duplicated); POST /venue/push-subscriptions/{subscriptionId}/revoke -> 204 (sets revoked_at, never deletes). Controller: notification/web/VenuePushSubscriptionController.
 
+Carry-forward from E7-43 (PO decision 10 Oct 2026, do this too):
+- Venue PUSH deliveries created before this task wait PENDING (E7-43's NotificationDeliveryWorker has no Web Push adapter and leaves them). Add the venue Web Push sender to that worker (render the text from the E7-43 template catalogue in the venue account's language) so these waiting deliveries and every new one are sent, through the same outbox retry and dead-letter rules.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
