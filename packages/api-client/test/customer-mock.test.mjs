@@ -61,6 +61,45 @@ test("customer manual-test mock filters activities and prices the requested dura
   assert.equal(booking.data.nominalBookedMinutes, 180);
   assert.equal(booking.data.totalAmount.amount, "450.00");
   assert.equal(Date.parse(booking.data.venueResponseExpiresAt) - Date.parse(booking.meta.serverTime), 10 * 60_000);
+
+  const auth = { headers: { Authorization: "Bearer mock-access-token" } };
+  const upcoming = await getJson(`${origin}/api/v1/customer/bookings?bucket=upcoming&limit=20`, auth);
+  const completed = await getJson(`${origin}/api/v1/customer/bookings?bucket=completed&limit=20`, auth);
+  const cancelled = await getJson(`${origin}/api/v1/customer/bookings?bucket=cancelled&limit=20`, auth);
+  assert.equal(upcoming.data.nextCursor, null);
+  assert.equal(completed.data.nextCursor, null);
+  assert.equal(cancelled.data.nextCursor, null);
+  assert.deepEqual(upcoming.data.items.map(({ status, displayBucket, terminalReason }) => ({ status, displayBucket, terminalReason })), [
+    { status: "PENDING", displayBucket: "upcoming", terminalReason: null },
+  ]);
+  assert.deepEqual(completed.data.items.map(({ status, displayBucket, terminalReason }) => ({ status, displayBucket, terminalReason })), [
+    { status: "COMPLETED", displayBucket: "completed", terminalReason: null },
+  ]);
+  assert.deepEqual(cancelled.data.items.map(({ status, displayBucket, terminalReason }) => ({ status, displayBucket, terminalReason })), [
+    { status: "CANCELLED", displayBucket: "cancelled", terminalReason: "CUSTOMER_CANCELLED" },
+  ]);
+  assert.ok(Date.parse(upcoming.data.items[0].startAt) > Date.now());
+  assert.ok(Date.parse(completed.data.items[0].endAt) < Date.now());
+
+  const notifications = await getJson(`${origin}/api/v1/customer/notifications?limit=20`, auth);
+  assert.equal(notifications.data.nextCursor, null);
+  assert.equal(notifications.data.items.length, 1);
+
+  const upcomingId = upcoming.data.items[0].bookingId;
+  const detail = await getJson(`${origin}/api/v1/customer/bookings/${upcomingId}`, auth);
+  assert.equal(detail.data.status, "PENDING");
+  assert.equal(detail.data.terminalReason, null);
+
+  const cancellationResponse = await fetch(`${origin}/api/v1/customer/bookings/${upcomingId}/cancel`, {
+    headers: { Authorization: "Bearer mock-access-token", "Idempotency-Key": "22222222-2222-4222-8222-222222222222" },
+    method: "POST",
+  });
+  if (cancellationResponse.status !== 200) assert.fail(`Expected 200, received ${cancellationResponse.status}: ${await cancellationResponse.text()}`);
+  const cancellation = await cancellationResponse.json();
+  assert.equal(cancellation.data.status, "CANCELLED");
+  assert.equal(cancellation.data.terminalReason, "CUSTOMER_CANCELLED");
+  const upcomingAfterCancellation = await getJson(`${origin}/api/v1/customer/bookings?bucket=upcoming&limit=20`, auth);
+  assert.equal(upcomingAfterCancellation.data.items.length, 0);
 });
 
 async function getJson(url, init) {

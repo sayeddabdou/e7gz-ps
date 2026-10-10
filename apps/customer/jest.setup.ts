@@ -23,3 +23,16 @@ jest.mock("react-native-maps", () => {
 
   return { __esModule: true, default: MapView, Marker };
 });
+
+jest.mock("expo-notifications", () => ({
+  AndroidImportance: { HIGH: 4 },
+  IosAuthorizationStatus: { PROVISIONAL: 3 },
+  addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  addPushTokenListener: jest.fn(() => ({ remove: jest.fn() })),
+  getDevicePushTokenAsync: jest.fn().mockResolvedValue({ type: "fcm", data: "test-device-token" }),
+  getLastNotificationResponseAsync: jest.fn().mockResolvedValue(null),
+  getPermissionsAsync: jest.fn().mockResolvedValue({ granted: false }),
+  requestPermissionsAsync: jest.fn().mockResolvedValue({ granted: false }),
+  setNotificationChannelAsync: jest.fn().mockResolvedValue(null),
+  setNotificationHandler: jest.fn(),
+}));
