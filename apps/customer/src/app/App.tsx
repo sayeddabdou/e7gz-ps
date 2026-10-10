@@ -215,13 +215,13 @@ export function App({
     setAuthenticated(false);
   };
 
+  // No notice when this build cannot offer push ("unsupported"): the Notifications page is the fallback, with no
+  // banner (PO decision 10 Oct 2026, E7-43).
   const pushMessage = pushSetupState === "denied"
     ? t.notifications.pushDenied
-    : pushSetupState === "unsupported"
-      ? t.notifications.pushUnavailable
-      : pushSetupState === "failed"
-        ? t.notifications.pushFailed
-        : undefined;
+    : pushSetupState === "failed"
+      ? t.notifications.pushFailed
+      : undefined;
 
   return (
     <SafeAreaProvider>

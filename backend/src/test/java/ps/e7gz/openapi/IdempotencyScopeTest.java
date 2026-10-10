@@ -67,6 +67,9 @@ class IdempotencyScopeTest {
                     "post /api/v1/venue/images/{imageId}/remove", "post /api/v1/venue/opening-hours/preview",
                     "post /api/v1/venue/opening-hours/commit", "post /api/v1/venue/owner-password",
                     "patch /api/v1/venue/settings"),
+            "admin notification \"try again\" (E7-43: re-sends a message, no commitment, money or points; a second "
+                    + "press answers NOTIFICATION_DELIVERY_NOT_DEAD_LETTER)", List.of(
+                    "post /api/v1/admin/notification-deliveries/{deliveryId}/recover"),
             "notifications and push (SPRINT-2-CONTRACT.md: optional)", List.of(
                     "post /api/v1/customer/notifications/{notificationId}/read",
                     "post /api/v1/customer/notifications/devices",

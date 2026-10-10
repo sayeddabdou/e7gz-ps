@@ -4,6 +4,7 @@
 **Updated:** 25 September 2026 — names and mechanics aligned to physical model v1.1.27 (`04`, `ADR-026`–`ADR-028`).
 **Updated:** 2 October 2026 — Venue/Admin browser session in an HttpOnly cookie (`§2`, `ADR-029`); Sprint 1 contract decisions (E7-22): venue marketplace status actions, venue account creation, resource creation, Activities view-only, three new error codes (`§1.5`, `§4.2`, `§5`).
 **Updated:** 5 October 2026 — Sprint 2 contract decisions (E7-39): `BOOKING_STATE_CHANGED` (`§1.5`), booking price quote (`§3.3`), device revoke (`§3.4`), venue booking detail, Web Push subscription routes and stream authentication (`§4.1`).
+**Updated:** 10 October 2026 — E7-43 decisions: admin "try again" for a dead-lettered notification delivery (`§5`) and `NOTIFICATION_DELIVERY_NOT_DEAD_LETTER` (`§1.5`).
 
 **Style.** REST + JSON over HTTPS, base `/api/v1`, OpenAPI 3.1 generated from code, typed TypeScript clients generated for all three surfaces (`ADR-012`).
 
@@ -128,6 +129,7 @@ Representative members, each traced:
 | `REVIEW_REMOVED_NOT_RESTORABLE` | 422 | `FR-REV-04` |
 | `IDEMPOTENCY_KEY_REUSED` | 422 | `ADR-015` |
 | `BOOKING_STATE_CHANGED` | **409** | the booking is no longer in the state the action needs (e.g. the customer cancelled a second before the venue's Accept): refresh and look again. Used by customer cancel, venue accept / reject / reject after expiry and cancel manual. Product Owner decision, 5 Oct 2026 (E7-39) |
+| `NOTIFICATION_DELIVERY_NOT_DEAD_LETTER` | **409** | admin "try again" on a delivery that is not `DEAD_LETTER` (already sent, or still being retried by the system): there is nothing to retry. Product Owner decision, 10 Oct 2026 (E7-43) |
 
 **General codes** — Product Owner decision, 29 Sep 2026 (E7-12). Used only where no more specific code above applies:
 
@@ -423,6 +425,7 @@ Rules (`ADR-011`): the Owner Password is a PIN of exactly 4 digits (PCR-006). Bo
 | Fees | `GET PUT /admin/fees` — global booking fee, tournament creation fee | `FR-ADM-10` |
 | Global rules | `GET /admin/global-rules` — **read-only** for the no-show ladder | `FR-TRS-13`, `NFR-37` |
 | Notifications | `GET /admin/notifications` · `/alerts` | `FR-NTF-10` |
+| Notification delivery recovery | `POST /admin/notification-deliveries/{deliveryId}/recover` `{reason}` → 204 — "try again" for one `DEAD_LETTER` delivery through `notification.recover_dead_letter` (audited); an outbox event in `DEAD_LETTER` stays final | `08 §4.3` — Product Owner decisions, 9 and 10 Oct 2026 (E7-41, E7-43) |
 | Global search | `GET /admin/search?q=` | `FR-ADM-01` |
 | Settings | `GET PATCH /admin/settings` | `FR-ADM-01` |
 

@@ -269,7 +269,6 @@ export const en = {
     unread: "Unread",
     unknown: "You have a new account update.",
     pushDenied: "Push notifications are turned off. You can still read updates here.",
-    pushUnavailable: "Push notifications are unavailable on this device. You can still read updates here.",
     pushFailed: "Push notifications could not be set up. You can still read updates here.",
     templates: {
       pointsEarned: (points: string) => `You earned ${points} points.`,

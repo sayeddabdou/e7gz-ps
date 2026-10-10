@@ -4,6 +4,7 @@ import { Platform } from "react-native";
 import type { components } from "@e7gz/api-client";
 import type { ApiClient } from "../../api";
 import { en as t } from "../../i18n/en";
+import { createIosPushAdapter } from "./iosPushAdapter";
 
 type PlatformCode = components["schemas"]["DevicePlatform"];
 type SavedRegistration = { token: string; deviceId: string };
@@ -208,9 +209,11 @@ export function createSecurePushRegistrationStore(): PushRegistrationStore {
 }
 
 export function createExpoPushAdapter(): PushAdapter {
-  const platform: PlatformCode = Platform.OS === "ios" ? "IOS" : Platform.OS === "web" ? "WEB" : "ANDROID";
+  // iPhone: FCM token and taps from React Native Firebase (architecture A7; PO decision 10 Oct 2026, E7-43).
+  if (Platform.OS === "ios") return createIosPushAdapter();
+  const platform: PlatformCode = Platform.OS === "web" ? "WEB" : "ANDROID";
   return {
-    // iOS is intentionally disabled until the Firebase iOS config/token contract is available (architecture A7).
+    // Android: expo-notifications' device token is the FCM registration token. Web has no customer push.
     supported: Platform.OS === "android",
     platform,
     async requestPermission() {

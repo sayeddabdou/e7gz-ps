@@ -23,6 +23,13 @@ public final class IntegrationEvents {
     public static final String PHONE_OTP_ISSUED = "PhoneOtpIssued";
 
     /**
+     * {@code {notificationId}}, aggregate {@code NOTIFICATION}: a notification has PUSH or EMAIL deliveries to send
+     * (E7-43). Written by {@code Notifications.notify} in the command that creates the notification, and again by the
+     * admin "try again" of a dead-lettered delivery; the notification worker sends every delivery still due.
+     */
+    public static final String NOTIFICATION_DELIVERY_REQUESTED = "NotificationDeliveryRequested";
+
+    /**
      * {@code {bookingId, customerId, venueId, resourceId, startAt, endAt}}, aggregate {@code BOOKING}: an Online
      * Booking was created PENDING (arch 08 section 3.2, arch 01 section 11.1; E7-46, PO decision 9 Oct 2026).
      */

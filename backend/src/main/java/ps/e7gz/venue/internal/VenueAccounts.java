@@ -17,6 +17,7 @@ import ps.e7gz.common.validation.TextFields;
 import ps.e7gz.common.validation.VenuePhones;
 import ps.e7gz.geography.api.AreaLookup;
 import ps.e7gz.identity.api.PasswordRules;
+import ps.e7gz.notification.api.Notifications;
 import ps.e7gz.venue.api.OwnerPasswordGate;
 import ps.e7gz.venue.api.VenueAccountVenues;
 
@@ -37,15 +38,17 @@ public class VenueAccounts implements VenueAccountVenues {
     private final PasswordEncoder passwords;
     private final AuditWriter audit;
     private final AreaLookup areas;
+    private final Notifications notifications;
     private final JdbcClient jdbc;
 
     VenueAccounts(CommandRunner runner, OwnerPasswordGate gate, PasswordEncoder passwords, AuditWriter audit,
-                  AreaLookup areas, DataSource appDataSource) {
+                  AreaLookup areas, Notifications notifications, DataSource appDataSource) {
         this.runner = runner;
         this.gate = gate;
         this.passwords = passwords;
         this.audit = audit;
         this.areas = areas;
+        this.notifications = notifications;
         this.jdbc = JdbcClient.create(appDataSource);
     }
 
@@ -109,7 +112,7 @@ public class VenueAccounts implements VenueAccountVenues {
         requireOwnerPin(newPassword, "newPassword");
         String hash = passwords.encode(newPassword);
         runner.run(new VenueAccountCommands.ResetOwnerPassword(adminId, CorrelationId.require(), venueAccountId,
-                venueId, hash, audit));
+                venueId, hash, audit, notifications));
     }
 
     public Settings settings(UUID venueAccountId) {

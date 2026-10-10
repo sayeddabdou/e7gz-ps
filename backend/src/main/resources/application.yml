@@ -40,6 +40,24 @@ e7gz:
       password: ${E7GZ_SMS_MISR_PASSWORD:}
       sender: ${E7GZ_SMS_MISR_SENDER_TOKEN:}
       template: ${E7GZ_SMS_MISR_TEMPLATE_TOKEN:}
+  # Customer push (E7-43; arch 01 decision A7: FCM for Android and, through APNs, iPhone). "log" writes pushes to the
+  # worker log (local only); deployed environments set E7GZ_PUSH_PROVIDER=fcm and E7GZ_FCM_SERVICE_ACCOUNT = Base64 of
+  # the Firebase service-account JSON, from the secret store (E7-101: set up with the PO before deployment).
+  push:
+    provider: ${E7GZ_PUSH_PROVIDER:log}
+    fcm:
+      service-account: ${E7GZ_FCM_SERVICE_ACCOUNT:}
+  # Notification email (E7-43, FR-NTF-03). Locally the defaults reach Mailpit (docker compose; inbox on
+  # http://localhost:8025); deployed environments set the SMTP provider from the secret store (E7-101).
+  email:
+    provider: ${E7GZ_EMAIL_PROVIDER:smtp}
+    from: ${E7GZ_EMAIL_FROM:E7GZ PS <no-reply@e7gz.local>}
+    smtp:
+      host: ${E7GZ_SMTP_HOST:localhost}
+      port: ${E7GZ_SMTP_PORT:1025}
+      username: ${E7GZ_SMTP_USERNAME:}
+      password: ${E7GZ_SMTP_PASSWORD:}
+      start-tls: ${E7GZ_SMTP_START_TLS:false}
   # Phone OTP in the outbox payload is sealed with AES-256-GCM (arch 10 §2.2; PO decision 9 Oct 2026, E7-41): Base64 of
   # 32 random bytes, e.g. `openssl rand -base64 32`. From the environment / secret store only (arch 12 §3), separate per
   # environment; no default, so neither the api nor the worker starts without one.

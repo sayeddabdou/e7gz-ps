@@ -15,6 +15,7 @@ Sources: arch 09 §1, §3.3, §3.4, §4.1 · arch 08 §4–§5 · arch 10 §5.1�
 | Venue | `POST /venue/bookings` (manual / walk-in) · `POST …/{id}/cancel-manual` | `booking/web/VenueBookingController` | E7-48 |
 | Venue | `GET /venue/bookings` · `GET /venue/bookings/{id}` | `booking/web/VenueBookingController` | E7-49 |
 | Venue | `GET /venue/stream` (SSE) · `GET /venue/push-subscriptions/vapid-public-key` · `POST /venue/push-subscriptions` · `POST …/{id}/revoke` | `notification/web/VenueStreamController`, `VenuePushSubscriptionController` | E7-44 |
+| Admin | `POST /admin/notification-deliveries/{id}/recover` `{reason}` → 204 — "try again" for a `DEAD_LETTER` delivery; 404 unknown id, 409 `NOTIFICATION_DELIVERY_NOT_DEAD_LETTER` (PO decisions 9 and 10 Oct 2026, added by E7-43) | `notification/web/AdminNotificationDeliveryController` | E7-43 |
 
 Not in Sprint 2: Late Confirm, attendance and `cancel-confirmed` (E7-54, Sprint 3 contract), `/venue/overview`, `/venue/revenue`.
 
