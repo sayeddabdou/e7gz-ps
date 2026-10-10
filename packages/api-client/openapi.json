@@ -24543,7 +24543,7 @@
     },
     "/api/v1/venue/push-subscriptions": {
       "post": {
-        "description": "An endpoint already active for this venue account is seen again, not duplicated (one active row per endpoint). Implemented by E7-44.",
+        "description": "An endpoint already active for this venue account is seen again, not duplicated (one active row per endpoint). The endpoint must be https on a known push service (FCM, Mozilla, Windows, Apple) and the keys real Web Push keys, otherwise VALIDATION_FAILED with field endpoint, keys.p256dh or keys.auth. Implemented by E7-44.",
         "operationId": "venueCreatePushSubscription",
         "parameters": [
           {

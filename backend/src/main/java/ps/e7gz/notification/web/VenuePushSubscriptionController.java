@@ -12,6 +12,7 @@ import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,14 +20,16 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.DataResponse;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
+import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.notification.internal.VenuePushSubscriptions;
 
 /**
- * Venue Dashboard Web Push, for when the Dashboard is closed (ADR-014, arch 08 §5, 01 §14 A6). Stubs until E7-44.
+ * Venue Dashboard Web Push, for when the Dashboard is closed (ADR-014, arch 08 §5, 01 §14 A6).
  * Routes are a PO decision, 5 Oct 2026 (E7-39): arch 09 names none. A subscription is revoked, never deleted
- * (arch 08 §4); its fields are {@code notification.venue_push_subscription}'s.
+ * (arch 08 §4); its fields are {@code notification.venue_push_subscription}'s. Implemented by E7-44.
  */
 @RestController
 @RequestMapping("/api/v1/venue/push-subscriptions")
@@ -34,12 +37,20 @@ import ps.e7gz.common.web.OpenApiConfig;
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class VenuePushSubscriptionController {
 
+    private final VenuePushSubscriptions subscriptions;
+    private final ResponseMetaFactory meta;
+
+    public VenuePushSubscriptionController(VenuePushSubscriptions subscriptions, ResponseMetaFactory meta) {
+        this.subscriptions = subscriptions;
+        this.meta = meta;
+    }
+
     @GetMapping("/vapid-public-key")
     @Operation(operationId = "venueGetVapidPublicKey",
             summary = "The VAPID public key the browser needs to subscribe (applicationServerKey)",
             description = "Implemented by E7-44.")
     public DataResponse<VenueVapidPublicKey> vapidPublicKey() {
-        throw NotImplementedYet.stub();
+        return meta.data(new VenueVapidPublicKey(subscriptions.vapidPublicKey()));
     }
 
     @PostMapping
@@ -47,9 +58,14 @@ public class VenuePushSubscriptionController {
     @Operation(operationId = "venueCreatePushSubscription",
             summary = "Register this browser's push subscription (PushSubscription.toJSON())",
             description = "An endpoint already active for this venue account is seen again, not duplicated "
-                    + "(one active row per endpoint). Implemented by E7-44.")
-    public DataResponse<VenuePushSubscription> subscribe(@Valid @RequestBody VenuePushSubscriptionRequest request) {
-        throw NotImplementedYet.stub();
+                    + "(one active row per endpoint). The endpoint must be https on a known push service (FCM, "
+                    + "Mozilla, Windows, Apple) and the keys real Web Push keys, otherwise VALIDATION_FAILED with "
+                    + "field endpoint, keys.p256dh or keys.auth. Implemented by E7-44.")
+    public DataResponse<VenuePushSubscription> subscribe(@AuthenticationPrincipal AuthenticatedSubject venue,
+                                                         @Valid @RequestBody VenuePushSubscriptionRequest request) {
+        VenuePushSubscriptions.Subscription subscription = subscriptions.subscribe(venue.id(), request.endpoint(),
+                request.keys().p256dh(), request.keys().auth(), request.userAgent());
+        return meta.data(new VenuePushSubscription(subscription.id(), subscription.createdAt()));
     }
 
     @PostMapping("/{subscriptionId}/revoke")
@@ -57,8 +73,8 @@ public class VenuePushSubscriptionController {
     @Operation(operationId = "venueRevokePushSubscription",
             summary = "Stop push to this browser, e.g. on logout (revoked, never deleted; arch 08 §4)",
             description = "Revoking an already-revoked subscription changes nothing (204). Implemented by E7-44.")
-    public void revoke(@PathVariable UUID subscriptionId) {
-        throw NotImplementedYet.stub();
+    public void revoke(@AuthenticationPrincipal AuthenticatedSubject venue, @PathVariable UUID subscriptionId) {
+        subscriptions.revoke(venue.id(), subscriptionId);
     }
 
     @Schema(name = "VenueVapidPublicKey")

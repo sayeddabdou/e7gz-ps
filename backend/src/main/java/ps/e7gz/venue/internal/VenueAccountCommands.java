@@ -22,6 +22,9 @@ import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.security.owner.OwnerPasswordNotRequired;
 import ps.e7gz.common.security.owner.OwnerProtected;
+import ps.e7gz.messaging.api.IntegrationEvents;
+import ps.e7gz.messaging.api.NewOutboxEvent;
+import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.notification.api.NotificationRequest;
 import ps.e7gz.notification.api.Notifications;
 import ps.e7gz.venue.api.OwnerPasswordGate;
@@ -175,7 +178,7 @@ final class VenueAccountCommands {
      * venue has a tournament waiting for its approval ({@code tr_tournament_account_disable_from_account}).
      */
     record SetAccountStatus(UUID adminId, UUID correlationId, UUID venueAccountId, UUID venueId,
-                            VenueAccountStatus target, String reason, AuditWriter audit)
+                            VenueAccountStatus target, String reason, AuditWriter audit, Outbox outbox)
             implements Command<Venues.VenueAccountSummary> {
 
         @Override
@@ -200,6 +203,11 @@ final class VenueAccountCommands {
             }
             context.jdbc().sql("UPDATE iam.venue_account SET account_status = :status WHERE id = :account")
                     .param("status", target.name()).param("account", venueAccountId).update();
+            if (target == VenueAccountStatus.DISABLED) {
+                // arch 08 section 5, FR-VEN-08: open Dashboard streams close at once (E7-44, PO decision 10 Oct 2026).
+                outbox.publish(context, new NewOutboxEvent(IntegrationEvents.VENUE_ACCOUNT_DISABLED, "VENUE_ACCOUNT",
+                        venueAccountId, Map.of("venueAccountId", venueAccountId, "venueId", venueId)));
+            }
             VenueAccountAuditAction action = target == VenueAccountStatus.DISABLED
                     ? VenueAccountAuditAction.VENUE_ACCOUNT_DISABLED : VenueAccountAuditAction.VENUE_ACCOUNT_ENABLED;
             audit.write(context, AuditRecord.builder(action, AuditActor.admin(adminId), venueAccountId, correlationId)

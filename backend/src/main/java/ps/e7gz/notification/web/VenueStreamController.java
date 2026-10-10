@@ -7,19 +7,23 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import ps.e7gz.common.web.NotImplementedYet;
+import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.OpenApiConfig;
+import ps.e7gz.notification.internal.stream.VenueStreamHub;
 
 /**
  * The venue live channel (ADR-014, arch 08 §5): one SSE stream per venue account carrying change signals only, never
- * business payloads; the Dashboard refetches on a signal and keeps a 30-second poll as a backstop. Stub until E7-44.
+ * business payloads; the Dashboard refetches on a signal and keeps a 30-second poll as a backstop (E7-44).
  *
  * <p>Authentication is the ordinary Bearer header (PO decision 5 Oct 2026, E7-39): the Dashboard reads the stream
  * with {@code fetch()} and a {@code ReadableStream}, because a browser {@code EventSource} cannot send headers. No
@@ -30,6 +34,12 @@ import ps.e7gz.common.web.OpenApiConfig;
 @Tag(name = "venue-stream")
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class VenueStreamController {
+
+    private final VenueStreamHub hub;
+
+    public VenueStreamController(VenueStreamHub hub) {
+        this.hub = hub;
+    }
 
     static final String STREAM_EXAMPLE = """
             event: change
@@ -52,8 +62,10 @@ public class VenueStreamController {
                             // A literal event, so `pnpm mock` can serve the stream as text (Prism cannot write an
                             // object as text/event-stream).
                             examples = @ExampleObject(name = "bookingCreated", value = STREAM_EXAMPLE))))
-    public SseEmitter stream() {
-        throw NotImplementedYet.stub();
+    public SseEmitter stream(@AuthenticationPrincipal AuthenticatedSubject venue, HttpServletResponse response) {
+        response.setHeader(HttpHeaders.CACHE_CONTROL, "no-cache");
+        response.setHeader("X-Accel-Buffering", "no");                 // a buffering proxy would hold the signals
+        return hub.open(venue.id());
     }
 
     /** The {@code data} of one {@code change} event: what to refetch, never the thing itself. */
