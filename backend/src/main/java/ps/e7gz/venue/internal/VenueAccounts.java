@@ -19,6 +19,7 @@ import ps.e7gz.geography.api.AreaLookup;
 import ps.e7gz.identity.api.PasswordRules;
 import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.notification.api.Notifications;
+import ps.e7gz.notification.api.VenueBrowserPush;
 import ps.e7gz.venue.api.OwnerPasswordGate;
 import ps.e7gz.venue.api.VenueAccountVenues;
 
@@ -41,10 +42,12 @@ public class VenueAccounts implements VenueAccountVenues {
     private final AreaLookup areas;
     private final Notifications notifications;
     private final Outbox outbox;
+    private final VenueBrowserPush browserPush;
     private final JdbcClient jdbc;
 
     VenueAccounts(CommandRunner runner, OwnerPasswordGate gate, PasswordEncoder passwords, AuditWriter audit,
-                  AreaLookup areas, Notifications notifications, Outbox outbox, DataSource appDataSource) {
+                  AreaLookup areas, Notifications notifications, Outbox outbox, VenueBrowserPush browserPush,
+                  DataSource appDataSource) {
         this.runner = runner;
         this.gate = gate;
         this.passwords = passwords;
@@ -52,6 +55,7 @@ public class VenueAccounts implements VenueAccountVenues {
         this.areas = areas;
         this.notifications = notifications;
         this.outbox = outbox;
+        this.browserPush = browserPush;
         this.jdbc = JdbcClient.create(appDataSource);
     }
 
@@ -97,7 +101,7 @@ public class VenueAccounts implements VenueAccountVenues {
                                                 String reason) {
         UUID venueId = venueOf(venueAccountId);
         return runner.run(new VenueAccountCommands.SetAccountStatus(adminId, CorrelationId.require(), venueAccountId,
-                venueId, target, reason.strip(), audit, outbox));
+                venueId, target, reason.strip(), audit, outbox, browserPush));
     }
 
     /** FR-ADM-03: the admin chooses the new login password; it is hashed and never returned. */

@@ -1,7 +1,9 @@
 package ps.e7gz.booking.internal;
 
+import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -62,6 +64,21 @@ class VenueAnswerStore {
                    fee_treatment = booking.expected_fee_treatment(:reason),
                    venue_reject_reason_text = :rejectText, version = version + 1
              WHERE id = :id AND status = :from
+            """;
+
+    /**
+     * Ends the PENDING booking's response-timer pause at {@code :at} (FR-OPS-37): the pause is added to the cumulative
+     * counter - {@code ck_booking_pause_counters} keeps it within 30 minutes - and {@code response_pause_started_at} is
+     * cleared, as {@code ck_booking_pause_state_scope} needs before the booking leaves PENDING. Answers the new
+     * cumulative duration in seconds.
+     */
+    static final String END_RESPONSE_PAUSE = """
+            UPDATE booking.booking
+               SET cumulative_emergency_pause_duration = COALESCE(cumulative_emergency_pause_duration, interval '0')
+                       + (CAST(:at AS timestamptz) - response_pause_started_at),
+                   response_pause_started_at = NULL, version = version + 1
+             WHERE id = :id AND status = 'PENDING' AND response_pause_started_at IS NOT NULL
+            RETURNING EXTRACT(EPOCH FROM cumulative_emergency_pause_duration)
             """;
 
     /** The next history row; {@code uq_booking_history_seq} refuses a duplicate sequence. */
@@ -125,6 +142,16 @@ class VenueAnswerStore {
     /** @return false when the booking is no longer PENDING */
     boolean expire(CommandContext command, UUID bookingId) {
         return command.jdbc().sql(EXPIRE).param("id", bookingId).update() == 1;
+    }
+
+    /** @return the cumulative pause duration including this pause; empty when the booking is not a paused PENDING */
+    Optional<Duration> endResponsePause(CommandContext command, UUID bookingId, Instant at) {
+        return command.jdbc().sql(END_RESPONSE_PAUSE)
+                .param("id", bookingId)
+                .param("at", utc(at))
+                .query(BigDecimal.class)
+                .optional()
+                .map(seconds -> Duration.ofNanos(seconds.movePointRight(9).longValue()));
     }
 
     /**

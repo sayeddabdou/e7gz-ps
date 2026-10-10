@@ -146,9 +146,10 @@ public class VenueBookingController {
             summary = "Reject a PENDING request with a reason: REJECTED / VENUE_REJECTED (FR-BOK-17)",
             description = "The venue's reason text is mandatory and kept apart from the reason code "
                     + "(ck_booking_reject_reason_text). The reservation is released at once. A booking no longer "
-                    + "PENDING is BOOKING_STATE_CHANGED, and so is one whose response timer an emergency pauses. At or "
-                    + "after venueResponseExpiresAt it is DEADLINE_PASSED. A booking of another venue is NOT_FOUND. No "
-                    + "Owner Password. Implemented by E7-47.")
+                    + "PENDING is BOOKING_STATE_CHANGED. At or after venueResponseExpiresAt it is DEADLINE_PASSED. While "
+                    + "an emergency pauses the response timer the venue may still reject (only Accept is disabled, "
+                    + "FR-OPS-34; PO decision 10 Oct 2026): the pause ends with the rejection and there is no deadline "
+                    + "check. A booking of another venue is NOT_FOUND. No Owner Password. Implemented by E7-47.")
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     @ApiError(status = 409, codes = ApiErrorCode.BOOKING_STATE_CHANGED)
     @ApiError(status = 422, codes = {ApiErrorCode.DEADLINE_PASSED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})

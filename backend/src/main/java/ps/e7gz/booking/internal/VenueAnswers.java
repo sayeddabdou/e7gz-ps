@@ -1,5 +1,6 @@
 package ps.e7gz.booking.internal;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
@@ -28,6 +29,7 @@ import ps.e7gz.inventory.ledger.api.ReservationOwner;
 import ps.e7gz.loyalty.api.BookingFeeRefunds;
 import ps.e7gz.messaging.api.CommandAnswer;
 import ps.e7gz.messaging.api.Outbox;
+import ps.e7gz.operations.api.ResponseTimerPauses;
 import ps.e7gz.operations.api.UnresolvedEmergencies;
 import ps.e7gz.resource.api.ResourceStates;
 import ps.e7gz.scheduling.api.JobOutcome;
@@ -70,11 +72,12 @@ class VenueAnswers {
     private final ScheduledJobs jobs;
     private final Outbox outbox;
     private final BookingFeeRefunds refunds;
+    private final ResponseTimerPauses pauses;
 
     VenueAnswers(VenueAnswerStore store, VenueBookings bookings, VenueEligibility venues, ResourceStates resources,
                  UnresolvedEmergencies emergencies, AvailabilityQuery availability, ReservationLedger ledger,
                  CustomerActivation activation, ActiveBans bans, ScheduledJobs jobs, Outbox outbox,
-                 BookingFeeRefunds refunds) {
+                 BookingFeeRefunds refunds, ResponseTimerPauses pauses) {
         this.store = store;
         this.bookings = bookings;
         this.venues = venues;
@@ -87,6 +90,7 @@ class VenueAnswers {
         this.jobs = jobs;
         this.outbox = outbox;
         this.refunds = refunds;
+        this.pauses = pauses;
     }
 
     // ------------------------------------------------------------------------------------------------------ Accept
@@ -213,8 +217,12 @@ class VenueAnswers {
 
     /**
      * PENDING -> REJECTED / VENUE_REJECTED with the venue's mandatory reason text, kept apart from the code; the
-     * reservation is released at once and T1 superseded (FR-BOK-17, D1). On a paused timer it is refused, changing
-     * nothing: closing an open emergency pause belongs to Operations (FR-OPS-41; reported to the PO).
+     * reservation is released at once and T1 superseded (FR-BOK-17, D1).
+     *
+     * <p>On a paused timer the venue may still reject (PO decision 10 Oct 2026, E7-47 review): FR-OPS-34 disables only
+     * Accept. A paused timer has no running deadline (D6), so no deadline check; the pause ends now - added to the
+     * booking's cumulative pause (FR-OPS-37) and its open history row closed (FR-OPS-41) - and the PAUSED T1 is
+     * superseded with the rest.
      */
     VenueBookingRow reject(CommandContext context, UUID bookingId, UUID venueId, UUID venueAccountId,
                            String reasonText) {
@@ -222,9 +230,12 @@ class VenueAnswers {
         Instant now = context.commandNow();
         Facts booking = pendingOf(context, bookingId, venueId);
         if (booking.responsePaused()) {
-            throw new ApiException(ApiErrorCode.BOOKING_STATE_CHANGED);
+            Duration accumulated = store.endResponsePause(context, bookingId, now)
+                    .orElseThrow(() -> new ApiException(ApiErrorCode.BOOKING_STATE_CHANGED));
+            pauses.closeOpen(context, bookingId, now, accumulated);
+        } else {
+            requireBeforeDeadline(booking, now);                                                        // D5
         }
-        requireBeforeDeadline(booking, now);                                                            // D5
         ActiveReservation reservation = ownReservation(context, booking);
         BookingTerminalReason reason = BookingTerminalReason.VENUE_REJECTED;
         if (!store.terminate(context, bookingId, BookingStatus.PENDING, BookingStatus.REJECTED, reason, now,
