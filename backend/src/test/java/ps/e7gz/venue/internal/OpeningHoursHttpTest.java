@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
 import javax.sql.DataSource;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.postgresql.Driver;
@@ -43,6 +44,7 @@ import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
+import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.security.AccessTokens;
@@ -103,8 +105,17 @@ class OpeningHoursHttpTest extends IntegrationTest {
     private String token;
     private LocalDate today;
 
+    /** ReservationLedger.create publishes ReservationHeld, which carries the request's correlation ID (E7-46). */
+    private CorrelationId.Scope correlation;
+
+    @AfterEach
+    void closeCorrelation() {
+        correlation.close();
+    }
+
     @BeforeEach
     void anActiveVenueWithOneRoom() {
+        correlation = CorrelationId.open(CorrelationId.generate());
         UUID area = UUID.randomUUID();
         OWNER.sql("INSERT INTO geo.area (id, name, is_active) VALUES (:id, :name, true)")
                 .param("id", area).param("name", "E7-25 area " + area).update();

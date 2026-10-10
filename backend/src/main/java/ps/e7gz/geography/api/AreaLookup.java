@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import ps.e7gz.common.command.CommandContext;
 
 /** Read access to {@code geo.area} for other modules (arch 03 section 4). */
 public interface AreaLookup {
@@ -14,6 +15,12 @@ public interface AreaLookup {
 
     /** True when the area exists and is active (arch 03 section 4 {@code AreaQuery.isActive}). */
     boolean isActive(UUID areaId);
+
+    /**
+     * The same answer on the command's own transaction (E7-46: online booking creation, FR-BOK-11 condition 7; PO
+     * decision 9 Oct 2026). False when there is no such area.
+     */
+    boolean isActive(CommandContext command, UUID areaId);
 
     /** The area's name; empty when there is no such area (E7-24: the venue's settings show it). */
     Optional<String> name(UUID areaId);

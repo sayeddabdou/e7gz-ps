@@ -16,7 +16,8 @@ public interface ReservationLedger {
 
     /**
      * Inserts an active row with {@code actual_reservation_start} = {@link CommandContext#commandNow()} and returns its
-     * id.
+     * id. Publishes {@code ReservationHeld} in the same transaction (E7-46), so the caller runs with a correlation ID
+     * open, as every request and job does.
      *
      * @throws SlotTaken when the row is a {@code BOOKING}, an active reservation already holds an overlapping
      *                   interval on the Resource and the database reports it as a Booking slot conflict (see
