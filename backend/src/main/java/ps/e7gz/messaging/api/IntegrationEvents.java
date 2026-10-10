@@ -23,6 +23,13 @@ public final class IntegrationEvents {
     public static final String PHONE_OTP_ISSUED = "PhoneOtpIssued";
 
     /**
+     * {@code {notificationId}}, aggregate {@code NOTIFICATION}: a notification has PUSH or EMAIL deliveries to send
+     * (E7-43). Written by {@code Notifications.notify} in the command that creates the notification, and again by the
+     * admin "try again" of a dead-lettered delivery; the notification worker sends every delivery still due.
+     */
+    public static final String NOTIFICATION_DELIVERY_REQUESTED = "NotificationDeliveryRequested";
+
+    /**
      * Every event that can change a venue's availability and so refreshes its Nearest Availability rows (arch 05
      * section 5.3, arch 08 section 7): reservation hold or release, Resource state, selling blocks (maintenance,
      * closures, emergencies), opening hours and prices. Each carries the {@code venueId} it touches;

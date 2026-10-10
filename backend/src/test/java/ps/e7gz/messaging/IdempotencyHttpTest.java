@@ -542,8 +542,9 @@ class IdempotencyHttpTest extends IntegrationTest {
 
     @Test
     void anOptionalKeyWriteDoesNotRequireIt() throws Exception {
+        // Implemented by E7-43: an unknown notification is 404, not a missing-header 400.
         mvc.perform(write(customerToken, "/api/v1/customer/notifications/" + UUID.randomUUID() + "/read", null, null))
-                .andExpect(status().isNotImplemented());
+                .andExpect(status().isNotFound());
     }
 
     // ------------------------------------------------------------------------------------------------------ helpers

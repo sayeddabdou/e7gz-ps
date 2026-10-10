@@ -8,6 +8,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import ps.e7gz.messaging.api.OutboxAttempts;
 import ps.e7gz.messaging.api.OutboxConsumer;
 
 /**
@@ -33,5 +34,11 @@ class OutboxWorkerConfig {
             dispatchers.add(new OutboxDispatcher(process + "/" + i, registry, store, appDataSource, properties));
         }
         return new OutboxLoop(dispatchers, appDataSource, properties.tick());
+    }
+
+    /** The attempt about to run is {@code event.attempt() + 1}; the dispatcher dead-letters after the last (E7-43). */
+    @Bean
+    OutboxAttempts outboxAttempts(OutboxProperties properties) {
+        return event -> event.attempt() + 1 >= properties.maxAttempts();
     }
 }

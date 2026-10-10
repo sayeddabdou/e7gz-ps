@@ -10,6 +10,7 @@ import ps.e7gz.audit.api.AuditActor;
 import ps.e7gz.audit.api.AuditRecord;
 import ps.e7gz.audit.api.AuditWriter;
 import ps.e7gz.audit.api.OwnerPasswordCheck;
+import ps.e7gz.common.codes.NotificationRecipientType;
 import ps.e7gz.common.codes.VenueAccountLanguage;
 import ps.e7gz.common.codes.VenueAccountStatus;
 import ps.e7gz.common.command.Command;
@@ -21,6 +22,8 @@ import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.security.owner.OwnerPasswordNotRequired;
 import ps.e7gz.common.security.owner.OwnerProtected;
+import ps.e7gz.notification.api.NotificationRequest;
+import ps.e7gz.notification.api.Notifications;
 import ps.e7gz.venue.api.OwnerPasswordGate;
 
 /**
@@ -248,11 +251,12 @@ final class VenueAccountCommands {
 
     /**
      * The Platform Admin sets a new Owner Password (FR-ADM-03): like the venue's own change, the new hash gets a later
-     * {@code changed_at} and the next {@code version}, so the old one stops working at once. The venue must be notified
-     * (FR-VEN-05, FR-ADM-03); that notification comes with the notification catalogue (E7-43).
+     * {@code changed_at} and the next {@code version}, so the old one stops working at once. The venue is notified in
+     * the same transaction (FR-VEN-05, FR-ADM-03; E7-43): {@code VENUE_OWNER_PASSWORD_RESET}, never with the password.
      */
     record ResetOwnerPassword(UUID adminId, UUID correlationId, UUID venueAccountId, UUID venueId,
-                              String ownerPasswordHash, AuditWriter audit) implements Command<Void> {
+                              String ownerPasswordHash, AuditWriter audit, Notifications notifications)
+            implements Command<Void> {
 
         @Override
         public EligibilityCategory eligibilityCategory() {
@@ -278,6 +282,8 @@ final class VenueAccountCommands {
             audit.write(context, AuditRecord.builder(VenueAccountAuditAction.OWNER_PASSWORD_RESET,
                     AuditActor.admin(adminId), venueAccountId, correlationId)
                     .contextVenue(venueId).payload(Map.of("venueId", venueId)).build());
+            notifications.notify(context, NotificationRequest.of("VENUE_OWNER_PASSWORD_RESET",
+                    NotificationRecipientType.VENUE, venueId, Map.of()));
             return null;
         }
 

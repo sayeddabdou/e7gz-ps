@@ -22,15 +22,18 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import ps.e7gz.common.codes.DevicePlatform;
+import ps.e7gz.common.security.AuthenticatedSubject;
+import ps.e7gz.notification.internal.CustomerNotifications;
 import ps.e7gz.common.web.DataResponse;
-import ps.e7gz.common.web.NotImplementedYet;
+import ps.e7gz.common.web.ResponseMetaFactory;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.PageView;
 
 /**
  * Customer notifications: the in-app list and the push device tokens (arch 09 §3.4, FR-NTF-02, arch 08 §4.4–§4.5).
- * Stubs until E7-43. Notifications are language-neutral codes; the app owns the text (ADR-021). A device token is
+ * Implemented by E7-43. Notifications are language-neutral codes; the app owns the text (ADR-021). A device token is
  * revoked, never deleted (arch 08 §4); revoke routes are a PO decision, 5 Oct 2026 (E7-39).
  */
 @RestController
@@ -39,21 +42,32 @@ import ps.e7gz.common.web.PageView;
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class CustomerNotificationController {
 
+    private final CustomerNotifications notifications;
+    private final ResponseMetaFactory meta;
+
+    public CustomerNotificationController(CustomerNotifications notifications, ResponseMetaFactory meta) {
+        this.notifications = notifications;
+        this.meta = meta;
+    }
+
     @GetMapping
     @Operation(operationId = "customerListNotifications", summary = "My notifications, newest first (FR-NTF-02)",
             description = "Implemented by E7-43.")
     public DataResponse<PageView<CustomerNotification>> list(
+            @AuthenticationPrincipal AuthenticatedSubject customer,
             @RequestParam(required = false) String cursor,
             @RequestParam(required = false) @Min(1) @Max(100) Integer limit) {
-        throw NotImplementedYet.stub();
+        CustomerNotifications.Page page = notifications.list(customer.id(), cursor, limit);
+        return meta.data(new PageView<>(page.items().stream().map(CustomerNotification::of).toList(),
+                page.nextCursor()));
     }
 
     @PostMapping("/{notificationId}/read")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(operationId = "customerMarkNotificationRead", summary = "Mark one notification as read",
             description = "Reading an already-read notification changes nothing (204). Implemented by E7-43.")
-    public void markRead(@PathVariable UUID notificationId) {
-        throw NotImplementedYet.stub();
+    public void markRead(@AuthenticationPrincipal AuthenticatedSubject customer, @PathVariable UUID notificationId) {
+        notifications.markRead(customer.id(), notificationId);
     }
 
     @PostMapping("/devices")
@@ -61,8 +75,11 @@ public class CustomerNotificationController {
     @Operation(operationId = "customerRegisterDevice", summary = "Register this phone's push token (FR-NTF-02)",
             description = "notification.device_token. A token already active for this customer is seen again, not "
                     + "duplicated (ux_device_token_active). Implemented by E7-43.")
-    public DataResponse<CustomerDevice> registerDevice(@Valid @RequestBody CustomerDeviceRequest request) {
-        throw NotImplementedYet.stub();
+    public DataResponse<CustomerDevice> registerDevice(@AuthenticationPrincipal AuthenticatedSubject customer,
+                                                       @Valid @RequestBody CustomerDeviceRequest request) {
+        CustomerNotifications.Device device = notifications.register(customer.id(), request.token(),
+                request.platform());
+        return meta.data(new CustomerDevice(device.id(), device.platform(), device.createdAt()));
     }
 
     @PostMapping("/devices/{deviceId}/revoke")
@@ -70,8 +87,8 @@ public class CustomerNotificationController {
     @Operation(operationId = "customerRevokeDevice",
             summary = "Stop push to this phone, e.g. on logout (revoked, never deleted; arch 08 §4)",
             description = "Revoking an already-revoked token changes nothing (204). Implemented by E7-43.")
-    public void revokeDevice(@PathVariable UUID deviceId) {
-        throw NotImplementedYet.stub();
+    public void revokeDevice(@AuthenticationPrincipal AuthenticatedSubject customer, @PathVariable UUID deviceId) {
+        notifications.revoke(customer.id(), deviceId);
     }
 
     /** A {@code notification.notification} row for this customer. */
@@ -86,6 +103,11 @@ public class CustomerNotificationController {
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true, example = "2026-10-12T15:05:00Z")
             Instant readAt,
             @NotNull @Schema(example = "2026-10-12T15:04:00Z") Instant createdAt) {
+
+        static CustomerNotification of(CustomerNotifications.Item item) {
+            return new CustomerNotification(item.id(), item.code(), item.bookingId(), item.tournamentId(),
+                    item.params(), item.readAt(), item.createdAt());
+        }
     }
 
     /** {@code notification.device_token} input: an FCM token from the app. */

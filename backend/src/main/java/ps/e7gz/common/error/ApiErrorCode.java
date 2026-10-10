@@ -95,6 +95,11 @@ public enum ApiErrorCode {
      * and look again. PO decision 5 Oct 2026 (E7-39).
      */
     BOOKING_STATE_CHANGED(409),
+    /**
+     * Admin "try again" on a notification delivery that is not DEAD_LETTER (already sent, or still being retried):
+     * nothing to retry. PO decision 10 Oct 2026 (E7-43).
+     */
+    NOTIFICATION_DELIVERY_NOT_DEAD_LETTER(409),
 
     // General codes (arch 09 §1.4; Product Owner decision 29 Sep 2026, E7-12).
     /** A malformed or invalid request: unreadable body, bad parameter, failed bean validation. */
