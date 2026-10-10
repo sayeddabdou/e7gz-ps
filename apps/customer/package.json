@@ -21,6 +21,7 @@
     "@react-navigation/native": "^7.5.0",
     "expo": "~57.0.25",
     "expo-location": "~57.0.20",
+    "expo-notifications": "~57.0.22",
     "expo-secure-store": "~57.0.4",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",

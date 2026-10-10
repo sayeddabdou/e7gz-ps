@@ -20,6 +20,43 @@ const port = Number(option("--port", "4010"));
 const prismPort = port + 1;
 const prismOrigin = `http://127.0.0.1:${prismPort}`;
 const quotedAttempts = new Map();
+const mockStartedAt = new Date();
+const mockBookings = [
+  mockBooking({
+    bookingId: "018f3c2a-7b1e-7c4d-9e0f-1a2b3c4d5e6f",
+    displayBucket: "upcoming",
+    endAt: relativeInstant(2 * 24 * 60 + 120),
+    resourceName: "Room 1",
+    startAt: relativeInstant(2 * 24 * 60),
+    status: "PENDING",
+  }),
+  mockBooking({
+    bookingId: "018f3c2a-7b1e-7c4d-9e0f-1a2b3c4d5e70",
+    displayBucket: "completed",
+    endAt: relativeInstant(-2 * 24 * 60),
+    resourceName: "Room 2",
+    startAt: relativeInstant(-2 * 24 * 60 - 120),
+    status: "COMPLETED",
+  }),
+  mockBooking({
+    bookingId: "018f3c2a-7b1e-7c4d-9e0f-1a2b3c4d5e71",
+    displayBucket: "cancelled",
+    endAt: relativeInstant(3 * 24 * 60 + 120),
+    resourceName: "Room 3",
+    startAt: relativeInstant(3 * 24 * 60),
+    status: "CANCELLED",
+    terminalReason: "CUSTOMER_CANCELLED",
+  }),
+];
+const mockNotifications = [{
+  bookingId: mockBookings[0].bookingId,
+  code: "BOOKING_CREATED",
+  createdAt: relativeInstant(-2),
+  id: "018f3c2a-7b1e-7c4d-9e0f-1a2b3c4d5e72",
+  params: {},
+  readAt: null,
+  tournamentId: null,
+}];
 
 const prism = spawn(process.execPath, [prismLauncher, "--host", "127.0.0.1", "--port", String(prismPort)], {
   cwd: path.resolve(scriptDirectory, "../../.."),
@@ -94,6 +131,8 @@ const server = http.createServer(async (request, response) => {
     Object.entries(request.headers).forEach(([name, value]) => {
       if (value !== undefined && !["host", "content-length", "connection"].includes(name)) headers.set(name, Array.isArray(value) ? value.join(",") : value);
     });
+    const preferredStatus = customerManualTestStatus(request.method ?? "GET", url.pathname);
+    if (preferredStatus) headers.set("Prefer", `code=${preferredStatus}`);
     const upstream = await fetch(`${prismOrigin}${url.pathname}${url.search}`, {
       body: requestBody.length ? requestBody : undefined,
       headers,
@@ -123,6 +162,54 @@ const server = http.createServer(async (request, response) => {
 server.listen(port, host, () => console.log(`Customer smart mock is listening on http://${host}:${port}`));
 
 async function makeCustomerExampleDynamic(document, url, method, requestBody, headers) {
+  if (method === "GET" && url.pathname === "/api/v1/customer/bookings") {
+    const bucket = url.searchParams.get("bucket");
+    document.data.items = mockBookings.filter((booking) => booking.displayBucket === bucket).map(bookingSummary);
+    document.data.nextCursor = null;
+    document.meta.serverTime = new Date().toISOString();
+    return;
+  }
+
+  const bookingDetailMatch = url.pathname.match(/^\/api\/v1\/customer\/bookings\/([^/]+)$/u);
+  if (method === "GET" && bookingDetailMatch) {
+    const booking = mockBookings.find(({ bookingId }) => bookingId === bookingDetailMatch[1]);
+    if (booking) {
+      document.data = bookingDetail(booking);
+      document.meta.serverTime = new Date().toISOString();
+      return;
+    }
+  }
+
+  const cancellationMatch = url.pathname.match(/^\/api\/v1\/customer\/bookings\/([^/]+)\/cancel$/u);
+  if (method === "POST" && cancellationMatch) {
+    const booking = mockBookings.find(({ bookingId }) => bookingId === cancellationMatch[1]);
+    if (booking) {
+      const previousStatus = booking.status;
+      booking.status = "CANCELLED";
+      booking.displayBucket = "cancelled";
+      booking.terminalReason = "CUSTOMER_CANCELLED";
+      booking.venueResponseExpiresAt = null;
+      booking.history.push(statusTransition(previousStatus, "CANCELLED", "CUSTOMER_CANCELLED"));
+      document.data = bookingDetail(booking);
+      document.meta.serverTime = new Date().toISOString();
+    }
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/v1/customer/notifications") {
+    document.data.items = mockNotifications.map((notification) => structuredClone(notification));
+    document.data.nextCursor = null;
+    document.meta.serverTime = new Date().toISOString();
+    return;
+  }
+
+  const notificationReadMatch = url.pathname.match(/^\/api\/v1\/customer\/notifications\/([^/]+)\/read$/u);
+  if (method === "POST" && notificationReadMatch) {
+    const notification = mockNotifications.find(({ id }) => id === notificationReadMatch[1]);
+    if (notification) notification.readAt = new Date().toISOString();
+    return;
+  }
+
   const activity = url.searchParams.get("activity");
   if (method === "GET" && (url.pathname === "/api/v1/customer/venues" || url.pathname === "/api/v1/customer/venues/map")) {
     const items = Array.isArray(document.data) ? document.data : document.data?.items;
@@ -207,6 +294,62 @@ function centsToMoney(cents) {
 
 function quoteKey(value) {
   return [value.resourceId, value.startAt, value.durationMinutes, value.playMode ?? ""].join("|");
+}
+
+function relativeInstant(minutes) {
+  return new Date(mockStartedAt.valueOf() + minutes * 60_000).toISOString();
+}
+
+function mockBooking({ bookingId, displayBucket, endAt, resourceName, startAt, status, terminalReason = null }) {
+  return {
+    attendanceResult: status === "COMPLETED" ? "ATTENDED" : null,
+    bookingFee: { amount: "0.00", currency: "EGP", displayAsFree: true },
+    bookingId,
+    displayBucket,
+    endAt,
+    history: [statusTransition(null, status, terminalReason, startAt)],
+    nominalBookedMinutes: 120,
+    resource: { activity: "PLAYSTATION", consoleType: "PS4", name: resourceName, playMode: "SINGLE" },
+    startAt,
+    status,
+    terminalReason,
+    totalAmount: { amount: "300.00", currency: "EGP" },
+    venue: { id: "7b1f0c9e-2d3a-4e5b-8c6d-9e0f1a2b3c4d", name: "Level Up Lounge", phone: "+201001234567" },
+    venuePriceTotal: { amount: "300.00", currency: "EGP" },
+    venueResponseExpiresAt: status === "PENDING" ? relativeInstant(10) : null,
+    venueResponsePaused: false,
+  };
+}
+
+function statusTransition(fromStatus, toStatus, terminalReason = null, at = new Date().toISOString()) {
+  return { at, eventType: null, fromStatus, kind: "STATUS_TRANSITION", terminalReason, toStatus };
+}
+
+function bookingSummary(booking) {
+  return structuredClone({
+    bookingId: booking.bookingId,
+    displayBucket: booking.displayBucket,
+    endAt: booking.endAt,
+    resource: booking.resource,
+    startAt: booking.startAt,
+    status: booking.status,
+    terminalReason: booking.terminalReason,
+    totalAmount: booking.totalAmount,
+    venue: booking.venue,
+    venueResponseExpiresAt: booking.venueResponseExpiresAt,
+  });
+}
+
+function bookingDetail(booking) {
+  return structuredClone(booking);
+}
+
+function customerManualTestStatus(method, pathname) {
+  if (method === "GET" && pathname === "/api/v1/customer/bookings") return 200;
+  if (method === "GET" && /^\/api\/v1\/customer\/bookings\/[^/]+$/u.test(pathname) && !pathname.endsWith("/quote")) return 200;
+  if (method === "POST" && /^\/api\/v1\/customer\/bookings\/[^/]+\/cancel$/u.test(pathname)) return 200;
+  if (method === "GET" && pathname === "/api/v1/customer/notifications") return 200;
+  return undefined;
 }
 
 function shutdown() {

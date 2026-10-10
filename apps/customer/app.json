@@ -14,7 +14,13 @@
       "output": "single"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "booking-updates"
+        }
+      ]
     ]
   }
 }

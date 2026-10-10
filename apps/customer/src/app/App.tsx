@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { DefaultTheme, NavigationContainer, useFocusEffect } from "@react-navigation/native";
+import { createNavigationContainerRef, DefaultTheme, NavigationContainer, useFocusEffect } from "@react-navigation/native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { nativeTokens } from "@e7gz/tokens/native";
 import { createCustomerApiClient, type ApiClient, type RefreshAccessToken } from "../api";
@@ -12,6 +12,14 @@ import type { ConfigResult } from "../config";
 import { DiscoveryScreen } from "../features/discovery";
 import { AuthFlow, createCustomerAuthApi } from "../features/auth";
 import type { CustomerAuthApi } from "../features/auth/api";
+import { MyBookingsScreen } from "../features/my-bookings";
+import {
+  createExpoPushAdapter,
+  createPushRegistration,
+  createSecurePushRegistrationStore,
+  type PushRegistration,
+  type PushSetupState,
+} from "../features/notifications/pushRegistration";
 import { en as t } from "../i18n/en";
 
 type RootTabs = {
@@ -22,6 +30,7 @@ type RootTabs = {
 };
 
 const Tab = createBottomTabNavigator<RootTabs>();
+const navigationRef = createNavigationContainerRef<RootTabs>();
 type TabIconName = ComponentProps<typeof Ionicons>["name"];
 
 const navigationTheme = {
@@ -47,10 +56,6 @@ function Screen({ title }: { title: string }) {
 
 function TournamentsScreen() {
   return <Screen title={t.tabs.tournaments} />;
-}
-
-function BookingsScreen() {
-  return <Screen title={t.tabs.bookings} />;
 }
 
 function ProfileScreen({ onLogout }: { onLogout(): void }) {
@@ -98,16 +103,45 @@ function HomeScreen({ api }: { api: ApiClient }) {
   );
 }
 
+function BookingsScreen({
+  api,
+  openBookingId,
+  onOpenBookingConsumed,
+}: {
+  api: ApiClient;
+  openBookingId?: string;
+  onOpenBookingConsumed(): void;
+}) {
+  const [focusVersion, setFocusVersion] = useState(0);
+  const initialFocus = useRef(true);
+  useFocusEffect(useCallback(() => {
+    if (initialFocus.current) initialFocus.current = false;
+    else setFocusVersion((version) => version + 1);
+  }, []));
+  return (
+    <SafeAreaView edges={["top"]} style={styles.screen}>
+      <MyBookingsScreen
+        api={api}
+        focusVersion={focusVersion}
+        openBookingId={openBookingId}
+        onOpenBookingConsumed={onOpenBookingConsumed}
+      />
+    </SafeAreaView>
+  );
+}
+
 export function App({
   config,
   tokenStore,
   refreshAccessToken,
   authApi,
+  pushRegistrationOverride,
 }: {
   config: ConfigResult;
   tokenStore?: TokenStore;
   refreshAccessToken?: RefreshAccessToken;
   authApi?: CustomerAuthApi;
+  pushRegistrationOverride?: PushRegistration;
 }) {
   const secureTokens = useMemo(() => tokenStore ?? createSecureTokenStore(), [tokenStore]);
   const customerAuth = useMemo(
@@ -115,6 +149,8 @@ export function App({
     [authApi, config, secureTokens],
   );
   const [authenticated, setAuthenticated] = useState<boolean>();
+  const [pushBookingId, setPushBookingId] = useState<string>();
+  const [pushSetupState, setPushSetupState] = useState<PushSetupState>();
   useEffect(() => {
     if (!config.ok) return undefined;
     let active = true;
@@ -130,6 +166,19 @@ export function App({
       : undefined,
     [config, customerAuth, refreshAccessToken, secureTokens],
   );
+  const pushRegistration = useMemo(
+    () => pushRegistrationOverride ?? (api ? createPushRegistration(api, createExpoPushAdapter(), createSecurePushRegistrationStore()) : undefined),
+    [api, pushRegistrationOverride],
+  );
+  const openBookingFromNotification = useCallback((bookingId: string) => {
+    setPushBookingId(bookingId);
+    if (navigationRef.isReady()) navigationRef.navigate("bookings");
+  }, []);
+  useEffect(() => {
+    if (!authenticated || !pushRegistration) return undefined;
+    void pushRegistration.start(openBookingFromNotification, setPushSetupState).then(setPushSetupState);
+    return () => pushRegistration.stop();
+  }, [authenticated, openBookingFromNotification, pushRegistration]);
 
   if (!config.ok || !api) {
     return (
@@ -156,14 +205,37 @@ export function App({
   }
 
   const logout = async () => {
+    try {
+      await pushRegistration?.revoke();
+    } catch {
+      // Logging out locally must not depend on reaching the device-token endpoint.
+    }
     await customerAuth?.logout();
+    setPushSetupState(undefined);
     setAuthenticated(false);
   };
+
+  const pushMessage = pushSetupState === "denied"
+    ? t.notifications.pushDenied
+    : pushSetupState === "unsupported"
+      ? t.notifications.pushUnavailable
+      : pushSetupState === "failed"
+        ? t.notifications.pushFailed
+        : undefined;
 
   return (
     <SafeAreaProvider>
       <View style={styles.root}>
-        <NavigationContainer theme={navigationTheme}>
+        {pushMessage ? (
+          <SafeAreaView edges={["top"]} style={styles.pushNoticeSafeArea} testID="push-setup-notice">
+            <Text accessibilityRole="alert" style={styles.pushNotice}>{pushMessage}</Text>
+          </SafeAreaView>
+        ) : null}
+        <NavigationContainer
+          ref={navigationRef}
+          theme={navigationTheme}
+          onReady={() => { if (pushBookingId) navigationRef.navigate("bookings"); }}
+        >
           <Tab.Navigator
             screenOptions={{
               headerShown: false,
@@ -194,13 +266,20 @@ export function App({
             />
             <Tab.Screen
               name="bookings"
-              component={BookingsScreen}
               options={{
                 tabBarIcon: bookingsIcon,
                 tabBarLabel: t.tabs.bookings,
                 title: t.tabs.bookings,
               }}
-            />
+            >
+              {() => (
+                <BookingsScreen
+                  api={api}
+                  openBookingId={pushBookingId}
+                  onOpenBookingConsumed={() => setPushBookingId(undefined)}
+                />
+              )}
+            </Tab.Screen>
             <Tab.Screen
               name="profile"
               options={{
@@ -258,5 +337,13 @@ const styles = StyleSheet.create({
   logoutText: {
     color: nativeTokens.color.feedback.danger,
     fontWeight: nativeTokens.typography.fontWeight.bold,
+  },
+  pushNotice: {
+    color: nativeTokens.color.text.customer,
+    paddingHorizontal: nativeTokens.spacing["4xl"],
+    paddingVertical: nativeTokens.spacing.md,
+  },
+  pushNoticeSafeArea: {
+    backgroundColor: nativeTokens.color.feedback.warningSurface,
   },
 });
