@@ -28,6 +28,7 @@ import ps.e7gz.inventory.availability.api.AvailabilityQuery;
 import ps.e7gz.inventory.ledger.api.ReservationLedger;
 import ps.e7gz.loyalty.api.BookingFeeRefunds;
 import ps.e7gz.messaging.api.Outbox;
+import ps.e7gz.operations.api.ResponseTimerPauses;
 import ps.e7gz.operations.api.UnresolvedEmergencies;
 import ps.e7gz.resource.api.ResourceStates;
 import ps.e7gz.scheduling.api.ScheduledJobs;
@@ -53,7 +54,7 @@ class RejectAfterExpiryBoundaryTest {
     private final VenueAnswers answers = new VenueAnswers(store, bookings, mock(VenueEligibility.class),
             mock(ResourceStates.class), mock(UnresolvedEmergencies.class), mock(AvailabilityQuery.class), ledger,
             mock(CustomerActivation.class), mock(ActiveBans.class), mock(ScheduledJobs.class), mock(Outbox.class),
-            refunds);
+            refunds, mock(ResponseTimerPauses.class));
     private CorrelationId.Scope correlation;
 
     @BeforeEach

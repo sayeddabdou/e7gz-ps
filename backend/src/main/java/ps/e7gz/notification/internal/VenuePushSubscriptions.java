@@ -17,6 +17,7 @@ import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
+import ps.e7gz.notification.api.VenueBrowserPush;
 import ps.e7gz.notification.internal.webpush.SubscriptionKeys;
 import ps.e7gz.notification.internal.webpush.WebPushProperties;
 
@@ -25,7 +26,7 @@ import ps.e7gz.notification.internal.webpush.WebPushProperties;
  * One {@code notification.venue_push_subscription} row per browser; revoked, never deleted (arch 08 section 4).
  */
 @Component
-public class VenuePushSubscriptions {
+public class VenuePushSubscriptions implements VenueBrowserPush {
 
     public record Subscription(UUID id, Instant createdAt) {
     }
@@ -73,6 +74,16 @@ public class VenuePushSubscriptions {
     /** Stops push to one of the account's browsers (e.g. on logout); an already-revoked one changes nothing. */
     public void revoke(UUID venueAccountId, UUID subscriptionId) {
         runner.run(new Revoke(venueAccountId, venueOf(venueAccountId), subscriptionId));
+    }
+
+    /** Every active browser of the account, on the disable command's transaction (revoked, never deleted). */
+    @Override
+    public int revokeAll(CommandContext context, UUID venueAccountId) {
+        return context.jdbc().sql("""
+                        UPDATE notification.venue_push_subscription
+                           SET revoked_at = greatest(:now, last_seen_at)
+                         WHERE venue_account_id = :account AND revoked_at IS NULL""")
+                .param("now", utc(context.commandNow())).param("account", venueAccountId).update();
     }
 
     /**

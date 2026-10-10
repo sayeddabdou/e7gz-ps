@@ -404,13 +404,18 @@ class NotificationDeliveryWorkerTest extends IntegrationTest {
         });
     }
 
-    /** An active Dashboard browser; the recording sender never reads the keys. */
+    /**
+     * An active Dashboard browser; the recording sender never reads the keys. {@code created_at} and
+     * {@code last_seen_at} get the same instant: the column default ({@code clock_timestamp()}) is read after the
+     * values, so a separate {@code clock_timestamp()} for {@code last_seen_at} could be a microsecond earlier and break
+     * {@code last_seen_at >= created_at} ({@code ck_venue_push_subscription_values}; flaky on CI, 10 Oct 2026).
+     */
     private UUID browser(UUID venueAccountId, String endpoint) {
         UUID id = UUID.randomUUID();
         db.sql("""
                         INSERT INTO notification.venue_push_subscription
-                               (id, venue_account_id, endpoint, p256dh_key, auth_key, last_seen_at)
-                        VALUES (:id, :account, :endpoint, 'p256dh', 'auth', clock_timestamp())""")
+                               (id, venue_account_id, endpoint, p256dh_key, auth_key, last_seen_at, created_at)
+                        VALUES (:id, :account, :endpoint, 'p256dh', 'auth', now(), now())""")
                 .param("id", id).param("account", venueAccountId).param("endpoint", endpoint).update();
         return id;
     }

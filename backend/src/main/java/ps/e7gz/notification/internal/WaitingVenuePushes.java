@@ -78,6 +78,10 @@ class WaitingVenuePushes implements ApplicationRunner {
 
         @Override
         public Integer execute(CommandContext context) {
+            // Two workers starting together queue each notification once: the second waits here, then (READ
+            // COMMITTED) its query sees the events the first committed and skips those notifications.
+            context.jdbc().sql("SELECT pg_advisory_xact_lock(hashtextextended('notification:waiting_venue_pushes', 0))")
+                    .query().singleRow();
             List<UUID> waiting = context.jdbc().sql("""
                             SELECT DISTINCT n.id
                               FROM notification.notification n

@@ -280,7 +280,7 @@ class VenueAnswerIntegrationTest extends IntegrationTest {
     // ------------------------------------------------------------------------------------------ paused (D6)
 
     @Test
-    void aPausedTimerRefusesAcceptAndRejectAndChangesNothing() {
+    void aPausedTimerRefusesAcceptAndChangesNothing() {
         OnlineBookingWorld world = OnlineBookingWorld.create();
         CreatedBooking created = pending(world);
         VenueAnswerDb.venueEmergency(world.venue.id());
@@ -288,10 +288,42 @@ class VenueAnswerIntegrationTest extends IntegrationTest {
 
         assertRefused(ApiErrorCode.VENUE_SELLING_BLOCK_ACTIVE,
                 () -> responses.accept(world.account.id(), created.bookingId()));
-        assertRefused(ApiErrorCode.BOOKING_STATE_CHANGED,
-                () -> responses.reject(world.account.id(), created.bookingId(), REASON));
         assertUnchanged(created);
         assertStillPaused(created);
+    }
+
+    /**
+     * PO decision 10 Oct 2026 (E7-47 review): FR-OPS-34 disables only Accept, so the venue may still reject while the
+     * timer is paused - even past the stored deadline, which a paused timer does not run against (D6). The pause ends
+     * with the rejection: counted into the booking's cumulative pause (FR-OPS-37) and its history row closed once.
+     */
+    @Test
+    void aPausedTimerStillLetsTheVenueRejectAndEndsThePause() {
+        OnlineBookingWorld world = OnlineBookingWorld.create();
+        CreatedBooking created = pending(world);
+        VenueAnswerDb.venueEmergency(world.venue.id());
+        VenueAnswerDb.paused(created.bookingId());
+
+        VenueBookingRow row = withDeadline(world, created, Duration.ofMinutes(-5),
+                context -> answers.reject(context, created.bookingId(), world.venue.id(), world.account.id(), REASON));
+
+        assertThat(row.status()).isEqualTo(BookingStatus.REJECTED);
+        assertThat(row.terminalReason()).isEqualTo(BookingTerminalReason.VENUE_REJECTED);
+        assertThat(row.venueResponsePaused()).isFalse();
+        assertThat(VenueAnswerDb.responsePaused(created.bookingId())).isFalse();
+        assertThat(VenueAnswerDb.OWNER.sql("""
+                        SELECT cumulative_emergency_pause_duration IS NOT NULL
+                               AND cumulative_emergency_pause_duration >= interval '0'
+                          FROM booking.booking WHERE id = :id""")
+                .param("id", created.bookingId()).query(Boolean.class).single()).isTrue();
+        assertThat(VenueAnswerDb.OWNER.sql("""
+                        SELECT count(*) FROM operations.booking_timer_pause_history
+                         WHERE booking_id = :id AND pause_kind = 'VENUE_RESPONSE' AND pause_ended_at IS NULL""")
+                .param("id", created.bookingId()).query(Integer.class).single()).as("no open pause").isZero();
+        assertThat(reservation(created.reservationId()).active()).isFalse();
+        assertThat(job(t1(created.bookingId())).orElseThrow().status()).as("the PAUSED T1 is withdrawn")
+                .isEqualTo("SUPERSEDED");
+        assertThat(events(IntegrationEvents.BOOKING_REJECTED, created.bookingId())).hasSize(1);
     }
 
     /** D7 (b): the pause is checked before the FR-BOK-16 cancel, also for a resource-level emergency. */

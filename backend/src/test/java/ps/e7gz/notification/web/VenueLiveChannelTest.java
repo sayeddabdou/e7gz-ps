@@ -14,6 +14,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
@@ -139,6 +140,26 @@ class VenueLiveChannelTest extends IntegrationTest {
         onB.close();
     }
 
+    /** E7-47's answers and expiry tell the Dashboard to refetch (E7-44/E7-47 review, 10 Oct 2026). */
+    @Test
+    void theVenueAnswerAndExpiryEventsAreChangeSignals() throws Exception {
+        Fixtures.VenueAccount venue = aVenueAccount().create();
+        SseLines onB = open(portB(), venue.id(), hubB());
+
+        for (String type : List.of(IntegrationEvents.BOOKING_CONFIRMED, IntegrationEvents.BOOKING_REJECTED,
+                IntegrationEvents.VENUE_RESPONSE_EXPIRED, IntegrationEvents.BOOKING_CANCELLED)) {
+            UUID booking = UUID.randomUUID();
+            bookingEvent(type, venue.venueId(), booking);
+            deliver();
+
+            JsonNode signal = nextSignal(onB);
+            assertThat(signal.path("type").asText()).as(type).isEqualTo("BOOKING");
+            assertThat(signal.path("id").asText()).as(type).isEqualTo(booking.toString());
+            assertThat(signal.path("reason").asText()).as(type).isEqualTo("CHANGED");
+        }
+        onB.close();
+    }
+
     @Test
     void aVenueNeverHearsAnotherVenuesSignals() throws Exception {
         Fixtures.VenueAccount mine = aVenueAccount().create();
@@ -164,7 +185,12 @@ class VenueLiveChannelTest extends IntegrationTest {
         Fixtures.VenueAccount venue = aVenueAccount().create();
         SseLines onB = open(portB(), venue.id(), hubB());
 
+        UUID browser = browserSubscription(venue.id());
         venueAccounts.setStatus(anAdmin().create().id(), venue.id(), VenueAccountStatus.DISABLED, "Support ticket 7");
+        // PO decision 10 Oct 2026 (E7-44 review): its browsers get no more Web Push - revoked, never deleted
+        assertThat(JdbcClient.create(appDataSource)
+                .sql("SELECT revoked_at IS NOT NULL FROM notification.venue_push_subscription WHERE id = :id")
+                .param("id", browser).query(Boolean.class).single()).isTrue();
         deliver();
 
         assertThat(onB.awaitClosed()).isTrue();
@@ -201,7 +227,22 @@ class VenueLiveChannelTest extends IntegrationTest {
 
     // ------------------------------------------------------------------------------------------------------- helpers
 
+    private UUID browserSubscription(UUID venueAccountId) {
+        UUID id = UUID.randomUUID();
+        JdbcClient.create(appDataSource).sql("""
+                        INSERT INTO notification.venue_push_subscription
+                               (id, venue_account_id, endpoint, p256dh_key, auth_key, last_seen_at, created_at)
+                        VALUES (:id, :account, :endpoint, 'p256dh', 'auth', now(), now())""")
+                .param("id", id).param("account", venueAccountId)
+                .param("endpoint", "https://fcm.googleapis.com/fcm/send/" + id).update();
+        return id;
+    }
+
     private void bookingCreated(UUID venueId, UUID bookingId) {
+        bookingEvent(IntegrationEvents.BOOKING_CREATED, venueId, bookingId);
+    }
+
+    private void bookingEvent(String type, UUID venueId, UUID bookingId) {
         runner.run(new Command<Void>() {
             @Override
             public EligibilityCategory eligibilityCategory() {
@@ -215,7 +256,7 @@ class VenueLiveChannelTest extends IntegrationTest {
 
             @Override
             public Void execute(CommandContext context) {
-                outbox.publish(context, new NewOutboxEvent(IntegrationEvents.BOOKING_CREATED, "BOOKING", bookingId,
+                outbox.publish(context, new NewOutboxEvent(type, "BOOKING", bookingId,
                         Map.of("bookingId", bookingId, "venueId", venueId)));
                 return null;
             }
