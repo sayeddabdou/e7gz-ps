@@ -42,6 +42,7 @@ import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.error.DatabaseErrorCodes;
 import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.concurrency.ConcurrentRace;
+import ps.e7gz.messaging.api.CommandAnswer;
 import ps.e7gz.messaging.api.Idempotency;
 import ps.e7gz.messaging.api.IdempotentRequest;
 import ps.e7gz.messaging.api.IdempotentResult;
@@ -667,6 +668,105 @@ class IdempotencyIntegrationTest extends IntegrationTest {
         assertThat(first).isEqualTo(new IdempotentResult<OrderView>(204, null, false));
         assertThat(replay).isEqualTo(new IdempotentResult<OrderView>(204, null, true));
         assertThat(executions).hasValue(1);
+    }
+
+    // -------------------------------------------------------------- committed refusal (E7-47, PO decision D2)
+
+    @Test
+    void aCommittedRefusalKeepsItsWritesAndStoresItsOwnStatusAndErrorBody() {
+        AuthenticatedSubject customer = customer();
+        UUID widget = UUID.randomUUID();
+        UUID key = UUID.randomUUID();
+
+        IdempotentResult<OrderView> first = refuse(customer, key, widget, order("A", 1));
+
+        assertThat(first.status()).isEqualTo(422);
+        assertThat(first.body()).isNull();
+        assertThat(first.replayed()).isFalse();
+        assertThat(first.refusal().code()).isEqualTo(ApiErrorCode.VENUE_SELLING_BLOCK_ACTIVE);
+        assertThat(first.refusal().details()).containsEntry("reason", "TEST");
+        assertThat(events()).as("the command's write committed").isEqualTo(1);
+        Map<String, Object> row = record(customer, ENDPOINT, key);
+        assertThat(row.get("state")).isEqualTo("COMPLETED");
+        assertThat(((Number) row.get("response_status")).intValue()).as("never a success status").isEqualTo(422);
+        assertThat(row.get("response_body").toString())
+                .isEqualTo("{\"error\": {\"code\": \"VENUE_SELLING_BLOCK_ACTIVE\", \"details\": {\"reason\": \"TEST\"}}}");
+        assertThat(row.get("result_aggregate_type")).isNull();
+        assertThatThrownBy(first::throwIfRefused).isSameAs(first.refusal());
+    }
+
+    @Test
+    void aReplayOfACommittedRefusalAnswersTheSameRefusalWithoutRunningTheCommand() {
+        AuthenticatedSubject customer = customer();
+        UUID widget = UUID.randomUUID();
+        UUID key = UUID.randomUUID();
+        IdempotentResult<OrderView> first = refuse(customer, key, widget, order("A", 1));
+
+        IdempotentResult<OrderView> replay = refuse(customer, key, widget, order("A", 1));
+
+        assertThat(replay.replayed()).isTrue();
+        assertThat(replay.status()).isEqualTo(first.status());
+        assertThat(replay.body()).isNull();
+        assertThat(replay.refusal().code()).isEqualTo(first.refusal().code());
+        assertThat(replay.refusal().field()).isEqualTo(first.refusal().field());
+        assertThat(replay.refusal().details()).isEqualTo(first.refusal().details());
+        assertThat(executions).hasValue(1);
+        assertThat(events()).isEqualTo(1);
+        assertKeyReused(() -> refuse(customer, key, widget, order("B", 1)));
+    }
+
+    @Test
+    void aThrownRefusalStillRollsEverythingBack() {
+        AuthenticatedSubject customer = customer();
+        UUID widget = UUID.randomUUID();
+        UUID key = UUID.randomUUID();
+        IdempotentRequest request = idempotency.request(customer, ENDPOINT, key, Map.of("widgetId", widget),
+                order("A", 1));
+
+        assertThatThrownBy(() -> runner.run(idempotency.wrapAnswer(request, response(),
+                command(CommandScope.shared(LockSet.empty()), ctx -> {
+                    publish(ctx, UUID.randomUUID());
+                    throw new ApiException(ApiErrorCode.BOOKING_STATE_CHANGED);
+                })))).isInstanceOf(ApiException.class);
+
+        assertThat(events()).isZero();
+        assertThat(recordCount(customer, ENDPOINT, key)).isZero();
+    }
+
+    @Test
+    void anOkAnswerIsStoredAsASuccessExactlyLikeWrap() {
+        AuthenticatedSubject customer = customer();
+        UUID widget = UUID.randomUUID();
+        UUID key = UUID.randomUUID();
+        IdempotentRequest request = idempotency.request(customer, ENDPOINT, key, Map.of("widgetId", widget),
+                order("A", 1));
+        Command<IdempotentResult<OrderView>> ok = idempotency.wrapAnswer(request, response(),
+                command(CommandScope.shared(LockSet.empty()), ctx -> {
+                    executions.incrementAndGet();
+                    return CommandAnswer.ok(new OrderView(UUID.randomUUID(), widget, "A", 1));
+                }));
+
+        IdempotentResult<OrderView> first = runner.run(ok);
+        IdempotentResult<OrderView> replay = runner.run(ok);
+
+        assertThat(first.status()).isEqualTo(201);
+        assertThat(first.refusal()).isNull();
+        assertThat(first.throwIfRefused()).isSameAs(first);
+        assertThat(replay.body()).isEqualTo(first.body());
+        assertThat(replay.refusal()).isNull();
+        assertThat(executions).hasValue(1);
+    }
+
+    private IdempotentResult<OrderView> refuse(AuthenticatedSubject principal, UUID key, UUID widget,
+                                               OrderRequest body) {
+        IdempotentRequest request = idempotency.request(principal, ENDPOINT, key, Map.of("widgetId", widget), body);
+        return runner.run(idempotency.wrapAnswer(request, response(),
+                command(CommandScope.shared(LockSet.empty()), ctx -> {
+                    executions.incrementAndGet();
+                    publish(ctx, UUID.randomUUID());
+                    return CommandAnswer.refused(new ApiException(ApiErrorCode.VENUE_SELLING_BLOCK_ACTIVE, null,
+                            Map.of("reason", "TEST")));
+                })));
     }
 
     // ------------------------------------------------------------------------------------------------------ helpers

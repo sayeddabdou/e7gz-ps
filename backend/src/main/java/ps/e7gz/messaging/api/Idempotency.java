@@ -54,4 +54,16 @@ public interface Idempotency {
      *                                  (a secret field, or a phone field without a replay projection)
      */
     <R> Command<IdempotentResult<R>> wrap(IdempotentRequest request, StoredResponse<R> response, Command<R> business);
+
+    /**
+     * {@link #wrap} for a command that may commit a refusal (E7-47, PO decision D2 10 Oct 2026). An
+     * {@link CommandAnswer#ok} is stored and returned exactly as {@link #wrap} does. A {@link CommandAnswer#refused}
+     * commits the command's writes and stores the refusal's code status with its error body
+     * ({@code {"error": {code, field?, details?}}}, the envelope without {@code meta}); the result carries it as
+     * {@link IdempotentResult#refusal()}, and a replay reads the same status and refusal back without running anything.
+     * The caller answers it with {@link IdempotentResult#throwIfRefused()}. An exception thrown by {@code business}
+     * still rolls everything back, the idempotency record included.
+     */
+    <R> Command<IdempotentResult<R>> wrapAnswer(IdempotentRequest request, StoredResponse<R> response,
+                                                Command<CommandAnswer<R>> business);
 }

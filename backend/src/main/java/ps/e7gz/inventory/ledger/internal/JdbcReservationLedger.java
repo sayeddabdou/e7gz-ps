@@ -1,5 +1,7 @@
 package ps.e7gz.inventory.ledger.internal;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -7,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.postgresql.util.ServerErrorMessage;
 import org.springframework.dao.DataAccessException;
@@ -14,6 +17,7 @@ import org.springframework.stereotype.Component;
 import ps.e7gz.common.codes.ReservationType;
 import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.error.DatabaseErrorCodes;
+import ps.e7gz.inventory.ledger.api.ActiveReservation;
 import ps.e7gz.inventory.ledger.api.NewReservation;
 import ps.e7gz.inventory.ledger.api.ReservationLedger;
 import ps.e7gz.inventory.ledger.api.ReservationOwner;
@@ -29,7 +33,8 @@ import ps.e7gz.messaging.api.Outbox;
  * any later change of owner or plan, any re-activation and any rewrite of recorded release facts.
  *
  * <p>Every inserted row publishes {@code ReservationHeld} in the same transaction (arch 08 section 3.2; E7-46, PO
- * decision 9 Oct 2026): E7-41's projection consumer refreshes that venue's Nearest Availability rows from it.
+ * decision 9 Oct 2026), and every released row {@code ReservationReleased} (E7-47): E7-41's projection consumer
+ * refreshes that venue's Nearest Availability rows from them.
  */
 @Component
 class JdbcReservationLedger implements ReservationLedger {
@@ -53,6 +58,23 @@ class JdbcReservationLedger implements ReservationLedger {
              WHERE id = :id
                AND active_flag = true
                AND actual_reservation_release_at IS NULL
+            """;
+
+    /** The Resource and planned interval of one row, for the {@code ReservationReleased} of a row just released. */
+    static final String ROW_PERIOD = """
+            SELECT rr.id, rr.resource_id, rr.planned_start, rr.planned_end
+              FROM inventory.resource_reservation rr
+             WHERE rr.id = :id
+            """;
+
+    /** The active rows of one owner: its type and its one owner column (E7-47). */
+    static final String ACTIVE_OF = """
+            SELECT rr.id, rr.resource_id, rr.planned_start, rr.planned_end
+              FROM inventory.resource_reservation rr
+             WHERE rr.active_flag
+               AND rr.reservation_type = :reservationType
+               AND (rr.booking_id = :bookingId OR rr.tournament_id = :tournamentId
+                    OR rr.maintenance_id = :maintenanceId OR rr.closure_id = :closureId)
             """;
 
     /**
@@ -140,11 +162,37 @@ class JdbcReservationLedger implements ReservationLedger {
         Objects.requireNonNull(reservationId, "reservationId");
         Objects.requireNonNull(releaseAt, "releaseAt");
         Objects.requireNonNull(releaseReason, "releaseReason");
-        return command.jdbc().sql(RELEASE)
+        boolean released = command.jdbc().sql(RELEASE)
                 .param("id", reservationId)
                 .param("releaseAt", utc(releaseAt))
                 .param("releaseReason", releaseReason)
                 .update() == 1;
+        if (released) {
+            ActiveReservation row = command.jdbc().sql(ROW_PERIOD).param("id", reservationId)
+                    .query(JdbcReservationLedger::period).single();
+            publish(command, IntegrationEvents.RESERVATION_RELEASED, row.id(), row.resourceId(), row.plannedStart(),
+                    row.plannedEnd());
+        }
+        return released;
+    }
+
+    @Override
+    public Optional<ActiveReservation> activeOf(CommandContext command, ReservationOwner owner) {
+        Objects.requireNonNull(command, "command");
+        Objects.requireNonNull(owner, "owner");
+        OwnerColumns columns = OwnerColumns.of(owner);
+        List<ActiveReservation> rows = command.jdbc().sql(ACTIVE_OF)
+                .param("reservationType", owner.type().name())
+                .param("bookingId", columns.bookingId())
+                .param("tournamentId", columns.tournamentId())
+                .param("maintenanceId", columns.maintenanceId())
+                .param("closureId", columns.closureId())
+                .query(JdbcReservationLedger::period)
+                .list();
+        if (rows.size() > 1) {
+            throw new IllegalStateException(owner + " holds " + rows.size() + " active reservations");
+        }
+        return rows.stream().findFirst();
     }
 
     @Override
@@ -169,19 +217,28 @@ class JdbcReservationLedger implements ReservationLedger {
      * key has just proven the Resource exists.
      */
     private void held(CommandContext command, UUID id, NewReservation reservation) {
+        publish(command, IntegrationEvents.RESERVATION_HELD, id, reservation.resourceId(), reservation.plannedStart(),
+                reservation.plannedEnd());
+    }
+
+    /**
+     * {@code ReservationHeld} or {@code ReservationReleased}: the same payload {@code {reservationId, resourceId,
+     * venueId, period}} (PO decision 9 Oct 2026; E7-47 for the release).
+     */
+    private void publish(CommandContext command, String eventType, UUID id, UUID resourceId, Instant start,
+                         Instant end) {
         UUID venueId = command.jdbc().sql(VENUE_OF_RESOURCE)
-                .param("resourceId", reservation.resourceId())
+                .param("resourceId", resourceId)
                 .query(UUID.class).single();
         Map<String, Object> period = new LinkedHashMap<>();
-        period.put("start", reservation.plannedStart().toString());
-        period.put("end", reservation.plannedEnd().toString());
+        period.put("start", start.toString());
+        period.put("end", end.toString());
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("reservationId", id);
-        payload.put("resourceId", reservation.resourceId());
+        payload.put("resourceId", resourceId);
         payload.put("venueId", venueId);
         payload.put("period", period);
-        outbox.publish(command, new NewOutboxEvent(IntegrationEvents.RESERVATION_HELD, RESERVATION_AGGREGATE, id,
-                payload));
+        outbox.publish(command, new NewOutboxEvent(eventType, RESERVATION_AGGREGATE, id, payload));
     }
 
     /**
@@ -205,6 +262,12 @@ class JdbcReservationLedger implements ReservationLedger {
                         && EX_NO_DOUBLE_BOOKING.equals(constraint))
                 || (DatabaseErrorCodes.RAISE_EXCEPTION.equals(sqlState)
                         && GD_RESERVATION_CONFLICT_BOOKING.equals(constraint));
+    }
+
+    private static ActiveReservation period(ResultSet rs, int row) throws SQLException {
+        return new ActiveReservation(rs.getObject("id", UUID.class), rs.getObject("resource_id", UUID.class),
+                rs.getObject("planned_start", OffsetDateTime.class).toInstant(),
+                rs.getObject("planned_end", OffsetDateTime.class).toInstant());
     }
 
     private static OffsetDateTime utc(Instant instant) {

@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutionException;
@@ -46,6 +47,7 @@ import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.DatabaseErrorCodes;
+import ps.e7gz.inventory.ledger.api.ActiveReservation;
 import ps.e7gz.inventory.ledger.api.NewReservation;
 import ps.e7gz.inventory.ledger.api.ReservationLedger;
 import ps.e7gz.inventory.ledger.api.ReservationOwner;
@@ -467,5 +469,45 @@ class ReservationLedgerIntegrationTest extends IntegrationTest {
                     assertThat(error.getSQLState()).isEqualTo("23503");
                     assertThat(error.getConstraint()).isEqualTo("fk_resource_reservation_booking_id__booking_id");
                 }));
+    }
+
+    // ---- E7-47: the owner's active row and ReservationReleased -------------------------------------------------------
+
+    @Test
+    void releasePublishesReservationReleasedOnceWithTheHeldPayload() {
+        UUID id = run(ctx -> ledger.create(ctx,
+                booking(ONE_WAY_RESOURCE, "2030-01-21T10:00:00Z", "2030-01-21T11:00:00Z")));
+
+        assertThat(release(id, "2030-01-21T09:00:00Z", "E7-47 test")).isTrue();
+        assertThat(release(id, "2030-01-21T09:30:00Z", "E7-47 test again")).isFalse();
+
+        List<String> released = JdbcClient.create(appDataSource).sql("""
+                        SELECT payload::text FROM technical.outbox_event
+                         WHERE event_type = 'ReservationReleased' AND aggregate_id = :id""")
+                .param("id", id).query(String.class).list();
+        assertThat(released).as("one event, for the release that happened").singleElement()
+                .satisfies(payload -> assertThat(payload)
+                        .contains("\"reservationId\": \"" + id + "\"")
+                        .contains("\"resourceId\": \"" + ONE_WAY_RESOURCE + "\"")
+                        .contains("\"venueId\": \"" + VENUE + "\"")
+                        .contains("\"start\": \"2030-01-21T10:00:00Z\"")
+                        .contains("\"end\": \"2030-01-21T11:00:00Z\""));
+    }
+
+    @Test
+    void activeOfAnswersTheOwnersOneActiveRowAndRefusesTwo() {
+        Optional<ActiveReservation> none = run(ctx -> ledger.activeOf(ctx, ReservationOwner.booking(UUID.randomUUID())));
+        assertThat(none).isEmpty();
+
+        assertThatThrownBy(() -> run(ctx -> {
+            UUID first = ledger.create(ctx, booking(ONE_WAY_RESOURCE, "2030-01-22T10:00:00Z", "2030-01-22T11:00:00Z"));
+            ledger.create(ctx, booking(NO_SHOW_RESOURCE, "2030-01-22T10:00:00Z", "2030-01-22T11:00:00Z"));
+            assertThat(first).isNotNull();
+            return ledger.activeOf(ctx, ReservationOwner.booking(BOOKING));
+        })).isInstanceOf(IllegalStateException.class).hasMessageContaining("active reservations");
+
+        Optional<ActiveReservation> otherType = run(ctx -> ledger.activeOf(ctx,
+                ReservationOwner.lateConfirmHold(UUID.randomUUID())));
+        assertThat(otherType).isEmpty();
     }
 }

@@ -1,6 +1,7 @@
 package ps.e7gz.inventory.ledger.api;
 
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 import ps.e7gz.common.command.CommandContext;
 
@@ -32,10 +33,22 @@ public interface ReservationLedger {
      * Releases an active row: {@code active_flag = false}, {@code actual_reservation_release_at = releaseAt},
      * {@code release_reason = releaseReason}. Nothing else changes; the planned interval stays as inserted.
      *
+     * Publishes {@code ReservationReleased {reservationId, resourceId, venueId, period}} in the same transaction when a
+     * row is released (arch 08 section 3.2; E7-47), the counterpart of {@code ReservationHeld}, so the projection
+     * consumer refreshes the venue at once; the caller runs with a correlation ID open.
+     *
      * @return {@code true} if the row was active and is now released; {@code false} if there is no such row or it was
-     *         already released (its recorded release facts are left as they are)
+     *         already released (its recorded release facts are left as they are, and nothing is published)
      */
     boolean release(CommandContext command, UUID reservationId, Instant releaseAt, String releaseReason);
+
+    /**
+     * The active row of {@code owner}, read on the command's own transaction (E7-47: the venue's answer to a PENDING
+     * Booking revalidates and releases the Booking's own reservation). Empty when the owner holds none.
+     *
+     * @throws IllegalStateException when the owner holds more than one active row of its type - an integrity defect
+     */
+    Optional<ActiveReservation> activeOf(CommandContext command, ReservationOwner owner);
 
     /**
      * Check 8 of the availability predicate (arch 05 section 2.2, {@code FR-AVL-03}): whether an active

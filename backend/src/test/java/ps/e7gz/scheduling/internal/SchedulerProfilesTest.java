@@ -29,7 +29,8 @@ class SchedulerProfilesTest extends IntegrationTest {
             "ps.e7gz.scheduling.internal.SchedulingWorkerConfig",
             "ps.e7gz.venue.internal.VenuePhotoJobs",
             "ps.e7gz.venue.internal.OperatingSessionJobs",
-            "ps.e7gz.inventory.availability.internal.NearestAvailabilityJobs");
+            "ps.e7gz.inventory.availability.internal.NearestAvailabilityJobs",
+            "ps.e7gz.booking.internal.VenueResponseExpiryHandler");
 
     @Autowired
     ApplicationContext context;

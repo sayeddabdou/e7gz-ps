@@ -35,4 +35,9 @@ class ScheduledJobsService implements ScheduledJobs {
     public void rearm(CommandContext context, String idempotencyKey, Instant dueAt) {
         store.rearm(context.jdbc(), idempotencyKey, dueAt);
     }
+
+    @Override
+    public boolean supersede(CommandContext context, String idempotencyKey) {
+        return store.supersede(context.jdbc(), idempotencyKey);
+    }
 }
