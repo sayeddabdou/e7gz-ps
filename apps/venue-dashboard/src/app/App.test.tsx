@@ -107,21 +107,49 @@ describe("Venue Dashboard shell", () => {
     render(<App config={readyConfig} />);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Log out" })).toBeTruthy());
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
-    expect(fetch).toHaveBeenNthCalledWith(1, "http://127.0.0.1:4010/api/v1/venue/auth/refresh", expect.objectContaining({
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("http://127.0.0.1:4010/api/v1/venue/auth/refresh", expect.objectContaining({
       credentials: "include",
       headers: { "X-Requested-With": "e7gz" },
       method: "POST",
-    }));
+    })));
     expect(window.localStorage.getItem("accessToken")).toBeNull();
     expect(window.sessionStorage.getItem("accessToken")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Log out" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "Venue sign in" })).toBeTruthy());
-    expect(fetch).toHaveBeenNthCalledWith(3, "http://127.0.0.1:4010/api/v1/venue/auth/logout", expect.objectContaining({
+    expect(fetch).toHaveBeenCalledWith("http://127.0.0.1:4010/api/v1/venue/auth/logout", expect.objectContaining({
       credentials: "include",
       headers: { "X-Requested-With": "e7gz" },
       method: "POST",
     }));
+  });
+
+  it("revokes the stored browser push subscription before logout", async () => {
+    window.localStorage.setItem("e7gz.venue.pushSubscriptionId", "018f3c2a-7b1e-7c4d-9e0f-1a2b3c4d5e6f");
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith("/api/v1/venue/auth/refresh")) return sessionResponse("memory-only-access");
+      if (url.endsWith("/api/v1/venue/settings")) return settingsResponse("en");
+      if (url.includes("/api/v1/venue/requests/pending")) {
+        return new Response(JSON.stringify({ data: [], meta: { correlationId: "c-1", serverTime: "2026-10-02T10:00:00Z" } }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(undefined, { status: 204 });
+    });
+    vi.stubGlobal("fetch", fetch);
+    render(<App config={readyConfig} />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Log out" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Log out" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Venue sign in" })).toBeTruthy());
+
+    const calledUrl = (input: RequestInfo | URL) => input instanceof Request ? input.url : String(input);
+    const revokeCall = fetch.mock.calls.findIndex(([input]) => calledUrl(input).includes("/push-subscriptions/018f3c2a-7b1e-7c4d-9e0f-1a2b3c4d5e6f/revoke"));
+    const logoutCall = fetch.mock.calls.findIndex(([input]) => calledUrl(input).includes("/auth/logout"));
+    expect(revokeCall).toBeGreaterThan(-1);
+    expect(logoutCall).toBeGreaterThan(revokeCall);
+    expect(window.localStorage.getItem("e7gz.venue.pushSubscriptionId")).toBeNull();
   });
 });
