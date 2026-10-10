@@ -1573,22 +1573,44 @@ Read CLAUDE.md first. You are implementing task S2-E3 — "Walk-in / manual book
 Read only these docs for this task:
 - arch 06 §1.4 (15 conditions)
 - FRS manual booking
+- FRS FR-MAN-09 (business date)
+- arch 06 §2.3 (BOOKING_START / BOOKING_COMPLETE)
+- arch 08 §3.2 (integration events)
 
 Do:
 1. ManualBookingCommand with its own 15-condition predicate; business date for out-of-hours.
+2. PCR-007 first, in its own commit (PO decision 10 Oct 2026, E7-48, Part A1): write docs/01-product/PCR-007 — Cancel an ACTIVE Manual Booking.md (same format as PCR-006). Rule: venue staff may cancel a Manual Booking that is CONFIRMED or ACTIVE, without the Owner Password, reason VENUE_CANCELLED_MANUAL_BOOKING. On an ACTIVE one: status ACTIVE -> CANCELLED, the room is free from the cancel instant (reservation released at the command instant), the scheduled BOOKING_COMPLETE job is cancelled, attendance stays NOT_APPLICABLE, fee treatment NOT_APPLICABLE, no Trust/points effect. It amends FRS F-16 item 7, FR-MAN-08 and arch 06 §1.4 (Cancellation row): update those lines and say "amended by PCR-007".
+3. PCR-007 migration (PO decision 10 Oct 2026, E7-48, Part A2): the DB refuses ACTIVE -> CANCELLED with VENUE_CANCELLED_MANUAL_BOOKING (booking state guard in V1__baseline.sql, "WHEN OLD.status='ACTIVE' AND NEW.status='CANCELLED'"). Write a new migration V<yyyyMMddHHmm>__manual_booking_active_cancel.sql that allows it ONLY for source='MANUAL' and actor VENUE. Follow every Migration safety rule in CLAUDE.md §5: .dbm updated, change-report entry, MigrationFilesTest check, migration-lock.txt line, upgrade-seed if needed, grep every changed function name, ./gradlew check at least twice. Do not edit V1__baseline.sql.
 
 Done when (write these as tests first where possible):
-- Manual booking at 3 AM for a venue closing at 2 AM succeeds with a businessDate.
+- Manual booking at 3 AM for a venue closing at 2 AM succeeds with a businessDate: at 03:00 Cairo after a 14:00-02:00 session it has no session snapshot and businessDate = Saturday, the Cairo calendar date of startAt (FR-MAN-09) - on a controlled command clock (CommandInstants), plus a real-DB integration test of the business-date and snapshot rules.
+- A 01:00-03:00 booking in a 14:00-02:00 session (starts inside, ends after it) gets no session snapshot and businessDate = Saturday.
+- Cancelling an ACTIVE manual booking (PCR-007) frees the room from the cancel instant (reservation released at the command instant) and cancels its BOOKING_COMPLETE job.
+- A future manual booking schedules BOOKING_START at startAt; a walk-in schedules BOOKING_COMPLETE at endAt.
+- PCR-007 and its migration are in: MigrationSafetyTest and MigrationFilesTest green, migration-lock.txt line added, ./gradlew check green twice.
 
 Carry-forward from E7-39 (do these too):
-- Contract from E7-39 (packages/api-client/SPRINT-2-CONTRACT.md; stubs already in the controllers named there): implement POST /venue/bookings {resourceId, playMode?, startAt?, durationMinutes, customerName?, customerPhone?} -> 201 VenueBooking (startAt absent = walk-in starting now at server time, FR-MAN-04; customerPhone normalised to E.164 like the venue phone) and POST /venue/bookings/{bookingId}/cancel-manual (FR-MAN-08: CANCELLED / VENUE_CANCELLED_MANUAL_BOOKING before startAt, no Owner Password). Idempotency-Key required on both. Controller: booking/web/VenueBookingController.
+- Contract from E7-39 (packages/api-client/SPRINT-2-CONTRACT.md; stubs already in the controllers named there): implement POST /venue/bookings {resourceId, playMode?, startAt?, durationMinutes, customerName?, customerPhone?} -> 201 VenueBooking (startAt absent = walk-in starting now at server time, FR-MAN-04; customerPhone normalised to E.164 like the venue phone) and POST /venue/bookings/{bookingId}/cancel-manual (FR-MAN-08 as amended by PCR-007: CANCELLED / VENUE_CANCELLED_MANUAL_BOOKING from CONFIRMED - before or after startAt - or ACTIVE, no Owner Password; see D5). Idempotency-Key required on both. Controller: booking/web/VenueBookingController.
 - Error codes (PO decision 5 Oct 2026): a manual booking on an ONBOARDING venue is 403 FORBIDDEN; cancel-manual on a booking already cancelled or completed is 409 BOOKING_STATE_CHANGED.
 
 Carry-forward from E7-45 (PO decision 10 Oct 2026, do this too):
 - The boundary tests of this task are already written and switched off (@Disabled("E7-48: ...")): backend/src/test/java/ps/e7gz/support/boundary/pending/ManualBookingBusinessDateBoundaryTest.java. Move the class next to this task's code, replace each fail(...) with the steps its comment names, using the boundary pack ps.e7gz.support.boundary (Boundary, CommandInstants, Deadlines, DueJobs, BoundaryAssertions; see its package-info), and remove @Disabled. The task is done only when they pass. The pack and these tests come with E7-45: merge main once E7-45 is merged.
 
-Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
-Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
+PO decisions 10 Oct 2026 (Sayed, E7-48; quote "PO decision 10 Oct 2026, E7-48" in code comments):
+- D1: Business date: a 03:00 Cairo booking after a session ending 02:00 has no session snapshot and businessDate = the Cairo calendar date of startAt (Saturday), FR-MAN-09. Fix the comment in ManualBookingBusinessDateBoundaryTest (it says "the date the 14:00 session opened on" - wrong), then enable the test and move it per the pending package-info.
+- D2: A booking that starts inside a session but ends after it: no snapshot, Cairo date of startAt (the DB snapshot trigger only allows a snapshot when the whole interval fits). Add a test showing a 01:00-03:00 booking in a 14:00-02:00 session gets Saturday.
+- D3: Tests: controlled command clock for the exact 03:00 case + a real-DB integration test for the business-date and snapshot rules.
+- D4: Errors: overlap with closure, emergency closure, resource emergency outage, maintenance -> 409 SLOT_NO_LONGER_AVAILABLE; a selling block active now -> VENUE_SELLING_BLOCK_ACTIVE / RESOURCE_SELLING_BLOCK_ACTIVE (same as online); ONBOARDING venue -> 403 FORBIDDEN; disabled venue account: the security filter already returns 401 UNAUTHENTICATED (AccessTokenSecurityTest) - keep the in-command check for the race and map it to 403 FORBIDDEN, the HTTP test expects 401; missing pricing -> MANUAL_BOOKING_PRICING_CONFIGURATION_MISSING (FR-MAN-10).
+- D5: cancel-manual: on an ONLINE booking -> 409 BOOKING_STATE_CHANGED; on CANCELLED or COMPLETED -> 409 BOOKING_STATE_CHANGED; on CONFIRMED (before or after startAt) or ACTIVE -> allowed (PCR-007).
+- D6: Events: future manual -> BookingConfirmed; walk-in -> BookingStarted (already in arch 08 §3.2; add the constant to IntegrationEvents). Payload has source: MANUAL, customerId null. Fix the BOOKING_CONFIRMED javadoc ("accepted a PENDING Online Booking"). Map BookingStarted in VenueStreamSignals. Cancel emits BookingCancelled. Do not emit ReservationHeld yourself (the ledger does). messaging/ and notification/ are Platform lane files: list them in the PR for Sayed's review.
+- D7: API: add missing 403/404 annotations, run pnpm api:gen, tell the Clients lane what changed.
+- D8: Jobs: future manual -> schedule BOOKING_START at startAt (same subject/key form as VenueAnswers.BOOKING_START). Walk-in -> schedule BOOKING_COMPLETE at endAt (name from arch 06 §2.3, not BOOKING_COMPLETION). Handlers belong to E7-60 / E7-61; do not write them.
+- D9: Attendance: leave creation/update to E7-61; manual stays NOT_APPLICABLE.
+- D10: customerName and customerPhone: trim, blank -> NULL; phone normalised to E.164.
+- Keep the 15-condition manual predicate separate from the online one. Do not change E7-46/E7-47 behaviour.
+
+Constraints: stay inside this task's module(s), except the Platform-lane files of D6 (messaging/, notification/), which you list in the PR for Sayed's review; do not edit docs/ except PCR-007 and the lines it amends (FRS F-16 item 7, FR-MAN-08, arch 06 §1.4); never edit V1__baseline.sql; follow CLAUDE.md §5.
+Finish by running the checks in CLAUDE.md §4 (./gradlew check green twice, pnpm -r lint typecheck build green), then give me a short summary, the files changed, and any question for the Product Owner. Do not push or open the PR — Sayed reviews first.
 ```
 
 ### S2-E4 (E7-49) — Cancellation, customer buckets, contact visibility
@@ -2000,6 +2022,9 @@ Done when (write these as tests first where possible):
 Carry-forward from E7-45 (PO decision 10 Oct 2026, do this too):
 - The boundary tests of this task are already written and switched off (@Disabled("E7-60: ...")): backend/src/test/java/ps/e7gz/support/boundary/pending/BookingStartBoundaryTest.java. Move the class next to this task's code, replace each fail(...) with the steps its comment names, using the boundary pack ps.e7gz.support.boundary (Boundary, CommandInstants, Deadlines, DueJobs, BoundaryAssertions; see its package-info), and remove @Disabled. The task is done only when they pass. The pack and these tests come with E7-45: merge main once E7-45 is merged.
 
+Carry-forward from E7-48 (PO decision 10 Oct 2026, do this too):
+- The BOOKING_START handler also starts future MANUAL bookings: E7-48 schedules BOOKING_START at startAt for a CONFIRMED manual booking (same subject/key form as VenueAnswers.BOOKING_START). MANUAL never uses check-in or NO_SHOW (FR-MAN-04).
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2025,6 +2050,9 @@ Done when (write these as tests first where possible):
 
 Carry-forward from E7-45 (PO decision 10 Oct 2026, do this too):
 - The boundary tests of this task are already written and switched off (@Disabled("E7-61: ...")): backend/src/test/java/ps/e7gz/support/boundary/pending/BookingCompletionBoundaryTest.java. Move the class next to this task's code, replace each fail(...) with the steps its comment names, using the boundary pack ps.e7gz.support.boundary (Boundary, CommandInstants, Deadlines, DueJobs, BoundaryAssertions; see its package-info), and remove @Disabled. The task is done only when they pass. The pack and these tests come with E7-45: merge main once E7-45 is merged.
+
+Carry-forward from E7-48 (PO decision 10 Oct 2026, do this too):
+- The BOOKING_COMPLETE handler also completes MANUAL bookings (E7-48 schedules BOOKING_COMPLETE at endAt for a walk-in): skip the attendance-default rules for MANUAL - attendance stays NOT_APPLICABLE, no Trust/points (FR-MAN-06) - and stay cancellation-safe: an ACTIVE manual booking cancelled under PCR-007 has its BOOKING_COMPLETE cancelled, and a fire that finds the booking no longer ACTIVE changes nothing.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
