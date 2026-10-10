@@ -6,6 +6,8 @@ import type { ConfigResult } from "../config";
 import { AvailabilitySchedule } from "../features/schedule";
 import { PricingEditor, ResourceList, SettingsPage } from "../features/setup";
 import { createVenueSessionApi, VenueLoginScreen, type VenueSessionApi } from "../features/auth";
+import { LiveRequestsProvider, PendingRequestsScreen, useLiveRequests } from "../features/requests";
+import { revokeVenuePush } from "../features/requests/pushSubscription";
 import { directionOf, messages, MessagesContext, type Language, type Messages } from "../i18n";
 import "../dashboard.css";
 
@@ -146,6 +148,10 @@ const styles = {
   },
 } satisfies Record<string, CSSProperties>;
 
+function PendingRequestsRoute() {
+  return <PendingRequestsScreen model={useLiveRequests()} />;
+}
+
 function ProtectedShell({
   accessToken,
   config,
@@ -176,6 +182,10 @@ function ProtectedShell({
     () => accessToken,
     (request) => session.withRefresh(request, onAccessToken, onUnauthenticated),
   ), [accessToken, config, onAccessToken, onUnauthenticated, session]);
+  const streamRequest = useCallback((signal: AbortSignal) => session.withRefresh(new Request(
+    `${config.config.apiBaseUrl.replace(/\/+$/u, "")}/api/v1/venue/stream`,
+    { headers: { Authorization: `Bearer ${accessToken}`, Accept: "text/event-stream" }, signal },
+  ), onAccessToken, onUnauthenticated), [accessToken, config, onAccessToken, onUnauthenticated, session]);
 
   useEffect(() => {
     let active = true;
@@ -186,7 +196,24 @@ function ProtectedShell({
     return () => { active = false; };
   }, [api, onLanguagePreference]);
 
+  const logoutWithPushRevocation = useCallback(async () => {
+    await revokeVenuePush({
+      getSubscription: async () => {
+        if (!("serviceWorker" in navigator)) return null;
+        const registration = await navigator.serviceWorker.getRegistration();
+        return await registration?.pushManager.getSubscription() ?? null;
+      },
+      revokeSubscription: async (subscriptionId) => {
+        await api.POST("/api/v1/venue/push-subscriptions/{subscriptionId}/revoke", {
+          params: { path: { subscriptionId } },
+        });
+      },
+    });
+    onLogout();
+  }, [api, onLogout]);
+
   return (
+    <LiveRequestsProvider api={api} streamRequest={streamRequest}>
     <main className="venue-dashboard-shell" data-testid="venue-shell" dir={direction} style={styles.shell}>
       <aside className="venue-sidebar" data-testid="venue-sidebar" style={styles.sidebar}>
         <div className="venue-sidebar-brand">
@@ -222,7 +249,7 @@ function ProtectedShell({
           </div>
           <div style={styles.topbarActions}>
             <button style={styles.languageButton} type="button" onClick={onToggleLanguage}>{t.switchLanguage}</button>
-            <button disabled={loggingOut} style={styles.logoutButton} type="button" onClick={onLogout}>{loggingOut ? t.auth.loggingOut : t.auth.logout}</button>
+            <button disabled={loggingOut} style={styles.logoutButton} type="button" onClick={() => void logoutWithPushRevocation()}>{loggingOut ? t.auth.loggingOut : t.auth.logout}</button>
           </div>
         </header>
         <section className="venue-content" style={styles.content}>
@@ -232,7 +259,9 @@ function ProtectedShell({
                 key={route.path}
                 path={route.path}
                 element={
-                  route.path === "/rooms" ? (
+                  route.path === "/pending-requests" ? (
+                    <PendingRequestsRoute />
+                  ) : route.path === "/rooms" ? (
                     <ResourceList api={api} />
                   ) : route.path === "/pricing" ? (
                     <PricingEditor api={api} />
@@ -251,6 +280,7 @@ function ProtectedShell({
         </section>
       </div>
     </main>
+    </LiveRequestsProvider>
   );
 }
 
