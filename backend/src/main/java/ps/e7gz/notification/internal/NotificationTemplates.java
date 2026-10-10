@@ -116,11 +116,11 @@ class NotificationTemplates {
     static Map<String, String> textParams(com.fasterxml.jackson.databind.JsonNode params) {
         Map<String, String> text = new HashMap<>();
         if (params != null) {
-            params.fields().forEachRemaining(field -> {
+            for (Map.Entry<String, com.fasterxml.jackson.databind.JsonNode> field : params.properties()) {
                 if (field.getValue().isValueNode() && !field.getValue().isNull()) {
                     text.put(field.getKey(), field.getValue().asText());
                 }
-            });
+            }
         }
         return text;
     }

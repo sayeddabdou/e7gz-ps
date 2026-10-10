@@ -63,6 +63,9 @@ tasks.withType<Test> {
     useJUnitPlatform()
     // Tests read files outside backend/: the DB init script (infra/) and the DB contract scripts (docs/).
     systemProperty("e7gz.repoRoot", rootDir.parentFile.absolutePath)
+    // Gradle's default 512 MB test heap ran out on CI once E7-43, E7-46 and E7-51 were together (PR #61): Spring keeps
+    // every distinct test context (and its connection pools) in its context cache for the whole run.
+    maxHeapSize = "2g"
 }
 
 // The OpenAPI contract (E7-11). packages/api-client/openapi.json is committed and written only by
