@@ -63,8 +63,9 @@ import ps.e7gz.support.fixtures.Fixtures;
  * E7-42 over HTTP: the {@code Idempotency-Key} header, the error envelope and the replayed response as a client sees
  * them, through the real security chain, exception mapping and database. A test-only write (imported only here, never
  * in the contract) uses the shared {@link Idempotency} API exactly as a feature controller will. Of the real ADR-015
- * operations creation (E7-46) and the venue's answers (E7-47) are implemented and tested in their module; the others
- * are still 501 stubs of E7-48/49, so for them only the header contract is checked.
+ * operations creation (E7-46), the venue's answers (E7-47) and the manual booking and its cancel (E7-48) are
+ * implemented and tested in their module; the others are still 501 stubs of E7-49, so for them only the header
+ * contract is checked.
  */
 @AutoConfigureMockMvc
 @Import(IdempotencyHttpTest.Probe.class)
@@ -546,9 +547,11 @@ class IdempotencyHttpTest extends IntegrationTest {
         mvc.perform(write(venueToken, "/api/v1/venue/bookings/" + booking + "/cancel-manual", null, null))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.field").value(OpenApiConfig.IDEMPOTENCY_KEY));
+        // E7-48: cancel-manual is real; with the key its unknown booking reaches the route and is 404 NOT_FOUND.
         mvc.perform(write(venueToken, "/api/v1/venue/bookings/" + booking + "/cancel-manual",
                         UUID.randomUUID().toString(), null))
-                .andExpect(status().isNotImplemented());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
     }
 
     @Test
