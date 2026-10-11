@@ -6,6 +6,7 @@
 **Updated:** 5 October 2026 — Sprint 2 contract decisions (E7-39): `BOOKING_STATE_CHANGED` (`§1.5`), booking price quote (`§3.3`), device revoke (`§3.4`), venue booking detail, Web Push subscription routes and stream authentication (`§4.1`).
 **Updated:** 10 October 2026 — E7-43 decisions: admin "try again" for a dead-lettered notification delivery (`§5`) and `NOTIFICATION_DELIVERY_NOT_DEAD_LETTER` (`§1.5`).
 **Updated:** 11 October 2026 — Sprint 3 contract decisions (E7-54): phone change confirm route, password reset by phone OTP, email routes kept as stubs (`§3.1`); venue-side Late Confirm codes (`§4.1`).
+**Updated:** 12 October 2026 — E7-58 decision: the neutral Late Confirm failure records `LATE_CONFIRM_FAILED_BOOKING_LIMIT` only for the 4-commitment limit; a ban or deactivated account records no booking event (`§4.1`).
 
 **Style.** REST + JSON over HTTPS, base `/api/v1`, OpenAPI 3.1 generated from code, typed TypeScript clients generated for all three surfaces (`ADR-012`).
 
@@ -347,7 +348,7 @@ Venues with marketplace `ONBOARDING`, `INACTIVE` or `SUSPENDED` are absent from 
 { "error": { "code": "CUSTOMER_NOT_ELIGIBLE_FOR_LATE_CONFIRM" } }
 ```
 
-No `details`, no field, no hint. The real cause — the 4-commitment limit, a ban, a schedule conflict — is recorded internally as `LATE_CONFIRM_FAILED_BOOKING_LIMIT` and is never returned on this route. A contract test asserts that this endpoint can emit no other ineligibility code.
+No `details`, no field, no hint. Only the 4-commitment limit is recorded internally, as `LATE_CONFIRM_FAILED_BOOKING_LIMIT` (`FR-LCF-05`); a banned or deactivated customer gets the same code and records **no** booking event (Product Owner decision, 12 Oct 2026, E7-58). The customer's schedule conflict is never checked here, only on accept (`FR-LCF-15`). No cause is ever returned on this route. A contract test asserts that this endpoint can emit no other ineligibility code.
 
 The venue- and room-side failures of the same route (`FR-LCF-02`, `FR-LCF-03`) reuse existing codes (Product Owner decision, 11 Oct 2026, E7-54): the venue not inside an operating session now, or the original interval no longer within the opening hours → `INTERVAL_NOT_WITHIN_ONE_SESSION`; an inactive area → `AREA_INACTIVE`; selling blocks → `VENUE_SELLING_BLOCK_ACTIVE` / `RESOURCE_SELLING_BLOCK_ACTIVE`; a room no longer eligible → `RESOURCE_NOT_ELIGIBLE`; the interval taken → `409 LATE_CONFIRM_RESOURCE_CONFLICT`.
 

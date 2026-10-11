@@ -2,6 +2,7 @@
 # SECURITY ARCHITECTURE v1.1
 
 **Updated:** 25 September 2026 — names and mechanics aligned to physical model v1.1.27 (`04`, `ADR-026`–`ADR-028`).
+**Updated:** 12 October 2026 — E7-58 decision: the neutral Late Confirm failure records its internal event only for the 4-commitment limit (`§5.2`).
 
 ---
 
@@ -242,7 +243,7 @@ Expiry of phone visibility after `VENUE_RESPONSE_EXPIRED` **never** makes that b
 |---|---|
 | Venue API response | `422 { "code": "CUSTOMER_NOT_ELIGIBLE_FOR_LATE_CONFIRM" }` — no details, no field, no hint |
 | Venue UI copy | *"Customer is not currently eligible for Late Confirmation"* |
-| Internal booking event | `LATE_CONFIRM_FAILED_BOOKING_LIMIT` — the real cause, in append-only history |
+| Internal booking event | `LATE_CONFIRM_FAILED_BOOKING_LIMIT` — only for the 4-commitment limit, in append-only history; a banned or deactivated customer records no booking event (Product Owner decision, 12 Oct 2026, E7-58) |
 
 The customer's schedule conflict is checked **only when the customer attempts to accept** (`FR-LCF-15`). The venue may freely send the request and is never told the customer has another booking. A conflicting accept records `LATE_CONFIRM_FAILED_CUSTOMER_CONFLICT` on the **customer's** side of the flow.
 
