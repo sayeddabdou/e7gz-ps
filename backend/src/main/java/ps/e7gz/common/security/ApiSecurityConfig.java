@@ -46,11 +46,13 @@ import ps.e7gz.common.web.SecurityErrorHandlers;
 @Configuration(proxyBeanMethods = false)
 public class ApiSecurityConfig {
 
-    /** POST operations without a token (arch 09 section 3.1, section 2). Password reset is E7-57's. */
+    /** POST operations without a token (arch 09 section 3.1, section 2). Password reset: contract E7-54, built by E7-57. */
     static final String[] PUBLIC_POSTS = {
             "/api/v1/customer/auth/register",
             "/api/v1/customer/auth/otp/send",
             "/api/v1/customer/auth/verify-phone",
+            "/api/v1/customer/auth/password-reset/request",
+            "/api/v1/customer/auth/password-reset/complete",
             "/api/v1/customer/auth/login",
             "/api/v1/customer/auth/refresh",
             "/api/v1/customer/auth/logout",

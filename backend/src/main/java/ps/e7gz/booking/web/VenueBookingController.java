@@ -51,6 +51,7 @@ import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
 import ps.e7gz.common.web.MoneyView;
+import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.PageView;
 import ps.e7gz.common.web.ResponseMetaFactory;
@@ -61,11 +62,12 @@ import ps.e7gz.messaging.api.StoredResponse;
 
 /**
  * Venue Dashboard — booking requests and bookings (arch 09 §4.1). The request lists, accept, reject and reject after
- * expiry are E7-47's, manual booking and its cancel E7-48's, the bookings list and detail E7-49's. Every route acts for
- * the signed-in account's own venue, never one named by the request. None of these actions needs the Owner Password;
- * each is in ADR-015's scope, so the Idempotency-Key is required. The venue DTOs are separate from the customer ones
- * (arch 09 §1.1): they carry nothing about the customer's other commitments (NFR-19), and the customer phone is absent
- * when the retention rule hides it (NFR-18, arch 10 §5.1; PO decision 11 Oct 2026, E7-49, D1).
+ * expiry are E7-47's, manual booking and its cancel E7-48's, the bookings list and detail E7-49's; cancel-confirmed is a
+ * stub of the Sprint 3 contract (E7-54) until E7-114. Every route acts for the signed-in account's own venue, never one
+ * named by the request. Only cancel-confirmed needs the Owner Password (FR-VEN-03); every write is in ADR-015's scope,
+ * so the Idempotency-Key is required. The venue DTOs are separate from the customer ones (arch 09 §1.1): they carry
+ * nothing about the customer's other commitments (NFR-19), and the customer phone is absent when the retention rule
+ * hides it (NFR-18, arch 10 §5.1; PO decision 11 Oct 2026, E7-49, D1).
  */
 @RestController
 @RequestMapping("/api/v1/venue")
@@ -268,6 +270,29 @@ public class VenueBookingController {
         return meta.data(result.body());
     }
 
+    @PostMapping("/bookings/{bookingId}/cancel-confirmed")
+    @Operation(operationId = "venueCancelConfirmedBooking",
+            summary = "Cancel a CONFIRMED online booking with the Owner PIN: CANCELLED / VENUE_CANCELLED_CONFIRMED_BOOKING "
+                    + "(FR-VEN-03)",
+            description = "Owner Password in the body, never a header (ADR-011, arch 09 §4.3): absent or blank is "
+                    + "OWNER_PASSWORD_REQUIRED, wrong is OWNER_PASSWORD_INVALID; every attempt is audited (FR-VEN-05). "
+                    + "The reservation and the customer commitment are released; fee treatment FULL (FRS §2.6, "
+                    + "FR-PTS-15); the customer is notified. No time limit: allowed while the booking is CONFIRMED, "
+                    + "even after startAt if the start job has not run yet (PO decision 6 Oct 2026). A booking that is "
+                    + "not a CONFIRMED online booking (already cancelled, ACTIVE, PENDING, or a manual booking, which "
+                    + "uses cancel-manual, FR-MAN-08) is BOOKING_STATE_CHANGED. A booking of another venue is "
+                    + "NOT_FOUND. Implemented by E7-114.")
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
+    @ApiError(status = 409, codes = ApiErrorCode.BOOKING_STATE_CHANGED)
+    @ApiError(status = 422, codes = ApiErrorCode.IDEMPOTENCY_KEY_REUSED)
+    @ApiError(status = 423, codes = {ApiErrorCode.OWNER_PASSWORD_REQUIRED, ApiErrorCode.OWNER_PASSWORD_INVALID})
+    public DataResponse<VenueBooking> cancelConfirmed(
+            @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+            @PathVariable UUID bookingId,
+            @RequestBody VenueBookingCancelConfirmedRequest request) {
+        throw NotImplementedYet.stub();
+    }
+
     @GetMapping("/bookings")
     @Operation(operationId = "venueListBookings",
             summary = "Booking history with filters (FR-VEN-38)",
@@ -314,6 +339,20 @@ public class VenueBookingController {
     public record VenueBookingRejectRequest(
             @NotBlank @Size(min = 1, max = 200) @Pattern(regexp = ".*\\S.*", flags = Pattern.Flag.DOTALL)
             @Schema(example = "Room under maintenance") String reasonText) {
+    }
+
+    /** FR-VEN-03, ADR-011: the Owner PIN travels in the body of the protected command. */
+    @Schema(name = "VenueBookingCancelConfirmedRequest")
+    public record VenueBookingCancelConfirmedRequest(
+            @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY,
+                    requiredMode = Schema.RequiredMode.REQUIRED,
+                    description = "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.")
+            String ownerPassword) {
+
+        @Override
+        public String toString() {
+            return "VenueBookingCancelConfirmedRequest[<redacted>]";
+        }
     }
 
     /** F-16: a NOW or FUTURE internal booking, optionally with the customer's name and phone (FR-MAN-01). */
@@ -378,10 +417,20 @@ public class VenueBookingController {
                     example = "2026-10-12T15:10:00Z") Instant venueResponseExpiresAt,
             @NotNull @Schema(description = "True while an emergency pauses the response timer.") Boolean venueResponsePaused,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true,
+                    description = "While AWAITING_CUSTOMER_CONFIRMATION: the customer's Late Confirm deadline, "
+                            + "MIN(initiation + 5 min, startAt), an instant — never a countdown (FR-LCF-09, NFR-10).",
+                    example = "2026-10-12T17:35:00Z") Instant lateConfirmExpiresAt,
+            @NotNull @Schema(description = "True while an emergency or selling block pauses the Late Confirm timer "
+                    + "(FR-OPS-41).") Boolean lateConfirmPaused,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true,
                     description = "ONLINE bookings only.") VenueBookingCustomer customer,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true,
                     description = "MANUAL bookings only.") VenueBookingWalkIn walkIn,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) AttendanceResult attendanceResult,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true,
+                    description = "ONLINE bookings only: the check-in and late windows as instants and the evidence "
+                            + "recorded. A MANUAL booking has no attendance actions (FR-MAN-04).")
+            VenueBookingAttendance attendance,
             @NotNull @Schema(example = "2026-10-12T15:00:00Z") Instant createdAt) {
 
         /**
@@ -389,6 +438,8 @@ public class VenueBookingController {
          * when hidden). {@code attendanceResult} stays null here: no booking E7-47 answers with has started, and a
          * manual booking gets no attendance record at creation or cancellation - its NOT_APPLICABLE result is E7-61's
          * (FR-ATT-07, FR-MAN-06; PO decision 10 Oct 2026, E7-48, D9; the bookings list and detail are E7-49's).
+         * {@code lateConfirmExpiresAt} / {@code lateConfirmPaused} are E7-58's and {@code attendance} E7-59's (Sprint 3
+         * contract, E7-54): no booking these routes answer with is AWAITING_CUSTOMER_CONFIRMATION or has started.
          */
         public static VenueBooking of(VenueBookingRow row) {
             VenueBookingCustomer customer = row.source() == BookingSource.ONLINE
@@ -400,16 +451,43 @@ public class VenueBookingController {
                             row.activity(), row.consoleType(), row.playMode()),
                     row.startAt(), row.endAt(), row.businessDate(), row.nominalBookedMinutes(),
                     MoneyView.of(row.venuePriceTotal()), row.venueResponseExpiresAt(), row.venueResponsePaused(),
-                    customer, walkIn, null, row.createdAt());
+                    null, false, customer, walkIn, null, null, row.createdAt());
         }
 
         /** The same booking with the customer phone absent (arch 10 §5.1): only a member left out, nothing changed. */
         VenueBooking withoutCustomerPhone() {
             return customer == null ? this : new VenueBooking(bookingId, source, status, terminalReason,
                     rejectReasonText, resource, startAt, endAt, businessDate, nominalBookedMinutes, venuePriceTotal,
-                    venueResponseExpiresAt, venueResponsePaused, new VenueBookingCustomer(customer.username(), null),
-                    walkIn, attendanceResult, createdAt);
+                    venueResponseExpiresAt, venueResponsePaused, lateConfirmExpiresAt, lateConfirmPaused,
+                    new VenueBookingCustomer(customer.username(), null), walkIn, attendanceResult, attendance, createdAt);
         }
+    }
+
+    /**
+     * The attendance windows of an online booking as instants (arch 07 §7.1, FRS §2.5) and the evidence recorded, so
+     * the Dashboard enables each action from the API and the server clock, never its own rule (NFR-10). Each window
+     * is half-open: open at {@code opensAt}, closed at {@code closesAt}. Evidence reversed by a Platform Admin is
+     * absent (FR-ATT-11).
+     */
+    @Schema(name = "VenueBookingAttendance")
+    public record VenueBookingAttendance(
+            @NotNull @Schema(description = "Check-in: [startAt, startAt + 15 min) (FR-ATT-02).")
+            VenueBookingTimeWindow checkInWindow,
+            @NotNull @Schema(description = "Mark Present — Late and No-show: [startAt + 15 min, endAt) (FR-ATT-03, "
+                    + "FR-ATT-04).") VenueBookingTimeWindow lateWindow,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true, example = "2026-10-12T18:04:00Z")
+            Instant checkedInAt,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true, example = "2026-10-12T18:20:00Z")
+            Instant latePresentAt,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true, example = "2026-10-12T18:20:00Z")
+            Instant noShowAt) {
+    }
+
+    /** A half-open window: open from {@code opensAt}, closed from {@code closesAt}. */
+    @Schema(name = "VenueBookingTimeWindow")
+    public record VenueBookingTimeWindow(
+            @NotNull @Schema(example = "2026-10-12T18:00:00Z") Instant opensAt,
+            @NotNull @Schema(example = "2026-10-12T18:15:00Z") Instant closesAt) {
     }
 
     /** One booking with its history (append-only, oldest first; FR-AUD-05). */

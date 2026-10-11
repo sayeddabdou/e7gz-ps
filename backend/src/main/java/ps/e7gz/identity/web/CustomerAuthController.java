@@ -22,15 +22,16 @@ import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
+import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.ResponseMetaFactory;
 import ps.e7gz.identity.internal.AuthSessions;
 import ps.e7gz.identity.internal.CustomerRegistration;
 import ps.e7gz.identity.internal.PasswordPolicy;
 
 /**
- * Customer registration, phone verification and sessions (arch 09 section 2 and section 3.1; FR-ACC-01…06; arch 10
- * section 2). Public: no access token (arch 09 section 1.2). Size limits below are technical input bounds, not Product
- * rules.
+ * Customer registration, phone verification, sessions and password reset (arch 09 section 2 and section 3.1;
+ * FR-ACC-01…06, FR-ACC-09; arch 10 section 2). Public: no access token (arch 09 section 1.2). Password reset is a stub of
+ * the Sprint 3 contract (E7-54) until E7-57. Size limits below are technical input bounds, not Product rules.
  */
 @RestController
 @RequestMapping("/api/v1/customer/auth")
@@ -112,6 +113,35 @@ public class CustomerAuthController {
         sessions.logout(AuthSubjectType.CUSTOMER, request.refreshToken());
     }
 
+    @PostMapping("/password-reset/request")
+    @ResponseStatus(HttpStatus.CREATED)
+    @Operation(operationId = "customerRequestPasswordReset",
+            summary = "Send a password reset code to the account's verified phone (FR-ACC-09)",
+            description = "By phone OTP only: reset by email waits for email verification (PO decision 11 Oct 2026, "
+                    + "E7-54). A phone with no account, or whose account never verified it, is NOT_FOUND, like "
+                    + "otp/send. The OTP limits of FR-ACC-04 apply; a new code supersedes the previous one. "
+                    + "Implemented by E7-57.")
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
+    @ApiError(status = 429, codes = {ApiErrorCode.OTP_RESEND_TOO_SOON, ApiErrorCode.OTP_HOURLY_LIMIT_REACHED})
+    public DataResponse<CustomerOtpChallengeView> requestPasswordReset(
+            @Valid @RequestBody CustomerPasswordResetRequest request) {
+        throw NotImplementedYet.stub();
+    }
+
+    @PostMapping("/password-reset/complete")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(operationId = "customerCompletePasswordReset",
+            summary = "Set a new password with the reset code; every session ends (FR-ACC-09)",
+            description = "No old password (FR-ACC-09). The new password follows VALIDATION RULES §2.1, otherwise 400 "
+                    + "VALIDATION_FAILED on field password. Every refresh token of the account is revoked, so the "
+                    + "customer logs in again (PO decision 11 Oct 2026, E7-54). Implemented by E7-57.")
+    @ApiError(status = 403, codes = ApiErrorCode.ACCOUNT_DELETED)
+    @ApiError(status = 422, codes = {ApiErrorCode.OTP_INVALID, ApiErrorCode.OTP_EXPIRED})
+    @ApiError(status = 429, codes = ApiErrorCode.OTP_ATTEMPTS_EXCEEDED)
+    public void completePasswordReset(@Valid @RequestBody CustomerPasswordResetCompleteRequest request) {
+        throw NotImplementedYet.stub();
+    }
+
     /** Arch 09 section 2: {@code {fullName, username, phone, email, password}}, all required (FR-ACC-01). */
     @Schema(name = "CustomerRegisterRequest")
     public record CustomerRegisterRequest(
@@ -147,6 +177,28 @@ public class CustomerAuthController {
     public record CustomerVerifyPhoneRequest(
             @NotNull @Schema(example = "9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d") UUID otpChallengeId,
             @NotBlank @Pattern(regexp = "[0-9]{6}") @Schema(example = "482913") String code) {
+    }
+
+    @Schema(name = "CustomerPasswordResetRequest")
+    public record CustomerPasswordResetRequest(
+            @NotBlank @Size(max = 32) @Schema(example = "01012345678") String phone) {
+    }
+
+    /** FR-ACC-09: the reset code and the new password; no old password. */
+    @Schema(name = "CustomerPasswordResetCompleteRequest")
+    public record CustomerPasswordResetCompleteRequest(
+            @NotNull @Schema(example = "9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d") UUID otpChallengeId,
+            @NotBlank @Pattern(regexp = "[0-9]{6}") @Schema(example = "482913") String code,
+            @NotBlank @Size(min = PasswordPolicy.MIN_LENGTH, max = MAX_TEXT)
+            @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY,
+                    description = "At least 8 characters, with at least one letter and one digit "
+                            + "(VALIDATION RULES §2.1). Otherwise 400 VALIDATION_FAILED on field password.")
+            String password) {
+
+        @Override
+        public String toString() {
+            return "CustomerPasswordResetCompleteRequest[<redacted>]";
+        }
     }
 
     @Schema(name = "CustomerLoginRequest")

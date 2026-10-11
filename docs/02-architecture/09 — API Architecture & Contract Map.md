@@ -5,6 +5,7 @@
 **Updated:** 2 October 2026 — Venue/Admin browser session in an HttpOnly cookie (`§2`, `ADR-029`); Sprint 1 contract decisions (E7-22): venue marketplace status actions, venue account creation, resource creation, Activities view-only, three new error codes (`§1.5`, `§4.2`, `§5`).
 **Updated:** 5 October 2026 — Sprint 2 contract decisions (E7-39): `BOOKING_STATE_CHANGED` (`§1.5`), booking price quote (`§3.3`), device revoke (`§3.4`), venue booking detail, Web Push subscription routes and stream authentication (`§4.1`).
 **Updated:** 10 October 2026 — E7-43 decisions: admin "try again" for a dead-lettered notification delivery (`§5`) and `NOTIFICATION_DELIVERY_NOT_DEAD_LETTER` (`§1.5`).
+**Updated:** 11 October 2026 — Sprint 3 contract decisions (E7-54): phone change confirm route, password reset by phone OTP, email routes kept as stubs (`§3.1`); venue-side Late Confirm codes (`§4.1`).
 
 **Style.** REST + JSON over HTTPS, base `/api/v1`, OpenAPI 3.1 generated from code, typed TypeScript clients generated for all three surfaces (`ADR-012`).
 
@@ -211,11 +212,17 @@ sequenceDiagram
 | `GET` `PATCH` | `/customer/profile` | customer | `FR-ACC-07` |
 | `POST` | `/customer/profile/username` | customer | `FR-ACC-07` — 30-day cooldown |
 | `POST` | `/customer/profile/phone` · `/email` | customer | `FR-ACC-07` — verification-gated |
+| `POST` | `/customer/profile/phone/verify` | customer | `FR-ACC-07` — confirms the new phone; Product Owner decision, 11 Oct 2026 (E7-54) |
 | `POST` | `/customer/profile/email/verify` | customer | `FR-ACC-05` |
 | `GET` | `/customer/account-standing` | customer | `FR-TRS-15`, `FR-ACC-11` |
 | `POST` | `/customer/account/deletion-request` | customer | `FR-ACC-10` — create/reuse unresolved request; no hard delete |
 
 `GET /customer/account-standing` returns **exactly one current ban** plus penalty stage, current consecutive count, current threshold, ban start, ban until and remaining time (`FR-TRS-15`), and Verified Player qualification progress and operational status as **two separate fields** (`FR-ACC-11`).
+
+**Sprint 3 contract decisions** (Product Owner, 11 Oct 2026, E7-54):
+- **Phone change** is two calls: `POST /customer/profile/phone {phone}` sends a code to the new phone and returns `{otpChallengeId}`; `POST /customer/profile/phone/verify {otpChallengeId, code}` makes it the account's phone.
+- **Email**: `POST /customer/profile/email {email}` → `{otpChallengeId}` and `POST /customer/profile/email/verify {otpChallengeId, code}` verify the current email or change it to a new one. Both stay `501` stubs until email verification (deferred 30 Sep 2026) is decided.
+- **Password reset** is by phone OTP only while email verification is deferred: `request {phone}` → `{otpChallengeId}` (an unknown or never-verified phone is `404 NOT_FOUND`, like `otp/send`); `complete {otpChallengeId, code, password}` → `204`, and every refresh token of the account is revoked, so the customer logs in again.
 
 > Account deletion is initiated with `POST /customer/account/deletion-request`. It creates/reuses the durable request; it is **not** a destructive `DELETE /customer/account`. Completion remains the audited O19 Admin/Support anonymisation path (`FR-ACC-10`, PCR-002).
 
@@ -341,6 +348,8 @@ Venues with marketplace `ONBOARDING`, `INACTIVE` or `SUSPENDED` are absent from 
 ```
 
 No `details`, no field, no hint. The real cause — the 4-commitment limit, a ban, a schedule conflict — is recorded internally as `LATE_CONFIRM_FAILED_BOOKING_LIMIT` and is never returned on this route. A contract test asserts that this endpoint can emit no other ineligibility code.
+
+The venue- and room-side failures of the same route (`FR-LCF-02`, `FR-LCF-03`) reuse existing codes (Product Owner decision, 11 Oct 2026, E7-54): the venue not inside an operating session now, or the original interval no longer within the opening hours → `INTERVAL_NOT_WITHIN_ONE_SESSION`; an inactive area → `AREA_INACTIVE`; selling blocks → `VENUE_SELLING_BLOCK_ACTIVE` / `RESOURCE_SELLING_BLOCK_ACTIVE`; a room no longer eligible → `RESOURCE_NOT_ELIGIBLE`; the interval taken → `409 LATE_CONFIRM_RESOURCE_CONFLICT`.
 
 **Availability schedule payload** (`FR-VEN-37`) uses exactly these display states: `FREE · PENDING · AWAITING_CUSTOMER_CONFIRMATION · CONFIRMED · ACTIVE · MANUAL · TOURNAMENT_HOLD · MAINTENANCE · CLOSURE`.
 

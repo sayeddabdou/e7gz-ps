@@ -29,7 +29,14 @@ class IdempotencyScopeTest {
             "post /api/v1/venue/bookings/{bookingId}/reject",                   // venue reject, E7-47
             "post /api/v1/venue/bookings/{bookingId}/reject-after-expiry",      // reject after expiry, E7-47
             "post /api/v1/venue/bookings",                                      // manual booking create, E7-48
-            "post /api/v1/venue/bookings/{bookingId}/cancel-manual");           // manual booking cancel, E7-48
+            "post /api/v1/venue/bookings/{bookingId}/cancel-manual",            // manual booking cancel, E7-48
+            "post /api/v1/customer/bookings/{bookingId}/late-confirm/accept",   // Late Confirm accept, E7-58
+            "post /api/v1/customer/bookings/{bookingId}/late-confirm/decline",  // Late Confirm decline, E7-58
+            "post /api/v1/venue/bookings/{bookingId}/late-confirm",             // Late Confirm send, E7-58
+            "post /api/v1/venue/bookings/{bookingId}/cancel-confirmed",         // venue cancels CONFIRMED, E7-114
+            "post /api/v1/venue/bookings/{bookingId}/check-in",                 // check-in, E7-59
+            "post /api/v1/venue/bookings/{bookingId}/late-present",             // Mark Present - Late, E7-59
+            "post /api/v1/venue/bookings/{bookingId}/no-show");                 // no-show, E7-59
 
     /** Writes outside ADR-015's scope, so the header is accepted but optional. */
     static final Map<String, List<String>> OPTIONAL = Map.of(
@@ -70,6 +77,12 @@ class IdempotencyScopeTest {
             "admin notification \"try again\" (E7-43: re-sends a message, no commitment, money or points; a second "
                     + "press answers NOTIFICATION_DELIVERY_NOT_DEAD_LETTER)", List.of(
                     "post /api/v1/admin/notification-deliveries/{deliveryId}/recover"),
+            "customer password reset and profile (no commitment, money or points; SPRINT-3-CONTRACT.md)", List.of(
+                    "post /api/v1/customer/auth/password-reset/request",
+                    "post /api/v1/customer/auth/password-reset/complete",
+                    "patch /api/v1/customer/profile", "post /api/v1/customer/profile/username",
+                    "post /api/v1/customer/profile/phone", "post /api/v1/customer/profile/phone/verify",
+                    "post /api/v1/customer/profile/email", "post /api/v1/customer/profile/email/verify"),
             "notifications and push (SPRINT-2-CONTRACT.md: optional)", List.of(
                     "post /api/v1/customer/notifications/{notificationId}/read",
                     "post /api/v1/customer/notifications/devices",

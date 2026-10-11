@@ -40,6 +40,7 @@ const booking: components["schemas"]["CustomerBookingDetail"] = {
   displayBucket: "upcoming",
   endAt: "2026-10-12T17:00:00Z",
   history: [],
+  lateConfirm: null,
   nominalBookedMinutes: 120,
   resource: { activity: "PLAYSTATION", consoleType: "PS5", name: "Room 1", playMode: "SINGLE" },
   startAt: "2026-10-12T15:00:00Z",

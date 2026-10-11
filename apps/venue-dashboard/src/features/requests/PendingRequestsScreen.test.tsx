@@ -7,12 +7,15 @@ import { PendingRequestsScreen, type PendingRequestsViewModel } from "./PendingR
 type Booking = components["schemas"]["VenueBooking"];
 
 const booking: Booking = {
+  attendance: null,
   attendanceResult: null,
   bookingId: "018f3c2a-7b1e-7c4d-9e0f-1a2b3c4d5e6f",
   businessDate: "2026-10-12",
   createdAt: "2026-10-12T15:00:00Z",
   customer: { username: "omar_k", phone: "+201001234567" },
   endAt: "2026-10-12T20:00:00Z",
+  lateConfirmExpiresAt: null,
+  lateConfirmPaused: false,
   nominalBookedMinutes: 120,
   rejectReasonText: null,
   resource: { activity: "PLAYSTATION", consoleType: "PS5", id: "r-1", name: "Room 3", playMode: "SINGLE" },

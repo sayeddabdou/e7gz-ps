@@ -42,12 +42,15 @@ describe("live requests controller", () => {
 
   it("keeps a successfully handled request removed when a stateless mock returns it again", async () => {
     const booking: components["schemas"]["VenueBooking"] = {
+      attendance: null,
       attendanceResult: null,
       bookingId: "b-1",
       businessDate: "2026-10-12",
       createdAt: "2026-10-12T15:00:00Z",
       customer: { username: "omar_k", phone: "+201001234567" },
       endAt: "2026-10-12T20:00:00Z",
+      lateConfirmExpiresAt: null,
+      lateConfirmPaused: false,
       nominalBookedMinutes: 120,
       rejectReasonText: null,
       resource: { activity: "PLAYSTATION", consoleType: "PS5", id: "r-1", name: "Room 3", playMode: "SINGLE" },
