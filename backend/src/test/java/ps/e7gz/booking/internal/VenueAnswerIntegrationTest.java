@@ -12,8 +12,6 @@ import static ps.e7gz.booking.internal.VenueAnswerDb.t1;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
@@ -34,8 +32,6 @@ import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.concurrency.ConcurrentRace;
-import ps.e7gz.inventory.ledger.api.ReservationLedger;
-import ps.e7gz.loyalty.api.BookingFeeRefunds;
 import ps.e7gz.messaging.api.CommandAnswer;
 import ps.e7gz.messaging.api.IntegrationEvents;
 import ps.e7gz.scheduling.api.JobOutcome;
@@ -567,8 +563,13 @@ class VenueAnswerIntegrationTest extends IntegrationTest {
 
     // ----------------------------------------------------------------------------------- races and rollback
 
+    /**
+     * Serialised by {@code begin_command}. Cancel first: the Accept finds no PENDING booking. Accept first: the booking
+     * is CONFIRMED before its start, which the customer may still cancel (PO decision 11 Oct 2026, E7-49, D2), so both
+     * succeed, in that order. Either way the booking ends CANCELLED with its room released.
+     */
     @Test
-    void customerCancellationAndVenueAcceptRacingLeaveExactlyOneOutcome() {
+    void customerCancellationAndVenueAcceptRacingLeaveOneConsistentOutcome() {
         OnlineBookingWorld world = OnlineBookingWorld.create();
         CreatedBooking created = pending(world);
 
@@ -588,19 +589,22 @@ class VenueAnswerIntegrationTest extends IntegrationTest {
             }
         });
 
-        assertThat(race.values()).hasSize(1);
-        assertThat(race.failures()).singleElement().isInstanceOfSatisfying(ApiException.class,
-                e -> assertThat(e.code()).isEqualTo(ApiErrorCode.BOOKING_STATE_CHANGED));
         BookingRow stored = booking(created.bookingId());
-        if (race.values().get(0).equals("ACCEPTED")) {
-            assertThat(stored.status()).isEqualTo("CONFIRMED");
-            assertThat(reservation(created.reservationId()).active()).isTrue();
+        assertThat(stored.status()).isEqualTo("CANCELLED");
+        assertThat(stored.terminalReason()).isEqualTo("CUSTOMER_CANCELLED");
+        assertThat(reservation(created.reservationId()).active()).isFalse();
+        if (race.values().size() == 2) {
+            assertThat(race.values()).containsExactlyInAnyOrder("ACCEPTED", "CANCELLED");
+            assertThat(history(created.bookingId())).extracting(HistoryRow::toStatus)
+                    .containsExactly("PENDING", "CONFIRMED", "CANCELLED");
+            assertThat(job(bookingStart(created.bookingId())).orElseThrow().status()).isEqualTo("SUPERSEDED");
         } else {
-            assertThat(stored.status()).isEqualTo("CANCELLED");
-            assertThat(reservation(created.reservationId()).active()).isFalse();
+            assertThat(race.values()).containsExactly("CANCELLED");
+            assertThat(race.failures()).singleElement().isInstanceOfSatisfying(ApiException.class,
+                    e -> assertThat(e.code()).isEqualTo(ApiErrorCode.BOOKING_STATE_CHANGED));
+            assertThat(history(created.bookingId())).hasSize(2);
             assertThat(job(bookingStart(created.bookingId()))).isEmpty();
         }
-        assertThat(history(created.bookingId())).hasSize(2);
     }
 
     @Test
@@ -653,10 +657,7 @@ class VenueAnswerIntegrationTest extends IntegrationTest {
     VenueBookings bookings;
 
     @Autowired
-    ReservationLedger ledger;
-
-    @Autowired
-    BookingFeeRefunds refunds;
+    CustomerCancellation cancellation;
 
     private static void moveDeadline(CommandContext context, CreatedBooking created, Instant deadline) {
         Deadlines.move(context, "booking.booking.venue_response_expires_at", created.bookingId(), deadline);
@@ -769,32 +770,9 @@ class VenueAnswerIntegrationTest extends IntegrationTest {
                 t1(created.bookingId()), CorrelationId.generate());
     }
 
-    /**
-     * TEST-ONLY stand-in for E7-49's customer cancel (FR-BOK-31): PENDING -> CANCELLED / CUSTOMER_CANCELLED with the
-     * reservation released, through the same database guards, under the same locks.
-     */
+    /** The customer's real cancel (E7-49, FR-BOK-31), under the same locks as the venue's answer it races. */
     private void cancelAsCustomer(CommandContext context, CreatedBooking created) {
-        int changed = context.jdbc().sql("""
-                        UPDATE booking.booking
-                           SET status = 'CANCELLED', terminal_reason = 'CUSTOMER_CANCELLED', terminal_at = :at,
-                               fee_treatment = 'CUSTOMER_POLICY'
-                         WHERE id = :id AND status = 'PENDING'""")
-                .param("at", OffsetDateTime.ofInstant(context.commandNow(), ZoneOffset.UTC))
-                .param("id", created.bookingId()).update();
-        if (changed != 1) {
-            throw new ApiException(ApiErrorCode.BOOKING_STATE_CHANGED);
-        }
-        ledger.release(context, created.reservationId(), context.commandNow(), "CUSTOMER_CANCELLED");
-        UUID history = UUID.randomUUID();
-        context.jdbc().sql("""
-                        INSERT INTO booking.booking_history (id, booking_id, sequence, occurred_at, entry_kind,
-                                                             from_status, to_status, terminal_reason, actor_type,
-                                                             actor_id, correlation_id)
-                        VALUES (:history, :id, 2, now(), 'STATUS_TRANSITION', 'PENDING', 'CANCELLED',
-                                'CUSTOMER_CANCELLED', 'CUSTOMER', :customer, gen_random_uuid())""")
-                .param("history", history).param("id", created.bookingId()).param("customer", created.customerId())
-                .update();
-        refunds.recordDecision(context, created.customerId(), created.bookingId(), history);
+        cancellation.cancel(context, created.bookingId(), created.customerId());
     }
 
     private void customerCancels(OnlineBookingWorld world, CreatedBooking created) {

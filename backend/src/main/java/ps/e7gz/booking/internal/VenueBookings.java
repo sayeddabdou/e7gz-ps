@@ -14,13 +14,16 @@ import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
+import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.error.ApiException;
 import ps.e7gz.identity.api.CustomerContacts;
 import ps.e7gz.venue.api.VenueAccountVenues;
 
 /**
- * The venue's reads of its bookings for E7-47 - the Pending and Missed request lists (FR-VEN-34, FR-BOK-20) - and the
- * {@link VenueBookingRow} every venue action answers with. The customer's phone goes through the counterpart
- * visibility rule at the read instant ({@link ContactVisibility}, arch 10 section 5.1, NFR-18): absent when hidden.
+ * The venue's reads of its bookings - the Pending and Missed request lists of E7-47 (FR-VEN-34, FR-BOK-20), the
+ * booking history list and one booking with its history of E7-49 (FR-VEN-38) - and the {@link VenueBookingRow} every
+ * venue action answers with. The customer's phone goes through the counterpart visibility rule at the read instant
+ * ({@link ContactVisibility}, arch 10 section 5.1, NFR-18): absent when hidden.
  */
 @Component
 public class VenueBookings {
@@ -29,13 +32,32 @@ public class VenueBookings {
     private final VenueAnswerStore store;
     private final CustomerContacts customers;
     private final VenueAccountVenues accounts;
+    private final BookingHistoryStore histories;
 
     VenueBookings(CommandRunner runner, VenueAnswerStore store, CustomerContacts customers,
-                  VenueAccountVenues accounts) {
+                  VenueAccountVenues accounts, BookingHistoryStore histories) {
         this.runner = runner;
         this.store = store;
         this.customers = customers;
         this.accounts = accounts;
+        this.histories = histories;
+    }
+
+    /** A page of the venue's bookings; {@code nextCursor} is null on the last page. */
+    public record Page(List<VenueBookingRow> items, String nextCursor) {
+
+        public Page {
+            items = List.copyOf(items);
+        }
+    }
+
+    /** One booking with the history the venue may see, oldest first (FR-AUD-05, NFR-19). */
+    public record Detail(VenueBookingRow booking, List<BookingHistoryEntry> history) {
+
+        public Detail {
+            Objects.requireNonNull(booking, "booking");
+            history = List.copyOf(history);
+        }
     }
 
     /** PENDING requests of the signed-in account's venue, soonest deadline first. */
@@ -50,6 +72,44 @@ public class VenueBookings {
         UUID venueId = accounts.venueOf(Objects.requireNonNull(venueAccountId, "venueAccountId"));
         return runner.run(new Read<>(context -> store.missed(context, venueId, context.commandNow()).stream()
                 .map(row -> row(context, row)).toList()));
+    }
+
+    /**
+     * One page of the venue's booking history (FR-VEN-38, E7-49), newest first; without dates, all dates (PO decision
+     * 11 Oct 2026, E7-49, D4). Every source and status of the signed-in account's own venue only.
+     *
+     * <p>{@code q} names a Customer only by their exact current username (PO decision 11 Oct 2026, E7-49, D3
+     * amendment): one Identity lookup per search, with username login's trimming and case rule; never a partial
+     * username and never a phone. Usernames are Identity's ({@code iam.user_account}), so they are read through its
+     * API, never by joining its table. The Customer found matters only through this venue's own bookings.
+     */
+    public Page list(UUID venueAccountId, VenueBookingFilter filter, String cursor, Integer limit) {
+        UUID venueId = accounts.venueOf(Objects.requireNonNull(venueAccountId, "venueAccountId"));
+        Objects.requireNonNull(filter, "filter");
+        BookingCursor.Position after = BookingCursor.decode(cursor);
+        int size = BookingCursor.size(limit);
+        return runner.run(new Read<>(context -> {
+            UUID usernameMatch = filter.q() == null ? null
+                    : customers.findByUsername(context, filter.q()).orElse(null);
+            List<ViewRow> rows = store.page(context, venueId, filter, usernameMatch, after, size + 1);
+            List<VenueBookingRow> page = rows.stream().limit(size).map(row -> row(context, row)).toList();
+            return new Page(page, rows.size() > size
+                    ? BookingCursor.encode(new BookingCursor.Position(page.getLast().startAt(),
+                            page.getLast().bookingId()))
+                    : null);
+        }));
+    }
+
+    /** One booking of the venue with its history, without what NFR-19 hides; another venue's is NOT_FOUND. */
+    public Detail detail(UUID venueAccountId, UUID bookingId) {
+        UUID venueId = accounts.venueOf(Objects.requireNonNull(venueAccountId, "venueAccountId"));
+        Objects.requireNonNull(bookingId, "bookingId");
+        return runner.run(new Read<>(context -> {
+            ViewRow row = store.view(context, bookingId)
+                    .filter(found -> found.venueId().equals(venueId))
+                    .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND));
+            return new Detail(row(context, row), histories.forVenue(context, bookingId));
+        }));
     }
 
     /** The booking as it is now on the command's transaction, after the command's own writes. */

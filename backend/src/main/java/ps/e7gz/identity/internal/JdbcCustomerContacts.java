@@ -20,6 +20,18 @@ class JdbcCustomerContacts implements CustomerContacts {
              WHERE u.id = :id
             """;
 
+    /**
+     * The username half of {@link CustomerAccounts}' login match, on {@code ux_user_username_normalized} (unique among
+     * accounts not anonymised, so at most one row); the phone half is deliberately absent (PO decision 11 Oct 2026,
+     * E7-49, D3 amendment).
+     */
+    static final String FIND_BY_USERNAME = """
+            SELECT u.id
+              FROM iam.user_account u
+             WHERE u.anonymised_at IS NULL
+               AND lower(btrim(u.username)) = lower(btrim(:username))
+            """;
+
     @Override
     public Optional<Contact> find(CommandContext command, UUID userId) {
         Objects.requireNonNull(command, "command");
@@ -27,6 +39,18 @@ class JdbcCustomerContacts implements CustomerContacts {
                 .param("id", Objects.requireNonNull(userId, "userId"))
                 .query((rs, n) -> new Contact(rs.getObject("id", UUID.class), rs.getString("username"),
                         rs.getString("phone")))
+                .optional();
+    }
+
+    @Override
+    public Optional<UUID> findByUsername(CommandContext command, String username) {
+        Objects.requireNonNull(command, "command");
+        if (username == null || username.isBlank()) {
+            return Optional.empty();
+        }
+        return command.jdbc().sql(FIND_BY_USERNAME)
+                .param("username", username)
+                .query(UUID.class)
                 .optional();
     }
 }

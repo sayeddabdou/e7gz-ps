@@ -14501,7 +14501,7 @@
     },
     "/api/v1/customer/bookings": {
       "get": {
-        "description": "upcoming = PENDING, AWAITING_CUSTOMER_CONFIRMATION, CONFIRMED, ACTIVE · completed = COMPLETED · cancelled = VENUE_RESPONSE_EXPIRED, CANCELLED, REJECTED, NO_SHOW (FR-BOK-19). Implemented by E7-49.",
+        "description": "upcoming = PENDING, AWAITING_CUSTOMER_CONFIRMATION, CONFIRMED, ACTIVE · completed = COMPLETED · cancelled = VENUE_RESPONSE_EXPIRED, CANCELLED, REJECTED, NO_SHOW (FR-BOK-19). upcoming lists the soonest first; completed and cancelled the most recent first. Cursor-paged (nextCursor null on the last page). venue.phone is absent when the retention rule hides it (arch 10 §5.1). Implemented by E7-49.",
         "operationId": "customerListBookings",
         "parameters": [
           {
@@ -15512,7 +15512,7 @@
     },
     "/api/v1/customer/bookings/{bookingId}": {
       "get": {
-        "description": "venue.phone is absent when the retention rule hides it — not null, not masked (NFR-18, arch 10 §5.1). Implemented by E7-49.",
+        "description": "venue.phone is absent when the retention rule hides it — not null, not masked (NFR-18, arch 10 §5.1): terminal before start until terminalAt + 2h, at or after start until endAt + 2h, VENUE_RESPONSE_EXPIRED until expiry + 2h - and once that has passed it stays hidden unless a Late Confirm reopens it (PO decision 11 Oct 2026, E7-49, D1). Another customer's booking is NOT_FOUND. Implemented by E7-49.",
         "operationId": "customerGetBooking",
         "parameters": [
           {
@@ -15798,7 +15798,7 @@
     },
     "/api/v1/customer/bookings/{bookingId}/cancel": {
       "post": {
-        "description": "Allowed while now < startAt, also while the venue response timer is paused (FR-BOK-32). At or after startAt it is DEADLINE_PASSED; a booking already terminal is BOOKING_STATE_CHANGED. Terminal reason CUSTOMER_CANCELLED. Implemented by E7-49.",
+        "description": "Allowed for PENDING or CONFIRMED while now < startAt, also while the venue response timer is paused (FR-BOK-32). ACTIVE, or at or after startAt, is DEADLINE_PASSED; VENUE_RESPONSE_EXPIRED, AWAITING_CUSTOMER_CONFIRMATION and a booking already terminal are BOOKING_STATE_CHANGED (PO decision 11 Oct 2026, E7-49). Another customer's booking is NOT_FOUND. Terminal reason CUSTOMER_CANCELLED; the reservation is released at once. Implemented by E7-49.",
         "operationId": "customerCancelBooking",
         "parameters": [
           {
@@ -19047,7 +19047,7 @@
     },
     "/api/v1/venue/bookings": {
       "get": {
-        "description": "from and to are business dates, inclusive (arch 04 §4.3); q is the free-text search of FR-VEN-38. Implemented by E7-49.",
+        "description": "Every booking of this venue, online and manual, newest first (startAt descending), cursor-paged. from and to are business dates, inclusive (arch 04 §4.3); without them, all dates (PO decision 11 Oct 2026, E7-49, D4); from after to is VALIDATION_FAILED. q matches the exact booking ID, the customer's exact current username (trimmed, case-insensitive; never part of one), and a part of the walk-in name or phone or of the resource name, case-insensitively - never the customer's phone (D3, amended 11 Oct 2026). The customer phone is absent when the retention rule hides it (arch 10 §5.1). Implemented by E7-49.",
         "operationId": "venueListBookings",
         "parameters": [
           {
@@ -19749,7 +19749,7 @@
     },
     "/api/v1/venue/bookings/{bookingId}": {
       "get": {
-        "description": "The customer phone is absent when the retention rule hides it (arch 10 §5.1). The history never shows LATE_CONFIRM_FAILED_BOOKING_LIMIT or LATE_CONFIRM_FAILED_CUSTOMER_CONFLICT: the venue is never told why a customer is ineligible (NFR-19, arch 10 §5.2). Implemented by E7-49.",
+        "description": "The customer phone is absent when the retention rule hides it (arch 10 §5.1). The history never shows LATE_CONFIRM_FAILED_BOOKING_LIMIT or LATE_CONFIRM_FAILED_CUSTOMER_CONFLICT: the venue is never told why a customer is ineligible (NFR-19, arch 10 §5.2). A booking of another venue is NOT_FOUND. Implemented by E7-49.",
         "operationId": "venueGetBooking",
         "parameters": [
           {
