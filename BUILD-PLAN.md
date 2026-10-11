@@ -1609,6 +1609,12 @@ PO decisions 10 Oct 2026 (Sayed, E7-48; quote "PO decision 10 Oct 2026, E7-48" i
 - D10: customerName and customerPhone: trim, blank -> NULL; phone normalised to E.164.
 - Keep the 15-condition manual predicate separate from the online one. Do not change E7-46/E7-47 behaviour.
 
+PO decisions 11 Oct 2026 (Sayed, PR #67 review; quote "PO decision 11 Oct 2026, E7-48" in code comments):
+- D11: PCR-007 is approved as written.
+- D12: An ACTIVE manual booking may be cancelled after endAt if its completion job has not run.
+- D13: The deferred history provenance check is approved instead of changing CommandRunner. Its recorded-actor limitation is explicitly accepted.
+- D14: E7-60 must schedule BOOKING_COMPLETE at endAt whenever a booking (ONLINE or MANUAL) transitions CONFIRMED → ACTIVE.
+
 Constraints: stay inside this task's module(s), except the Platform-lane files of D6 (messaging/, notification/), which you list in the PR for Sayed's review; do not edit docs/ except PCR-007 and the lines it amends (FRS F-16 item 7, FR-MAN-08, arch 06 §1.4); never edit V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4 (./gradlew check green twice, pnpm -r lint typecheck build green), then give me a short summary, the files changed, and any question for the Product Owner. Do not push or open the PR — Sayed reviews first.
 ```
@@ -2024,6 +2030,7 @@ Carry-forward from E7-45 (PO decision 10 Oct 2026, do this too):
 
 Carry-forward from E7-48 (PO decision 10 Oct 2026, do this too):
 - The BOOKING_START handler also starts future MANUAL bookings: E7-48 schedules BOOKING_START at startAt for a CONFIRMED manual booking (same subject/key form as VenueAnswers.BOOKING_START). MANUAL never uses check-in or NO_SHOW (FR-MAN-04).
+- D14 (PO decision 11 Oct 2026, E7-48): schedule BOOKING_COMPLETE at endAt whenever a booking (ONLINE or MANUAL) transitions CONFIRMED → ACTIVE (same subject/key form as E7-48: BOOKING_COMPLETE:<bookingId>).
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
