@@ -438,18 +438,32 @@ class ManualBookingIntegrationTest extends IntegrationTest {
     }
 
     /**
-     * Provisional reading (reported to the PO): an ACTIVE booking whose endAt has passed but whose BOOKING_COMPLETE has
-     * not run is still ACTIVE, so the state-based rule cancels it. The walk-in is written by the owner two hours back.
+     * PO decision 11 Oct 2026, E7-48, D12: an ACTIVE booking whose endAt has passed but whose BOOKING_COMPLETE has not
+     * run is still ACTIVE, so the state-based rule cancels it, and its completion job is superseded. The walk-in is
+     * written by the owner two hours back, with its BOOKING_COMPLETE still PENDING at the past endAt (not yet fired).
      */
     @Test
-    void anActiveBookingPastItsEndIsStillCancelledByTheStateRule() {
+    void anActiveBookingPastItsEndWhoseCompletionHasNotRunIsCancelledAndItsCompletionSuperseded() {
         OnlineBookingWorld world = OnlineBookingWorld.builder().withoutSession().create();
         UUID id = pastWalkIn(world, Duration.ofHours(2), 60);
+        String complete = ManualBookingCommand.bookingCompleteKey(id);
+        OWNER.sql("""
+                INSERT INTO technical.scheduled_job (id, type, subject_id, subject_type, due_at, status,
+                                                     idempotency_key, correlation_id)
+                SELECT gen_random_uuid(), :type, b.id, 'BOOKING', b.end_at, 'PENDING', :key, gen_random_uuid()
+                  FROM booking.booking b WHERE b.id = :id""")
+                .param("type", ManualBookingCommand.BOOKING_COMPLETE).param("key", complete).param("id", id).update();
+        assertThat(row(id).endAt()).isBefore(OnlineBookingWorld.dbNow());
 
         manual.cancel(world.account.id(), id);
 
-        assertThat(row(id).status()).isEqualTo("CANCELLED");
+        ManualRow row = row(id);
+        assertThat(row.status()).isEqualTo("CANCELLED");
+        assertThat(row.terminalReason()).isEqualTo("VENUE_CANCELLED_MANUAL_BOOKING");
+        assertThat(row.terminalAt()).isAfter(row.endAt());
         assertThat(reservation(id).active()).isFalse();
+        assertThat(job(complete)).hasValueSatisfying(j -> assertThat(j.status()).isEqualTo("SUPERSEDED"));
+        assertThat(history(id).get(1).actorType()).isEqualTo("VENUE");
     }
 
     @Test

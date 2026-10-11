@@ -38,7 +38,7 @@ import ps.e7gz.venue.api.VenueEligibility;
  *
  * <p>No time check (PCR-007: "before or after startAt"). An ACTIVE booking whose {@code endAt} has passed but whose
  * BOOKING_COMPLETE has not run yet is still ACTIVE, so it is cancelled too: the rule is the state, as approved -
- * a provisional reading reported to the Product Owner.
+ * PO decision 11 Oct 2026, E7-48, D12.
  */
 @Component
 class ManualCancellation {
