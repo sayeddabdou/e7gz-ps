@@ -13,6 +13,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -28,9 +29,13 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import ps.e7gz.booking.internal.BookingAmounts;
+import ps.e7gz.booking.internal.BookingHistoryEntry;
 import ps.e7gz.booking.internal.BookingQuotes;
 import ps.e7gz.booking.internal.ContactVisibility;
 import ps.e7gz.booking.internal.CreatedBooking;
+import ps.e7gz.booking.internal.CustomerBookingRow;
+import ps.e7gz.booking.internal.CustomerBookings;
+import ps.e7gz.booking.internal.DisplayBucket;
 import ps.e7gz.booking.internal.OnlineBookingCreation;
 import ps.e7gz.booking.internal.OnlineBookingRequest;
 import ps.e7gz.common.codes.Activity;
@@ -47,7 +52,6 @@ import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
 import ps.e7gz.common.web.MoneyView;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.PageView;
 import ps.e7gz.common.web.ResponseMetaFactory;
@@ -57,10 +61,10 @@ import ps.e7gz.messaging.api.ResultAggregate;
 import ps.e7gz.messaging.api.StoredResponse;
 
 /**
- * Customer bookings (arch 09 §3.3). Create and quote are implemented (E7-46); list, detail and cancel stay stubs until
- * E7-49. Every write here is in ADR-015's scope, so the Idempotency-Key is required. The customer DTOs are separate
- * from the venue ones (arch 09 §1.1): the venue phone is absent from the payload when the retention rule hides it
- * (NFR-18, FR-PTS-20).
+ * Customer bookings (arch 09 §3.3). Create and quote are E7-46's; My Bookings, one booking and the customer's cancel
+ * are E7-49's. Every write here is in ADR-015's scope, so the Idempotency-Key is required. The customer DTOs are
+ * separate from the venue ones (arch 09 §1.1): the venue phone is absent from the payload when the retention rule hides
+ * it (NFR-18, FR-PTS-20; PO decision 11 Oct 2026, E7-49, D1), on every read and every replay.
  */
 @RestController
 @RequestMapping("/api/v1/customer/bookings")
@@ -70,18 +74,22 @@ public class CustomerBookingController {
 
     /** {@code technical.idempotency_record.endpoint} of creation (arch 08 section 6). */
     static final String CREATE_ENDPOINT = "POST /api/v1/customer/bookings";
+    static final String CANCEL_ENDPOINT = "POST /api/v1/customer/bookings/{bookingId}/cancel";
     static final String BOOKING_AGGREGATE = "BOOKING";
+    static final String BOOKING_ID = "bookingId";
 
     private final BookingQuotes quotes;
     private final OnlineBookingCreation creation;
+    private final CustomerBookings bookings;
     private final ContactVisibility contacts;
     private final Idempotency idempotency;
     private final ResponseMetaFactory meta;
 
-    public CustomerBookingController(BookingQuotes quotes, OnlineBookingCreation creation, ContactVisibility contacts,
-                                     Idempotency idempotency, ResponseMetaFactory meta) {
+    public CustomerBookingController(BookingQuotes quotes, OnlineBookingCreation creation, CustomerBookings bookings,
+                                     ContactVisibility contacts, Idempotency idempotency, ResponseMetaFactory meta) {
         this.quotes = quotes;
         this.creation = creation;
+        this.bookings = bookings;
         this.contacts = contacts;
         this.idempotency = idempotency;
         this.meta = meta;
@@ -153,35 +161,63 @@ public class CustomerBookingController {
             summary = "My bookings in one display bucket (FR-BOK-19)",
             description = "upcoming = PENDING, AWAITING_CUSTOMER_CONFIRMATION, CONFIRMED, ACTIVE · completed = "
                     + "COMPLETED · cancelled = VENUE_RESPONSE_EXPIRED, CANCELLED, REJECTED, NO_SHOW (FR-BOK-19). "
-                    + "Implemented by E7-49.")
+                    + "upcoming lists the soonest first; completed and cancelled the most recent first. Cursor-paged "
+                    + "(nextCursor null on the last page). venue.phone is absent when the retention rule hides it "
+                    + "(arch 10 §5.1). Implemented by E7-49.")
     public DataResponse<PageView<CustomerBookingSummary>> list(
             @RequestParam CustomerBookingBucket bucket,
             @RequestParam(required = false) String cursor,
-            @RequestParam(required = false) @Min(1) @Max(100) Integer limit) {
-        throw NotImplementedYet.stub();
+            @RequestParam(required = false) @Min(1) @Max(100) Integer limit,
+            @AuthenticationPrincipal AuthenticatedSubject customer) {
+        CustomerBookingRow.Page page = bookings.list(customer.id(), bucket.displayBucket(), cursor, limit);
+        return meta.data(new PageView<>(page.items().stream().map(CustomerBookingSummary::of).toList(),
+                page.nextCursor()));
     }
 
     @GetMapping("/{bookingId}")
     @Operation(operationId = "customerGetBooking",
             summary = "One of my bookings with its history (FR-BOK-20, FR-PTS-20)",
             description = "venue.phone is absent when the retention rule hides it — not null, not masked (NFR-18, "
-                    + "arch 10 §5.1). Implemented by E7-49.")
-    public DataResponse<CustomerBookingDetail> get(@PathVariable UUID bookingId) {
-        throw NotImplementedYet.stub();
+                    + "arch 10 §5.1): terminal before start until terminalAt + 2h, at or after start until endAt + 2h, "
+                    + "VENUE_RESPONSE_EXPIRED until expiry + 2h - and once that has passed it stays hidden unless a Late "
+                    + "Confirm reopens it (PO decision 11 Oct 2026, E7-49, D1). Another customer's booking is "
+                    + "NOT_FOUND. Implemented by E7-49.")
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
+    public DataResponse<CustomerBookingDetail> get(@PathVariable UUID bookingId,
+                                                   @AuthenticationPrincipal AuthenticatedSubject customer) {
+        return meta.data(CustomerBookingDetail.of(bookings.detail(customer.id(), bookingId)));
     }
 
+    /**
+     * PO decision 11 Oct 2026, E7-49 (D2): PENDING or CONFIRMED before startAt is cancelled; ACTIVE or at/after startAt
+     * is DEADLINE_PASSED; VENUE_RESPONSE_EXPIRED, AWAITING_CUSTOMER_CONFIRMATION and terminal statuses are
+     * BOOKING_STATE_CHANGED; another customer's booking is NOT_FOUND before any idempotency record. A replay leaves the
+     * venue phone out once the retention rule hides it, through the same resolver as the reads (D1).
+     */
     @PostMapping("/{bookingId}/cancel")
     @Operation(operationId = "customerCancelBooking",
             summary = "Cancel before the start time, free and without penalty (FR-BOK-31, FR-BOK-32)",
-            description = "Allowed while now < startAt, also while the venue response timer is paused (FR-BOK-32). "
-                    + "At or after startAt it is DEADLINE_PASSED; a booking already terminal is BOOKING_STATE_CHANGED. "
-                    + "Terminal reason CUSTOMER_CANCELLED. Implemented by E7-49.")
+            description = "Allowed for PENDING or CONFIRMED while now < startAt, also while the venue response timer "
+                    + "is paused (FR-BOK-32). ACTIVE, or at or after startAt, is DEADLINE_PASSED; "
+                    + "VENUE_RESPONSE_EXPIRED, AWAITING_CUSTOMER_CONFIRMATION and a booking already terminal are "
+                    + "BOOKING_STATE_CHANGED (PO decision 11 Oct 2026, E7-49). Another customer's booking is "
+                    + "NOT_FOUND. Terminal reason CUSTOMER_CANCELLED; the reservation is released at once. "
+                    + "Implemented by E7-49.")
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     @ApiError(status = 409, codes = ApiErrorCode.BOOKING_STATE_CHANGED)
     @ApiError(status = 422, codes = {ApiErrorCode.DEADLINE_PASSED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
     public DataResponse<CustomerBookingDetail> cancel(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
-            @PathVariable UUID bookingId) {
-        throw NotImplementedYet.stub();
+            @PathVariable UUID bookingId,
+            @AuthenticationPrincipal AuthenticatedSubject customer) {
+        StoredResponse<CustomerBookingDetail> response = StoredResponse.of(CustomerBookingDetail.class, 200,
+                        (CustomerBookingDetail detail) -> new ResultAggregate(BOOKING_AGGREGATE, detail.bookingId()))
+                .replayedThrough((context, stored) -> contacts.venuePhoneVisible(context, stored.bookingId())
+                        ? stored : stored.withoutVenuePhone());
+        IdempotentResult<CustomerBookingDetail> result = bookings.cancel(customer.id(), bookingId,
+                idempotency.request(customer, CANCEL_ENDPOINT, idempotencyKey, Map.of(BOOKING_ID, bookingId), null),
+                response, CustomerBookingDetail::of);
+        return meta.data(result.body());
     }
 
     /** arch 09 §3.3 {@code ?bucket=upcoming|completed|cancelled}: lower case on the wire, so lower case here. */
@@ -189,7 +225,15 @@ public class CustomerBookingController {
     public enum CustomerBookingBucket {
         upcoming,
         completed,
-        cancelled
+        cancelled;
+
+        static CustomerBookingBucket of(DisplayBucket bucket) {
+            return valueOf(bucket.name().toLowerCase(Locale.ROOT));
+        }
+
+        DisplayBucket displayBucket() {
+            return DisplayBucket.valueOf(name().toUpperCase(Locale.ROOT));
+        }
     }
 
     /** F-04: the customer chooses the resource, the start and the nominal duration. */
@@ -248,6 +292,10 @@ public class CustomerBookingController {
             @NotNull Activity activity,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) ConsoleType consoleType,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) PlayMode playMode) {
+
+        static CustomerBookingResource of(CustomerBookingRow row) {
+            return new CustomerBookingResource(row.resourceName(), row.activity(), row.consoleType(), row.playMode());
+        }
     }
 
     /** A row of My Bookings (FR-BOK-19). */
@@ -266,6 +314,14 @@ public class CustomerBookingController {
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true,
                     description = "While PENDING: the venue's answer deadline, an instant (NFR-10).",
                     example = "2026-10-12T15:10:00Z") Instant venueResponseExpiresAt) {
+
+        static CustomerBookingSummary of(CustomerBookingRow row) {
+            return new CustomerBookingSummary(row.bookingId(), row.status(),
+                    CustomerBookingBucket.of(row.displayBucket()), row.terminalReason(),
+                    new CustomerBookingVenue(row.venueId(), row.venueName(), row.venuePhone()),
+                    CustomerBookingResource.of(row), row.startAt(), row.endAt(), MoneyView.of(row.totalAmount()),
+                    row.venueResponseExpiresAt());
+        }
     }
 
     /** The booking detail of arch 09 §3.3. */
@@ -313,6 +369,21 @@ public class CustomerBookingController {
                             BookingHistoryEntryKind.STATUS_TRANSITION, null, BookingStatus.PENDING, null, null)));
         }
 
+        /**
+         * A booking as it is now, with its history. {@code attendanceResult} stays null: attendance records are E7-61's
+         * (FR-ATT-07), and no attendance API exists yet. {@code lateConfirm} stays null until E7-58 (Sprint 3 contract,
+         * E7-54).
+         */
+        static CustomerBookingDetail of(CustomerBookingRow row) {
+            return new CustomerBookingDetail(row.bookingId(), row.status(),
+                    CustomerBookingBucket.of(row.displayBucket()), row.terminalReason(),
+                    new CustomerBookingVenue(row.venueId(), row.venueName(), row.venuePhone()),
+                    CustomerBookingResource.of(row), row.startAt(), row.endAt(), row.nominalBookedMinutes(),
+                    MoneyView.of(row.venuePriceTotal()), CustomerBookingFee.of(row.bookingFee()),
+                    MoneyView.of(row.totalAmount()), row.venueResponseExpiresAt(), row.venueResponsePaused(), null, null,
+                    row.history().stream().map(CustomerBookingHistoryEntry::of).toList());
+        }
+
         /** The same detail with the venue phone absent (arch 10 §5.1): only a member left out, nothing changed. */
         CustomerBookingDetail withoutVenuePhone() {
             return new CustomerBookingDetail(bookingId, status, displayBucket, terminalReason,
@@ -348,5 +419,10 @@ public class CustomerBookingController {
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) BookingStatus toStatus,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) BookingTerminalReason terminalReason,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) BookingEventType eventType) {
+
+        static CustomerBookingHistoryEntry of(BookingHistoryEntry entry) {
+            return new CustomerBookingHistoryEntry(entry.at(), entry.kind(), entry.fromStatus(), entry.toStatus(),
+                    entry.terminalReason(), entry.eventType());
+        }
     }
 }

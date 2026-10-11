@@ -16,6 +16,14 @@ public interface CustomerContacts {
     Optional<Contact> find(CommandContext command, UUID userId);
 
     /**
+     * The Customer whose current username equals {@code username} exactly, after the normalisation of username login -
+     * trimmed and case-insensitive, as {@code ux_user_username_normalized} - on the command's own transaction. Never a
+     * partial match, never a phone, never an anonymised account (FR-ACC-10); empty for a blank {@code username}. One
+     * indexed read. Added for the venue's booking search (PO decision 11 Oct 2026, E7-49, D3 amendment).
+     */
+    Optional<UUID> findByUsername(CommandContext command, String username);
+
+    /**
      * @param username the stored username (an anonymised account keeps its row and username, FR-ACC-10)
      * @param phone    E.164; {@code null} for an anonymised account, whose phone is no longer a phone number
      */

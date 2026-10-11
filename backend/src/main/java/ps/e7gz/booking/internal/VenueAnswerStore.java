@@ -8,7 +8,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -92,8 +94,8 @@ class VenueAnswerStore {
             """;
 
     /**
-     * The venue's view of its bookings, with what the phone retention rule needs: {@code venue_response_expired_at} is
-     * the latest transition into VENUE_RESPONSE_EXPIRED, as {@link ContactVisibility#FACTS} reads it.
+     * The venue's view of its bookings, with what the phone retention rule needs, read exactly as
+     * {@link ContactVisibility#FACTS} reads it ({@link ContactVisibility#HISTORY_FACTS}).
      */
     static final String VIEW = """
             SELECT b.id, b.venue_id, b.source, b.status, b.terminal_reason, b.venue_reject_reason_text, b.resource_id,
@@ -101,11 +103,7 @@ class VenueAnswerStore {
                    b.business_date, b.nominal_booked_minutes, b.venue_price_total, b.venue_response_expires_at,
                    b.response_pause_started_at, b.customer_id, b.manual_customer_name, b.manual_customer_phone,
                    b.created_at, b.terminal_at,
-                   (SELECT max(h.occurred_at)
-                      FROM booking.booking_history h
-                     WHERE h.booking_id = b.id
-                       AND h.entry_kind = 'STATUS_TRANSITION'
-                       AND h.to_status = 'VENUE_RESPONSE_EXPIRED') AS venue_response_expired_at
+            """ + ContactVisibility.HISTORY_FACTS + """
               FROM booking.booking b
             """;
 
@@ -206,6 +204,68 @@ class VenueAnswerStore {
                 .query(VenueAnswerStore::viewRow).list();
     }
 
+    /**
+     * One page of the venue's booking history (FR-VEN-38, E7-49), newest first - {@code start_at} then id, both
+     * descending - after {@code after} (null for the first page); fetches up to {@code fetch} rows (PO decision 11 Oct
+     * 2026, E7-49: this order and cursor approved). Always scoped to {@code venueId}. {@code q} (PO decision 11 Oct 2026,
+     * E7-49, D3 and its amendment) matches the exact booking ID, the walk-in name and phone and the resource name here,
+     * and the bookings of {@code usernameMatch} - the Customer whose exact username {@code q} is, resolved through
+     * Identity by the caller, or null; the customer's phone is never compared.
+     */
+    List<ViewRow> page(CommandContext command, UUID venueId, VenueBookingFilter filter, UUID usernameMatch,
+                       BookingCursor.Position after, int fetch) {
+        StringBuilder sql = new StringBuilder(VIEW).append(" WHERE b.venue_id = :venueId");
+        Map<String, Object> params = new HashMap<>();
+        params.put("venueId", Objects.requireNonNull(venueId, "venueId"));
+        if (filter.from() != null) {
+            sql.append(" AND b.business_date >= :from");
+            params.put("from", filter.from());
+        }
+        if (filter.to() != null) {
+            sql.append(" AND b.business_date <= :to");
+            params.put("to", filter.to());
+        }
+        if (filter.activity() != null) {
+            sql.append(" AND b.activity = :activity");
+            params.put("activity", filter.activity().name());
+        }
+        if (filter.source() != null) {
+            sql.append(" AND b.source = :source");
+            params.put("source", filter.source().name());
+        }
+        if (filter.resourceId() != null) {
+            sql.append(" AND b.resource_id = :resourceId");
+            params.put("resourceId", filter.resourceId());
+        }
+        if (filter.status() != null) {
+            sql.append(" AND b.status = :status");
+            params.put("status", filter.status().name());
+        }
+        if (filter.q() != null) {
+            sql.append(" AND (b.manual_customer_name ILIKE :like ESCAPE '\\'")
+                    .append(" OR b.manual_customer_phone ILIKE :like ESCAPE '\\'")
+                    .append(" OR b.resource_name_snapshot ILIKE :like ESCAPE '\\'");
+            params.put("like", filter.likePattern());
+            filter.bookingId().ifPresent(id -> {
+                sql.append(" OR b.id = :qId");
+                params.put("qId", id);
+            });
+            if (usernameMatch != null) {
+                sql.append(" OR b.customer_id = :usernameMatch");
+                params.put("usernameMatch", usernameMatch);
+            }
+            sql.append(')');
+        }
+        if (after != null) {
+            sql.append(" AND (b.start_at, b.id) < (:afterStart, :afterId)");
+            params.put("afterStart", utc(after.startAt()));
+            params.put("afterId", after.bookingId());
+        }
+        sql.append(" ORDER BY b.start_at DESC, b.id DESC LIMIT :fetch");
+        params.put("fetch", fetch);
+        return command.jdbc().sql(sql.toString()).params(params).query(VenueAnswerStore::viewRow).list();
+    }
+
     private static ViewRow viewRow(ResultSet rs, int n) throws SQLException {
         BookingStatus status = BookingStatus.valueOf(rs.getString("status"));
         String reason = rs.getString("terminal_reason");
@@ -223,8 +283,9 @@ class VenueAnswerStore {
                 instant(rs, "venue_response_expires_at"), instant(rs, "response_pause_started_at") != null,
                 rs.getObject("customer_id", UUID.class), rs.getString("manual_customer_name"),
                 rs.getString("manual_customer_phone"), instant(rs, "created_at"),
-                new ContactVisibility.Facts(status, instant(rs, "start_at"), instant(rs, "end_at"),
-                        instant(rs, "terminal_at"), instant(rs, "venue_response_expired_at")));
+                new ContactVisibility.Facts(BookingSource.valueOf(rs.getString("source")), status,
+                        instant(rs, "start_at"), instant(rs, "end_at"), instant(rs, "terminal_at"),
+                        instant(rs, "venue_response_expired_at"), instant(rs, "late_confirm_reopened_at")));
     }
 
     private static Instant instant(ResultSet rs, String column) throws SQLException {
