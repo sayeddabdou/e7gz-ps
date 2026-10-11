@@ -30,8 +30,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import ps.e7gz.booking.internal.BookingHistoryEntry;
 import ps.e7gz.booking.internal.ManualBookingRequest;
 import ps.e7gz.booking.internal.ManualBookings;
+import ps.e7gz.booking.internal.VenueBookingFilter;
 import ps.e7gz.booking.internal.VenueBookingRow;
 import ps.e7gz.booking.internal.VenueBookings;
 import ps.e7gz.booking.internal.VenueResponses;
@@ -49,7 +51,6 @@ import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
 import ps.e7gz.common.web.MoneyView;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.PageView;
 import ps.e7gz.common.web.ResponseMetaFactory;
@@ -60,11 +61,11 @@ import ps.e7gz.messaging.api.StoredResponse;
 
 /**
  * Venue Dashboard — booking requests and bookings (arch 09 §4.1). The request lists, accept, reject and reject after
- * expiry are implemented (E7-47), manual booking and its cancel too (E7-48); the bookings list and detail stay stubs
- * until E7-49. Every route acts for the signed-in account's own venue, never one named by the request. None of
- * these actions needs the Owner Password; each is in ADR-015's scope, so the Idempotency-Key is required. The venue DTOs
- * are separate from the customer ones (arch 09 §1.1): they carry nothing about the customer's other commitments
- * (NFR-19), and the customer phone is absent when the retention rule hides it (NFR-18, arch 10 §5.1).
+ * expiry are E7-47's, manual booking and its cancel E7-48's, the bookings list and detail E7-49's. Every route acts for
+ * the signed-in account's own venue, never one named by the request. None of these actions needs the Owner Password;
+ * each is in ADR-015's scope, so the Idempotency-Key is required. The venue DTOs are separate from the customer ones
+ * (arch 09 §1.1): they carry nothing about the customer's other commitments (NFR-19), and the customer phone is absent
+ * when the retention rule hides it (NFR-18, arch 10 §5.1; PO decision 11 Oct 2026, E7-49, D1).
  */
 @RestController
 @RequestMapping("/api/v1/venue")
@@ -270,8 +271,13 @@ public class VenueBookingController {
     @GetMapping("/bookings")
     @Operation(operationId = "venueListBookings",
             summary = "Booking history with filters (FR-VEN-38)",
-            description = "from and to are business dates, inclusive (arch 04 §4.3); q is the free-text search of "
-                    + "FR-VEN-38. Implemented by E7-49.")
+            description = "Every booking of this venue, online and manual, newest first (startAt descending), "
+                    + "cursor-paged. from and to are business dates, inclusive (arch 04 §4.3); without them, all "
+                    + "dates (PO decision 11 Oct 2026, E7-49, D4); from after to is VALIDATION_FAILED. q matches the "
+                    + "exact booking ID, the customer's exact current username (trimmed, case-insensitive; never part of "
+                    + "one), and a part of the walk-in name or phone or of the resource name, case-insensitively - never "
+                    + "the customer's phone (D3, amended 11 Oct 2026). The customer phone is absent when "
+                    + "the retention rule hides it (arch 10 §5.1). Implemented by E7-49.")
     public DataResponse<PageView<VenueBooking>> list(
             @Parameter(description = "First business date, inclusive.") @RequestParam(required = false) LocalDate from,
             @Parameter(description = "Last business date, inclusive.") @RequestParam(required = false) LocalDate to,
@@ -281,8 +287,11 @@ public class VenueBookingController {
             @RequestParam(required = false) BookingStatus status,
             @RequestParam(required = false) @Size(max = 100) String q,
             @RequestParam(required = false) String cursor,
-            @RequestParam(required = false) @Min(1) @Max(100) Integer limit) {
-        throw NotImplementedYet.stub();
+            @RequestParam(required = false) @Min(1) @Max(100) Integer limit,
+            @AuthenticationPrincipal AuthenticatedSubject venue) {
+        VenueBookings.Page page = bookings.list(venue.id(),
+                new VenueBookingFilter(from, to, activity, source, resourceId, status, q), cursor, limit);
+        return meta.data(new PageView<>(page.items().stream().map(VenueBooking::of).toList(), page.nextCursor()));
     }
 
     @GetMapping("/bookings/{bookingId}")
@@ -290,9 +299,14 @@ public class VenueBookingController {
             summary = "One booking of this venue with its history (FR-VEN-34)",
             description = "The customer phone is absent when the retention rule hides it (arch 10 §5.1). The history "
                     + "never shows LATE_CONFIRM_FAILED_BOOKING_LIMIT or LATE_CONFIRM_FAILED_CUSTOMER_CONFLICT: the "
-                    + "venue is never told why a customer is ineligible (NFR-19, arch 10 §5.2). Implemented by E7-49.")
-    public DataResponse<VenueBookingDetail> get(@PathVariable UUID bookingId) {
-        throw NotImplementedYet.stub();
+                    + "venue is never told why a customer is ineligible (NFR-19, arch 10 §5.2). A booking of another "
+                    + "venue is NOT_FOUND. Implemented by E7-49.")
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
+    public DataResponse<VenueBookingDetail> get(@PathVariable UUID bookingId,
+                                                @AuthenticationPrincipal AuthenticatedSubject venue) {
+        VenueBookings.Detail detail = bookings.detail(venue.id(), bookingId);
+        return meta.data(new VenueBookingDetail(VenueBooking.of(detail.booking()),
+                detail.history().stream().map(VenueBookingHistoryEntry::of).toList()));
     }
 
     /** FR-BOK-17: mandatory free text, separate from the reason code; max 200 characters (PO, 5 Oct 2026). */
@@ -414,5 +428,10 @@ public class VenueBookingController {
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) BookingStatus toStatus,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) BookingTerminalReason terminalReason,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) BookingEventType eventType) {
+
+        static VenueBookingHistoryEntry of(BookingHistoryEntry entry) {
+            return new VenueBookingHistoryEntry(entry.at(), entry.kind(), entry.fromStatus(), entry.toStatus(),
+                    entry.terminalReason(), entry.eventType());
+        }
     }
 }

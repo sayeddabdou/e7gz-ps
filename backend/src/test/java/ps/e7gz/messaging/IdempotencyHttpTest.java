@@ -62,10 +62,10 @@ import ps.e7gz.support.fixtures.Fixtures;
 /**
  * E7-42 over HTTP: the {@code Idempotency-Key} header, the error envelope and the replayed response as a client sees
  * them, through the real security chain, exception mapping and database. A test-only write (imported only here, never
- * in the contract) uses the shared {@link Idempotency} API exactly as a feature controller will. Of the real ADR-015
- * operations creation (E7-46), the venue's answers (E7-47) and the manual booking and its cancel (E7-48) are
- * implemented and tested in their module; the others are still 501 stubs of E7-49, so for them only the header
- * contract is checked.
+ * in the contract) uses the shared {@link Idempotency} API exactly as a feature controller will. The real ADR-015
+ * operations - creation (E7-46), the venue's answers (E7-47), the manual booking and its cancel (E7-48) and the
+ * customer's cancel (E7-49) - are implemented and tested in their modules; here only their header contract is checked
+ * and that a request with the key reaches the route.
  */
 @AutoConfigureMockMvc
 @Import(IdempotencyHttpTest.Probe.class)
@@ -518,10 +518,10 @@ class IdempotencyHttpTest extends IntegrationTest {
                 .param("key", key).query(Long.class).single()).isZero();
     }
 
-    // ------------------------------------------------------------------------- the real ADR-015 operations (stubs)
+    // ------------------------------------------------------------------------- the real ADR-015 operations
 
     @Test
-    void theRealBookingWritesRequireTheKeyAndTheUnimplementedOnesStayStubs() throws Exception {
+    void theRealBookingWritesRequireTheKeyAndAKeyedRequestReachesTheRoute() throws Exception {
         String create = "{\"resourceId\":\"" + UUID.randomUUID() + "\",\"startAt\":\"2026-10-12T18:00:00Z\","
                 + "\"durationMinutes\":120}";
         UUID booking = UUID.randomUUID();
@@ -536,6 +536,11 @@ class IdempotencyHttpTest extends IntegrationTest {
         mvc.perform(write(customerToken, "/api/v1/customer/bookings/" + booking + "/cancel", null, null))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.field").value(OpenApiConfig.IDEMPOTENCY_KEY));
+        // E7-49: the customer's cancel is real; with the key its unknown booking reaches the route and is 404 NOT_FOUND.
+        mvc.perform(write(customerToken, "/api/v1/customer/bookings/" + booking + "/cancel",
+                        UUID.randomUUID().toString(), null))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
         mvc.perform(write(venueToken, "/api/v1/venue/bookings/" + booking + "/accept", null, null))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.field").value(OpenApiConfig.IDEMPOTENCY_KEY));
