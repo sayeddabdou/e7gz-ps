@@ -26,6 +26,7 @@ const detail = {
   venuePriceTotal: { amount: "400.00", currency: "EGP" as const },
   bookingFee: { amount: "0.00", currency: "EGP" as const, displayAsFree: true },
   venueResponsePaused: false,
+  lateConfirm: null,
   attendanceResult: null,
   history: [],
 };

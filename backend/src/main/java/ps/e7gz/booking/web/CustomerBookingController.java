@@ -290,6 +290,9 @@ public class CustomerBookingController {
             @NotNull @Schema(description = "True while an emergency pauses the venue response timer (FR-BOK-32).")
             Boolean venueResponsePaused,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true,
+                    description = "While AWAITING_CUSTOMER_CONFIRMATION only (arch 09 §3.3).")
+            CustomerBookingLateConfirm lateConfirm,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true,
                     description = "Independent of status (FR-ATT-07).") AttendanceResult attendanceResult,
             @NotNull @Schema(description = "Append-only, oldest first (FR-AUD-05).") List<CustomerBookingHistoryEntry> history) {
 
@@ -305,7 +308,7 @@ public class CustomerBookingController {
                             booking.playMode()),
                     booking.startAt(), booking.endAt(), amounts.nominalBookedMinutes(),
                     MoneyView.of(amounts.venuePriceTotal()), CustomerBookingFee.of(amounts.bookingFee()),
-                    MoneyView.of(amounts.totalAmount()), booking.venueResponseExpiresAt(), false, null,
+                    MoneyView.of(amounts.totalAmount()), booking.venueResponseExpiresAt(), false, null, null,
                     List.of(new CustomerBookingHistoryEntry(booking.createdAt(),
                             BookingHistoryEntryKind.STATUS_TRANSITION, null, BookingStatus.PENDING, null, null)));
         }
@@ -315,8 +318,22 @@ public class CustomerBookingController {
             return new CustomerBookingDetail(bookingId, status, displayBucket, terminalReason,
                     new CustomerBookingVenue(venue.id(), venue.name(), null), resource, startAt, endAt,
                     nominalBookedMinutes, venuePriceTotal, bookingFee, totalAmount, venueResponseExpiresAt,
-                    venueResponsePaused, attendanceResult, history);
+                    venueResponsePaused, lateConfirm, attendanceResult, history);
         }
+    }
+
+    /**
+     * The Late Confirmation the venue sent (FR-LCF-09, FR-OPS-41; Sprint 3 contract, E7-54). arch 09 §3.3's
+     * {@code pauseCauseCode} is left out: the pause cause has no closed code list (only free text in the pause
+     * history), and the venue response timer carries only its {@code venueResponsePaused} flag too.
+     */
+    @Schema(name = "CustomerBookingLateConfirm")
+    public record CustomerBookingLateConfirm(
+            @NotNull @Schema(description = "MIN(initiation + 5 min, startAt): an instant, never a countdown (NFR-10). "
+                    + "Moves when a pause ends, never beyond startAt.", example = "2026-10-12T17:35:00Z")
+            Instant expiresAt,
+            @NotNull @Schema(description = "True while an emergency or selling block pauses the timer: Accept is "
+                    + "refused, Decline still works (FR-OPS-41).") Boolean paused) {
     }
 
     /**

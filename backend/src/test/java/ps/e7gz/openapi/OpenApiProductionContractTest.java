@@ -63,12 +63,14 @@ class OpenApiProductionContractTest extends IntegrationTest {
      * The only operations without a Bearer token (arch 09 §1.2: registration, login, OTP and public discovery). Every
      * other operation — venue, admin, and any authenticated customer route such as profile or bookings — needs one.
      * Registration and phone OTP are E7-13's; login, refresh and logout of the three route groups E7-14's. Customer
-     * password reset (arch 09 section 3.1) is added here by E7-57, which implements it.
+     * password reset (arch 09 section 3.1) is in the Sprint 3 contract (E7-54) and built by E7-57.
      */
     static final Set<String> PUBLIC_OPERATIONS = Set.of(
             "post /api/v1/customer/auth/register",
             "post /api/v1/customer/auth/otp/send",
             "post /api/v1/customer/auth/verify-phone",
+            "post /api/v1/customer/auth/password-reset/request",
+            "post /api/v1/customer/auth/password-reset/complete",
             "post /api/v1/customer/auth/login",
             "post /api/v1/customer/auth/refresh",
             "post /api/v1/customer/auth/logout",

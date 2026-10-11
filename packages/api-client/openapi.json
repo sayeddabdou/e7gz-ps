@@ -900,6 +900,17 @@
             },
             "type": "array"
           },
+          "lateConfirm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerBookingLateConfirm"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "While AWAITING_CUSTOMER_CONFIRMATION only (arch 09 §3.3)."
+          },
           "nominalBookedMinutes": {
             "example": 120,
             "format": "int32",
@@ -957,6 +968,7 @@
           "displayBucket",
           "endAt",
           "history",
+          "lateConfirm",
           "nominalBookedMinutes",
           "resource",
           "startAt",
@@ -1050,6 +1062,25 @@
           "kind",
           "terminalReason",
           "toStatus"
+        ],
+        "type": "object"
+      },
+      "CustomerBookingLateConfirm": {
+        "properties": {
+          "expiresAt": {
+            "description": "MIN(initiation + 5 min, startAt): an instant, never a countdown (NFR-10). Moves when a pause ends, never beyond startAt.",
+            "example": "2026-10-12T17:35:00Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "paused": {
+            "description": "True while an emergency or selling block pauses the timer: Accept is refused, Decline still works (FR-OPS-41).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expiresAt",
+          "paused"
         ],
         "type": "object"
       },
@@ -1251,6 +1282,50 @@
         ],
         "type": "object"
       },
+      "CustomerEmailRequest": {
+        "properties": {
+          "email": {
+            "example": "omar@example.com",
+            "format": "email",
+            "maxLength": 200,
+            "minLength": 0,
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "type": "object"
+      },
+      "CustomerLateConfirmOutcome": {
+        "properties": {
+          "bookingId": {
+            "example": "018f3c2a-7b1e-7c4d-9e0f-1a2b3c4d5e6f",
+            "format": "uuid",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BookingStatus"
+          },
+          "terminalReason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BookingTerminalReason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "CUSTOMER_DECLINED_LATE_CONFIRM after a decline, otherwise null."
+          }
+        },
+        "required": [
+          "bookingId",
+          "status",
+          "terminalReason"
+        ],
+        "type": "object"
+      },
       "CustomerLoginRequest": {
         "properties": {
           "password": {
@@ -1381,6 +1456,158 @@
         ],
         "type": "object"
       },
+      "CustomerOtpCodeRequest": {
+        "properties": {
+          "code": {
+            "example": "482913",
+            "minLength": 1,
+            "pattern": "[0-9]{6}",
+            "type": "string"
+          },
+          "otpChallengeId": {
+            "example": "9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "otpChallengeId"
+        ],
+        "type": "object"
+      },
+      "CustomerPasswordResetCompleteRequest": {
+        "properties": {
+          "code": {
+            "example": "482913",
+            "minLength": 1,
+            "pattern": "[0-9]{6}",
+            "type": "string"
+          },
+          "otpChallengeId": {
+            "example": "9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d",
+            "format": "uuid",
+            "type": "string"
+          },
+          "password": {
+            "description": "At least 8 characters, with at least one letter and one digit (VALIDATION RULES §2.1). Otherwise 400 VALIDATION_FAILED on field password.",
+            "format": "password",
+            "maxLength": 200,
+            "minLength": 8,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "code",
+          "otpChallengeId",
+          "password"
+        ],
+        "type": "object"
+      },
+      "CustomerPasswordResetRequest": {
+        "properties": {
+          "phone": {
+            "example": "01012345678",
+            "maxLength": 32,
+            "minLength": 0,
+            "type": "string"
+          }
+        },
+        "required": [
+          "phone"
+        ],
+        "type": "object"
+      },
+      "CustomerPhoneChangeRequest": {
+        "properties": {
+          "phone": {
+            "description": "Egyptian mobile number; stored as E.164.",
+            "example": "01012345678",
+            "maxLength": 32,
+            "minLength": 0,
+            "type": "string"
+          }
+        },
+        "required": [
+          "phone"
+        ],
+        "type": "object"
+      },
+      "CustomerProfile": {
+        "properties": {
+          "email": {
+            "example": "omar@example.com",
+            "type": "string"
+          },
+          "emailVerified": {
+            "description": "Independent of activation (FR-ACC-05).",
+            "type": "boolean"
+          },
+          "fullName": {
+            "example": "Omar Hassan",
+            "type": "string"
+          },
+          "joinedAt": {
+            "example": "2026-10-01T09:30:00Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "phone": {
+            "description": "E.164.",
+            "example": "+201012345678",
+            "type": "string"
+          },
+          "phoneVerified": {
+            "description": "The account is Account Verified only through the phone (FR-ACC-02).",
+            "type": "boolean"
+          },
+          "userId": {
+            "example": "3f6c1d2e-8a4b-4c5d-9e6f-7a8b9c0d1e2f",
+            "format": "uuid",
+            "type": "string"
+          },
+          "username": {
+            "example": "omar_h",
+            "type": "string"
+          },
+          "usernameChangeAvailableAt": {
+            "description": "While the 30-day cooldown runs: when the username may change again, an instant; null when it may change now (FR-ACC-07).",
+            "example": "2026-11-10T12:00:00Z",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "email",
+          "emailVerified",
+          "fullName",
+          "joinedAt",
+          "phone",
+          "phoneVerified",
+          "userId",
+          "username",
+          "usernameChangeAvailableAt"
+        ],
+        "type": "object"
+      },
+      "CustomerProfileUpdateRequest": {
+        "properties": {
+          "fullName": {
+            "example": "Omar Hassan",
+            "maxLength": 200,
+            "minLength": 0,
+            "type": "string"
+          }
+        },
+        "required": [
+          "fullName"
+        ],
+        "type": "object"
+      },
       "CustomerRefreshTokenRequest": {
         "properties": {
           "refreshToken": {
@@ -1471,6 +1698,20 @@
         },
         "required": [
           "phone"
+        ],
+        "type": "object"
+      },
+      "CustomerUsernameChangeRequest": {
+        "properties": {
+          "username": {
+            "example": "omar_h",
+            "maxLength": 200,
+            "minLength": 0,
+            "type": "string"
+          }
+        },
+        "required": [
+          "username"
         ],
         "type": "object"
       },
@@ -2042,10 +2283,40 @@
         ],
         "type": "object"
       },
+      "DataResponseCustomerLateConfirmOutcome": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CustomerLateConfirmOutcome"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
       "DataResponseCustomerOtpChallenge": {
         "properties": {
           "data": {
             "$ref": "#/components/schemas/CustomerOtpChallenge"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "DataResponseCustomerProfile": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CustomerProfile"
           },
           "meta": {
             "$ref": "#/components/schemas/ResponseMeta"
@@ -2357,6 +2628,21 @@
         ],
         "type": "object"
       },
+      "DataResponseVenueAttendance": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/VenueAttendance"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
       "DataResponseVenueBooking": {
         "properties": {
           "data": {
@@ -2417,6 +2703,21 @@
         ],
         "type": "object"
       },
+      "DataResponseVenueLateConfirmation": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/VenueLateConfirmation"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
       "DataResponseVenueOpeningHours": {
         "properties": {
           "data": {
@@ -2436,6 +2737,21 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/VenueOpeningHoursPreview"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "DataResponseVenueOverview": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/VenueOverview"
           },
           "meta": {
             "$ref": "#/components/schemas/ResponseMeta"
@@ -2890,8 +3206,76 @@
         ],
         "type": "object"
       },
+      "VenueAttendance": {
+        "properties": {
+          "attendanceResult": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttendanceResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Independent of status (FR-ATT-07): ABSENT_NO_SHOW after a no-show, otherwise null until the booking completes."
+          },
+          "bookingId": {
+            "example": "018f3c2a-7b1e-7c4d-9e0f-1a2b3c4d5e6f",
+            "format": "uuid",
+            "type": "string"
+          },
+          "checkedInAt": {
+            "example": "2026-10-12T18:04:00Z",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latePresentAt": {
+            "example": "2026-10-12T18:20:00Z",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "noShowAt": {
+            "example": "2026-10-12T18:20:00Z",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/BookingStatus",
+            "description": "NO_SHOW after a no-show, otherwise unchanged (ACTIVE)."
+          }
+        },
+        "required": [
+          "attendanceResult",
+          "bookingId",
+          "checkedInAt",
+          "latePresentAt",
+          "noShowAt",
+          "status"
+        ],
+        "type": "object"
+      },
       "VenueBooking": {
         "properties": {
+          "attendance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VenueBookingAttendance"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ONLINE bookings only: the check-in and late windows as instants and the evidence recorded. A MANUAL booking has no attendance actions (FR-MAN-04)."
+          },
           "attendanceResult": {
             "anyOf": [
               {
@@ -2933,6 +3317,19 @@
             "example": "2026-10-12T20:00:00Z",
             "format": "date-time",
             "type": "string"
+          },
+          "lateConfirmExpiresAt": {
+            "description": "While AWAITING_CUSTOMER_CONFIRMATION: the customer's Late Confirm deadline, MIN(initiation + 5 min, startAt), an instant — never a countdown (FR-LCF-09, NFR-10).",
+            "example": "2026-10-12T17:35:00Z",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lateConfirmPaused": {
+            "description": "True while an emergency or selling block pauses the Late Confirm timer (FR-OPS-41).",
+            "type": "boolean"
           },
           "nominalBookedMinutes": {
             "example": 120,
@@ -3000,12 +3397,15 @@
           }
         },
         "required": [
+          "attendance",
           "attendanceResult",
           "bookingId",
           "businessDate",
           "createdAt",
           "customer",
           "endAt",
+          "lateConfirmExpiresAt",
+          "lateConfirmPaused",
           "nominalBookedMinutes",
           "rejectReasonText",
           "resource",
@@ -3017,6 +3417,64 @@
           "venueResponseExpiresAt",
           "venueResponsePaused",
           "walkIn"
+        ],
+        "type": "object"
+      },
+      "VenueBookingAttendance": {
+        "properties": {
+          "checkInWindow": {
+            "$ref": "#/components/schemas/VenueBookingTimeWindow",
+            "description": "Check-in: [startAt, startAt + 15 min) (FR-ATT-02)."
+          },
+          "checkedInAt": {
+            "example": "2026-10-12T18:04:00Z",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latePresentAt": {
+            "example": "2026-10-12T18:20:00Z",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lateWindow": {
+            "$ref": "#/components/schemas/VenueBookingTimeWindow",
+            "description": "Mark Present — Late and No-show: [startAt + 15 min, endAt) (FR-ATT-03, FR-ATT-04)."
+          },
+          "noShowAt": {
+            "example": "2026-10-12T18:20:00Z",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "checkInWindow",
+          "checkedInAt",
+          "latePresentAt",
+          "lateWindow",
+          "noShowAt"
+        ],
+        "type": "object"
+      },
+      "VenueBookingCancelConfirmedRequest": {
+        "properties": {
+          "ownerPassword": {
+            "description": "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.",
+            "format": "password",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "ownerPassword"
         ],
         "type": "object"
       },
@@ -3172,6 +3630,25 @@
           "id",
           "name",
           "playMode"
+        ],
+        "type": "object"
+      },
+      "VenueBookingTimeWindow": {
+        "properties": {
+          "closesAt": {
+            "example": "2026-10-12T18:15:00Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "opensAt": {
+            "example": "2026-10-12T18:00:00Z",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "closesAt",
+          "opensAt"
         ],
         "type": "object"
       },
@@ -3332,6 +3809,31 @@
         "required": [
           "contentType",
           "sizeBytes"
+        ],
+        "type": "object"
+      },
+      "VenueLateConfirmation": {
+        "properties": {
+          "bookingId": {
+            "example": "018f3c2a-7b1e-7c4d-9e0f-1a2b3c4d5e6f",
+            "format": "uuid",
+            "type": "string"
+          },
+          "lateConfirmExpiresAt": {
+            "description": "MIN(initiation + 5 min, startAt): an instant, never a countdown (FR-LCF-09, NFR-10).",
+            "example": "2026-10-12T17:35:00Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BookingStatus",
+            "description": "AWAITING_CUSTOMER_CONFIRMATION."
+          }
+        },
+        "required": [
+          "bookingId",
+          "lateConfirmExpiresAt",
+          "status"
         ],
         "type": "object"
       },
@@ -3578,6 +4080,37 @@
           "defaultClose",
           "defaultFullDay",
           "defaultOpen"
+        ],
+        "type": "object"
+      },
+      "VenueOverview": {
+        "properties": {
+          "monthRevenue": {
+            "$ref": "#/components/schemas/Money",
+            "description": "COMPLETED bookings from the first business date of this month to today."
+          },
+          "pendingRequests": {
+            "description": "PENDING requests waiting for the venue's answer (FR-VEN-34).",
+            "example": 2,
+            "format": "int32",
+            "type": "integer"
+          },
+          "todayBookings": {
+            "description": "This venue's bookings on today's business date.",
+            "example": 12,
+            "format": "int32",
+            "type": "integer"
+          },
+          "todayRevenue": {
+            "$ref": "#/components/schemas/Money",
+            "description": "COMPLETED bookings on today's business date."
+          }
+        },
+        "required": [
+          "monthRevenue",
+          "pendingRequests",
+          "todayBookings",
+          "todayRevenue"
         ],
         "type": "object"
       },
@@ -13836,6 +14369,458 @@
         ]
       }
     },
+    "/api/v1/customer/auth/password-reset/complete": {
+      "post": {
+        "description": "No old password (FR-ACC-09). The new password follows VALIDATION RULES §2.1, otherwise 400 VALIDATION_FAILED on field password. Every refresh token of the account is revoked, so the customer logs in again (PO decision 11 Oct 2026, E7-54). Implemented by E7-57.",
+        "operationId": "customerCompletePasswordReset",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerPasswordResetCompleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "ACCOUNT_DELETED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: ACCOUNT_DELETED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "OTP_INVALID",
+                                "OTP_EXPIRED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: OTP_INVALID | OTP_EXPIRED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "OTP_ATTEMPTS_EXCEEDED",
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: OTP_ATTEMPTS_EXCEEDED | RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Set a new password with the reset code; every session ends (FR-ACC-09)",
+        "tags": [
+          "customer-auth"
+        ]
+      }
+    },
+    "/api/v1/customer/auth/password-reset/request": {
+      "post": {
+        "description": "By phone OTP only: reset by email waits for email verification (PO decision 11 Oct 2026, E7-54). A phone with no account, or whose account never verified it, is NOT_FOUND, like otp/send. The OTP limits of FR-ACC-04 apply; a new code supersedes the previous one. Implemented by E7-57.",
+        "operationId": "customerRequestPasswordReset",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerPasswordResetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseCustomerOtpChallenge"
+                }
+              }
+            },
+            "description": "Created",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NOT_FOUND"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "OTP_RESEND_TOO_SOON",
+                                "OTP_HOURLY_LIMIT_REACHED",
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: OTP_RESEND_TOO_SOON | OTP_HOURLY_LIMIT_REACHED | RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Send a password reset code to the account's verified phone (FR-ACC-09)",
+        "tags": [
+          "customer-auth"
+        ]
+      }
+    },
     "/api/v1/customer/auth/refresh": {
       "post": {
         "operationId": "customerRefresh",
@@ -16178,6 +17163,780 @@
         ]
       }
     },
+    "/api/v1/customer/bookings/{bookingId}/late-confirm/accept": {
+      "post": {
+        "description": "Only while AWAITING_CUSTOMER_CONFIRMATION and now < lateConfirm.expiresAt; at or after it is DEADLINE_PASSED, and a booking no longer AWAITING is BOOKING_STATE_CHANGED. Revalidated atomically (FR-LCF-14): commitment count (COMMITMENT_LIMIT_REACHED), the customer's schedule (LATE_CONFIRM_CUSTOMER_CONFLICT, checked only here, FR-LCF-15), the hold (LATE_CONFIRM_RESOURCE_CONFLICT, FR-LCF-17), ban and account (ACCOUNT_BANNED_FOR_THIS_ACTION, FR-ACC-17; ACCOUNT_DELETED), venue and resource operational eligibility including selling blocks. A failed Accept leaves the booking AWAITING until its own expiry and records the event (FR-LCF-16). While the timer is paused (lateConfirm.paused) Accept is refused with VENUE_SELLING_BLOCK_ACTIVE or RESOURCE_SELLING_BLOCK_ACTIVE and nothing changes (FR-OPS-41). Another customer's booking is NOT_FOUND. Implemented by E7-58.",
+        "operationId": "customerAcceptLateConfirm",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bookingId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseCustomerLateConfirmOutcome"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "ACCOUNT_BANNED_FOR_THIS_ACTION",
+                                "ACCOUNT_DELETED",
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: ACCOUNT_BANNED_FOR_THIS_ACTION | ACCOUNT_DELETED | FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NOT_FOUND"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "BOOKING_STATE_CHANGED",
+                                "LATE_CONFIRM_CUSTOMER_CONFLICT",
+                                "LATE_CONFIRM_RESOURCE_CONFLICT"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: BOOKING_STATE_CHANGED | LATE_CONFIRM_CUSTOMER_CONFLICT | LATE_CONFIRM_RESOURCE_CONFLICT",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "DEADLINE_PASSED",
+                                "COMMITMENT_LIMIT_REACHED",
+                                "INTERVAL_NOT_WITHIN_ONE_SESSION",
+                                "AREA_INACTIVE",
+                                "RESOURCE_NOT_ELIGIBLE",
+                                "VENUE_SELLING_BLOCK_ACTIVE",
+                                "RESOURCE_SELLING_BLOCK_ACTIVE",
+                                "IDEMPOTENCY_KEY_REUSED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: DEADLINE_PASSED | COMMITMENT_LIMIT_REACHED | INTERVAL_NOT_WITHIN_ONE_SESSION | AREA_INACTIVE | RESOURCE_NOT_ELIGIBLE | VENUE_SELLING_BLOCK_ACTIVE | RESOURCE_SELLING_BLOCK_ACTIVE | IDEMPOTENCY_KEY_REUSED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Accept the venue's Late Confirmation: the same booking becomes CONFIRMED (FR-LCF-13, FR-LCF-14)",
+        "tags": [
+          "customer-late-confirm"
+        ]
+      }
+    },
+    "/api/v1/customer/bookings/{bookingId}/late-confirm/decline": {
+      "post": {
+        "description": "Penalty-free; under a future non-zero fee a full refund (FRS §2.6). Works while the timer is paused (FR-OPS-41) and for a banned customer (FR-ACC-17). The hold is released. At or after lateConfirm.expiresAt it is DEADLINE_PASSED; a booking no longer AWAITING is BOOKING_STATE_CHANGED. Another customer's booking is NOT_FOUND. Implemented by E7-58.",
+        "operationId": "customerDeclineLateConfirm",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bookingId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseCustomerLateConfirmOutcome"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NOT_FOUND"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "BOOKING_STATE_CHANGED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: BOOKING_STATE_CHANGED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "DEADLINE_PASSED",
+                                "IDEMPOTENCY_KEY_REUSED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: DEADLINE_PASSED | IDEMPOTENCY_KEY_REUSED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Decline the venue's Late Confirmation: CANCELLED / CUSTOMER_DECLINED_LATE_CONFIRM (FR-LCF-13)",
+        "tags": [
+          "customer-late-confirm"
+        ]
+      }
+    },
     "/api/v1/customer/find-available": {
       "get": {
         "description": "Only intervals inside one Operating Session of the venue, starting at least 15 minutes ahead (FR-BOK-02), are searched; an earlier start finds nothing (PO decisions 8 Oct 2026).",
@@ -17455,6 +19214,1987 @@
         "summary": "Mark one notification as read",
         "tags": [
           "customer-notifications"
+        ]
+      }
+    },
+    "/api/v1/customer/profile": {
+      "get": {
+        "description": "Also for a banned customer (FR-ACC-17). Implemented by E7-57.",
+        "operationId": "customerGetProfile",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseCustomerProfile"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "My profile (FR-ACC-07)",
+        "tags": [
+          "customer-profile"
+        ]
+      },
+      "patch": {
+        "description": "Username, phone and email have their own routes. Implemented by E7-57.",
+        "operationId": "customerUpdateProfile",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerProfileUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseCustomerProfile"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Change my full name, freely (FR-ACC-07)",
+        "tags": [
+          "customer-profile"
+        ]
+      }
+    },
+    "/api/v1/customer/profile/email": {
+      "post": {
+        "description": "A new email becomes the account's email only once verified (FR-ACC-07); the email is not unique (FR-ACC-01). Email verification is an independent track and never activates the account (FR-ACC-02). Not built yet: email verification was deferred by the PO (30 Sep 2026); E7-57 implements it once the PO decides it (PO decision 11 Oct 2026, E7-54).",
+        "operationId": "customerStartEmailVerification",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerEmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseCustomerOtpChallenge"
+                }
+              }
+            },
+            "description": "Created",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "OTP_RESEND_TOO_SOON",
+                                "OTP_HOURLY_LIMIT_REACHED",
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: OTP_RESEND_TOO_SOON | OTP_HOURLY_LIMIT_REACHED | RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Send a code to an email address: a new one to change it, or the current one to verify it (FR-ACC-05, FR-ACC-07)",
+        "tags": [
+          "customer-profile"
+        ]
+      }
+    },
+    "/api/v1/customer/profile/email/verify": {
+      "post": {
+        "description": "A challenge that is not this customer's is NOT_FOUND. Not built yet, like POST /customer/profile/email.",
+        "operationId": "customerVerifyEmail",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerOtpCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseCustomerProfile"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NOT_FOUND"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "OTP_INVALID",
+                                "OTP_EXPIRED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: OTP_INVALID | OTP_EXPIRED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "OTP_ATTEMPTS_EXCEEDED",
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: OTP_ATTEMPTS_EXCEEDED | RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Confirm the email with its code; emailVerified becomes true (FR-ACC-05, FR-ACC-07)",
+        "tags": [
+          "customer-profile"
+        ]
+      }
+    },
+    "/api/v1/customer/profile/phone": {
+      "post": {
+        "description": "A phone held by another verified account is PHONE_TAKEN (FR-ACC-01). The OTP limits of FR-ACC-04 apply. Confirm with POST /customer/profile/phone/verify (PO decision 11 Oct 2026, E7-54). Implemented by E7-57.",
+        "operationId": "customerStartPhoneChange",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerPhoneChangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseCustomerOtpChallenge"
+                }
+              }
+            },
+            "description": "Created",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "PHONE_TAKEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: PHONE_TAKEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "OTP_RESEND_TOO_SOON",
+                                "OTP_HOURLY_LIMIT_REACHED",
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: OTP_RESEND_TOO_SOON | OTP_HOURLY_LIMIT_REACHED | RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Send a code to the new phone; the phone changes only once it is verified (FR-ACC-07)",
+        "tags": [
+          "customer-profile"
+        ]
+      }
+    },
+    "/api/v1/customer/profile/phone/verify": {
+      "post": {
+        "description": "A route added by the PO decision of 11 Oct 2026 (E7-54) for the second step of the phone change. A challenge that is not this customer's phone change is NOT_FOUND. A phone taken by another account meanwhile is PHONE_TAKEN. Implemented by E7-57.",
+        "operationId": "customerVerifyPhoneChange",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerOtpCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseCustomerProfile"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NOT_FOUND"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "OTP_INVALID",
+                                "OTP_EXPIRED",
+                                "PHONE_TAKEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: OTP_INVALID | OTP_EXPIRED | PHONE_TAKEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "OTP_ATTEMPTS_EXCEEDED",
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: OTP_ATTEMPTS_EXCEEDED | RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Confirm the new phone with its code; it becomes the account's phone (FR-ACC-07)",
+        "tags": [
+          "customer-profile"
+        ]
+      }
+    },
+    "/api/v1/customer/profile/username": {
+      "post": {
+        "description": "Unique on the trimmed, case-insensitive form (FR-ACC-06): USERNAME_TAKEN. Inside the 30-day cooldown it is USERNAME_COOLDOWN_ACTIVE (enforced by the database, Spec v5 §7.5); the profile's usernameChangeAvailableAt says when. Reviews show the new username at once (FR-ACC-08). Implemented by E7-57.",
+        "operationId": "customerChangeUsername",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerUsernameChangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseCustomerProfile"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "USERNAME_TAKEN",
+                                "USERNAME_COOLDOWN_ACTIVE"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: USERNAME_TAKEN | USERNAME_COOLDOWN_ACTIVE",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Change my username; then not again for 30 days (FR-ACC-06, FR-ACC-07)",
+        "tags": [
+          "customer-profile"
         ]
       }
     },
@@ -20419,6 +24159,441 @@
         ]
       }
     },
+    "/api/v1/venue/bookings/{bookingId}/cancel-confirmed": {
+      "post": {
+        "description": "Owner Password in the body, never a header (ADR-011, arch 09 §4.3): absent or blank is OWNER_PASSWORD_REQUIRED, wrong is OWNER_PASSWORD_INVALID; every attempt is audited (FR-VEN-05). The reservation and the customer commitment are released; fee treatment FULL (FRS §2.6, FR-PTS-15); the customer is notified. No time limit: allowed while the booking is CONFIRMED, even after startAt if the start job has not run yet (PO decision 6 Oct 2026). A booking that is not a CONFIRMED online booking (already cancelled, ACTIVE, PENDING, or a manual booking, which uses cancel-manual, FR-MAN-08) is BOOKING_STATE_CHANGED. A booking of another venue is NOT_FOUND. Implemented by E7-114.",
+        "operationId": "venueCancelConfirmedBooking",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bookingId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VenueBookingCancelConfirmedRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseVenueBooking"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NOT_FOUND"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "BOOKING_STATE_CHANGED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: BOOKING_STATE_CHANGED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "IDEMPOTENCY_KEY_REUSED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: IDEMPOTENCY_KEY_REUSED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "OWNER_PASSWORD_REQUIRED",
+                                "OWNER_PASSWORD_INVALID"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Cancel a CONFIRMED online booking with the Owner PIN: CANCELLED / VENUE_CANCELLED_CONFIRMED_BOOKING (FR-VEN-03)",
+        "tags": [
+          "venue-bookings"
+        ]
+      }
+    },
     "/api/v1/venue/bookings/{bookingId}/cancel-manual": {
       "post": {
         "description": "Only for source MANUAL, from CONFIRMED (before or after startAt) or ACTIVE (FR-MAN-08 as amended by PCR-007; PO decision 10 Oct 2026, E7-48). The room is free from the cancel instant. An online booking, or one already cancelled or completed, is BOOKING_STATE_CHANGED. A booking of another venue is NOT_FOUND. A venue account disabled meanwhile is FORBIDDEN (the token itself stops working: 401). No Owner Password (FR-MAN-08). Implemented by E7-48.",
@@ -20797,6 +24972,1541 @@
         "summary": "Cancel a CONFIRMED or ACTIVE manual booking: CANCELLED / VENUE_CANCELLED_MANUAL_BOOKING (FR-MAN-08, PCR-007)",
         "tags": [
           "venue-bookings"
+        ]
+      }
+    },
+    "/api/v1/venue/bookings/{bookingId}/check-in": {
+      "post": {
+        "description": "No QR code, PIN or customer device (FR-ATT-01). Outside the window — including exactly startAt + 15 min — it is CHECK_IN_WINDOW_CLOSED, and Mark Present — Late becomes the action (FR-ATT-02). A manual booking is CHECK_IN_WINDOW_CLOSED too (FR-MAN-04). A booking no longer in progress (cancelled, completed, no-show) is BOOKING_STATE_CHANGED. A booking of another venue is NOT_FOUND. Implemented by E7-59.",
+        "operationId": "venueCheckIn",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bookingId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseVenueAttendance"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NOT_FOUND"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "BOOKING_STATE_CHANGED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: BOOKING_STATE_CHANGED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "CHECK_IN_WINDOW_CLOSED",
+                                "IDEMPOTENCY_KEY_REUSED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: CHECK_IN_WINDOW_CLOSED | IDEMPOTENCY_KEY_REUSED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Check the customer in while startAt <= now < startAt + 15 min (FR-ATT-01, FR-ATT-02)",
+        "tags": [
+          "venue-attendance"
+        ]
+      }
+    },
+    "/api/v1/venue/bookings/{bookingId}/late-confirm": {
+      "post": {
+        "description": "Only for VENUE_RESPONSE_EXPIRED (otherwise BOOKING_STATE_CHANGED) and only while now < startAt (otherwise DEADLINE_PASSED). One atomic transaction: commitment count, limit, room, temporary hold, status (FR-LCF-06). The customer's window ends at MIN(now + 5 min, startAt) (FR-LCF-09); not restricted by the intake window (FR-LCF-07). A customer who is not eligible (4 commitments, banned, deleted) is CUSTOMER_NOT_ELIGIBLE_FOR_LATE_CONFIRM — nothing else is said, no hold is created, the booking stays VENUE_RESPONSE_EXPIRED (FR-LCF-04, FR-LCF-05). Venue eligibility (FR-LCF-02; PO decision 11 Oct 2026, E7-54): the venue not inside an operating session now, or the original interval no longer within the opening hours, is INTERVAL_NOT_WITHIN_ONE_SESSION; an inactive area is AREA_INACTIVE; a venue selling block is VENUE_SELLING_BLOCK_ACTIVE. Room eligibility (FR-LCF-03): RESOURCE_NOT_ELIGIBLE, RESOURCE_SELLING_BLOCK_ACTIVE, or LATE_CONFIRM_RESOURCE_CONFLICT when the interval is taken. A venue account that is not ENABLED is FORBIDDEN. A booking of another venue is NOT_FOUND. Implemented by E7-58.",
+        "operationId": "venueSendLateConfirm",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bookingId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseVenueLateConfirmation"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NOT_FOUND"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "BOOKING_STATE_CHANGED",
+                                "LATE_CONFIRM_RESOURCE_CONFLICT"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: BOOKING_STATE_CHANGED | LATE_CONFIRM_RESOURCE_CONFLICT",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "CUSTOMER_NOT_ELIGIBLE_FOR_LATE_CONFIRM",
+                                "DEADLINE_PASSED",
+                                "INTERVAL_NOT_WITHIN_ONE_SESSION",
+                                "AREA_INACTIVE",
+                                "RESOURCE_NOT_ELIGIBLE",
+                                "VENUE_SELLING_BLOCK_ACTIVE",
+                                "RESOURCE_SELLING_BLOCK_ACTIVE",
+                                "IDEMPOTENCY_KEY_REUSED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: CUSTOMER_NOT_ELIGIBLE_FOR_LATE_CONFIRM | DEADLINE_PASSED | INTERVAL_NOT_WITHIN_ONE_SESSION | AREA_INACTIVE | RESOURCE_NOT_ELIGIBLE | VENUE_SELLING_BLOCK_ACTIVE | RESOURCE_SELLING_BLOCK_ACTIVE | IDEMPOTENCY_KEY_REUSED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Send a Late Confirmation for a missed request: AWAITING_CUSTOMER_CONFIRMATION (FR-LCF-06, FR-VEN-04)",
+        "tags": [
+          "venue-late-confirm"
+        ]
+      }
+    },
+    "/api/v1/venue/bookings/{bookingId}/late-present": {
+      "post": {
+        "description": "Only with no valid check-in and no committed no-show; otherwise, or outside the window, it is LATE_PRESENT_NOT_AVAILABLE. It blocks a later no-show (FR-ATT-04) and by itself grants no points, no Verified Player progress and no counter reset. A manual booking is LATE_PRESENT_NOT_AVAILABLE too (FR-MAN-04). A booking no longer in progress is BOOKING_STATE_CHANGED. A booking of another venue is NOT_FOUND. Implemented by E7-59.",
+        "operationId": "venueMarkLatePresent",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bookingId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseVenueAttendance"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NOT_FOUND"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "BOOKING_STATE_CHANGED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: BOOKING_STATE_CHANGED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "LATE_PRESENT_NOT_AVAILABLE",
+                                "IDEMPOTENCY_KEY_REUSED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: LATE_PRESENT_NOT_AVAILABLE | IDEMPOTENCY_KEY_REUSED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Mark Present — Late while startAt + 15 min <= now < endAt (FR-ATT-03)",
+        "tags": [
+          "venue-attendance"
+        ]
+      }
+    },
+    "/api/v1/venue/bookings/{bookingId}/no-show": {
+      "post": {
+        "description": "Only with no valid check-in and no Mark Present — Late; otherwise, or outside the window, it is NO_SHOW_NOT_AVAILABLE. Terminal: the remaining interval is released at once (FR-ATT-05) and venue staff cannot undo it — only a Platform Admin can (FR-ATT-06, FR-ATT-11). A manual booking is NO_SHOW_NOT_AVAILABLE too (FR-MAN-04). A booking no longer in progress is BOOKING_STATE_CHANGED. A booking of another venue is NOT_FOUND. Implemented by E7-59.",
+        "operationId": "venueMarkNoShow",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bookingId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseVenueAttendance"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NOT_FOUND"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "BOOKING_STATE_CHANGED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: BOOKING_STATE_CHANGED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NO_SHOW_NOT_AVAILABLE",
+                                "IDEMPOTENCY_KEY_REUSED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NO_SHOW_NOT_AVAILABLE | IDEMPOTENCY_KEY_REUSED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Record a no-show while startAt + 15 min <= now < endAt: NO_SHOW / ABSENT_NO_SHOW (FR-ATT-04, FR-ATT-05)",
+        "tags": [
+          "venue-attendance"
         ]
       }
     },
@@ -23806,6 +29516,197 @@
         "summary": "Steps 1–5: validate, block on tournament conflicts, list affected reservations (FR-VEN-23, FR-VEN-27)",
         "tags": [
           "venue-opening-hours"
+        ]
+      }
+    },
+    "/api/v1/venue/overview": {
+      "get": {
+        "description": "For the signed-in account's own venue. Today and this month are business dates in the venue's time zone (arch 04 §4.3). Revenue counts only COMPLETED bookings, online and manual (tournament revenue joins in Sprint 6); CONFIRMED, ACTIVE and every cancelled or rejected booking count nothing (PO decision 6 Oct 2026). No payment method, cash/card split or reconciliation field (FR-VEN-36). Every number comes from here: the Dashboard sums nothing. Implemented by E7-115.",
+        "operationId": "venueGetOverview",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseVenueOverview"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Today's and this month's revenue, today's bookings and pending requests (FR-VEN-35)",
+        "tags": [
+          "venue-overview"
         ]
       }
     },
