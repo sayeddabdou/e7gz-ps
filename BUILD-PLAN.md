@@ -1646,6 +1646,8 @@ Done when (write these as tests first where possible):
 - NFR-19 - the venue booking history never shows LATE_CONFIRM_FAILED_BOOKING_LIMIT or LATE_CONFIRM_FAILED_CUSTOMER_CONFLICT (test plants both events and asserts they are absent from GET /venue/bookings/{bookingId}).
 - The integrity sweep (InvariantSweep: NFR-26 terminal reason, NFR-28 overlap) reports zero violations after a seeded run of booking flows (create, accept, reject, expiry, customer cancel, manual walk-in and its cancel).
 - J1 (find and book: discovery -> quote -> create PENDING -> venue accept -> CONFIRMED in the upcoming bucket) and J8 (walk-in ACTIVE in GET /venue/bookings and its detail) end-to-end tests over HTTP.
+- D3 amendment - an exact username finds that customer's bookings; the same username in another case and with surrounding spaces finds them too (username-login normalisation); a partial username finds nothing; the customer's phone finds nothing; an anonymised customer's username finds nothing; one username lookup per search.
+- D4 ordering - GET /venue/bookings is ordered by start_at DESC then booking id DESC, and cursor pages follow that order without repeats or gaps.
 
 Carry-forward from E7-39 (do these too):
 - Contract from E7-39 (packages/api-client/SPRINT-2-CONTRACT.md; stubs already in the controllers named there): implement GET /customer/bookings?bucket=upcoming|completed|cancelled, GET /customer/bookings/{bookingId}, POST /customer/bookings/{bookingId}/cancel (Idempotency-Key required; DEADLINE_PASSED at or after startAt), GET /venue/bookings (filters of FR-VEN-38; from/to are business dates, inclusive) and GET /venue/bookings/{bookingId} with its history. Controllers: booking/web/CustomerBookingController, VenueBookingController.
@@ -1657,6 +1659,10 @@ PO decisions 11 Oct 2026 (Sayed, E7-49; quote "PO decision 11 Oct 2026, E7-49" i
 - D2: PENDING/CONFIRMED customer cancellation before startAt allowed (including emergency-paused PENDING). ACTIVE or deadline reached -> 422 DEADLINE_PASSED. VENUE_RESPONSE_EXPIRED/AWAITING and all terminal statuses -> 409 BOOKING_STATE_CHANGED. Other customer's booking -> 404 NOT_FOUND.
 - D3: Venue q searches exact booking ID, current customer username, walk-in name/phone, resource name. Never customer phone. Add a negative search test.
 - D4: Customer cancel publishes BookingCancelled outbox event; customer notification deferred to E7-55. Venue list with no date filters returns all dates, newest first, cursor paginated, limit <= 100.
+
+PO decisions 11 Oct 2026, second set (Sayed, E7-49 search and order; quote "PO decision 11 Oct 2026, E7-49" in code comments):
+- D3 amendment (exact username): q matches a customer only when it equals their current username exactly, after the same trim and case normalisation as username login; a partial username never matches. The other D3 fields are unchanged: exact booking ID, walk-in name, walk-in phone, resource name. The customer phone is never searchable. One username lookup per search, never a per-customer loop, and never LoginAccountDirectory's combined phone-or-username lookup. If identity/api has no username-only lookup, add one minimal read-only lookup returning the user ID and excluding anonymised accounts; list every Platform-lane file it changes for Sayed's review.
+- D4 ordering approved: the venue booking list keeps ORDER BY start_at DESC, booking id DESC, and its cursor follows the same (start_at, id) order. Do not change it.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
