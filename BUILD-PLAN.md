@@ -1937,6 +1937,9 @@ Carry-forward from the Sprint 0 review (do these too):
 - Per-account login limit (PO decision 2 Oct 2026, Sprint 0 review S-7): in addition to the existing per (identifier + IP) limit, count failed logins per account across all IPs: 50 failures in 1 hour pause login for that account for 15 minutes (iam.security_rate_limit_counter, limiter_type LOGIN, its own action_class such as CUSTOMER_ACCOUNT / VENUE_ACCOUNT / ADMIN_ACCOUNT, cooldown_until; no schema change, but note the new action_class values in the change report). All three audiences. Fails closed like the existing limiter. E7-56 raises the alert.
 - Password reset and change hash through the Argon2id gate from E7-24.
 
+Carry-forward from E7-54 (PO decisions 11 Oct 2026, do this too):
+- Fill the stubs of the Sprint 3 contract (E7-54, packages/api-client/SPRINT-3-CONTRACT.md) and keep their shapes: CustomerProfileController and the password-reset routes of CustomerAuthController. Phone change is two steps: POST /customer/profile/phone {phone} -> 201 {otpChallengeId} (PHONE_CHANGE code to the new phone), then POST /customer/profile/phone/verify {otpChallengeId, code} -> the profile. Password reset is by phone OTP only: request {phone} -> 201 {otpChallengeId}, an unknown or never-verified phone is 404 NOT_FOUND; complete {otpChallengeId, code, password} -> 204 and every refresh token of the account is revoked. POST /customer/profile/email and /email/verify stay 501 until the PO decides email verification: do not build them (no EMAIL_CHANGED yet). Replace this task's lines in backend/src/test/java/ps/e7gz/openapi/Sprint3StubHttpTest.java with your own tests.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -1964,6 +1967,9 @@ Done when (write these as tests first where possible):
 
 Carry-forward from E7-45 (PO decision 10 Oct 2026, do this too):
 - The boundary tests of this task are already written and switched off (@Disabled("E7-58: ...")): backend/src/test/java/ps/e7gz/support/boundary/pending/LateConfirmBoundaryTest.java. Move the class next to this task's code, replace each fail(...) with the steps its comment names, using the boundary pack ps.e7gz.support.boundary (Boundary, CommandInstants, Deadlines, DueJobs, BoundaryAssertions; see its package-info), and remove @Disabled. The task is done only when they pass. The pack and these tests come with E7-45: merge main once E7-45 is merged.
+
+Carry-forward from E7-54 (PO decisions 11 Oct 2026, do this too):
+- Fill the stubs of the Sprint 3 contract (E7-54, packages/api-client/SPRINT-3-CONTRACT.md) and keep their shapes: booking/lateconfirm/web CustomerLateConfirmController (accept / decline -> CustomerLateConfirmOutcome) and VenueLateConfirmController (send -> VenueLateConfirmation); also fill CustomerBookingDetail.lateConfirm {expiresAt, paused} and VenueBooking.lateConfirmExpiresAt / lateConfirmPaused. Venue-side failures reuse existing codes: the venue not inside an operating session now, or the interval no longer within the opening hours -> INTERVAL_NOT_WITHIN_ONE_SESSION; an inactive area -> AREA_INACTIVE. The pause is only the paused flag, with no reason field. Replace this task's lines in backend/src/test/java/ps/e7gz/openapi/Sprint3StubHttpTest.java with your own tests.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2020,6 +2026,9 @@ Done when (write these as tests first where possible):
 
 Carry-forward from E7-45 (PO decision 10 Oct 2026, do this too):
 - The boundary tests of this task are already written and switched off (@Disabled("E7-59: ...")): backend/src/test/java/ps/e7gz/support/boundary/pending/CheckInBoundaryTest.java. Move the class next to this task's code, replace each fail(...) with the steps its comment names, using the boundary pack ps.e7gz.support.boundary (Boundary, CommandInstants, Deadlines, DueJobs, BoundaryAssertions; see its package-info), and remove @Disabled. The task is done only when they pass. The pack and these tests come with E7-45: merge main once E7-45 is merged.
+
+Carry-forward from E7-54 (PO decisions 11 Oct 2026, do this too):
+- Fill the stubs of the Sprint 3 contract (E7-54, packages/api-client/SPRINT-3-CONTRACT.md) and keep their shapes: attendance/web VenueAttendanceController (-> VenueAttendance) and VenueBooking.attendance {checkInWindow, lateWindow, checkedInAt, latePresentAt, noShowAt} for ONLINE bookings (null for MANUAL); windows half-open [startAt, startAt + 15 min) and [startAt + 15 min, endAt); evidence reversed by an admin is absent. Errors as declared: CHECK_IN_WINDOW_CLOSED (also before startAt and at exactly +15:00), LATE_PRESENT_NOT_AVAILABLE, NO_SHOW_NOT_AVAILABLE; a manual booking answers the same code; a booking no longer in progress is 409 BOOKING_STATE_CHANGED. Replace this task's lines in backend/src/test/java/ps/e7gz/openapi/Sprint3StubHttpTest.java with your own tests.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2109,6 +2118,9 @@ Do:
 Done when (write these as tests first where possible):
 - Tests: cancel with the PIN → CANCELLED / VENUE_CANCELLED_CONFIRMED_BOOKING, reservation released, one customer notification; no PIN → 423 REQUIRED; wrong PIN → 423 INVALID and audited; a PENDING or already-cancelled booking → 409 BOOKING_STATE_CHANGED; a Manual booking is refused; OwnerPasswordMatrixTest green.
 
+Carry-forward from E7-54 (PO decisions 11 Oct 2026, do this too):
+- The stub and its request/response are in the Sprint 3 contract (E7-54, packages/api-client/SPRINT-3-CONTRACT.md): keep the shape. Replace this task's line in backend/src/test/java/ps/e7gz/openapi/Sprint3StubHttpTest.java with your own tests.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2134,6 +2146,9 @@ Do:
 
 Done when (write these as tests first where possible):
 - Tests: a seeded day with completed, confirmed, active, cancelled and other-venue bookings (online and manual) gives exactly the hand-computed numbers (only COMPLETED counts); a booking after midnight inside the previous business day counts on that day; money is BigDecimal scale 2.
+
+Carry-forward from E7-54 (PO decisions 11 Oct 2026, do this too):
+- todayBookings counts every booking of the venue on today's business date, online and manual, whatever its status - cancelled, rejected and no-show included (PO decision 11 Oct 2026, E7-54). Put it in the seeded-day test. Keep the VenueOverview shape of the Sprint 3 contract (packages/api-client/SPRINT-3-CONTRACT.md) and replace this task's line in backend/src/test/java/ps/e7gz/openapi/Sprint3StubHttpTest.java with your own tests.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2170,6 +2185,9 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 - Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.
 - Customer app is English at launch, all text in the i18n resource files (FRS §3.1).
 - In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.
+
+Carry-forward from E7-54 (PO decisions 11 Oct 2026, do this too):
+- Build against the Sprint 3 contract (E7-54, packages/api-client/SPRINT-3-CONTRACT.md): the countdown uses CustomerBookingDetail.lateConfirm.expiresAt against meta.serverTime. While lateConfirm.paused, show the timer as paused (no reason is sent - PO decision 11 Oct 2026), Accept disabled, Decline still available. Accept and decline return only {bookingId, status, terminalReason}: reload GET /customer/bookings/{id} afterwards. Map every error code the two routes declare.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2210,6 +2228,9 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 Carry-forward from E7-39 review (do these too):
 - Add the "Cancel booking" action on a CONFIRMED online booking (PO decision 6 Oct 2026 (E7-39 review: arch 09 §4.1 lists the route, but no task owned it)): POST /venue/bookings/{bookingId}/cancel-confirmed asks for the Owner PIN in the body, shows 423 REQUIRED/INVALID and 409 BOOKING_STATE_CHANGED from the code map; not offered on Manual bookings (they use cancel-manual).
 
+Carry-forward from E7-54 (PO decisions 11 Oct 2026, do this too):
+- Build against the Sprint 3 contract (E7-54, packages/api-client/SPRINT-3-CONTRACT.md): enable Check-in, Mark Present - Late and No-show from VenueBooking.attendance (checkInWindow, lateWindow, evidence instants) against meta.serverTime; a MANUAL booking (attendance null) shows no attendance actions. A Late Confirm refused for the customer shows only the neutral CUSTOMER_NOT_ELIGIBLE_FOR_LATE_CONFIRM message; venue-side errors have their own codes (INTERVAL_NOT_WITHIN_ONE_SESSION, AREA_INACTIVE, selling blocks, ...).
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2244,6 +2265,9 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 - Customer app is English at launch, all text in the i18n resource files (FRS §3.1).
 - In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.
 
+Carry-forward from E7-54 (PO decisions 11 Oct 2026, do this too):
+- Build against the Sprint 3 contract (E7-54, packages/api-client/SPRINT-3-CONTRACT.md): phone change is two screens (POST /customer/profile/phone -> enter the code -> POST /customer/profile/phone/verify); password reset is by phone only (request -> code + new password -> 204, then back to login: every session has ended). Email change and email verification answer 501 until the PO decides email verification: leave those screens out and list them as not built.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2277,6 +2301,9 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 - Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.
 - Every screen you add works in English and Arabic (RTL, CSS logical properties only).
 - In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.
+
+Carry-forward from E7-54 (PO decisions 11 Oct 2026, do this too):
+- todayBookings counts every booking of today, whatever its status - cancelled, rejected and no-show included (PO decision 11 Oct 2026, E7-54). Show the number as the API sends it; no filtering in the browser.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
