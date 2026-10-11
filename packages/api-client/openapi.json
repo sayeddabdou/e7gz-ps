@@ -19361,7 +19361,7 @@
         ]
       },
       "post": {
-        "description": "Leave startAt out for a walk-in starting now (startAt = server time, FR-MAN-04). Opening hours do not gate it (FR-MAN-03); no back-dating (FR-MAN-05); missing pricing is MANUAL_BOOKING_PRICING_CONFIGURATION_MISSING and creates nothing (FR-MAN-10). Always has a businessDate (FR-MAN-09). customerPhone, when sent, is normalised to E.164 like the venue phone. An ONBOARDING venue is refused with FORBIDDEN (FR-MAN-02; PO decision 5 Oct 2026). No Owner Password. Implemented by E7-48.",
+        "description": "Leave startAt out for a walk-in starting now (startAt = server time, FR-MAN-04). Opening hours and the Area do not gate it (FR-MAN-03); no back-dating (FR-MAN-05); missing pricing is MANUAL_BOOKING_PRICING_CONFIGURATION_MISSING and creates nothing (FR-MAN-10). Always has a businessDate (FR-MAN-09): the operating day when the whole interval fits one published session, otherwise the Africa/Cairo date of startAt. customerName and customerPhone are trimmed and a blank one is absent; customerPhone is normalised to E.164 like the venue phone (VALIDATION_FAILED otherwise). An ONBOARDING venue is FORBIDDEN (FR-MAN-02; PO decision 5 Oct 2026); a venue account disabled meanwhile is FORBIDDEN too (the token itself stops working: 401). A closure, emergency or maintenance in the interval is SLOT_NO_LONGER_AVAILABLE, as is another booking on it; a selling block now is VENUE_SELLING_BLOCK_ACTIVE / RESOURCE_SELLING_BLOCK_ACTIVE (PO decision 10 Oct 2026, E7-48). A Resource of another venue is NOT_FOUND. No Owner Password. Implemented by E7-48.",
         "operationId": "venueCreateManualBooking",
         "parameters": [
           {
@@ -19532,6 +19532,49 @@
               }
             },
             "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NOT_FOUND"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NOT_FOUND",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {
@@ -20378,7 +20421,7 @@
     },
     "/api/v1/venue/bookings/{bookingId}/cancel-manual": {
       "post": {
-        "description": "Only for source MANUAL and only before startAt (FR-MAN-04); at or after it is DEADLINE_PASSED; a booking already cancelled or completed is BOOKING_STATE_CHANGED. No Owner Password (FR-MAN-08). Implemented by E7-48.",
+        "description": "Only for source MANUAL, from CONFIRMED (before or after startAt) or ACTIVE (FR-MAN-08 as amended by PCR-007; PO decision 10 Oct 2026, E7-48). The room is free from the cancel instant. An online booking, or one already cancelled or completed, is BOOKING_STATE_CHANGED. A booking of another venue is NOT_FOUND. A venue account disabled meanwhile is FORBIDDEN (the token itself stops working: 401). No Owner Password (FR-MAN-08). Implemented by E7-48.",
         "operationId": "venueCancelManualBooking",
         "parameters": [
           {
@@ -20656,7 +20699,6 @@
                           "properties": {
                             "code": {
                               "enum": [
-                                "DEADLINE_PASSED",
                                 "IDEMPOTENCY_KEY_REUSED"
                               ],
                               "type": "string"
@@ -20677,7 +20719,7 @@
                 }
               }
             },
-            "description": "error.code: DEADLINE_PASSED | IDEMPOTENCY_KEY_REUSED",
+            "description": "error.code: IDEMPOTENCY_KEY_REUSED",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {
@@ -20752,7 +20794,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Cancel a manual booking before its start: CANCELLED / VENUE_CANCELLED_MANUAL_BOOKING (FR-MAN-08)",
+        "summary": "Cancel a CONFIRMED or ACTIVE manual booking: CANCELLED / VENUE_CANCELLED_MANUAL_BOOKING (FR-MAN-08, PCR-007)",
         "tags": [
           "venue-bookings"
         ]

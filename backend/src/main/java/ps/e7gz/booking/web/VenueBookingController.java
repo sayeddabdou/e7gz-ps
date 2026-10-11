@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,6 +30,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import ps.e7gz.booking.internal.ManualBookingRequest;
+import ps.e7gz.booking.internal.ManualBookings;
 import ps.e7gz.booking.internal.VenueBookingRow;
 import ps.e7gz.booking.internal.VenueBookings;
 import ps.e7gz.booking.internal.VenueResponses;
@@ -57,8 +60,8 @@ import ps.e7gz.messaging.api.StoredResponse;
 
 /**
  * Venue Dashboard — booking requests and bookings (arch 09 §4.1). The request lists, accept, reject and reject after
- * expiry are implemented (E7-47); the rest stay stubs until E7-48 (manual booking and its cancel) and E7-49 (bookings
- * list and detail). Every route acts for the signed-in account's own venue, never one named by the request. None of
+ * expiry are implemented (E7-47), manual booking and its cancel too (E7-48); the bookings list and detail stay stubs
+ * until E7-49. Every route acts for the signed-in account's own venue, never one named by the request. None of
  * these actions needs the Owner Password; each is in ADR-015's scope, so the Idempotency-Key is required. The venue DTOs
  * are separate from the customer ones (arch 09 §1.1): they carry nothing about the customer's other commitments
  * (NFR-19), and the customer phone is absent when the retention rule hides it (NFR-18, arch 10 §5.1).
@@ -73,18 +76,22 @@ public class VenueBookingController {
     static final String ACCEPT_ENDPOINT = "POST /api/v1/venue/bookings/{bookingId}/accept";
     static final String REJECT_ENDPOINT = "POST /api/v1/venue/bookings/{bookingId}/reject";
     static final String REJECT_AFTER_EXPIRY_ENDPOINT = "POST /api/v1/venue/bookings/{bookingId}/reject-after-expiry";
+    static final String CREATE_MANUAL_ENDPOINT = "POST /api/v1/venue/bookings";
+    static final String CANCEL_MANUAL_ENDPOINT = "POST /api/v1/venue/bookings/{bookingId}/cancel-manual";
     static final String BOOKING_AGGREGATE = "BOOKING";
     static final String BOOKING_ID = "bookingId";
 
     private final VenueBookings bookings;
     private final VenueResponses responses;
+    private final ManualBookings manualBookings;
     private final Idempotency idempotency;
     private final ResponseMetaFactory meta;
 
-    public VenueBookingController(VenueBookings bookings, VenueResponses responses, Idempotency idempotency,
-                                  ResponseMetaFactory meta) {
+    public VenueBookingController(VenueBookings bookings, VenueResponses responses, ManualBookings manualBookings,
+                                  Idempotency idempotency, ResponseMetaFactory meta) {
         this.bookings = bookings;
         this.responses = responses;
+        this.manualBookings = manualBookings;
         this.idempotency = idempotency;
         this.meta = meta;
     }
@@ -185,12 +192,18 @@ public class VenueBookingController {
         return meta.data(result.body());
     }
 
-    /**
-     * 200 with the booking; a replay leaves the customer phone out once the retention rule hides it (arch 10 §5.1),
-     * re-applying the same rule as the normal read path.
-     */
+    /** 200 with the booking (see {@link #response(int)}). */
     private StoredResponse<VenueBooking> response() {
-        return StoredResponse.of(VenueBooking.class, 200,
+        return response(200);
+    }
+
+    /**
+     * The booking with {@code status}; a replay leaves the customer phone out once the retention rule hides it (arch 10
+     * §5.1), re-applying the same rule as the normal read path. A manual booking has no customer: its walk-in phone is
+     * what the venue typed and is exempt (FR-DIS-09), so its replay is unchanged.
+     */
+    private StoredResponse<VenueBooking> response(int status) {
+        return StoredResponse.of(VenueBooking.class, status,
                         (VenueBooking booking) -> new ResultAggregate(BOOKING_AGGREGATE, booking.bookingId()))
                 .replayedThrough((context, stored) -> bookings.customerPhoneVisible(context, stored.bookingId())
                         ? stored : stored.withoutCustomerPhone());
@@ -201,34 +214,57 @@ public class VenueBookingController {
     @Operation(operationId = "venueCreateManualBooking",
             summary = "Walk-in / manual booking: CONFIRMED for a future start, ACTIVE when it starts now (FR-MAN-01…FR-MAN-04)",
             description = "Leave startAt out for a walk-in starting now (startAt = server time, FR-MAN-04). Opening "
-                    + "hours do not gate it (FR-MAN-03); no back-dating (FR-MAN-05); missing pricing is "
+                    + "hours and the Area do not gate it (FR-MAN-03); no back-dating (FR-MAN-05); missing pricing is "
                     + "MANUAL_BOOKING_PRICING_CONFIGURATION_MISSING and creates nothing (FR-MAN-10). Always has a "
-                    + "businessDate (FR-MAN-09). customerPhone, when sent, is normalised to E.164 like the venue phone. "
-                    + "An ONBOARDING venue is refused with FORBIDDEN (FR-MAN-02; PO decision 5 Oct 2026). No Owner "
-                    + "Password. Implemented by E7-48.")
+                    + "businessDate (FR-MAN-09): the operating day when the whole interval fits one published session, "
+                    + "otherwise the Africa/Cairo date of startAt. customerName and customerPhone are trimmed and a blank "
+                    + "one is absent; customerPhone is normalised to E.164 like the venue phone (VALIDATION_FAILED "
+                    + "otherwise). An ONBOARDING venue is FORBIDDEN (FR-MAN-02; PO decision 5 Oct 2026); a venue account "
+                    + "disabled meanwhile is FORBIDDEN too (the token itself stops working: 401). A closure, emergency "
+                    + "or maintenance in the interval is SLOT_NO_LONGER_AVAILABLE, as is another booking on it; a "
+                    + "selling block now is VENUE_SELLING_BLOCK_ACTIVE / RESOURCE_SELLING_BLOCK_ACTIVE (PO decision 10 "
+                    + "Oct 2026, E7-48). A Resource of another venue is NOT_FOUND. No Owner Password. Implemented by "
+                    + "E7-48.")
+    @ApiError(status = 403, codes = ApiErrorCode.FORBIDDEN)
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     @ApiError(status = 409, codes = ApiErrorCode.SLOT_NO_LONGER_AVAILABLE)
     @ApiError(status = 422, codes = {ApiErrorCode.MANUAL_BOOKING_PRICING_CONFIGURATION_MISSING,
             ApiErrorCode.MANUAL_BOOKING_BACKDATING_NOT_ALLOWED, ApiErrorCode.BOOKING_DURATION_INVALID,
             ApiErrorCode.RESOURCE_NOT_ELIGIBLE, ApiErrorCode.VENUE_SELLING_BLOCK_ACTIVE,
             ApiErrorCode.RESOURCE_SELLING_BLOCK_ACTIVE, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
-    public DataResponse<VenueBooking> createManual(
+    public ResponseEntity<DataResponse<VenueBooking>> createManual(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
-            @Valid @RequestBody VenueManualBookingRequest request) {
-        throw NotImplementedYet.stub();
+            @Valid @RequestBody VenueManualBookingRequest request,
+            @AuthenticationPrincipal AuthenticatedSubject venue) {
+        // PO decision 10 Oct 2026, E7-48 (D10): trimmed, blank -> absent, phone in E.164 (400 before any record)
+        ManualBookingRequest manual = ManualBookingRequest.of(request.resourceId(), request.playMode(),
+                request.startAt(), request.durationMinutes(), request.customerName(), request.customerPhone());
+        IdempotentResult<VenueBooking> result = manualBookings.create(venue.id(), manual,
+                idempotency.request(venue, CREATE_MANUAL_ENDPOINT, idempotencyKey, Map.of(), request),
+                response(201), VenueBooking::of);
+        return ResponseEntity.status(result.status()).body(meta.data(result.body()));
     }
 
     @PostMapping("/bookings/{bookingId}/cancel-manual")
     @Operation(operationId = "venueCancelManualBooking",
-            summary = "Cancel a manual booking before its start: CANCELLED / VENUE_CANCELLED_MANUAL_BOOKING (FR-MAN-08)",
-            description = "Only for source MANUAL and only before startAt (FR-MAN-04); at or after it is "
-                    + "DEADLINE_PASSED; a booking already cancelled or completed is BOOKING_STATE_CHANGED. No Owner "
-                    + "Password (FR-MAN-08). Implemented by E7-48.")
+            summary = "Cancel a CONFIRMED or ACTIVE manual booking: CANCELLED / VENUE_CANCELLED_MANUAL_BOOKING (FR-MAN-08, PCR-007)",
+            description = "Only for source MANUAL, from CONFIRMED (before or after startAt) or ACTIVE (FR-MAN-08 as "
+                    + "amended by PCR-007; PO decision 10 Oct 2026, E7-48). The room is free from the cancel instant. "
+                    + "An online booking, or one already cancelled or completed, is BOOKING_STATE_CHANGED. A booking of "
+                    + "another venue is NOT_FOUND. A venue account disabled meanwhile is FORBIDDEN (the token itself "
+                    + "stops working: 401). No Owner Password (FR-MAN-08). Implemented by E7-48.")
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     @ApiError(status = 409, codes = ApiErrorCode.BOOKING_STATE_CHANGED)
-    @ApiError(status = 422, codes = {ApiErrorCode.DEADLINE_PASSED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
+    @ApiError(status = 422, codes = ApiErrorCode.IDEMPOTENCY_KEY_REUSED)
     public DataResponse<VenueBooking> cancelManual(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
-            @PathVariable UUID bookingId) {
-        throw NotImplementedYet.stub();
+            @PathVariable UUID bookingId,
+            @AuthenticationPrincipal AuthenticatedSubject venue) {
+        IdempotentResult<VenueBooking> result = manualBookings.cancel(venue.id(), bookingId,
+                idempotency.request(venue, CANCEL_MANUAL_ENDPOINT, idempotencyKey, Map.of(BOOKING_ID, bookingId),
+                        null),
+                response(), VenueBooking::of);
+        return meta.data(result.body());
     }
 
     @GetMapping("/bookings")
@@ -336,8 +372,9 @@ public class VenueBookingController {
 
         /**
          * The venue's view of a booking row. {@code customer.phone} is already decided by the retention rule (absent
-         * when hidden). {@code attendanceResult} stays null here: no booking E7-47 answers with has started, so none has
-         * an attendance record yet (FR-ATT-07; the bookings list and detail are E7-49's).
+         * when hidden). {@code attendanceResult} stays null here: no booking E7-47 answers with has started, and a
+         * manual booking gets no attendance record at creation or cancellation - its NOT_APPLICABLE result is E7-61's
+         * (FR-ATT-07, FR-MAN-06; PO decision 10 Oct 2026, E7-48, D9; the bookings list and detail are E7-49's).
          */
         public static VenueBooking of(VenueBookingRow row) {
             VenueBookingCustomer customer = row.source() == BookingSource.ONLINE

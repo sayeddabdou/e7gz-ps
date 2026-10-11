@@ -55,10 +55,20 @@ public final class IntegrationEvents {
     public static final String RESERVATION_RELEASED = "ReservationReleased";
 
     /**
-     * {@code {bookingId, customerId, venueId, resourceId, startAt, endAt}}, aggregate {@code BOOKING}: the venue accepted
-     * a PENDING Online Booking, now CONFIRMED (arch 06 section 2.1, arch 08 section 3.2; E7-47, PO decision D4).
+     * {@code {bookingId, customerId, venueId, resourceId, startAt, endAt}}, aggregate {@code BOOKING}: a booking is now
+     * CONFIRMED - the venue accepted a PENDING Online Booking (arch 06 section 2.1, arch 08 section 3.2; E7-47, PO
+     * decision D4), or a future Manual Booking was created CONFIRMED, with {@code customerId} null and
+     * {@code source: MANUAL} (PO decision 10 Oct 2026, E7-48, D6).
      */
     public static final String BOOKING_CONFIRMED = "BookingConfirmed";
+
+    /**
+     * {@code {bookingId, customerId, venueId, resourceId, startAt, endAt, source}}, aggregate {@code BOOKING}: a booking
+     * is now ACTIVE (arch 08 section 3.2). Written since E7-48 for a walk-in Manual Booking created ACTIVE at the command
+     * instant, with {@code customerId} null and {@code source: MANUAL} (PO decision 10 Oct 2026, E7-48, D6); the
+     * CONFIRMED -> ACTIVE start is E7-60's.
+     */
+    public static final String BOOKING_STARTED = "BookingStarted";
 
     /**
      * {@code {bookingId, customerId, venueId, resourceId, startAt, endAt, terminalReason}}, aggregate {@code BOOKING}:
@@ -77,7 +87,9 @@ public final class IntegrationEvents {
     /**
      * {@code {bookingId, customerId, venueId, resourceId, startAt, endAt, terminalReason}}, aggregate {@code BOOKING}: a
      * booking was CANCELLED under {@code terminalReason} - from E7-47 the operational cause that stopped a venue's
-     * Accept (FR-BOK-16, PO decision D4).
+     * Accept (FR-BOK-16, PO decision D4); from E7-48 the venue's cancellation of a CONFIRMED or ACTIVE Manual Booking,
+     * VENUE_CANCELLED_MANUAL_BOOKING, with {@code customerId} null and {@code source: MANUAL} (PCR-007; PO decision 10
+     * Oct 2026, E7-48, D6).
      */
     public static final String BOOKING_CANCELLED = "BookingCancelled";
 

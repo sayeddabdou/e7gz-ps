@@ -26,7 +26,8 @@ import ps.e7gz.notification.internal.stream.VenueStreamChannel.Type;
  * <ul>
  *   <li>{@code BookingCreated} - {@code BOOKING CREATED} (a new booking request: the audible alert, A6).</li>
  *   <li>{@code BookingConfirmed}, {@code BookingRejected}, {@code VenueResponseExpired}, {@code BookingCancelled}
- *       (E7-47) - {@code BOOKING CHANGED}.</li>
+ *       (E7-47) - {@code BOOKING CHANGED}; the same events of a Manual Booking and {@code BookingStarted} (E7-48) -
+ *       {@code BOOKING CHANGED}: the venue made the booking itself, so no alert.</li>
  *   <li>{@code VenueAccountDisabled} - every open stream of the account closes at once (FR-VEN-08).</li>
  * </ul>
  * The other booking and tournament events (a new tournament request, check-in, ...) add a row to
@@ -46,7 +47,9 @@ public class VenueStreamSignals implements OutboxConsumer {
             IntegrationEvents.BOOKING_CONFIRMED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId"),
             IntegrationEvents.BOOKING_REJECTED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId"),
             IntegrationEvents.VENUE_RESPONSE_EXPIRED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId"),
-            IntegrationEvents.BOOKING_CANCELLED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId"));
+            IntegrationEvents.BOOKING_CANCELLED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId"),
+            // E7-48: a walk-in created ACTIVE; never the CREATED alert, the venue made it (PO decision 10 Oct 2026, E7-48, D6)
+            IntegrationEvents.BOOKING_STARTED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId"));
 
     private final JdbcClient jdbc;
     private final ObjectMapper json;
