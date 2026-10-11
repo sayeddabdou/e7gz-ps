@@ -197,6 +197,23 @@ class VenueBookingListHttpTest extends IntegrationTest {
         assertThat(ids(list(world, "q", username))).containsExactly(online.bookingId());
     }
 
+    /**
+     * Regression (PO decision 11 Oct 2026, E7-49, D3 amendment: the same normalisation as username login): login trims
+     * spaces only (PostgreSQL btrim), so a username sent with a leading or trailing tab finds nothing - as it would not
+     * log in - while the same username with spaces does.
+     */
+    @Test
+    void aTabAroundTheUsernameMatchesOnlyAsUsernameLoginWould() throws Exception {
+        OnlineBookingWorld world = OnlineBookingWorld.create();
+        CreatedBooking online = online(world, 0);
+        String username = OWNER.sql("SELECT username FROM iam.user_account WHERE id = :id")
+                .param("id", online.customerId()).query(String.class).single();
+
+        assertThat(ids(list(world, "q", "\t" + username))).isEmpty();
+        assertThat(ids(list(world, "q", username + "\t"))).isEmpty();
+        assertThat(ids(list(world, "q", " " + username + " "))).containsExactly(online.bookingId());
+    }
+
     /** The exact username of another venue's customer finds nothing here: the match is scoped to this venue. */
     @Test
     void anotherVenuesCustomerFoundByUsernameAddsNothing() throws Exception {

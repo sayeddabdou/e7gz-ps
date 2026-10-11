@@ -15,18 +15,25 @@ import ps.e7gz.common.error.ApiException;
  * month) are the dashboard's own. Without them the list covers all dates (PO decision 11 Oct 2026, E7-49, D4).
  *
  * <p>{@code q} (PO decision 11 Oct 2026, E7-49, D3 and its amendment) matches the exact booking ID, the customer's
- * exact current username (trimmed, case-insensitive, as username login; never a part of one), and a part of the
- * walk-in name or phone or of the resource name - never the customer's phone, which a search would otherwise reveal
- * past its retention point (NFR-18). Trimmed; blank is no search.
+ * exact current username, and a part of the walk-in name or phone or of the resource name - never the customer's
+ * phone, which a search would otherwise reveal past its retention point (NFR-18). Blank is no search. {@code q} is kept
+ * exactly as sent: the username is matched by Identity with username login's own normalisation - PostgreSQL
+ * {@code lower(btrim(...))}, which trims spaces only, so a tab is kept as login keeps it - while the other fields
+ * match {@link #text()}, trimmed of all surrounding whitespace.
  */
 public record VenueBookingFilter(LocalDate from, LocalDate to, Activity activity, BookingSource source,
                                  UUID resourceId, BookingStatus status, String q) {
 
     public VenueBookingFilter {
-        q = q == null || q.isBlank() ? null : q.strip();
+        q = q == null || q.isBlank() ? null : q;
         if (from != null && to != null && from.isAfter(to)) {
             throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "from");
         }
+    }
+
+    /** {@code q} trimmed of all surrounding whitespace, for every field but the username; null when no search. */
+    String text() {
+        return q == null ? null : q.strip();
     }
 
     /** The booking ID {@code q} names exactly, if it is one. */
@@ -35,14 +42,14 @@ public record VenueBookingFilter(LocalDate from, LocalDate to, Activity activity
             return Optional.empty();
         }
         try {
-            return Optional.of(UUID.fromString(q));
+            return Optional.of(UUID.fromString(text()));
         } catch (IllegalArgumentException notAnId) {
             return Optional.empty();
         }
     }
 
-    /** {@code q} as a case-insensitive {@code LIKE} pattern matching it anywhere, its wildcards escaped. */
+    /** {@link #text()} as a case-insensitive {@code LIKE} pattern matching it anywhere, its wildcards escaped. */
     String likePattern() {
-        return "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
+        return "%" + text().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
     }
 }

@@ -29,6 +29,10 @@ class JdbcCustomerContactsTest extends IntegrationTest {
     @Autowired
     CustomerContacts contacts;
 
+    /** Username login (E7-14), the normalisation the exact-username lookup must match. */
+    @Autowired
+    CustomerAccounts login;
+
     @Autowired
     CommandRunner runner;
 
@@ -73,6 +77,28 @@ class JdbcCustomerContactsTest extends IntegrationTest {
         assertThat(byUsername(user.username())).contains(user.id());
         assertThat(byUsername(user.username().toUpperCase(Locale.ROOT))).contains(user.id());
         assertThat(byUsername("  " + user.username() + " ")).as("trimmed like login (btrim)").contains(user.id());
+    }
+
+    /**
+     * Regression: the lookup normalises exactly as username login does (PostgreSQL {@code lower(btrim(...))}, spaces
+     * only). A leading or trailing tab is not trimmed, so it matches only where login would match it - which it does
+     * not - and every input here finds the customer exactly when {@link CustomerAccounts#find} logs the same customer in.
+     */
+    @Test
+    void itMatchesExactlyWhenUsernameLoginWouldTabsIncluded() {
+        Fixtures.User user = Fixtures.aUser().verified().create();
+        String u = user.username();
+
+        for (String input : new String[] {u, " " + u + " ", u.toUpperCase(Locale.ROOT), "\t" + u, u + "\t",
+                "\t" + u + "\t", " \t" + u, u + "\n", "\u00a0" + u}) {
+            boolean logsIn = login.find(input).map(account -> account.id().equals(user.id())).orElse(false);
+            assertThat(byUsername(input).filter(user.id()::equals).isPresent())
+                    .as("input %s: same answer as username login", input.replace("\t", "\\t").replace("\n", "\\n"))
+                    .isEqualTo(logsIn);
+        }
+        assertThat(byUsername("\t" + u)).as("a leading tab is not trimmed by login").isEmpty();
+        assertThat(byUsername(u + "\t")).as("nor a trailing one").isEmpty();
+        assertThat(byUsername(" " + u + " ")).as("spaces are").contains(user.id());
     }
 
     @Test

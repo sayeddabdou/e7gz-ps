@@ -43,7 +43,10 @@ class BookingCursorTest {
                         e -> assertThat(e.code()).isEqualTo(ApiErrorCode.VALIDATION_FAILED));
         LocalDate day = LocalDate.of(2026, 10, 12);
         assertThat(new VenueBookingFilter(day, day, null, null, null, null, "   ").q()).isNull();
-        assertThat(new VenueBookingFilter(null, null, null, null, null, null, " Omar ").q()).isEqualTo("Omar");
+        VenueBookingFilter search = new VenueBookingFilter(null, null, null, null, null, null, "\t Omar ");
+        assertThat(search.q()).as("kept as sent, for the username's own login normalisation").isEqualTo("\t Omar ");
+        assertThat(search.text()).as("every other field: all surrounding whitespace trimmed").isEqualTo("Omar");
+        assertThat(search.likePattern()).isEqualTo("%Omar%");
         assertThat(new VenueBookingFilter(null, null, null, null, null, null, "50%_a\\b").likePattern())
                 .isEqualTo("%50\\%\\_a\\\\b%");
     }

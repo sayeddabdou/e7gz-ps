@@ -50,7 +50,7 @@ class VenueBookingSearchTest {
     @Test
     void aSearchMakesExactlyOneUsernameLookupAndPassesItsMatchToTheQuery() {
         UUID customer = UUID.randomUUID();
-        when(customers.findByUsername(any(), eq("omar_k"))).thenReturn(Optional.of(customer));
+        when(customers.findByUsername(any(), eq(" omar_k "))).thenReturn(Optional.of(customer));
 
         bookings.list(ACCOUNT, filter(" omar_k "), null, null);
 
@@ -67,6 +67,19 @@ class VenueBookingSearchTest {
 
         verify(customers, times(1)).findByUsername(any(), eq("Room 3"));
         verify(store).page(any(), eq(VENUE), any(), isNull(), isNull(), eq(6));
+    }
+
+    /**
+     * The username lookup gets {@code q} exactly as sent - tabs included - so Identity applies username login's own
+     * normalisation (btrim: spaces only); the booking search never trims it first.
+     */
+    @Test
+    void theUsernameLookupGetsQExactlyAsSentTabsIncluded() {
+        when(customers.findByUsername(any(), any())).thenReturn(Optional.empty());
+
+        bookings.list(ACCOUNT, filter("\tomar_k "), null, null);
+
+        verify(customers, times(1)).findByUsername(any(), eq("\tomar_k "));
     }
 
     @Test
