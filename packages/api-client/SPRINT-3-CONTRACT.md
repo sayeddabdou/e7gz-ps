@@ -36,6 +36,8 @@ Not in Sprint 3: `GET /customer/account-standing` (Sprint 4, E7-65), `POST /cust
 | D2 | Phone change is two steps but arch 09 §3.1 lists one route | **New route `POST /customer/profile/phone/verify`**, recorded in arch 09 §3.1 | `POST /customer/profile/phone {phone}` → 201 `{otpChallengeId}`; `…/phone/verify {otpChallengeId, code}` → the profile |
 | D3 | Password reset shape (FR-ACC-09); email reset is deferred | **Phone OTP only. `complete` → 204 and every refresh token is revoked, so the customer logs in again. An unknown or never-verified phone on `request` is 404 `NOT_FOUND`**, like `/otp/send` | `request {phone}` → 201 `{otpChallengeId}`; `complete {otpChallengeId, code, password}` → 204 |
 | D4 | Venue Late Confirm when the venue is not inside an operating session now, the original interval no longer fits the hours, or the area is inactive (FR-LCF-02) | **Reuse existing codes**: `INTERVAL_NOT_WITHIN_ONE_SESSION`, `AREA_INACTIVE`. No new enum member | On `POST /venue/bookings/{id}/late-confirm` and the customer's accept |
+| D5 | Which bookings `todayBookings` counts on the Overview (FR-VEN-35 does not say) | **Every booking of the venue on today's business date, online and manual, whatever its status** — cancelled, rejected and no-show included | `VenueOverview.todayBookings` |
+| D6 | arch 09 §3.3's `pauseCauseCode` | **Only `paused`, no reason.** A reason can be added later as a non-breaking field once a closed list of pause causes exists | `CustomerBookingLateConfirm = {expiresAt, paused}` |
 
 ## 2. Conventions (resolved from the documents)
 
@@ -53,10 +55,3 @@ Not in Sprint 3: `GET /customer/account-standing` (Sprint 4, E7-65), `POST /cust
 | Overview | Money as in SPRINT-2-CONTRACT.md (`{amount: "150.00", currency: "EGP"}`). Today and this month are business dates in the venue's time zone; revenue counts only COMPLETED bookings (PO decision 6 Oct 2026). No payment method, no cash/card split (FR-VEN-36). The Dashboard sums nothing. |
 | Profile | `PATCH /customer/profile` edits `fullName` only; username, phone and email have their own routes (FR-ACC-07). `CustomerProfile` = `{userId, fullName, username, phone, phoneVerified, email, emailVerified, usernameChangeAvailableAt, joinedAt}`; standing, Verified Player and referral code are Sprint 4's. The new password field is `password` (VALIDATION RULES §2.1, 400 `VALIDATION_FAILED` on field `password`, as at registration). |
 | Separate DTOs | Customer routes use only `Customer*` schemas, venue routes only `Venue*` (arch 09 §1.1); `Sprint3ContractTest` walks every reference. |
-
-## 3. Open points for the PO
-
-| # | Point | Proposed |
-|---|---|---|
-| Q1 | Which bookings `todayBookings` counts on the Overview (FR-VEN-35 does not say) | E7-115 proposes the statuses and asks you before building it |
-| Q2 | arch 09 §3.3's `pauseCauseCode` | Left out (see Conventions). Add it later, as a non-breaking field, if a closed list of pause causes is defined |

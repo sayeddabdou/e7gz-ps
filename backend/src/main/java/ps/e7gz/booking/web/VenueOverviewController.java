@@ -43,7 +43,9 @@ public class VenueOverviewController {
             @NotNull @Schema(description = "COMPLETED bookings on today's business date.") MoneyView todayRevenue,
             @NotNull @Schema(description = "COMPLETED bookings from the first business date of this month to today.")
             MoneyView monthRevenue,
-            @NotNull @Schema(description = "This venue's bookings on today's business date.", example = "12")
+            @NotNull @Schema(description = "Every booking of this venue on today's business date, online and manual, "
+                    + "whatever its status — cancelled, rejected and no-show included (PO decision 11 Oct 2026, "
+                    + "E7-54).", example = "12")
             Integer todayBookings,
             @NotNull @Schema(description = "PENDING requests waiting for the venue's answer (FR-VEN-34).", example = "2")
             Integer pendingRequests) {

@@ -4096,7 +4096,7 @@
             "type": "integer"
           },
           "todayBookings": {
-            "description": "This venue's bookings on today's business date.",
+            "description": "Every booking of this venue on today's business date, online and manual, whatever its status — cancelled, rejected and no-show included (PO decision 11 Oct 2026, E7-54).",
             "example": 12,
             "format": "int32",
             "type": "integer"
