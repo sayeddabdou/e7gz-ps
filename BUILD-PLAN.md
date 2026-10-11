@@ -2150,6 +2150,10 @@ Done when (write these as tests first where possible):
 Carry-forward from E7-54 (PO decisions 11 Oct 2026, do this too):
 - todayBookings counts every booking of the venue on today's business date, online and manual, whatever its status - cancelled, rejected and no-show included (PO decision 11 Oct 2026, E7-54). Put it in the seeded-day test. Keep the VenueOverview shape of the Sprint 3 contract (packages/api-client/SPRINT-3-CONTRACT.md) and replace this task's line in backend/src/test/java/ps/e7gz/openapi/Sprint3StubHttpTest.java with your own tests.
 
+PO decision 3 Oct 2026 (E7-31), restated 12 Oct 2026 - which day is "today" (do this too):
+- Today is BusinessDates.currentBusinessDate(venueId) (inventory api, E7-31), from the injected Clock: the Operating Day of the session still running, so a night that crosses midnight is one business day. Never the Cairo calendar date (LocalDate.ofInstant) and never Instant.now().
+- Test: for a venue open 18:00-02:00 Africa/Cairo, at 01:00 todayRevenue and todayBookings count the previous calendar day's business date (the session is still running); at 03:00 (after closing, no session) they count that calendar day.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
