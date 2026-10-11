@@ -2309,6 +2309,10 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 Carry-forward from E7-54 (PO decisions 11 Oct 2026, do this too):
 - todayBookings counts every booking of today, whatever its status - cancelled, rejected and no-show included (PO decision 11 Oct 2026, E7-54). Show the number as the API sends it; no filtering in the browser.
 
+PO decision 3 Oct 2026 (E7-31), restated 12 Oct 2026 - which day is "today" (do this too):
+- Today is the server's business date (BusinessDates.currentBusinessDate, E7-31): the Operating Day of the session still running, so after midnight inside a session it is still the previous calendar day. The Dashboard never works out today from the device clock or a Cairo calendar date: load today's schedule with GET /venue/availability WITHOUT a date and show the businessDate it returns; today's figures come from GET /venue/overview as sent.
+- Test: the Overview's first schedule load sends no date, and the date shown is the businessDate from the response (e.g. a response with the previous calendar day's businessDate shows that day, whatever the device clock says).
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
