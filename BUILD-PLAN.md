@@ -102,11 +102,11 @@ Late Confirm, check-in / late / no-show, start-time revalidation, completion; al
 | S3-P1 | E7-55 | Platform | Booking and attendance notifications | Send the right notification for every booking and attendance event. | S2-P4 |
 | S3-P2 | E7-56 | Platform | Admin alerts | Alerts to the admin when something is seriously wrong. | S2-P2 |
 | S3-P3 | E7-57 | Platform | Profile and account management | Edit profile, change username, phone, email, reset password. | S0-P6 |
-| S3-E1 | E7-58 | Engine | Late Confirm (O3) | Late Confirm: the venue offers a late slot, the customer accepts in time. | S2-E2, S2-P6 |
+| S3-E1 | E7-58 | Engine | Late Confirm (O3) | Late Confirm: the venue offers a late slot, the customer accepts in time. | S2-E2, S2-P6, S3-P1 |
 | S3-E5 | E7-113 | Engine | Opening-hours change: cancel affected bookings (O5) | When a venue saves new opening hours, cancel the future bookings the new hours no longer cover, release their holds and tell the customers. | S1-P3, S2-E4, S3-E1, S3-P1 |
-| S3-E2 | E7-59 | Engine | Check-in, late present, no-show (O13) | Check-in, "arrived late", and no-show. | S2-E2 |
-| S3-E3 | E7-60 | Engine | Start-time revalidation (O11) | Re-check everything at start time and cancel with the right reason if needed. | S3-E2 |
-| S3-E4 | E7-61 | Engine | Completion and attendance defaults (O12) | Finish bookings automatically and set the final attendance result. | S3-E2 |
+| S3-E2 | E7-59 | Engine | Check-in, late present, no-show (O13) | Check-in, "arrived late", and no-show. | S2-E2, S3-P1 |
+| S3-E3 | E7-60 | Engine | Start-time revalidation (O11) | Re-check everything at start time and cancel with the right reason if needed. | S3-E2, S3-P1 |
+| S3-E4 | E7-61 | Engine | Completion and attendance defaults (O12) | Finish bookings automatically and set the final attendance result. | S3-E2, S3-P1 |
 | S3-E6 | E7-114 | Engine | Venue cancels a confirmed booking (FR-VEN-03) | The venue cancels a CONFIRMED online booking with the Owner PIN; the customer gets a full refund classification and a notification. | S3-P0, S2-E2, S3-P1 |
 | S3-E7 | E7-115 | Engine | Venue Overview API (FR-VEN-35) | The backend for the Dashboard home page: today's and this month's revenue, today's bookings and pending requests. | S3-P0, S2-E4 |
 
@@ -1874,12 +1874,16 @@ Carry-forward from E7-44 (PO decision 10 Oct 2026, do this too):
 
 Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
 - Start this task first in Sprint 3: until it is merged no booking event creates a notification. The Sprint 2 review (12 Oct 2026) ran a full booking flow (create, accept, reject, expiry, reject after expiry, customer cancel) and found 0 notification rows. E7-43 built the mechanism only; the only Notifications.notify call today is VENUE_OWNER_PASSWORD_RESET.
-- Venue booking notifications (Spec v5 §52.5, FR-NTF-09) are in this task too, not only the §52.2 customer codes: VENUE_NEW_BOOKING_REQUEST on BookingCreated (decision A6: Web Push while the Dashboard is closed), VENUE_PENDING_REQUEST_EXPIRING, VENUE_BOOKING_AUTO_CANCELLED, VENUE_LATE_CONFIRM_ACCEPTED, VENUE_LATE_CONFIRM_DECLINED and VENUE_CUSTOMER_CONFIRMATION_EXPIRED. Wire each one whose trigger exists in main when you start (merge main for E7-58's Late Confirm events), and list the triggers you wired in the PR. Each is created exactly once per event, in the event's command transaction or by an idempotent outbox consumer (a retry runs every consumer again).
+- Venue booking notifications (Spec v5 §52.5, FR-NTF-09) are in this task too, not only the §52.2 customer codes: VENUE_NEW_BOOKING_REQUEST on BookingCreated (decision A6: Web Push while the Dashboard is closed), VENUE_PENDING_REQUEST_EXPIRING, VENUE_BOOKING_AUTO_CANCELLED, VENUE_LATE_CONFIRM_ACCEPTED, VENUE_LATE_CONFIRM_DECLINED and VENUE_CUSTOMER_CONFIRMATION_EXPIRED. Wire each one whose trigger exists in main when you start (merge main for E7-58's Late Confirm events), and list the triggers you wired in the PR. Each is created exactly once per event by the one notification consumer (it must be idempotent: a retry runs every consumer again).
 - VENUE_PENDING_REQUEST_EXPIRING needs a new timer at venue_response_expires_at - 3 minutes (minute 7 of the 10-minute window; PO decision 12 Oct 2026). The timer is superseded by Accept, Reject, customer cancel and expiry (as T1 is, VenueAnswers.venueResponseExpiryKey), and pauses with the response timer.
 - Venue in-app notification list (PO decision 12 Oct 2026; FR-NTF-09 - venue notifications are stored with an IN_APP delivery but nothing reads them): add to the contract first, then implement, GET /venue/notifications (the signed-in venue account's notifications, newest first, cursor paging, same shape as GET /customer/notifications) and POST /venue/notifications/{notificationId}/read (204; reading an already-read one changes nothing; another account's notification is 404). Record the routes in arch 09 section 4.1 as E7-43 did for its admin route, regenerate packages/api-client, and tell the Clients lane: E7-63 builds the Dashboard page.
 - One wording per code: the customer app renders in-app text from the code (apps/customer/src/features/notifications/notificationMessages.ts, E7-51) while push and email text come from the backend template catalogue. Use the same wording in both and let the PO review them together in this PR. The app reads params.venueName for BOOKING_CONFIRMED, BOOKING_REJECTED and BOOKING_STARTS_SOON: send it (the venue name at the event), or change the app in the same PR.
 - Tests: a created booking gives exactly one VENUE_NEW_BOOKING_REQUEST with a PUSH delivery sent by the venue Web Push sender (the log sender in dev); an accepted, rejected, expired and customer-cancelled booking each give exactly one customer notification of the right code, with the Booking ID as reference (FR-NTF-04).
 - VENUE_BOOKING_AUTO_CANCELLED split (PO decision 12 Oct 2026): this task sends it for the system cancellations that exist in Sprint 3 - an Accept stopped by an operational cause (FR-BOK-16, E7-47) and the start-time revalidation cancellations (E7-60). E7-80 adds the emergency, owner-review and closure cascades in Sprint 5. One notification per cancelled booking, from one place only.
+
+Carry-forward from the Sprint 3 review (PO decisions 12 Oct 2026, do these too):
+- One notification path (PO decision 12 Oct 2026): build ONE outbox consumer in notification/internal that turns integration events into booking, Late Confirm and attendance notifications - the only place they are created (no producer task calls Notifications.notify for them). This task wires the events that exist when it starts (BookingCreated, BookingConfirmed, BookingRejected, VenueResponseExpired, BookingCancelled, BookingStarted; the Late Confirm events if E7-58 is merged). Make adding an event a small documented change - one mapping entry, its copy and its exactly-once test - because E7-58, E7-59, E7-60, E7-61, E7-113 and E7-114 add their own codes there after this task merges. Step 1's 'every customer code' therefore means: the codes whose events exist now, plus the time-based reminders below; the trigger tasks add the rest.
+- BOOKING_STARTS_SOON (Spec v5 §52.2) is a timer of this task (PO decision 12 Oct 2026): 20 minutes before startAt of a CONFIRMED online booking (scheduled on Accept; a booking confirmed less than 20 minutes before its start gets none), superseded when the booking is cancelled or no longer CONFIRMED, fired from the stored startAt, once per booking. Manual bookings have no customer and get none.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -1965,7 +1969,7 @@ Finish by running the checks in CLAUDE.md §4, then give me a short summary, the
 
 **What this task does:** Late Confirm: the venue offers a late slot, the customer accepts in time.
 
-Lane: Engine · Depends on: S2-E2, S2-P6
+Lane: Engine · Depends on: S2-E2, S2-P6, S3-P1
 
 ```text
 Read CLAUDE.md first. You are implementing task S3-E1 — "Late Confirm (O3)" (Engine lane) of the E7GZ PS build plan.
@@ -1995,6 +1999,9 @@ PO decisions 12 Oct 2026 (E7-58 discovery, do these too):
 - D3: Decline never checks the paused flag (FR-OPS-41) and works while now < the stored late_confirmation.expires_at (ck_late_confirmation_response_shape). Keeping expires_at valid during a pause is E7-83's. Accept while paused is refused (FR-OPS-41 allows only Decline): propose its code in the PR, following E7-47 D8.
 - D4: A banned or deactivated customer at initiation answers only 422 CUSTOMER_NOT_ELIGIBLE_FOR_LATE_CONFIRM and records no booking event. LATE_CONFIRM_FAILED_BOOKING_LIMIT is recorded only for the 4-commitment limit (FR-LCF-05): commit that history row and answer the same 422 (no hold; the booking stays VENUE_RESPONSE_EXPIRED). The customer's schedule conflict is never checked at initiation (FR-LCF-15). arch 09 §4.1 and arch 10 §5.2 were updated to match.
 - Defaults: paused T2 and T3 handlers defer processing, like T1 (re-arming them is E7-83's); an ONBOARDING venue is 403 FORBIDDEN (as E7-48); the five @Disabled E7-45 boundary tests are implemented without weakening any production database guard.
+
+Carry-forward from the Sprint 3 review (PO decisions 12 Oct 2026, do these too):
+- One notification path (PO decision 12 Oct 2026): booking, Late Confirm and attendance notifications are created only by E7-55's notification consumer from integration events - never by calling Notifications.notify in this task. Map your five events there (the Late Confirm codes of Spec v5 §52.2 and §52.5 they trigger, e.g. LATE_CONFIRMATION_RECEIVED, LATE_CONFIRMATION_EXPIRING from LateConfirmWarningDue, CUSTOMER_CONFIRMATION_EXPIRED, VENUE_LATE_CONFIRM_ACCEPTED, VENUE_LATE_CONFIRM_DECLINED, VENUE_CUSTOMER_CONFIRMATION_EXPIRED), with the EN copy (and AR for venue codes) and one exactly-once test per code. E7-55 runs first in Sprint 3: merge main once it is merged.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2026,6 +2033,9 @@ Do:
 Done when (write these as tests first where possible):
 - Tests: pending Online and Manual cancellations alone commit without the Owner Password; a CONFIRMED Online or AWAITING cancellation needs it (423 without it, audited when wrong); the hours, the sessions and all cancellations commit together or not at all; an AWAITING booking's hold is released and its Late Confirm stopped; a booking created after the preview gives 409; one notification per affected Online customer is enqueued.
 
+Carry-forward from the Sprint 3 review (PO decisions 12 Oct 2026, do these too):
+- Notifications (PO decision 12 Oct 2026; replaces 'notify ... through the outbox' in steps 2 and 4): each cancelled booking publishes BookingCancelled with terminalReason VENUE_OPENING_HOURS_CHANGED, and you add VENUE_OPENING_HOURS_CHANGED (Spec v5 §52.2) to E7-55's notification consumer with copy and an exactly-once test; never call Notifications.notify. The done-when 'one notification per affected Online customer' still holds. The PO decision of 3 Oct 2026 is unchanged: no event for the hours change itself.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2034,7 +2044,7 @@ Finish by running the checks in CLAUDE.md §4, then give me a short summary, the
 
 **What this task does:** Check-in, "arrived late", and no-show.
 
-Lane: Engine · Depends on: S2-E2
+Lane: Engine · Depends on: S2-E2, S3-P1
 
 ```text
 Read CLAUDE.md first. You are implementing task S3-E2 — "Check-in, late present, no-show (O13)" (Engine lane) of the E7GZ PS build plan.
@@ -2055,6 +2065,10 @@ Carry-forward from E7-45 (PO decision 10 Oct 2026, do this too):
 Carry-forward from E7-54 (PO decisions 11 Oct 2026, do this too):
 - Fill the stubs of the Sprint 3 contract (E7-54, packages/api-client/SPRINT-3-CONTRACT.md) and keep their shapes: attendance/web VenueAttendanceController (-> VenueAttendance) and VenueBooking.attendance {checkInWindow, lateWindow, checkedInAt, latePresentAt, noShowAt} for ONLINE bookings (null for MANUAL); windows half-open [startAt, startAt + 15 min) and [startAt + 15 min, endAt); evidence reversed by an admin is absent. Errors as declared: CHECK_IN_WINDOW_CLOSED (also before startAt and at exactly +15:00), LATE_PRESENT_NOT_AVAILABLE, NO_SHOW_NOT_AVAILABLE; a manual booking answers the same code; a booking no longer in progress is 409 BOOKING_STATE_CHANGED. Replace this task's lines in backend/src/test/java/ps/e7gz/openapi/Sprint3StubHttpTest.java with your own tests.
 
+Carry-forward from the Sprint 3 review (PO decisions 12 Oct 2026, do these too):
+- Events (arch 08 §3.2): publish CheckInRecorded, LatePresentRecorded and NoShowRecorded in each action's command transaction, with the BookingCreated fields {bookingId, customerId, venueId, resourceId, startAt, endAt}; never BookingNoShowRecorded (PO decision 12 Oct 2026: one fact, one event). Add the constants to messaging.api.IntegrationEvents and map each in VenueStreamSignals as {type BOOKING, reason CHANGED} (PO decision 10 Oct 2026, E7-44 review: each producer task adds its own events), so other open Dashboards refresh.
+- One notification path (PO decision 12 Oct 2026): booking, Late Confirm and attendance notifications are created only by E7-55's notification consumer from integration events - never by calling Notifications.notify in this task. Map your events there (CHECK_IN_RECORDED, NO_SHOW_RECORDED and any other attendance code of Spec v5 §52.2 they trigger) with EN copy and one exactly-once test per code. E7-55 runs first in Sprint 3: merge main once it is merged.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2063,7 +2077,7 @@ Finish by running the checks in CLAUDE.md §4, then give me a short summary, the
 
 **What this task does:** Re-check everything at start time and cancel with the right reason if needed.
 
-Lane: Engine · Depends on: S3-E2
+Lane: Engine · Depends on: S3-E2, S3-P1
 
 ```text
 Read CLAUDE.md first. You are implementing task S3-E3 — "Start-time revalidation (O11)" (Engine lane) of the E7GZ PS build plan.
@@ -2088,6 +2102,10 @@ Carry-forward from E7-48 (PO decision 10 Oct 2026, do this too):
 Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
 - Overdue jobs on existing databases: Accept (E7-47) and future manual bookings (E7-48) have scheduled BOOKING_START since Sprint 2 with no handler, so on any database that ran Sprint 2 these jobs wait PENDING and all become due when this handler deploys - hours or days late, some after the booking's endAt. Until then CONFIRMED bookings never start and the customer's commitment slot stays held (COMMITMENT_LIMIT_REACHED on long-lived dev or staging data). Decide from the booking and its stored startAt, never from when the job runs (arch 08 section 2.2). Test: a BOOKING_START fired long after its due time, also after endAt, gives the on-time outcome, and the BOOKING_COMPLETE it schedules (D14) fires right after.
 
+Carry-forward from the Sprint 3 review (PO decisions 12 Oct 2026, do these too):
+- Events: the start publishes BookingStarted (already in IntegrationEvents and VenueStreamSignals since E7-48); a revalidation cancellation publishes BookingCancelled with its terminalReason (already mapped). Do not publish them twice for the same transition.
+- One notification path (PO decision 12 Oct 2026): booking, Late Confirm and attendance notifications are created only by E7-55's notification consumer from integration events - never by calling Notifications.notify in this task. Map the start-time cancellations there: VENUE_BOOKING_AUTO_CANCELLED (the Sprint 3 half of the E7-55/E7-80 split) and the customer code of each cancellation reason that exists now, with copy and one exactly-once test per code. E7-55 runs first in Sprint 3: merge main once it is merged.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2096,7 +2114,7 @@ Finish by running the checks in CLAUDE.md §4, then give me a short summary, the
 
 **What this task does:** Finish bookings automatically and set the final attendance result.
 
-Lane: Engine · Depends on: S3-E2
+Lane: Engine · Depends on: S3-E2, S3-P1
 
 ```text
 Read CLAUDE.md first. You are implementing task S3-E4 — "Completion and attendance defaults (O12)" (Engine lane) of the E7GZ PS build plan.
@@ -2119,6 +2137,10 @@ Carry-forward from E7-48 (PO decision 10 Oct 2026, do this too):
 
 Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
 - Overdue jobs on existing databases: walk-ins have scheduled BOOKING_COMPLETE since E7-48 with no handler, so on any database that ran Sprint 2 they wait PENDING (the booking stays ACTIVE) and all become due when this handler deploys. Complete as of the stored endAt, never the run time. Test: a BOOKING_COMPLETE fired hours late completes the booking dated at endAt.
+
+Carry-forward from the Sprint 3 review (PO decisions 12 Oct 2026, do these too):
+- Events (arch 08 §3.2): publish BookingCompleted and AttendanceResolved in the completion transaction (BookingCreated fields, plus attendanceResult on AttendanceResolved). Add the constants to IntegrationEvents and map BookingCompleted in VenueStreamSignals as {type BOOKING, reason CHANGED} (PO decision 10 Oct 2026, E7-44 review).
+- One notification path (PO decision 12 Oct 2026): booking, Late Confirm and attendance notifications are created only by E7-55's notification consumer from integration events - never by calling Notifications.notify in this task. Map ATTENDANCE_UNCONFIRMED_COMPLETION there (FR-NTF-05: it says no attendance reward was applied), with copy and an exactly-once test; points notifications are Sprint 4 (E7-66). E7-55 runs first in Sprint 3: merge main once it is merged.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2151,6 +2173,9 @@ Done when (write these as tests first where possible):
 
 Carry-forward from E7-54 (PO decisions 11 Oct 2026, do this too):
 - The stub and its request/response are in the Sprint 3 contract (E7-54, packages/api-client/SPRINT-3-CONTRACT.md): keep the shape. Replace this task's line in backend/src/test/java/ps/e7gz/openapi/Sprint3StubHttpTest.java with your own tests.
+
+Carry-forward from the Sprint 3 review (PO decisions 12 Oct 2026, do these too):
+- Notifications (PO decision 12 Oct 2026; replaces 'Notify the customer through the outbox in the same transaction' of step 3): publish BookingCancelled with terminalReason VENUE_CANCELLED_CONFIRMED_BOOKING and add its customer code to E7-55's notification consumer with copy and an exactly-once test; never call Notifications.notify. The done-when 'one customer notification' still holds.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
