@@ -1814,6 +1814,9 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 - Every screen you add works in English and Arabic (RTL, CSS logical properties only).
 - In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.
 
+Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
+- Venue bookings list (PO decision 12 Oct 2026; FR-VEN-38). The Dashboard 'Bookings' and 'Booking history' pages are titles only, and no task built them. From GET /venue/bookings (E7-49): date range (today, yesterday, last 7 days, this month, custom; from/to are business dates, inclusive), activity, source, resource, status, and the q search (exact booking ID, current customer username, walk-in name or phone, resource name - never the customer phone); newest first, cursor paging, limit at most 100. Booking detail from GET /venue/bookings/{bookingId} with its history, the customer phone only when the API returns it, and the walk-in name/phone for a MANUAL booking. EN and AR.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -1869,6 +1872,14 @@ Carry-forward from E7-43 (PO decision 10 Oct 2026, do this too):
 Carry-forward from E7-44 (PO decision 10 Oct 2026, do this too):
 - Venue notifications are Web Push in the venue account's language (FR-VEN-40), so for every VENUE notification code this task emits add both the English and the Arabic push copy (title/body) to the template catalogue (templates_en / templates_ar). Until a code has its copy, its venue push is closed TEMPLATE_MISSING and only the in-Dashboard list shows it. The PO reviews both wordings in the PR.
 
+Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
+- Start this task first in Sprint 3: until it is merged no booking event creates a notification. The Sprint 2 review (12 Oct 2026) ran a full booking flow (create, accept, reject, expiry, reject after expiry, customer cancel) and found 0 notification rows. E7-43 built the mechanism only; the only Notifications.notify call today is VENUE_OWNER_PASSWORD_RESET.
+- Venue booking notifications (Spec v5 §52.5, FR-NTF-09) are in this task too, not only the §52.2 customer codes: VENUE_NEW_BOOKING_REQUEST on BookingCreated (decision A6: Web Push while the Dashboard is closed), VENUE_PENDING_REQUEST_EXPIRING, VENUE_BOOKING_AUTO_CANCELLED, VENUE_LATE_CONFIRM_ACCEPTED, VENUE_LATE_CONFIRM_DECLINED and VENUE_CUSTOMER_CONFIRMATION_EXPIRED. Wire each one whose trigger exists in main when you start (merge main for E7-58's Late Confirm events), and list the triggers you wired in the PR. Each is created exactly once per event, in the event's command transaction or by an idempotent outbox consumer (a retry runs every consumer again).
+- VENUE_PENDING_REQUEST_EXPIRING needs a new timer before venue_response_expires_at. Spec v5 gives no lead time: ask the PO at the start of work. The timer is superseded by Accept, Reject, customer cancel and expiry (as T1 is, VenueAnswers.venueResponseExpiryKey), and pauses with the response timer.
+- Venue in-app notification list (PO decision 12 Oct 2026; FR-NTF-09 - venue notifications are stored with an IN_APP delivery but nothing reads them): add to the contract first, then implement, GET /venue/notifications (the signed-in venue account's notifications, newest first, cursor paging, same shape as GET /customer/notifications) and POST /venue/notifications/{notificationId}/read (204; reading an already-read one changes nothing; another account's notification is 404). Record the routes in arch 09 section 4.1 as E7-43 did for its admin route, regenerate packages/api-client, and tell the Clients lane: E7-63 builds the Dashboard page.
+- One wording per code: the customer app renders in-app text from the code (apps/customer/src/features/notifications/notificationMessages.ts, E7-51) while push and email text come from the backend template catalogue. Use the same wording in both and let the PO review them together in this PR. The app reads params.venueName for BOOKING_CONFIRMED, BOOKING_REJECTED and BOOKING_STARTS_SOON: send it (the venue name at the event), or change the app in the same PR.
+- Tests: a created booking gives exactly one VENUE_NEW_BOOKING_REQUEST with a PUSH delivery sent by the venue Web Push sender (the log sender in dev); an accepted, rejected, expired and customer-cancelled booking each give exactly one customer notification of the right code, with the Booking ID as reference (FR-NTF-04).
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -1904,6 +1915,11 @@ Carry-forward from the E7-32 review (PO decisions 4 Oct 2026, do these too):
 - Nightly invariant sweep findings: kind INVARIANT_VIOLATION, severity SEV_1, subject type and id from the violation, payload = the invariant code plus every fact of the violation. One alert per violation. An Admin-side bean implements ps.e7gz.inventory.sweep.api.InvariantViolationReporter and takes the correlation ID from CorrelationId.require() (opened by the E7-40 worker), never a new one per violation. One failing alert is logged and does not stop the others. Do not change ReadOnlyInvariantSweep.
 - Acknowledge (replaces 'acknowledge twice fails'): the same admin acknowledging again succeeds and returns the same alert (DB rule in admin.acknowledge_alert); a different admin gets an error mapped to an ApiErrorCode (ask the PO if no existing code fits).
 - Tests: a clean sweep raises no alert; a planted violation raises exactly one alert carrying its facts and the sweep's correlation ID; the reporter changes no Inventory, Booking or Trust row.
+
+Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
+- Publish the inventory-affecting events of the Platform commands (PO decision 12 Oct 2026). IntegrationEvents.INVENTORY_AFFECTING lists them and the Nearest Availability consumer already takes them, but E7-41 left their producers to later tasks and none took them: ResourceDisabled, ResourceReEnabled, ResourceArchived, ResourceRestored and ResourceConsoleChanged from resource/internal ResourceCommands (E7-26), VenuePricingChanged and RoomOverrideChanged from the pricing commands (E7-27), and ResourceRestrictionChanged wherever a restriction command already exists (otherwise E7-84 adds it). Each in the same command transaction, with venueId (and resourceId where there is one), constants in IntegrationEvents. Test: each event refreshes its venue's Nearest Availability rows without waiting for the one-minute pass (as E7-41's test does). A live Dashboard signal for these would be a contract change (VenueStreamSignal.type is BOOKING or TOURNAMENT only): do not add one without asking the PO.
+- Booking integrity failure alert (E7-47 D11, PO decision 10 Oct 2026): VenueAnswers.integrityFailure and CustomerCancellation.integrityFailure (booking/internal) only log at ERROR and roll the command back ('No Platform Admin alert until E7-56 exists'). Raise a SEV_1 alert with the booking ID, the detail and the correlation ID. The command is rolled back, so the alert must commit in its own transaction after the rollback, never inside the failed command. Ask the PO for the kind if none fits. booking/ files are Engine lane: Amr reviews that part.
+- Outbox dead-letter alert (E7-41: 'The admin alert is E7-56'): an outbox event that reaches DEAD_LETTER (today the dispatcher only logs it at ERROR, Sev-2) raises one SEV_2 alert with the event id, type, aggregate, last error and the event's correlation ID. Ask the PO whether a notification delivery in DEAD_LETTER alerts too (NO_ACTIVE_DEVICE is normal and never does).
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2009,6 +2025,9 @@ Do:
 Done when (write these as tests first where possible):
 - Tests: pending Online and Manual cancellations alone commit without the Owner Password; a CONFIRMED Online or AWAITING cancellation needs it (423 without it, audited when wrong); the hours, the sessions and all cancellations commit together or not at all; an AWAITING booking's hold is released and its Late Confirm stopped; a booking created after the preview gives 409; one notification per affected Online customer is enqueued.
 
+Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
+- Publish OpeningHoursChanged {venueId} from the hours commit (venue/internal OpeningHoursCommands.Commit) in the same command transaction, for every committed change, with or without affected bookings (arch 08 section 3.2; IntegrationEvents.INVENTORY_AFFECTING already lists it and the Nearest Availability consumer takes it, but nothing writes it yet). Add the constant to IntegrationEvents. Test: a committed change refreshes the venue's Nearest Availability rows without waiting for the one-minute pass. venue/ is Platform lane: Sayed reviews that part.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2068,6 +2087,9 @@ Carry-forward from E7-48 (PO decision 10 Oct 2026, do this too):
 - The BOOKING_START handler also starts future MANUAL bookings: E7-48 schedules BOOKING_START at startAt for a CONFIRMED manual booking (same subject/key form as VenueAnswers.BOOKING_START). MANUAL never uses check-in or NO_SHOW (FR-MAN-04).
 - D14 (PO decision 11 Oct 2026, E7-48): schedule BOOKING_COMPLETE at endAt whenever a booking (ONLINE or MANUAL) transitions CONFIRMED → ACTIVE (same subject/key form as E7-48: BOOKING_COMPLETE:<bookingId>).
 
+Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
+- Overdue jobs on existing databases: Accept (E7-47) and future manual bookings (E7-48) have scheduled BOOKING_START since Sprint 2 with no handler, so on any database that ran Sprint 2 these jobs wait PENDING and all become due when this handler deploys - hours or days late, some after the booking's endAt. Until then CONFIRMED bookings never start and the customer's commitment slot stays held (COMMITMENT_LIMIT_REACHED on long-lived dev or staging data). Decide from the booking and its stored startAt, never from when the job runs (arch 08 section 2.2). Test: a BOOKING_START fired long after its due time, also after endAt, gives the on-time outcome, and the BOOKING_COMPLETE it schedules (D14) fires right after.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2096,6 +2118,9 @@ Carry-forward from E7-45 (PO decision 10 Oct 2026, do this too):
 
 Carry-forward from E7-48 (PO decision 10 Oct 2026, do this too):
 - The BOOKING_COMPLETE handler also completes MANUAL bookings (E7-48 schedules BOOKING_COMPLETE at endAt for a walk-in): skip the attendance-default rules for MANUAL - attendance stays NOT_APPLICABLE, no Trust/points (FR-MAN-06) - and stay cancellation-safe: an ACTIVE manual booking cancelled under PCR-007 has its BOOKING_COMPLETE cancelled, and a fire that finds the booking no longer ACTIVE changes nothing.
+
+Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
+- Overdue jobs on existing databases: walk-ins have scheduled BOOKING_COMPLETE since E7-48 with no handler, so on any database that ran Sprint 2 they wait PENDING (the booking stays ACTIVE) and all become due when this handler deploys. Complete as of the stored endAt, never the run time. Test: a BOOKING_COMPLETE fired hours late completes the booking dated at endAt.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2201,6 +2226,14 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 Carry-forward from E7-54 (PO decisions 11 Oct 2026, do this too):
 - Build against the Sprint 3 contract (E7-54, packages/api-client/SPRINT-3-CONTRACT.md): the countdown uses CustomerBookingDetail.lateConfirm.expiresAt against meta.serverTime. While lateConfirm.paused, show the timer as paused (no reason is sent - PO decision 11 Oct 2026), Accept disabled, Decline still available. Accept and decline return only {bookingId, status, terminalReason}: reload GET /customer/bookings/{id} afterwards. Map every error code the two routes declare.
 
+Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
+- Booking time picker (apps/customer/src/features/booking/BookingFlow.tsx, E7-50): hide start times earlier than meta.serverTime + 15 minutes (FR-BOK-02), and starts whose start + the chosen duration ends after the session closes (FR-BOK-05). The quote checks neither, so today the customer finds out only at Confirm (BOOKING_LEAD_TIME_TOO_SHORT, INTERVAL_NOT_WITHIN_ONE_SESSION).
+- Online booking is possible only while the venue is open now and more than 10 minutes before its session ends, even for a later day (FR-BOK-08, FR-BOK-09). Say so before Confirm using CustomerVenueDetails.openNow and bookingEnabled; today ONLINE_INTAKE_WINDOW_CLOSED appears only at Confirm. The PO reviews the wording in the PR.
+- The 'waiting for the venue' screen (PendingBooking in BookingFlow.tsx) is a dead end: add a way to My Bookings, and refresh the booking (GET /customer/bookings/{bookingId}) until it leaves PENDING - polling, and on push once E7-55 sends it - showing the new status and its timeline.
+- Add NOT_FOUND to the booking error map (apps/customer/src/features/booking/errorMessages.ts): E7-46 answers 404 for an unknown or removed room.
+- A customer whose phone is not verified sees the not-allowed state before choosing a time, with the way to verify the phone (FRS section 2.11), from GET /customer/profile phoneVerified (E7-57); today they fail only at Confirm. A banned customer keeps the ACCOUNT_BANNED_FOR_THIS_ACTION message until the standing screen exists (E7-74).
+- Fix the flaky apps/customer/src/features/my-bookings/MyBookingsScreen.test.tsx: it failed once in a full pnpm -r test while the backend suite ran and passed 5 of 5 alone (look for a too-short waitFor or a fake-timer race).
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2242,6 +2275,11 @@ Carry-forward from E7-39 review (do these too):
 
 Carry-forward from E7-54 (PO decisions 11 Oct 2026, do this too):
 - Build against the Sprint 3 contract (E7-54, packages/api-client/SPRINT-3-CONTRACT.md): enable Check-in, Mark Present - Late and No-show from VenueBooking.attendance (checkInWindow, lateWindow, evidence instants) against meta.serverTime; a MANUAL booking (attendance null) shows no attendance actions. A Late Confirm refused for the customer shows only the neutral CUSTOMER_NOT_ELIGIBLE_FOR_LATE_CONFIRM message; venue-side errors have their own codes (INTERVAL_NOT_WITHIN_ONE_SESSION, AREA_INACTIVE, selling blocks, ...).
+
+Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
+- Missed / Expired requests page (PO decision 12 Oct 2026; FRS F-08, FR-BOK-21). The backend exists since E7-47; the Dashboard /missed-requests page is a title only, and E7-52 is done. Build it from GET /venue/requests/missed: each request with its room, start and the time left to start from meta.serverTime; Reject After Expiry (POST /venue/bookings/{bookingId}/reject-after-expiry, Idempotency-Key, no Owner PIN; 409 BOOKING_STATE_CHANGED and 422 DEADLINE_PASSED at or after startAt refresh the list); refresh on the stream's CHANGED signal and on the 30-second poll, as the Pending list does. Initiate Late Confirm (step 1) from this list. EN and AR.
+- Venue notifications page (PO decision 12 Oct 2026; FR-NTF-09): from GET /venue/notifications and POST /venue/notifications/{notificationId}/read, which E7-55 adds to the contract (build against pnpm mock until it is merged). Newest first, cursor paging, mark as read, text from the code in the account's language (EN and AR); a booking notification opens that booking.
+- Show customer.phone on the Pending and Missed request cards when the API returns it (FR-DIS-09: visible from PENDING; absent from the JSON once hidden). Today the Pending card shows only the username.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2682,6 +2720,9 @@ Carry-forward from E7-24 (PO decision 3 Oct 2026; do these too):
 Carry-forward from E7-37 (PO decision 4 Oct 2026, do these too):
 - Implement GET /admin/venue-accounts (stub from E7-77): read-only, one row per iam.venue_account with its venue's name, ordered by venue name then id, cursor pagination like GET /admin/venues, optional accountStatus filter. Tests: accounts of every venue are listed; the filter works; paging returns each account exactly once; the JSON never contains a password, hash or Owner PIN; venue and customer tokens are refused.
 
+Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
+- Customer copy must tell the causes apart (FR-NTF-06): an ordinary expiry is 'Venue did not respond in time', but a PENDING expired by a venue account disable (FR-VEN-09) is 'Venue is temporarily unable to confirm this booking'. Today CustomerBookingDetail cannot tell them apart (status VENUE_RESPONSE_EXPIRED with no terminal reason), and the app shows the first text for both. Expose the cause to the customer: a contract change - ask the PO for the field - then pnpm api:gen and tell the Clients lane (E7-87 shows it).
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2762,6 +2803,9 @@ Carry-forward from the E7-30 review (do these too):
 - maintenance_window and venue_closure have no 'deleted' column yet. If maintenance or closure delete is built as a soft delete (a new column), the availability predicate's reads must skip deleted rows: OperationalOverlaps.maintenanceOverlaps and closureOverlaps (operations/internal/JdbcOperationalOverlaps, checks 6-7 of isFree), plus a test that a deleted window no longer blocks.
 - Carry-forward from E7-113: the closure cascade cancels affected Bookings the same way an opening-hours change does (FRS §2.4 "Hours/Closure save cancelling protected bookings"). Reuse the cancellation E7-113 built (the Booking port, stopping Late Confirm, the outbox notification, the Owner Password only for a CONFIRMED Online or AWAITING booking) with reason VENUE_CLOSURE; do not build a second cancellation path.
 
+Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
+- Publish MaintenanceCreated, MaintenanceEdited, MaintenanceDeleted and ClosureCreated in the same command transaction as each change (arch 08 section 3.2; IntegrationEvents.INVENTORY_AFFECTING already lists them and the Nearest Availability consumer takes them, but nothing writes them yet). Add the constants to IntegrationEvents; the cancellations publish BookingCancelled, which the venue live channel already signals. Test: each event refreshes the venue's Nearest Availability rows without waiting for the one-minute pass.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2784,6 +2828,9 @@ Do:
 
 Done when (write these as tests first where possible):
 - Fault injection at every step leaves no partial cascade; a resource emergency does not block other resources.
+
+Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
+- Publish EmergencyDeclared, EmergencyExtended, EmergencyEnded and EmergencyConverted in the same command transaction as each change (arch 08 section 3.2; IntegrationEvents.INVENTORY_AFFECTING already lists them and the Nearest Availability consumer takes them, but nothing writes them yet). Add the constants to IntegrationEvents. Test: each event refreshes the venue's Nearest Availability rows without waiting for the one-minute pass.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2813,6 +2860,10 @@ Carry-forward from E7-45 (PO decision 10 Oct 2026, do this too):
 
 Carry-forward from E7-58 (PO decision 12 Oct 2026, do this too):
 - The customer may Decline a Late Confirmation at any moment of a pause (FR-OPS-41), but the database accepts DECLINED only while responded_at < late_confirmation.expires_at (ck_late_confirmation_response_shape). E7-58 does not handle the pause: keep expires_at valid throughout a pause (the persisted deadline may move, never beyond the booking's startAt) or propose a migration to the PO. Also re-arm the T2/T3 jobs E7-58 leaves deferred while paused. Test: a Decline after the original deadline but during a pause succeeds under CUSTOMER_DECLINED_LATE_CONFIRM.
+
+Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
+- Re-arm a FAILED T1 (E7-47, 'reported to the PO'): when T1 fires while its response timer is paused, VenueAnswers.expire throws, so the job backs off and can end FAILED. Resume must re-arm the booking's VENUE_RESPONSE_EXPIRY job with the remaining time (FR-OPS-36) whether it is PAUSED or FAILED. Test: pause, T1 fires during the pause and ends FAILED, resume, and the booking expires once at the moved deadline.
+- PO decision 12 Oct 2026: an Accept on a pause still waiting after its emergency ended (FR-OPS-39) keeps answering VENUE_SELLING_BLOCK_ACTIVE, as VenueAnswers.pausedRefusal does today. Keep that when you change pause and resume.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2945,6 +2996,9 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 - Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.
 - Customer app is English at launch, all text in the i18n resource files (FRS §3.1).
 - In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.
+
+Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
+- Show the second expiry text of FR-NTF-06, 'Venue is temporarily unable to confirm this booking', for a booking expired by a venue account disable, from the cause E7-78 adds to the customer booking DTO. Today My Bookings (apps/customer/src/features/my-bookings/bookingText.ts) shows 'Venue did not respond in time' for every VENUE_RESPONSE_EXPIRED.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
