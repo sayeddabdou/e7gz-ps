@@ -2025,9 +2025,6 @@ Do:
 Done when (write these as tests first where possible):
 - Tests: pending Online and Manual cancellations alone commit without the Owner Password; a CONFIRMED Online or AWAITING cancellation needs it (423 without it, audited when wrong); the hours, the sessions and all cancellations commit together or not at all; an AWAITING booking's hold is released and its Late Confirm stopped; a booking created after the preview gives 409; one notification per affected Online customer is enqueued.
 
-Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
-- Publish OpeningHoursChanged {venueId} from the hours commit (venue/internal OpeningHoursCommands.Commit) in the same command transaction, for every committed change, with or without affected bookings (arch 08 section 3.2; IntegrationEvents.INVENTORY_AFFECTING already lists it and the Nearest Availability consumer takes it, but nothing writes it yet). Add the constant to IntegrationEvents. Test: a committed change refreshes the venue's Nearest Availability rows without waiting for the one-minute pass. venue/ is Platform lane: Sayed reviews that part.
-
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
