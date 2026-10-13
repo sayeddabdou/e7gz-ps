@@ -26,6 +26,15 @@ Changed existing schemas (fields added, nothing removed):
 
 Until those tasks land, the implemented routes that return these schemas send `lateConfirm: null`, `lateConfirmExpiresAt: null`, `lateConfirmPaused: false` and `attendance: null`. None of the bookings they return is AWAITING or has started.
 
+Added by E7-55 (PO decision 12 Oct 2026, FR-NTF-09), implemented in the same PR, not a stub:
+
+| Surface | Endpoint | Controller | Implemented by |
+|---|---|---|---|
+| Venue | `GET /venue/notifications?cursor=&limit=` → `PageView<VenueNotification>`, newest first, same shape as `GET /customer/notifications` | `notification/web/VenueNotificationController` | E7-55 (page: E7-63) |
+| Venue | `POST /venue/notifications/{id}/read` → 204; already read changes nothing; another venue's → 404 | `notification/web/VenueNotificationController` | E7-55 |
+
+`VenueNotification.code` is a `notification_catalogue` code; the Dashboard renders the text in EN and AR from the code (ADR-021). The booking codes it receives today: `VENUE_NEW_BOOKING_REQUEST`, `VENUE_PENDING_REQUEST_EXPIRING`, `VENUE_BOOKING_AUTO_CANCELLED`, each with `bookingId` and empty `params`.
+
 Not in Sprint 3: `GET /customer/account-standing` (Sprint 4, E7-65), `POST /customer/account/deletion-request` (Sprint 7), `GET /venue/revenue` (Sprint 7, E7-104).
 
 ## 1. PO decisions (11 Oct 2026)
