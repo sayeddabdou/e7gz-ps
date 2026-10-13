@@ -1,0 +1,114 @@
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { components } from "@e7gz/api-client";
+import type { ApiClient } from "../../api";
+import { messages, MessagesContext } from "../../i18n";
+import { BookingDetailScreen, TodayBookingsScreen } from "./TodayBookingsScreen";
+
+type Booking = components["schemas"]["VenueBooking"];
+
+const booking: Booking = {
+  attendance: null,
+  attendanceResult: null,
+  bookingId: "b-1",
+  businessDate: "2026-10-12",
+  createdAt: "2026-10-11T21:30:00Z",
+  customer: { username: "omar_k", phone: "+201001234567" },
+  endAt: "2026-10-12T00:30:00Z",
+  lateConfirmExpiresAt: null,
+  lateConfirmPaused: false,
+  nominalBookedMinutes: 60,
+  rejectReasonText: null,
+  resource: { activity: "PLAYSTATION", consoleType: "PS5", id: "r-1", name: "Room 1", playMode: "SINGLE" },
+  source: "ONLINE",
+  startAt: "2026-10-11T23:30:00Z",
+  status: "CONFIRMED",
+  terminalReason: null,
+  venuePriceTotal: { amount: "150.00", currency: "EGP" },
+  venueResponseExpiresAt: null,
+  venueResponsePaused: false,
+  walkIn: null,
+};
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+
+describe("Today's bookings", () => {
+  it("uses the server's current business date through an overnight session, follows pagination, and groups by resource", async () => {
+    const get = vi.fn()
+      // 22:00Z is 01:00 Cairo on Oct 12, but the open 18:00–02:00 session still belongs to Oct 11.
+      .mockResolvedValueOnce({ data: { data: { businessDate: "2026-10-11", closed: false, resources: [] }, meta: { correlationId: "c-1", serverTime: "2026-10-11T22:00:00Z" } } })
+      .mockResolvedValueOnce({ data: { data: { items: [booking], nextCursor: "next" }, meta: { correlationId: "c-2", serverTime: "2026-10-11T22:00:01Z" } } })
+      .mockResolvedValueOnce({ data: { data: { items: [{ ...booking, bookingId: "b-2" }], nextCursor: null }, meta: { correlationId: "c-3", serverTime: "2026-10-11T22:00:02Z" } } });
+    const client = { GET: get } as unknown as ApiClient;
+    render(<MessagesContext.Provider value={messages.en}><TodayBookingsScreen api={client} onOpenBooking={vi.fn()} /></MessagesContext.Provider>);
+
+    expect(await screen.findByRole("heading", { name: "Room 1" })).toBeTruthy();
+    expect(screen.getAllByText("omar_k")).toHaveLength(2);
+    expect(get.mock.calls[0]).toEqual(["/api/v1/venue/availability"]);
+    expect(get.mock.calls[1]![1]).toEqual({ params: { query: { from: "2026-10-11", limit: 100, to: "2026-10-11" } } });
+    expect(get.mock.calls[2]![1]).toEqual({ params: { query: { cursor: "next", from: "2026-10-11", limit: 100, to: "2026-10-11" } } });
+  });
+
+  it("opens booking detail from a booking card", async () => {
+    const open = vi.fn();
+    const client = { GET: vi.fn()
+      .mockResolvedValueOnce({ data: { data: { businessDate: "2026-10-12", closed: false, resources: [] }, meta: { correlationId: "c-1", serverTime: "2026-10-11T21:30:00Z" } } })
+      .mockResolvedValueOnce({ data: { data: { items: [booking], nextCursor: null }, meta: { correlationId: "c-2", serverTime: "2026-10-11T21:30:01Z" } } }) } as unknown as ApiClient;
+    render(<MessagesContext.Provider value={messages.en}><TodayBookingsScreen api={client} onOpenBooking={open} /></MessagesContext.Provider>);
+    fireEvent.click(await screen.findByRole("button", { name: "View booking" }));
+    expect(open).toHaveBeenCalledWith("b-1");
+  });
+
+  it("refreshes today's data on demand", async () => {
+    const get = vi.fn()
+      .mockResolvedValueOnce({ data: { data: { businessDate: "2026-10-12", closed: false, resources: [] }, meta: { correlationId: "c-1", serverTime: "2026-10-12T10:00:00Z" } } })
+      .mockResolvedValueOnce({ data: { data: { items: [booking], nextCursor: null }, meta: { correlationId: "c-2", serverTime: "2026-10-12T10:00:01Z" } } })
+      .mockResolvedValueOnce({ data: { data: { businessDate: "2026-10-12", closed: false, resources: [] }, meta: { correlationId: "c-3", serverTime: "2026-10-12T10:01:00Z" } } })
+      .mockResolvedValueOnce({ data: { data: { items: [], nextCursor: null }, meta: { correlationId: "c-4", serverTime: "2026-10-12T10:01:01Z" } } });
+    render(<MessagesContext.Provider value={messages.en}><TodayBookingsScreen api={{ GET: get } as unknown as ApiClient} onOpenBooking={vi.fn()} /></MessagesContext.Provider>);
+    await screen.findByText("omar_k");
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(await screen.findByText("No bookings are scheduled for today's business date.")).toBeTruthy();
+    expect(get).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe("Booking detail", () => {
+  it("shows a returned phone and hides the phone row when it is absent", async () => {
+    const get = vi.fn().mockResolvedValue({ data: { data: { booking, history: [] }, meta: { correlationId: "c", serverTime: "2026-10-11T21:30:00Z" } } });
+    const { rerender } = render(<MessagesContext.Provider value={messages.en}><BookingDetailScreen api={{ GET: get } as unknown as ApiClient} bookingId="b-1" onBack={vi.fn()} /></MessagesContext.Provider>);
+    expect(await screen.findByText("+201001234567")).toBeTruthy();
+
+    get.mockResolvedValue({ data: { data: { booking: { ...booking, customer: { username: "omar_k" } }, history: [] }, meta: { correlationId: "c", serverTime: "2026-10-11T21:30:00Z" } } });
+    rerender(<MessagesContext.Provider value={messages.en}><BookingDetailScreen api={{ GET: get } as unknown as ApiClient} bookingId="b-2" onBack={vi.fn()} /></MessagesContext.Provider>);
+    await waitFor(() => expect(screen.queryByText("+201001234567")).toBeNull());
+    expect(screen.queryByText("Customer phone")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Customer contact" })).toBeNull();
+  });
+
+  it("renders mapped append-only history without exposing raw event codes", async () => {
+    const history = [
+      { at: "2026-10-11T18:00:00Z", kind: "STATUS_TRANSITION" as const, fromStatus: null, toStatus: "PENDING" as const, terminalReason: null, eventType: null },
+      { at: "2026-10-11T18:05:00Z", kind: "BOOKING_EVENT" as const, fromStatus: null, toStatus: null, terminalReason: null, eventType: "CHECK_IN_RECORDED" as const },
+    ];
+    const get = vi.fn().mockResolvedValue({ data: { data: { booking, history }, meta: { correlationId: "c", serverTime: "2026-10-11T21:30:00Z" } } });
+    render(<MessagesContext.Provider value={messages.en}><BookingDetailScreen api={{ GET: get } as unknown as ApiClient} bookingId="b-1" onBack={vi.fn()} /></MessagesContext.Provider>);
+
+    expect(await screen.findByRole("heading", { name: "Booking history" })).toBeTruthy();
+    expect(screen.getByText(/Check-in recorded/u)).toBeTruthy();
+    expect(screen.queryByText(/CHECK_IN_RECORDED/u)).toBeNull();
+  });
+
+  it("maps terminal reasons and shows the venue rejection text", async () => {
+    const rejected = { ...booking, status: "REJECTED" as const, terminalReason: "VENUE_REJECTED" as const, rejectReasonText: "Room under maintenance" };
+    const get = vi.fn().mockResolvedValue({ data: { data: { booking: rejected, history: [] }, meta: { correlationId: "c", serverTime: "2026-10-11T21:30:00Z" } } });
+    render(<MessagesContext.Provider value={messages.en}><BookingDetailScreen api={{ GET: get } as unknown as ApiClient} bookingId="b-1" onBack={vi.fn()} /></MessagesContext.Provider>);
+
+    expect(await screen.findByText("Rejected by the venue")).toBeTruthy();
+    expect(screen.getByText("Room under maintenance")).toBeTruthy();
+    expect(screen.queryByText("VENUE_REJECTED")).toBeNull();
+  });
+});
