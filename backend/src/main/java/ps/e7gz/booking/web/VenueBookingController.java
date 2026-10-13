@@ -438,8 +438,9 @@ public class VenueBookingController {
          * when hidden). {@code attendanceResult} stays null here: no booking E7-47 answers with has started, and a
          * manual booking gets no attendance record at creation or cancellation - its NOT_APPLICABLE result is E7-61's
          * (FR-ATT-07, FR-MAN-06; PO decision 10 Oct 2026, E7-48, D9; the bookings list and detail are E7-49's).
-         * {@code lateConfirmExpiresAt} / {@code lateConfirmPaused} are E7-58's and {@code attendance} E7-59's (Sprint 3
-         * contract, E7-54): no booking these routes answer with is AWAITING_CUSTOMER_CONFIRMATION or has started.
+         * {@code lateConfirmExpiresAt} / {@code lateConfirmPaused} (E7-58): the open Late Confirmation's stored deadline
+         * and whether an emergency pauses it, while AWAITING_CUSTOMER_CONFIRMATION only - never the pause's cause.
+         * {@code attendance} is E7-59's (Sprint 3 contract, E7-54): no booking these routes answer with has started.
          */
         public static VenueBooking of(VenueBookingRow row) {
             VenueBookingCustomer customer = row.source() == BookingSource.ONLINE
@@ -451,7 +452,7 @@ public class VenueBookingController {
                             row.activity(), row.consoleType(), row.playMode()),
                     row.startAt(), row.endAt(), row.businessDate(), row.nominalBookedMinutes(),
                     MoneyView.of(row.venuePriceTotal()), row.venueResponseExpiresAt(), row.venueResponsePaused(),
-                    null, false, customer, walkIn, null, null, row.createdAt());
+                    row.lateConfirmExpiresAt(), row.lateConfirmPaused(), customer, walkIn, null, null, row.createdAt());
         }
 
         /** The same booking with the customer phone absent (arch 10 §5.1): only a member left out, nothing changed. */

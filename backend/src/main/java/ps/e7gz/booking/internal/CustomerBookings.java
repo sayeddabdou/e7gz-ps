@@ -1,10 +1,13 @@
 package ps.e7gz.booking.internal;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
 import org.springframework.stereotype.Component;
+import ps.e7gz.booking.api.LateConfirmWindows;
 import ps.e7gz.common.codes.BookingStatus;
 import ps.e7gz.common.command.Command;
 import ps.e7gz.common.command.CommandContext;
@@ -41,10 +44,11 @@ public class CustomerBookings {
     private final BookingHistoryStore histories;
     private final VenueContacts venues;
     private final CustomerCancellation cancellation;
+    private final LateConfirmWindows lateConfirms;
 
     CustomerBookings(CommandRunner runner, Idempotency idempotency, CustomerBookingStore store,
                      VenueAnswerStore bookings, BookingHistoryStore histories, VenueContacts venues,
-                     CustomerCancellation cancellation) {
+                     CustomerCancellation cancellation, LateConfirmWindows lateConfirms) {
         this.runner = runner;
         this.idempotency = idempotency;
         this.store = store;
@@ -52,6 +56,7 @@ public class CustomerBookings {
         this.histories = histories;
         this.venues = venues;
         this.cancellation = cancellation;
+        this.lateConfirms = lateConfirms;
     }
 
     /** One page of the bucket: Upcoming soonest first, Completed and Cancelled most recent first. */
@@ -63,8 +68,10 @@ public class CustomerBookings {
         return runner.run(new Read<>(context -> {
             List<CustomerBookingStore.Row> rows = store.page(context, customerId, bucket, after, size + 1);
             boolean more = rows.size() > size;
-            List<CustomerBookingRow> page = rows.stream().limit(size)
-                    .map(row -> view(context, row, List.of())).toList();
+            List<CustomerBookingStore.Row> shown = rows.stream().limit(size).toList();
+            Map<UUID, Instant> deadlines = deadlines(context, shown);
+            List<CustomerBookingRow> page = shown.stream()
+                    .map(row -> view(context, row, List.of(), deadlines.get(row.bookingId()))).toList();
             return new CustomerBookingRow.Page(page, more
                     ? BookingCursor.encode(new BookingCursor.Position(page.getLast().startAt(),
                             page.getLast().bookingId()))
@@ -108,7 +115,8 @@ public class CustomerBookings {
     private CustomerBookingRow current(CommandContext context, UUID customerId, UUID bookingId) {
         CustomerBookingStore.Row row = store.one(context, customerId, bookingId)
                 .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND));
-        return view(context, row, histories.forCustomer(context, bookingId));
+        return view(context, row, histories.forCustomer(context, bookingId),
+                deadlines(context, List.of(row)).get(bookingId));
     }
 
     /**
@@ -116,7 +124,8 @@ public class CustomerBookings {
      * 10 section 5.1; PO decision 11 Oct 2026, E7-49, D1) - absent otherwise. The answer deadline only while PENDING.
      */
     private CustomerBookingRow view(CommandContext context, CustomerBookingStore.Row row,
-                                    List<BookingHistoryEntry> history) {
+                                    List<BookingHistoryEntry> history, Instant lateConfirmExpiresAt) {
+        boolean awaiting = row.status() == BookingStatus.AWAITING_CUSTOMER_CONFIRMATION;
         VenueContacts.Contact venue = venues.find(context, row.venueId())
                 .orElseThrow(() -> new IllegalStateException("Venue " + row.venueId() + " vanished"));
         String phone = ContactVisibility.visibleAt(row.contactFacts(), context.commandNow()) ? venue.phone() : null;
@@ -125,7 +134,18 @@ public class CustomerBookings {
                 row.consoleType(), row.playMode(), row.startAt(), row.endAt(), row.nominalBookedMinutes(),
                 row.venuePriceTotal(), row.bookingFee(), row.totalAmount(),
                 row.status() == BookingStatus.PENDING ? row.venueResponseExpiresAt() : null,
-                row.venueResponsePaused(), history);
+                row.venueResponsePaused(), awaiting ? lateConfirmExpiresAt : null,
+                awaiting && row.lateConfirmPaused(), history);
+    }
+
+    /**
+     * The open Late Confirmation deadlines of the AWAITING rows, in one read through the Late Confirmation module
+     * ({@link LateConfirmWindows}, E7-58), never one per row.
+     */
+    private Map<UUID, Instant> deadlines(CommandContext context, List<CustomerBookingStore.Row> rows) {
+        return lateConfirms.openDeadlines(context, rows.stream()
+                .filter(row -> row.status() == BookingStatus.AWAITING_CUSTOMER_CONFIRMATION)
+                .map(CustomerBookingStore.Row::bookingId).toList());
     }
 
     /** The customer's cancel: category B (an existing commitment) under the booking's lock set. */

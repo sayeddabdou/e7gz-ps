@@ -371,8 +371,9 @@ public class CustomerBookingController {
 
         /**
          * A booking as it is now, with its history. {@code attendanceResult} stays null: attendance records are E7-61's
-         * (FR-ATT-07), and no attendance API exists yet. {@code lateConfirm} stays null until E7-58 (Sprint 3 contract,
-         * E7-54).
+         * (FR-ATT-07), and no attendance API exists yet. {@code lateConfirm} is the open Late Confirmation while
+         * AWAITING_CUSTOMER_CONFIRMATION only - its stored deadline and whether an emergency pauses it, never the
+         * pause's cause (E7-58; Sprint 3 contract, E7-54).
          */
         static CustomerBookingDetail of(CustomerBookingRow row) {
             return new CustomerBookingDetail(row.bookingId(), row.status(),
@@ -380,8 +381,10 @@ public class CustomerBookingController {
                     new CustomerBookingVenue(row.venueId(), row.venueName(), row.venuePhone()),
                     CustomerBookingResource.of(row), row.startAt(), row.endAt(), row.nominalBookedMinutes(),
                     MoneyView.of(row.venuePriceTotal()), CustomerBookingFee.of(row.bookingFee()),
-                    MoneyView.of(row.totalAmount()), row.venueResponseExpiresAt(), row.venueResponsePaused(), null, null,
-                    row.history().stream().map(CustomerBookingHistoryEntry::of).toList());
+                    MoneyView.of(row.totalAmount()), row.venueResponseExpiresAt(), row.venueResponsePaused(),
+                    row.lateConfirmExpiresAt() == null ? null
+                            : new CustomerBookingLateConfirm(row.lateConfirmExpiresAt(), row.lateConfirmPaused()),
+                    null, row.history().stream().map(CustomerBookingHistoryEntry::of).toList());
         }
 
         /** The same detail with the venue phone absent (arch 10 §5.1): only a member left out, nothing changed. */

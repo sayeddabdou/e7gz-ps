@@ -17,6 +17,9 @@ import ps.e7gz.common.money.Money;
  * {@code null} when hidden, so the DTO leaves it out.
  *
  * @param venueResponseExpiresAt the stored answer deadline while PENDING, otherwise {@code null}
+ * @param lateConfirmExpiresAt   the open Late Confirmation's stored deadline while AWAITING_CUSTOMER_CONFIRMATION,
+ *                               otherwise {@code null} (E7-58)
+ * @param lateConfirmPaused      an emergency pauses that deadline now (FR-OPS-41); never its cause
  * @param history                oldest first; empty in a list (only the detail carries it)
  */
 public record CustomerBookingRow(UUID bookingId, BookingStatus status, DisplayBucket displayBucket,
@@ -25,6 +28,7 @@ public record CustomerBookingRow(UUID bookingId, BookingStatus status, DisplayBu
                                  PlayMode playMode, Instant startAt, Instant endAt, int nominalBookedMinutes,
                                  Money venuePriceTotal, Money bookingFee, Money totalAmount,
                                  Instant venueResponseExpiresAt, boolean venueResponsePaused,
+                                 Instant lateConfirmExpiresAt, boolean lateConfirmPaused,
                                  List<BookingHistoryEntry> history) {
 
     public CustomerBookingRow {

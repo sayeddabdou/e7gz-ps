@@ -94,6 +94,44 @@ public final class IntegrationEvents {
     public static final String BOOKING_CANCELLED = "BookingCancelled";
 
     /**
+     * {@code {bookingId, customerId, venueId, venueName, resourceId, startAt, endAt, lateConfirmExpiresAt}},
+     * aggregate {@code BOOKING}: the venue sent a Late Confirmation - VENUE_RESPONSE_EXPIRED ->
+     * AWAITING_CUSTOMER_CONFIRMATION with its hold, until {@code lateConfirmExpiresAt} = MIN(initiation + 5 min,
+     * startAt) (arch 06 section 2.2, arch 08 section 3.2; FR-LCF-06, FR-LCF-09; E7-58, PO decision D2 12 Oct 2026).
+     * {@code venueName} is the venue's display name at the event (E7-58 Q4, 13 Oct 2026), for the notification copy.
+     */
+    public static final String LATE_CONFIRM_INITIATED = "LateConfirmInitiated";
+
+    /**
+     * {@code {bookingId, customerId, venueId, venueName, resourceId, startAt, endAt}}, aggregate {@code BOOKING}:
+     * the customer accepted - AWAITING_CUSTOMER_CONFIRMATION -> CONFIRMED, same Booking ID, price and fee (FR-LCF-08,
+     * FR-LCF-13; E7-58, D2, Q4). O3 writes no {@code BookingConfirmed}.
+     */
+    public static final String LATE_CONFIRM_ACCEPTED = "LateConfirmAccepted";
+
+    /**
+     * {@code {bookingId, customerId, venueId, venueName, resourceId, startAt, endAt, terminalReason}}, aggregate
+     * {@code BOOKING}: the customer declined - CANCELLED with {@code terminalReason} CUSTOMER_DECLINED_LATE_CONFIRM
+     * (FR-LCF-13; E7-58, D2, Q4). O3 writes no {@code BookingCancelled}.
+     */
+    public static final String LATE_CONFIRM_DECLINED = "LateConfirmDeclined";
+
+    /**
+     * {@code {bookingId, customerId, venueId, venueName, resourceId, startAt, endAt, lateConfirmExpiresAt,
+     * terminalReason}}, aggregate {@code BOOKING}: T2 cancelled the booking as of its stored deadline, CANCELLED with
+     * {@code terminalReason} CUSTOMER_RECONFIRM_TIMEOUT (FR-LCF-13; E7-58, D2, Q4). O3 writes no
+     * {@code BookingCancelled}.
+     */
+    public static final String LATE_CONFIRM_TIMED_OUT = "LateConfirmTimedOut";
+
+    /**
+     * {@code {bookingId, customerId, venueId, venueName, resourceId, startAt, endAt, lateConfirmExpiresAt}}, aggregate
+     * {@code BOOKING}: T3, the Late Confirmation expires in about a minute - written once per attempt and only for a
+     * window longer than 60 seconds (FR-LCF-12; E7-58, D2, Q4). For the customer only (no venue live signal).
+     */
+    public static final String LATE_CONFIRM_WARNING_DUE = "LateConfirmWarningDue";
+
+    /**
      * Every event that can change a venue's availability and so refreshes its Nearest Availability rows (arch 05
      * section 5.3, arch 08 section 7): reservation hold or release, Resource state, selling blocks (maintenance,
      * closures, emergencies), opening hours and prices. Each carries the {@code venueId} it touches;

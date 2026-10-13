@@ -12,6 +12,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -160,6 +161,39 @@ class VenueLiveChannelTest extends IntegrationTest {
             assertThat(signal.path("type").asText()).as(type).isEqualTo("BOOKING");
             assertThat(signal.path("id").asText()).as(type).isEqualTo(booking.toString());
             assertThat(signal.path("reason").asText()).as(type).isEqualTo("CHANGED");
+        }
+        onB.close();
+    }
+
+    /**
+     * E7-58 (PO decision D2 12 Oct 2026): a Late Confirmation sent, accepted, declined or timed out tells the venue's
+     * Dashboard to refetch the booking - the signal carries only its type, the Booking ID and the reason, never anything
+     * about the customer. {@code LateConfirmWarningDue} is the customer's warning only: no venue signal at all.
+     */
+    @Test
+    void theLateConfirmEventsAreChangeSignalsAndTheWarningIsNot() throws Exception {
+        Fixtures.VenueAccount venue = aVenueAccount().create();
+        SseLines onB = open(portB(), venue.id(), hubB());
+
+        assertThat(new VenueStreamSignals(appDataSource, json).eventTypes())
+                .contains(IntegrationEvents.LATE_CONFIRM_INITIATED, IntegrationEvents.LATE_CONFIRM_ACCEPTED,
+                        IntegrationEvents.LATE_CONFIRM_DECLINED, IntegrationEvents.LATE_CONFIRM_TIMED_OUT)
+                .doesNotContain(IntegrationEvents.LATE_CONFIRM_WARNING_DUE);
+        bookingEvent(IntegrationEvents.LATE_CONFIRM_WARNING_DUE, venue.venueId(), UUID.randomUUID());
+        for (String type : List.of(IntegrationEvents.LATE_CONFIRM_INITIATED, IntegrationEvents.LATE_CONFIRM_ACCEPTED,
+                IntegrationEvents.LATE_CONFIRM_DECLINED, IntegrationEvents.LATE_CONFIRM_TIMED_OUT)) {
+            UUID booking = UUID.randomUUID();
+            bookingEvent(type, venue.venueId(), booking);
+            deliver();
+
+            // the warning written first produced nothing: the next signal is this event's
+            JsonNode signal = nextSignal(onB);
+            assertThat(signal.path("type").asText()).as(type).isEqualTo("BOOKING");
+            assertThat(signal.path("id").asText()).as(type).isEqualTo(booking.toString());
+            assertThat(signal.path("reason").asText()).as(type).isEqualTo("CHANGED");
+            List<String> fields = new ArrayList<>();
+            signal.fieldNames().forEachRemaining(fields::add);
+            assertThat(fields).as(type).containsExactlyInAnyOrder("type", "id", "reason");
         }
         onB.close();
     }

@@ -33,7 +33,10 @@ class OnlineBookingStore {
                AND b.commitment_period IS NOT NULL
             """;
 
-    /** FR-BOK-04 on the same column {@code ex_customer_no_overlap} uses; half-open, so back-to-back does not overlap. */
+    /**
+     * FR-BOK-04 on the same column {@code ex_customer_no_overlap} uses; half-open, so back-to-back does not overlap.
+     * Every counted commitment, AWAITING_CUSTOMER_CONFIRMATION included: the constraint exempts AWAITING (E7-58 D1).
+     */
     static final String OVERLAPS_COMMITMENT = """
             SELECT EXISTS (
                 SELECT 1

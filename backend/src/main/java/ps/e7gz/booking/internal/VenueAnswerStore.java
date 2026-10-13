@@ -101,8 +101,8 @@ class VenueAnswerStore {
             SELECT b.id, b.venue_id, b.source, b.status, b.terminal_reason, b.venue_reject_reason_text, b.resource_id,
                    b.resource_name_snapshot, b.activity, b.console_type, b.play_mode, b.start_at, b.end_at,
                    b.business_date, b.nominal_booked_minutes, b.venue_price_total, b.venue_response_expires_at,
-                   b.response_pause_started_at, b.customer_id, b.manual_customer_name, b.manual_customer_phone,
-                   b.created_at, b.terminal_at,
+                   b.response_pause_started_at, b.late_confirm_pause_started_at, b.customer_id, b.manual_customer_name,
+                   b.manual_customer_phone, b.created_at, b.terminal_at,
             """ + ContactVisibility.HISTORY_FACTS + """
               FROM booking.booking b
             """;
@@ -281,8 +281,8 @@ class VenueAnswerStore {
                 instant(rs, "start_at"), instant(rs, "end_at"), rs.getObject("business_date", LocalDate.class),
                 rs.getInt("nominal_booked_minutes"), Money.of(rs.getBigDecimal("venue_price_total")),
                 instant(rs, "venue_response_expires_at"), instant(rs, "response_pause_started_at") != null,
-                rs.getObject("customer_id", UUID.class), rs.getString("manual_customer_name"),
-                rs.getString("manual_customer_phone"), instant(rs, "created_at"),
+                instant(rs, "late_confirm_pause_started_at") != null, rs.getObject("customer_id", UUID.class),
+                rs.getString("manual_customer_name"), rs.getString("manual_customer_phone"), instant(rs, "created_at"),
                 new ContactVisibility.Facts(BookingSource.valueOf(rs.getString("source")), status,
                         instant(rs, "start_at"), instant(rs, "end_at"), instant(rs, "terminal_at"),
                         instant(rs, "venue_response_expired_at"), instant(rs, "late_confirm_reopened_at")));
@@ -310,7 +310,8 @@ class VenueAnswerStore {
                    ConsoleType consoleType, PlayMode playMode,
                    Instant startAt, Instant endAt, LocalDate businessDate, int nominalBookedMinutes,
                    Money venuePriceTotal, Instant venueResponseExpiresAt,
-                   boolean venueResponsePaused, UUID customerId, String walkInName, String walkInPhone,
+                   boolean venueResponsePaused, boolean lateConfirmPaused, UUID customerId, String walkInName,
+                   String walkInPhone,
                    Instant createdAt, ContactVisibility.Facts contactFacts) {
     }
 }

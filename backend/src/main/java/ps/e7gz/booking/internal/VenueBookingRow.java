@@ -18,6 +18,9 @@ import ps.e7gz.common.money.Money;
  * ({@link ContactVisibility}, arch 10 section 5.1): {@code null} when hidden, so the DTO leaves it out.
  *
  * @param venueResponseExpiresAt the stored answer deadline while PENDING, otherwise {@code null}
+ * @param lateConfirmExpiresAt   the open Late Confirmation's stored deadline while AWAITING_CUSTOMER_CONFIRMATION,
+ *                               otherwise {@code null} (E7-58)
+ * @param lateConfirmPaused      an emergency pauses that deadline now (FR-OPS-41); never its cause
  * @param customerUsername       ONLINE only
  * @param walkInName             MANUAL only, as the venue typed it (FR-DIS-09)
  */
@@ -26,7 +29,8 @@ public record VenueBookingRow(UUID bookingId, UUID venueId, BookingSource source
                               String resourceName, Activity activity, ConsoleType consoleType, PlayMode playMode,
                               Instant startAt, Instant endAt, LocalDate businessDate, int nominalBookedMinutes,
                               Money venuePriceTotal, Instant venueResponseExpiresAt, boolean venueResponsePaused,
-                              String customerUsername, String customerPhone, String walkInName, String walkInPhone,
+                              Instant lateConfirmExpiresAt, boolean lateConfirmPaused, String customerUsername,
+                              String customerPhone, String walkInName, String walkInPhone,
                               Instant createdAt) {
 
     public VenueBookingRow {

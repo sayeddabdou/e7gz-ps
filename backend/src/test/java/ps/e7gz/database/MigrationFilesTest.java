@@ -192,6 +192,38 @@ class MigrationFilesTest {
                 .doesNotContain("set_config");
     }
 
+    /**
+     * v1.1.35 (E7-58 D1): the migration is the model's own block, byte for byte; ex_customer_no_overlap keeps its name,
+     * columns, operators and method, and only its predicate gains the AWAITING exemption. No other object is touched.
+     */
+    @Test
+    void lateConfirmAwaitingOverlapMigrationIsTheModelsV1135Block() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String open = "<genericsql name=\"v1_1_35_late_confirm_awaiting_overlap\">\n\t<definition> <![CDATA[\n";
+        int start = model.indexOf(open);
+        assertThat(start).as("v1.1.35 block in the .dbm").isPositive();
+        String block = model.substring(start + open.length(), model.indexOf("]]> </definition>", start));
+        String migration = classpath("db/migration/V202610131300__late_confirm_awaiting_overlap.sql");
+        assertThat(migration).isEqualTo(block);
+
+        String baseline = classpath("db/migration/V1__baseline.sql");
+        String exclusion = "    EXCLUDE USING gist (\n        customer_id WITH =,\n        commitment_period WITH &&\n    )\n";
+        assertThat(baseline).containsOnlyOnce("ADD CONSTRAINT ex_customer_no_overlap\n" + exclusion
+                + "    WHERE (commitment_period IS NOT NULL);");
+        String sql = migration.substring(migration.indexOf("ALTER TABLE booking.booking"));
+        assertThat(sql)
+                .startsWith("ALTER TABLE booking.booking\n    DROP CONSTRAINT ex_customer_no_overlap;\n")
+                .containsOnlyOnce("ADD CONSTRAINT ex_customer_no_overlap\n" + exclusion
+                        + "    WHERE (commitment_period IS NOT NULL AND status <> 'AWAITING_CUSTOMER_CONFIRMATION');")
+                .containsOnlyOnce("DROP ")
+                .doesNotContain("FUNCTION")
+                .doesNotContain("TRIGGER")
+                .doesNotContain("derive_commitment_period")
+                .doesNotContain("ck_booking_commitment_period_shape")
+                .doesNotContain("UPDATE ")
+                .doesNotContain("GRANT");
+    }
+
     /** One {@code CREATE OR REPLACE FUNCTION ... $function$;} definition, from its first line to its end. */
     private static String function(String sql, String open) {
         int start = sql.indexOf(open);

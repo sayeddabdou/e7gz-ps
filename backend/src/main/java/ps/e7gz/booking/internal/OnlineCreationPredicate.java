@@ -163,7 +163,9 @@ class OnlineCreationPredicate {
                 .filter(found -> !found.end().isBefore(endAt))
                 .orElseThrow(() -> new CreationRefused(WITHIN_ONE_SESSION));      // FR-BOK-05, Spec §22 #14
 
-        // 4 - FR-BOK-04 (Spec §22 #4); ex_customer_no_overlap stays the authority
+        // 4 - FR-BOK-04 (Spec §22 #4); ex_customer_no_overlap stays the authority, except against an AWAITING
+        // booking, which it exempts (E7-58 D1, V202610131300): this check, under the commitment guard, is the only one
+        // there
         if (store.overlapsCommitment(command, customer, startAt, endAt)) {
             throw new CreationRefused(NO_OVERLAPPING_COMMITMENT);
         }

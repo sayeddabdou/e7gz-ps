@@ -28,7 +28,6 @@ import ps.e7gz.support.fixtures.Fixtures;
 @AutoConfigureMockMvc
 class Sprint3StubHttpTest extends IntegrationTest {
 
-    private static final String BOOKING = "/api/v1/customer/bookings/" + UUID.randomUUID();
     private static final String VENUE_BOOKING = "/api/v1/venue/bookings/" + UUID.randomUUID();
     private static final String CHALLENGE = "{\"otpChallengeId\":\"" + UUID.randomUUID() + "\",\"code\":\"123456\"}";
 
@@ -48,10 +47,7 @@ class Sprint3StubHttpTest extends IntegrationTest {
     }
 
     @Test
-    void lateConfirmAttendanceCancelConfirmedAndOverviewAreStubs() throws Exception {
-        notImplemented(idempotent(post(BOOKING + "/late-confirm/accept")), customer);       // E7-58
-        notImplemented(idempotent(post(BOOKING + "/late-confirm/decline")), customer);      // E7-58
-        notImplemented(idempotent(post(VENUE_BOOKING + "/late-confirm")), venue);           // E7-58
+    void attendanceCancelConfirmedAndOverviewAreStubs() throws Exception {
         notImplemented(idempotent(post(VENUE_BOOKING + "/check-in")), venue);               // E7-59
         notImplemented(idempotent(post(VENUE_BOOKING + "/late-present")), venue);           // E7-59
         notImplemented(idempotent(post(VENUE_BOOKING + "/no-show")), venue);                // E7-59
