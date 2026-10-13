@@ -89,9 +89,13 @@ class BookingNotificationConsumer implements OutboxConsumer {
 
         @Override
         public Void execute(CommandContext context) {
-            NotifiedBooking booking = bookings.find(context, event.uuid("bookingId"))
+            NotifiedBooking found = bookings.find(context, event.uuid("bookingId"))
                     .orElseThrow(() -> new PermanentDeliveryFailure(event.eventType() + " " + event.id()
                             + " names a booking that does not exist"));
+            // The venue name at the event when the event carries it (E7-58's Late Confirm events), else the name now
+            // (PO decision 13 Oct 2026)
+            String eventVenueName = event.payload().path(BookingNotifier.VENUE_NAME).asText("");
+            NotifiedBooking booking = eventVenueName.isBlank() ? found : found.withVenueName(eventVenueName);
             for (Send send : plan.sends()) {
                 notifier.send(context, "outbox:" + event.id(), send, booking);
             }

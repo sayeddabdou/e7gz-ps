@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import org.springframework.context.ApplicationContext;
+import ps.e7gz.common.codes.BookingStatus;
 import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.command.CommandScope;
@@ -58,6 +59,10 @@ public final class BookingFlows {
 
     /** As {@link #pending()}, starting {@code startIn} from now (whole minutes; at least the 15-minute lead time). */
     public Booking pendingStartingIn(Duration startIn) {
+        if (startIn.compareTo(OnlineCreationPredicate.MINIMUM_LEAD_TIME) < 0) {
+            throw new IllegalArgumentException("A booking starts at least " + OnlineCreationPredicate.MINIMUM_LEAD_TIME
+                    + " from now (FR-BOK-02)");
+        }
         OnlineBookingWorld world = OnlineBookingWorld.create();
         return pending(world, world.t0.plus(startIn).truncatedTo(ChronoUnit.MINUTES).plus(Duration.ofMinutes(1)));
     }
@@ -81,7 +86,13 @@ public final class BookingFlows {
     }
 
     public void reject(Booking booking) {
-        responses.reject(booking.venueAccountId(), booking.bookingId(), "Room under maintenance");
+        assertThat(responses.reject(booking.venueAccountId(), booking.bookingId(), "Room under maintenance").status())
+                .isEqualTo(BookingStatus.REJECTED);
+    }
+
+    public void rejectAfterExpiry(Booking booking) {
+        assertThat(responses.rejectAfterExpiry(booking.venueAccountId(), booking.bookingId()).status())
+                .isEqualTo(BookingStatus.REJECTED);
     }
 
     /** T1 at its deadline: the deadline is moved to the command's own instant, then the expiry runs. */
@@ -94,10 +105,6 @@ public final class BookingFlows {
                     booking.bookingId()), CorrelationId.generate()));
         }));
         assertThat(outcome).isInstanceOf(JobOutcome.Done.class);
-    }
-
-    public void rejectAfterExpiry(Booking booking) {
-        responses.rejectAfterExpiry(booking.venueAccountId(), booking.bookingId());
     }
 
     public void customerCancels(Booking booking) {

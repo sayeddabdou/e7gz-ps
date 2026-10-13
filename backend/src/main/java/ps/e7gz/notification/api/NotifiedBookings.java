@@ -58,6 +58,15 @@ public interface NotifiedBookings {
             return CommandScope.shared(locks.build());
         }
 
+        /**
+         * The same booking with the venue's name as an event recorded it (PO decision 13 Oct 2026: a notification shows
+         * the venue name at the event when the event carries it).
+         */
+        public NotifiedBooking withVenueName(String eventVenueName) {
+            return new NotifiedBooking(bookingId, customerId, venueId, eventVenueName, resourceId, source, status,
+                    startAt, venueResponseExpiresAt, responsePaused);
+        }
+
         /** The same booking with another start (tests hit the reminder's boundaries with it; start_at is immutable). */
         public NotifiedBooking withStartAt(Instant otherStart) {
             return new NotifiedBooking(bookingId, customerId, venueId, venueName, resourceId, source, status,

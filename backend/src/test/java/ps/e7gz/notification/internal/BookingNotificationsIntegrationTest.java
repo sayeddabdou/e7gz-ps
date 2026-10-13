@@ -8,9 +8,11 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +27,7 @@ import ps.e7gz.booking.internal.BookingFlows;
 import ps.e7gz.booking.internal.BookingFlows.Booking;
 import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.correlation.CorrelationId;
+import ps.e7gz.messaging.api.IntegrationEvents;
 import ps.e7gz.messaging.api.OutboxConsumer;
 import ps.e7gz.messaging.api.OutboxEvent;
 import ps.e7gz.messaging.internal.OutboxDrain;
@@ -207,6 +210,21 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
         assertThat(customerCodes(booking)).containsExactlyInAnyOrder("BOOKING_CREATED", "BOOKING_AUTO_CANCELLED");
         assertThat(venueCodes(booking)).containsExactlyInAnyOrder("VENUE_NEW_BOOKING_REQUEST",
                 "VENUE_BOOKING_AUTO_CANCELLED");
+    }
+
+    /** PO decision 13 Oct 2026: the venue name the event recorded wins over the name when the notification is made. */
+    @Test
+    void theVenueNameAnEventCarriesIsTheOneTheCustomerSees() {
+        Booking booking = flows.pending();
+        flows.accept(booking);
+
+        consumer.handle(new OutboxEvent(ThreadLocalRandom.current().nextLong(1L << 40, Long.MAX_VALUE),
+                IntegrationEvents.BOOKING_CONFIRMED, "BOOKING", booking.bookingId(),
+                json.valueToTree(Map.of("bookingId", booking.bookingId().toString(),
+                        "venueName", "The name at the event")),
+                CorrelationId.generate(), Instant.EPOCH, 0));
+
+        assertThat(venueName(booking, "BOOKING_CONFIRMED")).isEqualTo("The name at the event");
     }
 
     /** A retry runs every consumer of the event again (OutboxConsumer): the second run creates nothing. */

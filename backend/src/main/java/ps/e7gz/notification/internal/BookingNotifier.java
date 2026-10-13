@@ -16,8 +16,9 @@ import ps.e7gz.notification.internal.BookingNotificationRules.Send;
  * origin - the outbox event or the reminder job - the code and the recipient, so running the same origin again finds the
  * row and changes nothing ({@link NotificationService#notifyOnce}).
  *
- * <p>Params: a customer notification carries {@code venueName}, the venue's name when the notification is created
- * (the customer app reads it for BOOKING_CONFIRMED, BOOKING_REJECTED and BOOKING_STARTS_SOON; E7-51). A venue
+ * <p>Params: a customer notification carries {@code venueName} (the customer app reads it for BOOKING_CONFIRMED,
+ * BOOKING_REJECTED and BOOKING_STARTS_SOON; E7-51): the name the event recorded when it carries one, otherwise the
+ * venue's name when the notification is created (PO decision 13 Oct 2026; {@link BookingNotificationConsumer}). A venue
  * notification needs none: the Dashboard opens the booking from its Booking ID (FR-NTF-04).
  */
 @Component
