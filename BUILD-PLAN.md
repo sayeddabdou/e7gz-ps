@@ -1888,6 +1888,7 @@ Carry-forward from the Sprint 3 review (PO decisions 12 Oct 2026, do these too):
 Carry-forward from F1 / PCR-008 (Amr under delegated PO authority, 13 Oct 2026; reviewed by Sayed), do this too:
 - The Late Confirm codes are the six mapped from E7-58's five canonical events: LateConfirmInitiated -> LATE_CONFIRMATION_RECEIVED; LateConfirmWarningDue -> LATE_CONFIRMATION_EXPIRING; LateConfirmTimedOut -> CUSTOMER_CONFIRMATION_EXPIRED and VENUE_CUSTOMER_CONFIRMATION_EXPIRED; LateConfirmAccepted -> VENUE_LATE_CONFIRM_ACCEPTED; LateConfirmDeclined -> VENUE_LATE_CONFIRM_DECLINED. E7-58 adds them to this task's consumer after this task merges (PO decision 13 Oct 2026: E7-55 merges first). No consumer, mapping, copy or test for LATE_CONFIRM_SCHEDULE_CONFLICT; keep its V1 catalogue row and the existing customer-app translation key (removing either is a separate approved change).
 - A booking confirmed through Late Confirm Accept gets no BOOKING_STARTS_SOON reminder (PO decision 13 Oct 2026): LateConfirmAccepted arms no reminder, and Late Confirm publishes no BookingConfirmed (E7-58 D2).
+- A customer notification shows the venue name the event carries (payload venueName, as in E7-58's Late Confirm events), otherwise the venue's name when the notification is created (PO decision 13 Oct 2026).
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2011,6 +2012,7 @@ Carry-forward from F1 / PCR-008 (Amr under delegated PO authority, 13 Oct 2026; 
 - No notification code for a conflicting Accept: it is the synchronous 409 LATE_CONFIRM_CUSTOMER_CONFLICT and the Booking Event only (PCR-008); LATE_CONFIRM_SCHEDULE_CONFLICT is never produced.
 - After E7-55 merges (PO decision 13 Oct 2026: E7-55 first), merge main and add the six codes as entries of BookingNotificationRules.RULES (notification/internal; each event payload carries bookingId), the EN push copy (and AR for the venue codes) in notification/templates_*.properties, and one exactly-once test per code in BookingNotificationsIntegrationTest. Sayed reviews these Platform-lane files.
 - LateConfirmAccepted arms no BOOKING_STARTS_SOON reminder (PO decision 13 Oct 2026): a late-confirmed booking gets none.
+- Keep venueName (the venue name at the event) in the Late Confirm event payloads: the customer notifications show it (PO decision 13 Oct 2026).
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
