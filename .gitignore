@@ -41,6 +41,11 @@ google-services.json
 GoogleService-Info.plist
 application-local.yml
 application-prod.yml
+*.key
+*.jks
+*service-account*.json
+*-firebase-adminsdk-*.json
+secrets/
 
 # local infra
 docker/data/
