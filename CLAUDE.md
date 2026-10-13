@@ -80,6 +80,14 @@ pnpm mock                            # Prism mock server from openapi.json
 - After deployment (E7-101): back up first; run the migration on a restored copy of production on staging; check `flyway info` / `validate` before `migrate`; smoke-test after. If production fails, restore the backup and ship a forward fix as a new migration. Never edit `flyway_schema_history` by hand.
 - Nothing is hard-deleted where history matters. Tokens/subscriptions are revoked, accounts anonymised.
 
+**Secrets (PO rule, 13 Oct 2026; the repository is public)**
+- No secret is ever committed: API keys, tokens, passwords, private keys, VAPID/JWT/OTP/idempotency keys, Firebase files (`google-services.json`, `GoogleService-Info.plist`, service-account JSON), SMS Misr / SMTP credentials, server addresses with credentials, database dumps with real data. Not in code, tests, docs, seeds, `.env.example`, commit messages, PR text or Jira.
+- Code reads every secret from an environment variable (`E7GZ_*`; `EXPO_PUBLIC_*` only for values that are public by nature). Commit only the variable **name**, with an empty value in `.env.example` and a line in the README. Tests generate their own throwaway keys in memory (as `FcmPushSenderTest` does).
+- Real values live outside git: `.env` / `.env.local` (git-ignored), GitHub → Settings → Secrets and variables → Actions for CI, and the server's environment for deployment.
+- **Who holds them:** Sayed (PO) holds every real secret and sends it to a developer **privately** (never in the repo, a PR, Jira or a group chat). If a task needs a new secret, the developer (or the AI tool) stops and asks Sayed; never invents, commits or shares one.
+- Before every commit, `git diff --staged` must show no secret. If one was ever pushed, tell Sayed at once: the secret is **revoked and replaced** (deleting the commit is not enough on a public repository).
+- Make the repository **private again before E7-101 (deployment) starts**.
+
 **Time and money**
 - Never call `Instant.now()` etc. Inject `Clock`; inside a command use the command instant.
 - Money is `BigDecimal` scale 2 HALF_UP (EGP). No `float`/`double`.

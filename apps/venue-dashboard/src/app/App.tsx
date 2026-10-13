@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { logicalSpacing, webTokens } from "@e7gz/tokens/web";
-import { BrowserRouter, NavLink, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, NavLink, Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { createDashboardApiClient } from "../api";
 import type { ConfigResult } from "../config";
 import { AvailabilitySchedule } from "../features/schedule";
@@ -8,6 +8,8 @@ import { PricingEditor, ResourceList, SettingsPage } from "../features/setup";
 import { createVenueSessionApi, VenueLoginScreen, type VenueSessionApi } from "../features/auth";
 import { LiveRequestsProvider, PendingRequestsScreen, useLiveRequests } from "../features/requests";
 import { revokeVenuePush } from "../features/requests/pushSubscription";
+import { BookingDetailScreen, BookingHistoryScreen, TodayBookingsScreen } from "../features/today";
+import { ManualBookingScreen } from "../features/walk-in";
 import { directionOf, messages, MessagesContext, type Language, type Messages } from "../i18n";
 import "../dashboard.css";
 
@@ -152,6 +154,27 @@ function PendingRequestsRoute() {
   return <PendingRequestsScreen model={useLiveRequests()} />;
 }
 
+function TodayBookingsRoute({ api }: { api: ReturnType<typeof createDashboardApiClient> }) {
+  const navigate = useNavigate();
+  return <TodayBookingsScreen api={api} onOpenBooking={(bookingId) => navigate(`/bookings/${bookingId}`)} />;
+}
+
+function BookingHistoryRoute({ api }: { api: ReturnType<typeof createDashboardApiClient> }) {
+  const navigate = useNavigate();
+  return <BookingHistoryScreen api={api} onOpenBooking={(bookingId) => navigate(`/booking-history/${bookingId}`)} />;
+}
+
+function ManualBookingRoute({ api }: { api: ReturnType<typeof createDashboardApiClient> }) {
+  const navigate = useNavigate();
+  return <ManualBookingScreen api={api} onOpenBooking={(bookingId) => navigate(`/bookings/${bookingId}`)} />;
+}
+
+function BookingDetailRoute({ api, backLabel, backTo }: { api: ReturnType<typeof createDashboardApiClient>; backLabel?: string; backTo: string }) {
+  const navigate = useNavigate();
+  const { bookingId } = useParams();
+  return bookingId ? <BookingDetailScreen api={api} backLabel={backLabel} bookingId={bookingId} key={bookingId} onBack={() => navigate(backTo)} /> : <Navigate replace to={backTo} />;
+}
+
 function ProtectedShell({
   accessToken,
   config,
@@ -261,6 +284,12 @@ function ProtectedShell({
                 element={
                   route.path === "/pending-requests" ? (
                     <PendingRequestsRoute />
+                  ) : route.path === "/bookings" ? (
+                    <TodayBookingsRoute api={api} />
+                  ) : route.path === "/manual-booking" ? (
+                    <ManualBookingRoute api={api} />
+                  ) : route.path === "/booking-history" ? (
+                    <BookingHistoryRoute api={api} />
                   ) : route.path === "/rooms" ? (
                     <ResourceList api={api} />
                   ) : route.path === "/pricing" ? (
@@ -275,6 +304,8 @@ function ProtectedShell({
                 }
               />
             ))}
+            <Route path="/bookings/:bookingId" element={<BookingDetailRoute api={api} backTo="/bookings" />} />
+            <Route path="/booking-history/:bookingId" element={<BookingDetailRoute api={api} backLabel={t.bookings.detail.backHistory} backTo="/booking-history" />} />
             <Route path="*" element={<Navigate replace to="/" />} />
           </Routes>
         </section>
