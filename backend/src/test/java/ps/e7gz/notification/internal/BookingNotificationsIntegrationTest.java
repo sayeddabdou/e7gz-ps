@@ -2,11 +2,14 @@ package ps.e7gz.notification.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -363,7 +366,243 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
         assertThat(customerCodes(booking)).doesNotContain("BOOKING_STARTS_SOON");
     }
 
+    // ---------------------------------------------------------------------- E7-58 Late Confirm, once each
+
+    /** §52.2 "Late Confirmation Received": the customer, from LateConfirmInitiated, with the venue's name. */
+    @Test
+    void aLateConfirmTellsTheCustomerOnce() {
+        Booking booking = flows.lateConfirmed();
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.LATE_CONFIRM_INITIATED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.LATE_CONFIRM_INITIATED,
+                "CUSTOMER LATE_CONFIRMATION_RECEIVED " + booking.customerId());
+        assertThat(notifications(booking)).containsExactlyInAnyOrderElementsOf(beforeLateConfirm(booking,
+                "CUSTOMER LATE_CONFIRMATION_RECEIVED " + booking.customerId()));
+        assertThat(venueName(booking, "LATE_CONFIRMATION_RECEIVED")).isEqualTo(booking.venueName());
+    }
+
+    /** §52.2 "Late Confirmation Expiring": the customer, from T3's LateConfirmWarningDue. */
+    @Test
+    void theLateConfirmWarningTellsTheCustomerOnce() {
+        Booking booking = flows.lateConfirmed();
+        flows.warnLateConfirm(booking);
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.LATE_CONFIRM_WARNING_DUE);
+
+        assertMadeOnceBy(booking, IntegrationEvents.LATE_CONFIRM_WARNING_DUE,
+                "CUSTOMER LATE_CONFIRMATION_EXPIRING " + booking.customerId());
+        assertThat(notifications(booking)).containsExactlyInAnyOrderElementsOf(beforeLateConfirm(booking,
+                "CUSTOMER LATE_CONFIRMATION_RECEIVED " + booking.customerId(),
+                "CUSTOMER LATE_CONFIRMATION_EXPIRING " + booking.customerId()));
+    }
+
+    /** §52.5 "Customer Accepted Late Confirmation": the venue only; no starts-soon reminder (PO decision 13 Oct). */
+    @Test
+    void anAcceptedLateConfirmTellsTheVenueOnceAndArmsNoStartsSoonReminder() {
+        Booking booking = flows.lateConfirmed();
+        flows.acceptLateConfirm(booking);
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.LATE_CONFIRM_ACCEPTED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.LATE_CONFIRM_ACCEPTED,
+                "VENUE VENUE_LATE_CONFIRM_ACCEPTED " + booking.venueId());
+        assertThat(notifications(booking)).containsExactlyInAnyOrderElementsOf(beforeLateConfirm(booking,
+                "CUSTOMER LATE_CONFIRMATION_RECEIVED " + booking.customerId(),
+                "VENUE VENUE_LATE_CONFIRM_ACCEPTED " + booking.venueId()));
+        assertThat(job(BookingReminders.bookingStartsSoonKey(booking.bookingId()))).isEmpty();
+        assertThat(jobTypes(booking)).as("T4 BOOKING_START is the booking's own start job, not a reminder")
+                .contains("BOOKING_START").doesNotContain(BookingReminders.BOOKING_STARTS_SOON);
+    }
+
+    /** §52.5 "Customer Declined Late Confirmation": the venue only. */
+    @Test
+    void aDeclinedLateConfirmTellsTheVenueOnce() {
+        Booking booking = flows.lateConfirmed();
+        flows.declineLateConfirm(booking);
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.LATE_CONFIRM_DECLINED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.LATE_CONFIRM_DECLINED,
+                "VENUE VENUE_LATE_CONFIRM_DECLINED " + booking.venueId());
+        assertThat(notifications(booking)).containsExactlyInAnyOrderElementsOf(beforeLateConfirm(booking,
+                "CUSTOMER LATE_CONFIRMATION_RECEIVED " + booking.customerId(),
+                "VENUE VENUE_LATE_CONFIRM_DECLINED " + booking.venueId()));
+    }
+
+    /** §52.2 and §52.5 "Customer Confirmation Expired": ONE LateConfirmTimedOut, one notification for each side. */
+    @Test
+    void aTimedOutLateConfirmTellsTheCustomerAndTheVenueOnceEach() {
+        Booking booking = flows.lateConfirmed();
+        flows.timeOutLateConfirm(booking);
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.LATE_CONFIRM_TIMED_OUT);
+
+        assertMadeOnceBy(booking, IntegrationEvents.LATE_CONFIRM_TIMED_OUT,
+                "CUSTOMER CUSTOMER_CONFIRMATION_EXPIRED " + booking.customerId(),
+                "VENUE VENUE_CUSTOMER_CONFIRMATION_EXPIRED " + booking.venueId());
+        assertThat(notifications(booking)).containsExactlyInAnyOrderElementsOf(beforeLateConfirm(booking,
+                "CUSTOMER LATE_CONFIRMATION_RECEIVED " + booking.customerId(),
+                "CUSTOMER CUSTOMER_CONFIRMATION_EXPIRED " + booking.customerId(),
+                "VENUE VENUE_CUSTOMER_CONFIRMATION_EXPIRED " + booking.venueId()));
+    }
+
+    // ------------------------------------------------------------- E7-58 Late Confirm warning, FR-LCF-12
+
+    @Test
+    void aWindowOverSixtySecondsHasItsWarningJobAndOneExpiringNotification() {
+        Booking booking = flows.lateConfirmedStartingIn(Duration.ofSeconds(75));
+        assertThat(job(BookingFlows.lateConfirmWarningKey(booking))).hasValueSatisfying(
+                job -> assertThat(job.status()).isEqualTo("PENDING"));
+        flows.warnLateConfirm(booking);
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.LATE_CONFIRM_WARNING_DUE);
+
+        assertThat(customerCodes(booking)).containsOnlyOnce("LATE_CONFIRMATION_EXPIRING");
+    }
+
+    /**
+     * A window of 60 seconds or less gets no T3 job, so no LateConfirmWarningDue and no LATE_CONFIRMATION_EXPIRING,
+     * even after it times out. The window here starts 60 s (and 30 s) before the start, so it is at most 60 s: the
+     * exact 60.000 s instant needs a fixed command instant and is the E7-45 boundary test
+     * {@code LateConfirmBoundaryTest.initiatedAt759ForAnEightPmStartTheWindowIsExactlySixtySecondsWithNoWarning}.
+     */
+    @Test
+    void aWindowOfSixtySecondsOrLessHasNoWarningJobAndNoExpiringNotification() {
+        for (Duration startIn : List.of(Duration.ofSeconds(60), Duration.ofSeconds(30))) {
+            Booking booking = flows.lateConfirmedStartingIn(startIn);
+            assertThat(job(BookingFlows.lateConfirmWarningKey(booking))).as("%s: no T3 job", startIn).isEmpty();
+            flows.timeOutLateConfirm(booking);
+
+            drain();
+
+            assertThat(outboxEvents(booking, IntegrationEvents.LATE_CONFIRM_WARNING_DUE)).as("%s", startIn)
+                    .isEmpty();
+            assertThat(customerCodes(booking)).as("%s", startIn).doesNotContain("LATE_CONFIRMATION_EXPIRING")
+                    .contains("CUSTOMER_CONFIRMATION_EXPIRED");
+        }
+    }
+
+    // ------------------------------------------------------------- E7-58 venue name and privacy
+
+    /** PO decision 13 Oct 2026: a Late Confirm event's venue name is the one the customer sees, even after a rename. */
+    @Test
+    void aLateConfirmNotificationKeepsTheVenueNameOfItsEventAfterARename() {
+        Booking booking = flows.lateConfirmed();
+        BookingFlows.renameVenue(booking.venueId(), "Renamed after the Late Confirm");
+
+        drain();
+
+        assertThat(venueName(booking, "LATE_CONFIRMATION_RECEIVED")).isEqualTo(booking.venueName());
+    }
+
+    /** An event without a venue name (BookingConfirmed) falls back to the venue name when the notification is made. */
+    @Test
+    void anEventWithoutAVenueNameUsesTheVenuesNameNow() {
+        Booking booking = flows.pending();
+        flows.accept(booking);
+        assertThat(outboxEvent(booking, IntegrationEvents.BOOKING_CONFIRMED).payload().has("venueName")).isFalse();
+        BookingFlows.renameVenue(booking.venueId(), "Renamed before delivery");
+
+        drain();
+
+        assertThat(venueName(booking, "BOOKING_CONFIRMED")).isEqualTo("Renamed before delivery");
+    }
+
+    /**
+     * F1 / PCR-008 and NFR-19: a conflicting Accept is the 409 only - no event, no notification, no
+     * LATE_CONFIRM_SCHEDULE_CONFLICT - and no venue Late Confirm notification carries any parameter about the customer.
+     */
+    @Test
+    void aConflictingAcceptNotifiesNobodyAndVenueNotificationsCarryNothingAboutTheCustomer() {
+        Booking conflicting = flows.lateConfirmedOverlappingAnotherBooking();
+        flows.acceptLateConfirmConflicting(conflicting);
+        Booking declined = flows.lateConfirmed();
+        flows.declineLateConfirm(declined);
+        Booking timedOut = flows.lateConfirmed();
+        flows.timeOutLateConfirm(timedOut);
+
+        drain();
+
+        assertThat(notifications(conflicting)).containsExactlyInAnyOrderElementsOf(beforeLateConfirm(conflicting,
+                "CUSTOMER LATE_CONFIRMATION_RECEIVED " + conflicting.customerId()));
+        assertThat(db.sql("SELECT count(*) FROM notification.notification WHERE code = :code")
+                .param("code", "LATE_CONFIRM_SCHEDULE_CONFLICT")
+                .query(Long.class).single()).isZero();
+        for (Booking booking : List.of(declined, timedOut)) {
+            assertThat(db.sql("""
+                            SELECT params::text FROM notification.notification
+                             WHERE booking_id = :id AND recipient_type = 'VENUE'""")
+                    .param("id", booking.bookingId()).query(String.class).list())
+                    .isNotEmpty().allSatisfy(params -> assertThat(params).isEqualTo("{}"));
+        }
+    }
+
     // ------------------------------------------------------------------------------------------------ helpers
+
+    /** The notifications a Late Confirm booking already had from its request and its expiry (E7-46, E7-47). */
+    private static List<String> beforeLateConfirm(Booking booking, String... lateConfirm) {
+        List<String> all = new ArrayList<>(List.of(
+                "CUSTOMER BOOKING_CREATED " + booking.customerId(),
+                "VENUE VENUE_NEW_BOOKING_REQUEST " + booking.venueId(),
+                "CUSTOMER VENUE_RESPONSE_EXPIRED " + booking.customerId()));
+        all.addAll(List.of(lateConfirm));
+        return all;
+    }
+
+    /**
+     * Every event handled twice by the dispatcher, then the booking's stored event of {@code type} handed to the
+     * consumer once more: a redelivery of the same outbox event.
+     */
+    private void drainTwiceAndRedeliver(Booking booking, String type) {
+        OutboxDrain.drain(appDataSource, json, twice(consumer));
+        consumer.handle(outboxEvent(booking, type));
+    }
+
+    /** {@code expected} ("RECIPIENT_TYPE CODE recipientId") each exist once, created by the booking's one event. */
+    private void assertMadeOnceBy(Booking booking, String type, String... expected) {
+        OutboxEvent event = outboxEvent(booking, type);
+        for (String notification : expected) {
+            String[] parts = notification.split(" ");
+            assertThat(notifications(booking)).as(notification).containsOnlyOnce(notification);
+            assertThat(notificationId(booking, parts[1])).as("%s made by %s %d", parts[1], type, event.id())
+                    .isEqualTo(BookingNotifier.id("outbox:" + event.id(), parts[1], UUID.fromString(parts[2])));
+        }
+    }
+
+    /** The booking's one stored event of {@code type}, as the dispatcher hands it to a consumer. */
+    private OutboxEvent outboxEvent(Booking booking, String type) {
+        List<OutboxEvent> events = outboxEvents(booking, type);
+        assertThat(events).as(type).hasSize(1);
+        return events.getFirst();
+    }
+
+    private List<OutboxEvent> outboxEvents(Booking booking, String type) {
+        return db.sql("""
+                        SELECT id, event_type, aggregate_type, aggregate_id, payload::text AS payload, correlation_id,
+                               created_at, attempt
+                          FROM technical.outbox_event
+                         WHERE aggregate_id = :id AND event_type = :type""")
+                .param("id", booking.bookingId()).param("type", type)
+                .query((rs, n) -> new OutboxEvent(rs.getLong("id"), rs.getString("event_type"),
+                        rs.getString("aggregate_type"), rs.getObject("aggregate_id", UUID.class),
+                        payload(rs.getString("payload")), rs.getObject("correlation_id", UUID.class),
+                        rs.getObject("created_at", OffsetDateTime.class).toInstant(), rs.getInt("attempt")))
+                .list();
+    }
+
+    private JsonNode payload(String text) {
+        try {
+            return json.readTree(text);
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private List<String> jobTypes(Booking booking) {
+        return db.sql("SELECT type FROM technical.scheduled_job WHERE subject_id = :id")
+                .param("id", booking.bookingId()).query(String.class).list();
+    }
 
     private void drain() {
         OutboxDrain.drain(appDataSource, json, consumer);
