@@ -46,9 +46,31 @@ class NotificationService implements Notifications {
 
     @Override
     public UUID notify(CommandContext context, NotificationRequest request) {
+        UUID id = UUID.randomUUID();
+        insert(context, id, request);
+        return id;
+    }
+
+    /**
+     * Creates the notification under {@code id} unless it exists already; returns whether it created it. The booking
+     * notifications use it with an id derived from the outbox event (E7-55): a consumer runs again on every retry of
+     * its event, and the second run finds the row and changes nothing. The dispatcher holds the event's row lock while
+     * its consumers run, so two runs of one event never overlap; the primary key refuses a duplicate anyway.
+     */
+    boolean notifyOnce(CommandContext context, UUID id, NotificationRequest request) {
+        Objects.requireNonNull(id, "id");
+        boolean exists = context.jdbc().sql("SELECT EXISTS (SELECT 1 FROM notification.notification WHERE id = :id)")
+                .param("id", id).query(Boolean.class).single();
+        if (exists) {
+            return false;
+        }
+        insert(context, id, request);
+        return true;
+    }
+
+    private void insert(CommandContext context, UUID id, NotificationRequest request) {
         Objects.requireNonNull(context, "context");
         Objects.requireNonNull(request, "request");
-        UUID id = UUID.randomUUID();
         context.jdbc().sql("""
                         INSERT INTO notification.notification (id, recipient_type, recipient_id, code, booking_id,
                                                                tournament_id, params, created_at)
@@ -85,7 +107,6 @@ class NotificationService implements Notifications {
             outbox.publish(context, new NewOutboxEvent(IntegrationEvents.NOTIFICATION_DELIVERY_REQUESTED,
                     "NOTIFICATION", id, Map.of("notificationId", id.toString())));
         }
-        return id;
     }
 
     /** The code's {@code required_channels}; an unknown code has none here and is refused by the insert above. */

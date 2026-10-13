@@ -1,0 +1,152 @@
+package ps.e7gz.notification.internal;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.function.Function;
+import ps.e7gz.common.codes.BookingTerminalReason;
+import ps.e7gz.messaging.api.IntegrationEvents;
+import ps.e7gz.messaging.api.OutboxEvent;
+import ps.e7gz.messaging.api.PermanentDeliveryFailure;
+
+/**
+ * Which booking, Late Confirm and attendance notifications an integration event creates (Spec v5 sections 52.2 and
+ * 52.5, FR-NTF-09; arch 08 sections 3.2 and 4.4). The ONE place they are decided (PO decision 12 Oct 2026, Sprint 3
+ * review): no producer calls {@code Notifications.notify} for them.
+ *
+ * <p><b>Adding an event</b> (E7-58, E7-59, E7-60, E7-61, E7-113, E7-114): one entry in {@link #RULES} (or, for a new
+ * cancellation reason, in {@link #CANCELLED}), the English push copy of each customer code and the English and Arabic
+ * push copy of each venue code in {@code notification/templates_*.properties}, and a test that the event creates each
+ * code exactly once ({@code BookingNotificationsIntegrationTest}). The consumer subscribes to every key of
+ * {@link #RULES} by itself.
+ *
+ * <p>Copy rules (arch 08 section 4.5): every code here is a BOOKING code, so the notification carries the Booking ID
+ * (FR-NTF-04, refused by the database otherwise); a code saying "cancelled" comes only from {@code BookingCancelled},
+ * whose producer wrote the terminal status (FR-NTF-07); {@code VenueAccountEnabled} has no entry (FR-NTF-08).
+ */
+final class BookingNotificationRules {
+
+    /** Who gets it: the booking's Customer (none for a Manual Booking) or its Venue. */
+    enum Recipient {
+        CUSTOMER, VENUE
+    }
+
+    /** One notification to create: a {@code notification_catalogue} code for one recipient. */
+    record Send(Recipient recipient, String code) {
+    }
+
+    /** A reminder timer the event starts ({@code ps.e7gz.notification.api.BookingReminders}). */
+    enum Reminder {
+        /** On {@code BookingCreated}: the venue, 3 minutes before its response deadline. */
+        VENUE_PENDING_REQUEST_EXPIRING,
+        /** On the Accept's {@code BookingConfirmed}: the customer, 20 minutes before the start. */
+        BOOKING_STARTS_SOON
+    }
+
+    /** What one event does: the notifications and at most one reminder. */
+    record Plan(List<Send> sends, Optional<Reminder> reminder) {
+
+        static final Plan NONE = new Plan(List.of(), Optional.empty());
+
+        Plan {
+            sends = List.copyOf(sends);
+        }
+
+        boolean isEmpty() {
+            return sends.isEmpty() && reminder.isEmpty();
+        }
+    }
+
+    private static Send customer(String code) {
+        return new Send(Recipient.CUSTOMER, code);
+    }
+
+    private static Send venue(String code) {
+        return new Send(Recipient.VENUE, code);
+    }
+
+    private static Plan plan(Send... sends) {
+        return new Plan(Arrays.asList(sends), Optional.empty());
+    }
+
+    private static Plan plan(Reminder reminder, Send... sends) {
+        return new Plan(Arrays.asList(sends), Optional.of(reminder));
+    }
+
+    /**
+     * {@code BookingCancelled} by its {@code terminalReason}. A reason without an entry sends nothing: its producer task
+     * adds it (E7-60 start-time revalidation, E7-80 emergency/owner-review/closure cascades, E7-113 hours change,
+     * E7-114 venue cancel).
+     *
+     * <p>The three operational reasons are produced today only by an Accept stopped by its cause (FR-BOK-16, E7-47):
+     * the customer gets the generic {@code BOOKING_AUTO_CANCELLED} (PO decision 13 Oct 2026) and the venue
+     * {@code VENUE_BOOKING_AUTO_CANCELLED} (PO decision 12 Oct 2026). E7-80's cascades write the same reasons and want
+     * their own customer codes ({@code BOOKING_CANCELLED_VENUE_EMERGENCY}, ...), so E7-80 tells its events apart here.
+     */
+    static final Map<BookingTerminalReason, Plan> CANCELLED = Map.of(
+            // E7-49 (D4: the customer notification of the customer's own cancel is E7-55's; PO decision 13 Oct 2026)
+            BookingTerminalReason.CUSTOMER_CANCELLED, plan(customer("BOOKING_CANCELLED")),
+            BookingTerminalReason.VENUE_EMERGENCY_CLOSURE,
+            plan(customer("BOOKING_AUTO_CANCELLED"), venue("VENUE_BOOKING_AUTO_CANCELLED")),
+            BookingTerminalReason.RESOURCE_EMERGENCY_OUTAGE,
+            plan(customer("BOOKING_AUTO_CANCELLED"), venue("VENUE_BOOKING_AUTO_CANCELLED")),
+            BookingTerminalReason.RESOURCE_OWNER_REVIEW_REQUIRED,
+            plan(customer("BOOKING_AUTO_CANCELLED"), venue("VENUE_BOOKING_AUTO_CANCELLED")),
+            // E7-48: the venue cancelled its own Manual Booking; there is no customer to tell
+            BookingTerminalReason.VENUE_CANCELLED_MANUAL_BOOKING, Plan.NONE);
+
+    /** One entry per integration event this module turns into booking notifications. */
+    static final Map<String, Function<OutboxEvent, Plan>> RULES = Map.of(
+            // E7-46: a customer's request. Both §52.2 "Booking Created" (PO decision 13 Oct 2026) and §52.5 "New
+            // Booking Request" (decision A6: Web Push while the Dashboard is closed)
+            IntegrationEvents.BOOKING_CREATED, event -> plan(Reminder.VENUE_PENDING_REQUEST_EXPIRING,
+                    customer("BOOKING_CREATED"), venue("VENUE_NEW_BOOKING_REQUEST")),
+            // E7-47 Accept; a Manual Booking created CONFIRMED (E7-48) has no customer and gets nothing
+            IntegrationEvents.BOOKING_CONFIRMED, event -> manual(event) ? Plan.NONE
+                    : plan(Reminder.BOOKING_STARTS_SOON, customer("BOOKING_CONFIRMED")),
+            // E7-47 Reject (FR-BOK-17) and Reject After Expiry (FR-BOK-21): two codes
+            IntegrationEvents.BOOKING_REJECTED, event -> switch (reason(event)) {
+                case VENUE_REJECTED -> plan(customer("BOOKING_REJECTED"));
+                case REJECTED_AFTER_EXPIRY -> plan(customer("REJECTED_AFTER_EXPIRY"));
+                default -> throw new PermanentDeliveryFailure("BookingRejected " + event.id()
+                        + " has an unexpected terminalReason " + reason(event));
+            },
+            // E7-47 T1 (FR-BOK-18): ordinary expiry, its own code (FR-NTF-06)
+            IntegrationEvents.VENUE_RESPONSE_EXPIRED, event -> plan(customer("VENUE_RESPONSE_EXPIRED")),
+            IntegrationEvents.BOOKING_CANCELLED, event -> CANCELLED.getOrDefault(reason(event), Plan.NONE),
+            // No notification (PO decision 13 Oct 2026): a walk-in has no customer; at CONFIRMED -> ACTIVE (E7-60) the
+            // BOOKING_STARTS_SOON reminder finds the booking no longer CONFIRMED and supersedes itself
+            IntegrationEvents.BOOKING_STARTED, event -> Plan.NONE);
+
+    private BookingNotificationRules() {
+    }
+
+    static Set<String> eventTypes() {
+        return RULES.keySet();
+    }
+
+    static Plan planFor(OutboxEvent event) {
+        Function<OutboxEvent, Plan> rule = RULES.get(event.eventType());
+        if (rule == null) {
+            throw new PermanentDeliveryFailure("No booking notification rule for " + event.eventType());
+        }
+        return rule.apply(event);
+    }
+
+    /** A Manual Booking's events carry {@code source: MANUAL} and no customer (E7-48, D6). */
+    static boolean manual(OutboxEvent event) {
+        return "MANUAL".equals(event.payload().path("source").asText(null));
+    }
+
+    private static BookingTerminalReason reason(OutboxEvent event) {
+        String reason = event.text("terminalReason");
+        try {
+            return BookingTerminalReason.valueOf(reason);
+        } catch (IllegalArgumentException e) {
+            throw new PermanentDeliveryFailure(event.eventType() + " " + event.id() + " has an unknown terminalReason "
+                    + reason);
+        }
+    }
+}

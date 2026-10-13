@@ -88,7 +88,8 @@ class IdempotencyScopeTest {
                     "post /api/v1/customer/notifications/devices",
                     "post /api/v1/customer/notifications/devices/{deviceId}/revoke",
                     "post /api/v1/venue/push-subscriptions",
-                    "post /api/v1/venue/push-subscriptions/{subscriptionId}/revoke"));
+                    "post /api/v1/venue/push-subscriptions/{subscriptionId}/revoke",
+                    "post /api/v1/venue/notifications/{notificationId}/read"));             // E7-55
 
     private JsonNode contract;
 
