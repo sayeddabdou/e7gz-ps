@@ -215,6 +215,76 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
                 "VENUE_BOOKING_AUTO_CANCELLED");
     }
 
+    // ---------------------------------------------------------------- E7-113 opening-hours change (O5), Phase 1
+
+    /**
+     * FR-VEN-23 step 9: the hours change's BookingCancelled tells the customer once - VENUE_OPENING_HOURS_CHANGED,
+     * made by that one stored event even when it is handled twice and redelivered - and tells the venue nothing.
+     */
+    @Test
+    void anOnlineBookingCancelledByAnHoursChangeTellsOnlyTheCustomerOnce() {
+        Booking booking = flows.pending();
+        flows.publishCancelledByHoursChange(booking);
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_CANCELLED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.BOOKING_CANCELLED,
+                "CUSTOMER VENUE_OPENING_HOURS_CHANGED " + booking.customerId());
+        assertThat(notifications(booking)).containsExactlyInAnyOrder(
+                "CUSTOMER BOOKING_CREATED " + booking.customerId(),
+                "VENUE VENUE_NEW_BOOKING_REQUEST " + booking.venueId(),
+                "CUSTOMER VENUE_OPENING_HOURS_CHANGED " + booking.customerId());
+        assertThat(venueCodes(booking)).as("no venue notification for its own change")
+                .containsExactly("VENUE_NEW_BOOKING_REQUEST");
+        assertThat(venueName(booking, "VENUE_OPENING_HOURS_CHANGED")).isEqualTo(booking.venueName());
+    }
+
+    /**
+     * A Manual Booking cancelled by an hours change notifies nobody: no customer, and the venue made the change. The
+     * stored event's own plan is checked too: the notifier would skip the missing customer anyway, so only the plan
+     * shows the rule itself refuses it.
+     */
+    @Test
+    void aManualBookingCancelledByAnHoursChangeNotifiesNobody() {
+        Booking booking = flows.manualConfirmed();
+        flows.publishCancelledByHoursChange(booking);
+        OutboxEvent cancelled = outboxEvent(booking, IntegrationEvents.BOOKING_CANCELLED);
+        assertThat(cancelled.text("terminalReason")).isEqualTo("VENUE_OPENING_HOURS_CHANGED");
+        assertThat(cancelled.payload().path("source").asText()).isEqualTo("MANUAL");
+
+        assertThat(BookingNotificationRules.planFor(cancelled)).isEqualTo(BookingNotificationRules.Plan.NONE);
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_CANCELLED);
+
+        assertThat(notifications(booking)).isEmpty();
+    }
+
+    /** One notification per cancelled booking, not per customer: two bookings of one customer make two. */
+    @Test
+    void twoBookingsOfOneCustomerCancelledByAnHoursChangeMakeTwoBookingNotifications() {
+        List<Booking> bookings = flows.twoPendingOfOneCustomer();
+        Booking first = bookings.get(0);
+        Booking second = bookings.get(1);
+        assertThat(second.customerId()).isEqualTo(first.customerId());
+        flows.publishCancelledByHoursChange(first);
+        flows.publishCancelledByHoursChange(second);
+
+        drain();
+
+        for (Booking booking : bookings) {
+            assertThat(customerCodes(booking)).as("booking %s", booking.bookingId())
+                    .containsOnlyOnce("VENUE_OPENING_HOURS_CHANGED");
+            assertMadeOnceBy(booking, IntegrationEvents.BOOKING_CANCELLED,
+                    "CUSTOMER VENUE_OPENING_HOURS_CHANGED " + booking.customerId());
+        }
+        assertThat(notificationId(first, "VENUE_OPENING_HOURS_CHANGED"))
+                .isNotEqualTo(notificationId(second, "VENUE_OPENING_HOURS_CHANGED"));
+        assertThat(db.sql("""
+                        SELECT count(*) FROM notification.notification
+                         WHERE code = 'VENUE_OPENING_HOURS_CHANGED' AND recipient_id = :customer""")
+                .param("customer", first.customerId()).query(Long.class).single()).isEqualTo(2L);
+    }
+
     /** PO decision 13 Oct 2026: the venue name the event recorded wins over the name when the notification is made. */
     @Test
     void theVenueNameAnEventCarriesIsTheOneTheCustomerSees() {

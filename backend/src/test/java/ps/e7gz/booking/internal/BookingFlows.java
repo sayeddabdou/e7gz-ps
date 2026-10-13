@@ -6,16 +6,21 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.context.ApplicationContext;
 import ps.e7gz.booking.lateconfirm.internal.LateConfirmations;
+import ps.e7gz.common.codes.BookingSource;
 import ps.e7gz.common.codes.BookingStatus;
+import ps.e7gz.common.codes.BookingTerminalReason;
+import ps.e7gz.common.codes.PlayMode;
 import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.messaging.api.CommandAnswer;
+import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.scheduling.api.JobOutcome;
 import ps.e7gz.scheduling.api.ScheduledJob;
 import ps.e7gz.support.boundary.Deadlines;
@@ -24,9 +29,12 @@ import ps.e7gz.support.boundary.TestCommands;
 /**
  * Test support for other modules (E7-55): real Online Bookings driven through this package's own commands - create,
  * Accept, Reject, T1 expiry, Reject After Expiry, customer cancel, an Accept stopped by a venue emergency, and the Late
- * Confirm's Initiate, Accept, Decline, T2 and T3 (E7-58) - so a
- * consumer of their integration events can be tested against what the booking module really writes. Read-only for the
- * booking module: it adds no behaviour, only reaches the package-private entry points the booking tests use.
+ * Confirm's Initiate, Accept, Decline, T2 and T3 (E7-58), a Manual Booking (E7-48) and the hours-change
+ * {@code BookingCancelled} (E7-113) - so a
+ * consumer of their integration events can be tested against what the booking module really writes. Test support
+ * only: it adds no behaviour to the booking module, only reaches the package-private entry points the booking tests
+ * use. One deliberate exception, {@link #publishCancelledByHoursChange}, publishes a synthetic event without the state
+ * change behind it (see there).
  */
 public final class BookingFlows {
 
@@ -43,6 +51,8 @@ public final class BookingFlows {
     private final CommandRunner runner;
     private final LateConfirmations lateConfirmations;
     private final LateConfirmDb lateConfirms;
+    private final ManualBookings manualBookings;
+    private final Outbox outbox;
 
     private BookingFlows(ApplicationContext context) {
         this.creation = context.getBean(OnlineBookingCreation.class);
@@ -53,6 +63,8 @@ public final class BookingFlows {
         this.runner = context.getBean(CommandRunner.class);
         this.lateConfirmations = context.getBean(LateConfirmations.class);
         this.lateConfirms = new LateConfirmDb(runner, creation, store, answers);
+        this.manualBookings = context.getBean(ManualBookings.class);
+        this.outbox = context.getBean(Outbox.class);
     }
 
     public static BookingFlows of(ApplicationContext context) {
@@ -79,6 +91,21 @@ public final class BookingFlows {
         CreatedBooking created = creation.create(world.request(world.customer.id(), world.room, start, 60));
         return new Booking(created.bookingId(), created.customerId(), world.venue.id(), world.venue.name(),
                 world.account.id(), world.room.id(), created.startAt(), created.venueResponseExpiresAt());
+    }
+
+    /** Two PENDING Online Bookings of ONE customer at one venue, an hour long, two hours apart (E7-113). */
+    public List<Booking> twoPendingOfOneCustomer() {
+        OnlineBookingWorld world = OnlineBookingWorld.create();
+        return List.of(pending(world, world.start()), pending(world, world.start().plus(Duration.ofHours(2))));
+    }
+
+    /** A future Manual Booking, created CONFIRMED through the real command (E7-48): no customer. */
+    public Booking manualConfirmed() {
+        OnlineBookingWorld world = OnlineBookingWorld.create();
+        VenueBookingRow created = manualBookings.create(world.account.id(),
+                ManualBookingRequest.of(world.room.id(), PlayMode.SINGLE, world.start(), 60, null, null));
+        return new Booking(created.bookingId(), null, world.venue.id(), world.venue.name(), world.account.id(),
+                world.room.id(), created.startAt(), null);
     }
 
     public void accept(Booking booking) {
@@ -196,6 +223,26 @@ public final class BookingFlows {
     /** The idempotency key of the booking's T3 job ({@code LATE_CONFIRM_WARNING:{bookingId}}). */
     public static String lateConfirmWarningKey(Booking booking) {
         return LateConfirmDb.t3(booking.bookingId());
+    }
+
+    /**
+     * TEST-ONLY (E7-113 Phase 1): a SYNTHETIC {@code BookingCancelled} with {@code terminalReason}
+     * VENUE_OPENING_HOURS_CHANGED, built by the production builders - {@link BookingEvents#cancelled} for an Online
+     * Booking, {@link BookingEvents#manualCancelled} for a Manual one - and published through the real outbox under the
+     * booking's locks.
+     *
+     * <p>It deliberately does NOT change the booking: the row keeps its status and its reservation, and no history,
+     * refund, hold release or Late Confirm closing is written, because the cancellation itself (O5) is not built
+     * yet. It therefore tests notification consumption only - the consumer reads only the event and the booking's
+     * parties - and never the complete cancellation transaction or its atomicity with the event (FR-NTF-12).
+     */
+    public void publishCancelledByHoursChange(Booking booking) {
+        runner.run(TestCommands.under(scope(booking), context -> {
+            VenueAnswerStore.Facts facts = store.facts(context, booking.bookingId()).orElseThrow();
+            BookingTerminalReason reason = BookingTerminalReason.VENUE_OPENING_HOURS_CHANGED;
+            return outbox.publish(context, facts.source() == BookingSource.MANUAL
+                    ? BookingEvents.manualCancelled(facts, reason) : BookingEvents.cancelled(facts, reason));
+        }));
     }
 
     /** TEST-ONLY: the venue is renamed now (no venue command does it yet), to tell an event's name from today's. */
