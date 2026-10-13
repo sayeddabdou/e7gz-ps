@@ -15,6 +15,7 @@ import javax.sql.DataSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import ps.e7gz.common.codes.DevicePlatform;
+import ps.e7gz.common.codes.NotificationRecipientType;
 import ps.e7gz.common.command.Command;
 import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.command.CommandRunner;
@@ -62,22 +63,28 @@ public class CustomerNotifications {
      * move it between pages. Only notifications with an in-app delivery are listed (an email-only one is not).
      */
     public Page list(UUID userId, String cursor, Integer limit) {
+        return list(NotificationRecipientType.CUSTOMER, userId, cursor, limit);
+    }
+
+    /** The in-app list of one recipient (a customer, or a venue for its Dashboard - E7-55), as {@link #list}. */
+    Page list(NotificationRecipientType recipientType, UUID recipientId, String cursor, Integer limit) {
         int size = limit == null ? DEFAULT_PAGE_SIZE : limit;
         UUID after = decodeCursor(cursor);
         List<Item> rows = jdbc.sql("""
                         SELECT n.id, n.code, n.booking_id, n.tournament_id, n.params::text AS params, n.read_at,
                                n.created_at
                           FROM notification.notification n
-                         WHERE n.recipient_type = 'CUSTOMER' AND n.recipient_id = :user
+                         WHERE n.recipient_type = :type AND n.recipient_id = :user
                            AND EXISTS (SELECT 1 FROM notification.notification_delivery d
                                         WHERE d.notification_id = n.id AND d.channel = 'IN_APP')
                            AND (CAST(:after AS uuid) IS NULL
                                 OR (n.created_at, n.id) < (SELECT c.created_at, c.id FROM notification.notification c
-                                                            WHERE c.id = :after AND c.recipient_type = 'CUSTOMER'
+                                                            WHERE c.id = :after AND c.recipient_type = :type
                                                               AND c.recipient_id = :user))
                          ORDER BY n.created_at DESC, n.id DESC
                          LIMIT :limit""")
-                .param("user", userId).param("after", after).param("limit", size + 1)
+                .param("type", recipientType.name()).param("user", recipientId).param("after", after)
+                .param("limit", size + 1)
                 .query((rs, row) -> new Item(rs.getObject("id", UUID.class), rs.getString("code"),
                         rs.getObject("booking_id", UUID.class), rs.getObject("tournament_id", UUID.class),
                         params(rs.getString("params")), instant(rs.getObject("read_at", OffsetDateTime.class)),
@@ -90,7 +97,17 @@ public class CustomerNotifications {
 
     /** Marks one of the customer's notifications read; an already-read one keeps its first read time. */
     public void markRead(UUID userId, UUID notificationId) {
-        runner.run(new MarkRead(userId, notificationId));
+        markRead(NotificationRecipientType.CUSTOMER, userId, EligibilityCategory.A_NEW_ACTIVITY_MARKETPLACE,
+                LockSet.builder().users(userId).build(), notificationId);
+    }
+
+    /**
+     * Marks one of the recipient's notifications read under {@code locks} (E7-55: also a venue's); another recipient's
+     * is {@code NOT_FOUND}.
+     */
+    void markRead(NotificationRecipientType recipientType, UUID recipientId, EligibilityCategory category,
+                  LockSet locks, UUID notificationId) {
+        runner.run(new MarkRead(recipientType, recipientId, category, locks, notificationId));
     }
 
     /**
@@ -107,24 +124,26 @@ public class CustomerNotifications {
         runner.run(new Revoke(userId, deviceId));
     }
 
-    private record MarkRead(UUID userId, UUID notificationId) implements Command<Void> {
+    private record MarkRead(NotificationRecipientType recipientType, UUID recipientId, EligibilityCategory category,
+                            LockSet locks, UUID notificationId) implements Command<Void> {
 
         @Override
         public EligibilityCategory eligibilityCategory() {
-            return EligibilityCategory.A_NEW_ACTIVITY_MARKETPLACE;
+            return category;
         }
 
         @Override
         public CommandScope scope() {
-            return CommandScope.shared(LockSet.builder().users(userId).build());
+            return CommandScope.shared(locks);
         }
 
         @Override
         public Void execute(CommandContext context) {
             Optional<Boolean> unread = context.jdbc().sql("""
                             SELECT read_at IS NULL FROM notification.notification
-                             WHERE id = :id AND recipient_type = 'CUSTOMER' AND recipient_id = :user FOR UPDATE""")
-                    .param("id", notificationId).param("user", userId).query(Boolean.class).optional();
+                             WHERE id = :id AND recipient_type = :type AND recipient_id = :recipient FOR UPDATE""")
+                    .param("id", notificationId).param("type", recipientType.name()).param("recipient", recipientId)
+                    .query(Boolean.class).optional();
             if (unread.isEmpty()) {
                 throw new ApiException(ApiErrorCode.NOT_FOUND);
             }

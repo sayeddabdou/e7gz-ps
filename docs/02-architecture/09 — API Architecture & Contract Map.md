@@ -340,6 +340,8 @@ Venues with marketplace `ONBOARDING`, `INACTIVE` or `SUSPENDED` are absent from 
 | `GET` | `/venue/stream` — SSE; ordinary Bearer header, read with `fetch()` (never `EventSource`, no token in the URL) | — | — | `ADR-014`; authentication: Product Owner decision, 5 Oct 2026 (E7-39) |
 | `GET` | `/venue/push-subscriptions/vapid-public-key` | — | — | `ADR-014`, `01 §14` A6 |
 | `POST` | `/venue/push-subscriptions` `{endpoint, keys {p256dh, auth}, userAgent?}` · `/{id}/revoke` — revoked, never deleted (`08 §4`) | — | — | `ADR-014`, `01 §14` A6; routes: Product Owner decision, 5 Oct 2026 (E7-39) |
+| `GET` | `/venue/notifications` — the venue's in-Dashboard list, newest first, cursor paging, same shape as `/customer/notifications` | — | — | `FR-NTF-09`, `08 §4.4`; Product Owner decision, 12 Oct 2026 (E7-55) |
+| `POST` | `/venue/notifications/{id}/read` → 204; already read changes nothing; another venue's is `NOT_FOUND` | — | — | `FR-NTF-09`; Product Owner decision, 12 Oct 2026 (E7-55) |
 
 **The neutral Late Confirm failure** (`NFR-19`, `FR-LCF-05`):
 
