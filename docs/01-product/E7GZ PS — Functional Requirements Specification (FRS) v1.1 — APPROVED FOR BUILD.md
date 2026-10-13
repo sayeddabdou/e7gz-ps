@@ -737,7 +737,7 @@ Reverse Check-in / Mark Present — Late / No-show · Attendance Correction · T
 
 | Recipient / class | Required channel(s) | Canonical event coverage |
 |---|---|---|
-| Customer — time-sensitive booking/tournament/Trust events | In-App + Push | Full catalogue in v5.0 §52.2, including booking lifecycle, Late Confirm, attendance/no-show, Ban, Points, Verified Player and Tournament events |
+| Customer — time-sensitive booking/tournament/Trust events | In-App + Push | Full catalogue in v5.0 §52.2, including booking lifecycle, Late Confirm, attendance/no-show, Ban, Points, Verified Player and Tournament events, except the customer schedule-conflict failure *(Amended by PCR-008.)* |
 | Customer — operational/platform causes | In-App + Push | Emergency/owner-review/account-disable/system-integrity interruptions and cancellations, Attendance Recording Affected, Tournament Resource Availability Changed, and operational refund confirmations where applicable |
 | Customer — account/security/moderation | In-App + Email | Full catalogue in v5.0 §52.3; Admin material changes to Ban, No-show, Attendance Result, Points, Booking status or Referral reward also notify affected Customer |
 | Phone verification | SMS | Mandatory phone OTP only |
@@ -1337,7 +1337,7 @@ The following catalogue is normative. Every row preserves the approved PRD requi
 | ID | Pri | Type | Actor / Surface | Functional requirement | Governing v5.0 |
 |---|---:|---|---|---|---|
 | `FR-NTF-01` | M | Notification | System<br>Platform Admin | Launch channels: In-App · Push · Email · **SMS for OTP only**. | §52.1 |
-| `FR-NTF-02` | M | Inventory/Reservation, Trust/Enforcement, Money/Points, Notification, Audit/History | System<br>Platform Admin | Time-sensitive booking, tournament and trust events use **In-App + Push**, covering the full catalogue in v5.0 §52.2 — including every operational and platform cause, `ACTIVE_SESSION_ATTENDANCE_RECORDING_AFFECTED`, tournament resource-availability changes, and operational refund confirmations. | §52.2 |
+| `FR-NTF-02` | M | Inventory/Reservation, Trust/Enforcement, Money/Points, Notification, Audit/History | System<br>Platform Admin | Time-sensitive booking, tournament and trust events use **In-App + Push**, covering the full catalogue in v5.0 §52.2 — including every operational and platform cause, `ACTIVE_SESSION_ATTENDANCE_RECORDING_AFFECTED`, tournament resource-availability changes, and operational refund confirmations. The §52.2 item "Customer schedule-conflict failure" is withdrawn: a conflicting Late Confirm Accept is the immediate `409 LATE_CONFIRM_CUSTOMER_CONFLICT` error, with no notification. *(Amended by PCR-008.)* | §52.2; PCR-008 |
 | `FR-NTF-03` | M | Notification, Audit/History | System<br>Platform Admin | Account, security and moderation events use **In-App + Email**, per v5.0 §52.3. | §52.3 |
 | `FR-NTF-04` | M | Notification | System<br>Platform Admin | Every booking notification internally references the **specific Booking ID**, so navigation always lands on the correct booking. | §52.2 |
 | `FR-NTF-05` | M | Trust/Enforcement, Money/Points, Notification | System<br>Platform Admin | An attendance-unconfirmed notification must explain that **no attendance reward was applied**. | §52.2 |

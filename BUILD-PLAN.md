@@ -1860,7 +1860,7 @@ Read only these docs for this task:
 - arch 08 §4.5 (copy rules)
 
 Do:
-1. Wire every customer booking/Late Confirm/attendance code listed in §52.2 to the correct trigger; EN message templates in the apps (backend sends codes + params only).
+1. Wire every customer booking/Late Confirm/attendance code listed in §52.2 to the correct trigger, except LATE_CONFIRM_SCHEDULE_CONFLICT (withdrawn by PCR-008: a conflicting Late Confirm Accept is the synchronous 409 LATE_CONFIRM_CUSTOMER_CONFLICT, with no notification); EN message templates in the apps (backend sends codes + params only).
 2. Copy-rule tests from arch 08 §4.5.
 
 Done when (write these as tests first where possible):
@@ -1884,6 +1884,10 @@ Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
 Carry-forward from the Sprint 3 review (PO decisions 12 Oct 2026, do these too):
 - One notification path (PO decision 12 Oct 2026): build ONE outbox consumer in notification/internal that turns integration events into booking, Late Confirm and attendance notifications - the only place they are created (no producer task calls Notifications.notify for them). This task wires the events that exist when it starts (BookingCreated, BookingConfirmed, BookingRejected, VenueResponseExpired, BookingCancelled, BookingStarted; the Late Confirm events if E7-58 is merged). Make adding an event a small documented change - one mapping entry, its copy and its exactly-once test - because E7-58, E7-59, E7-60, E7-61, E7-113 and E7-114 add their own codes there after this task merges. Step 1's 'every customer code' therefore means: the codes whose events exist now, plus the time-based reminders below; the trigger tasks add the rest.
 - BOOKING_STARTS_SOON (Spec v5 §52.2) is a timer of this task (PO decision 12 Oct 2026): 20 minutes before startAt of a CONFIRMED online booking (scheduled on Accept; a booking confirmed less than 20 minutes before its start gets none), superseded when the booking is cancelled or no longer CONFIRMED, fired from the stored startAt, once per booking. Manual bookings have no customer and get none.
+
+Carry-forward from F1 / PCR-008 (Amr under delegated PO authority, 13 Oct 2026; reviewed by Sayed), do this too:
+- The Late Confirm codes are the six mapped from E7-58's five canonical events: LateConfirmInitiated -> LATE_CONFIRMATION_RECEIVED; LateConfirmWarningDue -> LATE_CONFIRMATION_EXPIRING; LateConfirmTimedOut -> CUSTOMER_CONFIRMATION_EXPIRED and VENUE_CUSTOMER_CONFIRMATION_EXPIRED; LateConfirmAccepted -> VENUE_LATE_CONFIRM_ACCEPTED; LateConfirmDeclined -> VENUE_LATE_CONFIRM_DECLINED. E7-58 adds them to this task's consumer after this task merges (PO decision 13 Oct 2026: E7-55 merges first). No consumer, mapping, copy or test for LATE_CONFIRM_SCHEDULE_CONFLICT; keep its V1 catalogue row and the existing customer-app translation key (removing either is a separate approved change).
+- A booking confirmed through Late Confirm Accept gets no BOOKING_STARTS_SOON reminder (PO decision 13 Oct 2026): LateConfirmAccepted arms no reminder, and Late Confirm publishes no BookingConfirmed (E7-58 D2).
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2002,6 +2006,11 @@ PO decisions 12 Oct 2026 (E7-58 discovery, do these too):
 
 Carry-forward from the Sprint 3 review (PO decisions 12 Oct 2026, do these too):
 - One notification path (PO decision 12 Oct 2026): booking, Late Confirm and attendance notifications are created only by E7-55's notification consumer from integration events - never by calling Notifications.notify in this task. Map your five events there (the Late Confirm codes of Spec v5 §52.2 and §52.5 they trigger, e.g. LATE_CONFIRMATION_RECEIVED, LATE_CONFIRMATION_EXPIRING from LateConfirmWarningDue, CUSTOMER_CONFIRMATION_EXPIRED, VENUE_LATE_CONFIRM_ACCEPTED, VENUE_LATE_CONFIRM_DECLINED, VENUE_CUSTOMER_CONFIRMATION_EXPIRED), with the EN copy (and AR for venue codes) and one exactly-once test per code. E7-55 runs first in Sprint 3: merge main once it is merged.
+
+Carry-forward from F1 / PCR-008 (Amr under delegated PO authority, 13 Oct 2026; reviewed by Sayed), do these too:
+- No notification code for a conflicting Accept: it is the synchronous 409 LATE_CONFIRM_CUSTOMER_CONFLICT and the Booking Event only (PCR-008); LATE_CONFIRM_SCHEDULE_CONFLICT is never produced.
+- After E7-55 merges (PO decision 13 Oct 2026: E7-55 first), merge main and add the six codes as entries of BookingNotificationRules.RULES (notification/internal; each event payload carries bookingId), the EN push copy (and AR for the venue codes) in notification/templates_*.properties, and one exactly-once test per code in BookingNotificationsIntegrationTest. Sayed reviews these Platform-lane files.
+- LateConfirmAccepted arms no BOOKING_STARTS_SOON reminder (PO decision 13 Oct 2026): a late-confirmed booking gets none.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2239,6 +2248,7 @@ Do:
 
 Done when (write these as tests first where possible):
 - Countdown driven by server expires_at, not device time.
+- Accept answered 409 LATE_CONFIRM_CUSTOMER_CONFLICT shows the localized message, keeps AWAITING and the countdown, and leaves Decline enabled; the message names no status (PCR-008).
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
 - The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
@@ -2260,6 +2270,15 @@ Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
 - A customer whose phone is not verified sees the not-allowed state before choosing a time, with the way to verify the phone (FRS section 2.11), from GET /customer/profile phoneVerified (E7-57); today they fail only at Confirm. A banned customer keeps the ACCOUNT_BANNED_FOR_THIS_ACTION message until the standing screen exists (E7-74).
 - Fix the flaky apps/customer/src/features/my-bookings/MyBookingsScreen.test.tsx: it failed once in a full pnpm -r test while the backend suite ran and passed 5 of 5 alone (look for a too-short waitFor or a fake-timer race).
 - Start-time grid (PO decision 12 Oct 2026): the booking time picker offers starts every 15 minutes (:00, :15, :30, :45, Africa/Cairo wall time) instead of every 30. The server does not enforce the grid (no new rule or error code). Nearest Availability rounds up to the same grid (E7-115), so the 'next available' time on a venue card is always a start the picker offers.
+
+Carry-forward from F1 / PCR-008 (Amr under delegated PO authority, 13 Oct 2026; reviewed by Sayed), do these too:
+- Recognise the error: when POST /customer/bookings/{bookingId}/late-confirm/accept answers 409 with error.code LATE_CONFIRM_CUSTOMER_CONFLICT, handle it as its own case - not as a generic failure, LATE_CONFIRM_RESOURCE_CONFLICT or BOOKING_STATE_CHANGED.
+- Show a clear, immediate message on the Late Confirm screen, from the i18n resource files (English at launch; no hard-coded text, no text from the backend). Suggested copy for PO review: "You can't accept this booking because it overlaps another booking of yours."
+- Make no claim about the other booking: never say it is "confirmed" (it may be PENDING, CONFIRMED or ACTIVE), and name no other booking, venue or time (the response carries none).
+- The Late Confirmation stays AWAITING_CUSTOMER_CONFIRMATION: reload GET /customer/bookings/{bookingId}; never show it as cancelled, expired or confirmed.
+- Decline stays available until the stored deadline: the countdown keeps running from lateConfirm.expiresAt against meta.serverTime, and Decline stays enabled until then (also while lateConfirm.paused). Accept may be retried before the deadline; a new Idempotency-Key is a new attempt, the same key replays the same 409.
+- No notification: no local notification, push or inbox entry for this error, and no LATE_CONFIRM_SCHEDULE_CONFLICT expected from the server.
+- Tests: a screen test - Accept answered with 409 LATE_CONFIRM_CUSTOMER_CONFLICT shows the localized message, keeps the AWAITING state and the countdown, and leaves Decline enabled; and a test that the message text contains no status name.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
