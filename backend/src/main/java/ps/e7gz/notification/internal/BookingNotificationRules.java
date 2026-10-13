@@ -16,7 +16,7 @@ import ps.e7gz.messaging.api.PermanentDeliveryFailure;
  * 52.5, FR-NTF-09; arch 08 sections 3.2 and 4.4). The ONE place they are decided (PO decision 12 Oct 2026, Sprint 3
  * review): no producer calls {@code Notifications.notify} for them.
  *
- * <p><b>Adding an event</b> (E7-58, E7-59, E7-60, E7-61, E7-113, E7-114): one entry in {@link #RULES} (or, for a new
+ * <p><b>Adding an event</b> (E7-59, E7-60, E7-61, E7-113, E7-114): one entry in {@link #RULES} (or, for a new
  * cancellation reason, in {@link #CANCELLED}), the English push copy of each customer code and the English and Arabic
  * push copy of each venue code in {@code notification/templates_*.properties}, and a test that the event creates each
  * code exactly once ({@code BookingNotificationsIntegrationTest}). The consumer subscribes to every key of
@@ -98,27 +98,44 @@ final class BookingNotificationRules {
             BookingTerminalReason.VENUE_CANCELLED_MANUAL_BOOKING, Plan.NONE);
 
     /** One entry per integration event this module turns into booking notifications. */
-    static final Map<String, Function<OutboxEvent, Plan>> RULES = Map.of(
+    static final Map<String, Function<OutboxEvent, Plan>> RULES = Map.ofEntries(
             // E7-46: a customer's request. Both §52.2 "Booking Created" (PO decision 13 Oct 2026) and §52.5 "New
             // Booking Request" (decision A6: Web Push while the Dashboard is closed)
-            IntegrationEvents.BOOKING_CREATED, event -> plan(Reminder.VENUE_PENDING_REQUEST_EXPIRING,
-                    customer("BOOKING_CREATED"), venue("VENUE_NEW_BOOKING_REQUEST")),
+            Map.entry(IntegrationEvents.BOOKING_CREATED, event -> plan(Reminder.VENUE_PENDING_REQUEST_EXPIRING,
+                    customer("BOOKING_CREATED"), venue("VENUE_NEW_BOOKING_REQUEST"))),
             // E7-47 Accept; a Manual Booking created CONFIRMED (E7-48) has no customer and gets nothing
-            IntegrationEvents.BOOKING_CONFIRMED, event -> manual(event) ? Plan.NONE
-                    : plan(Reminder.BOOKING_STARTS_SOON, customer("BOOKING_CONFIRMED")),
+            Map.entry(IntegrationEvents.BOOKING_CONFIRMED, event -> manual(event) ? Plan.NONE
+                    : plan(Reminder.BOOKING_STARTS_SOON, customer("BOOKING_CONFIRMED"))),
             // E7-47 Reject (FR-BOK-17) and Reject After Expiry (FR-BOK-21): two codes
-            IntegrationEvents.BOOKING_REJECTED, event -> switch (reason(event)) {
+            Map.entry(IntegrationEvents.BOOKING_REJECTED, event -> switch (reason(event)) {
                 case VENUE_REJECTED -> plan(customer("BOOKING_REJECTED"));
                 case REJECTED_AFTER_EXPIRY -> plan(customer("REJECTED_AFTER_EXPIRY"));
                 default -> throw new PermanentDeliveryFailure("BookingRejected " + event.id()
                         + " has an unexpected terminalReason " + reason(event));
-            },
+            }),
             // E7-47 T1 (FR-BOK-18): ordinary expiry, its own code (FR-NTF-06)
-            IntegrationEvents.VENUE_RESPONSE_EXPIRED, event -> plan(customer("VENUE_RESPONSE_EXPIRED")),
-            IntegrationEvents.BOOKING_CANCELLED, event -> CANCELLED.getOrDefault(reason(event), Plan.NONE),
+            Map.entry(IntegrationEvents.VENUE_RESPONSE_EXPIRED, event -> plan(customer("VENUE_RESPONSE_EXPIRED"))),
+            Map.entry(IntegrationEvents.BOOKING_CANCELLED,
+                    event -> CANCELLED.getOrDefault(reason(event), Plan.NONE)),
             // No notification (PO decision 13 Oct 2026): a walk-in has no customer; at CONFIRMED -> ACTIVE (E7-60) the
             // BOOKING_STARTS_SOON reminder finds the booking no longer CONFIRMED and supersedes itself
-            IntegrationEvents.BOOKING_STARTED, event -> Plan.NONE);
+            Map.entry(IntegrationEvents.BOOKING_STARTED, event -> Plan.NONE),
+            // E7-58 Late Confirm (O3; D2: its five canonical events, no BookingConfirmed or BookingCancelled). §52.2
+            // "Late Confirmation Received" (FR-LCF-06)
+            Map.entry(IntegrationEvents.LATE_CONFIRM_INITIATED, event -> plan(customer("LATE_CONFIRMATION_RECEIVED"))),
+            // T3, about a minute before the deadline, only for a window over 60 s (FR-LCF-12)
+            Map.entry(IntegrationEvents.LATE_CONFIRM_WARNING_DUE,
+                    event -> plan(customer("LATE_CONFIRMATION_EXPIRING"))),
+            // §52.5 "Customer Accepted Late Confirmation". No BOOKING_STARTS_SOON reminder: a late-confirmed booking
+            // gets none (PO decision 13 Oct 2026)
+            Map.entry(IntegrationEvents.LATE_CONFIRM_ACCEPTED, event -> plan(venue("VENUE_LATE_CONFIRM_ACCEPTED"))),
+            // §52.5 "Customer Declined Late Confirmation"
+            Map.entry(IntegrationEvents.LATE_CONFIRM_DECLINED, event -> plan(venue("VENUE_LATE_CONFIRM_DECLINED"))),
+            // T2: §52.2 and §52.5 "Customer Confirmation Expired", one for each side
+            Map.entry(IntegrationEvents.LATE_CONFIRM_TIMED_OUT, event -> plan(customer("CUSTOMER_CONFIRMATION_EXPIRED"),
+                    venue("VENUE_CUSTOMER_CONFIRMATION_EXPIRED"))));
+    // No rule for a conflicting Late Confirm Accept: it is the synchronous 409 LATE_CONFIRM_CUSTOMER_CONFLICT and no
+    // event, so LATE_CONFIRM_SCHEDULE_CONFLICT is never produced (F1, PCR-008)
 
     private BookingNotificationRules() {
     }

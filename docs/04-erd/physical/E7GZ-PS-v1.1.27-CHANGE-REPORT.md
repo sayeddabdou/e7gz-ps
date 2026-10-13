@@ -189,6 +189,24 @@ Unchanged on purpose: every table, column, index, constraint, grant and data row
 
 - Tests: `ManualActiveCancelProvenanceTest` (application role, every trigger on; the cancellation committed through `CommandRunner`) — a VENUE actor of the booking's venue commits and the reservation is released at the command instant; ADMIN, SYSTEM, NULL actor, another venue's account, no history row, two history rows, another reason and another `occurred_at` are refused at commit and change nothing; the full transition matrix (every from × to × reason × source) gives the V1 guard's answers except ACTIVE → CANCELLED / `VENUE_CANCELLED_MANUAL_BOOKING` / MANUAL; an ONLINE booking stays refused. `MigrationSafetyTest` (the migration on the seeded database); the `.dbm`/migration identity check in `MigrationFilesTest`.
 
+### v1.1.35 — a Late Confirm may wait on the customer despite a schedule conflict (E7-58, 13 Oct 2026)
+
+Product Owner decision D1, 12 Oct 2026 (Sayed), E7-58 discovery; FR-LCF-15, FR-LCF-16. `.dbm` block `v1_1_35_late_confirm_awaiting_overlap` = Flyway `V202610131300__late_confirm_awaiting_overlap.sql`, byte for byte. **For Product Owner review.**
+
+**Why.** FR-LCF-15/16: the venue may always send a Late Confirm, and the customer's schedule conflict is checked only when the customer accepts. `booking.derive_commitment_period` gives an AWAITING_CUSTOMER_CONFIRMATION booking its `commitment_period`, so V1's `ex_customer_no_overlap` refused VENUE_RESPONSE_EXPIRED → AWAITING (23P01) whenever the interval overlapped another counted commitment of the customer.
+
+| Object | Change |
+|---|---|
+| `ex_customer_no_overlap` on `booking.booking` | Dropped and re-added under the same name, same columns, operators and method (`gist`: `customer_id WITH =`, `commitment_period WITH &&`); predicate `commitment_period IS NOT NULL` → `commitment_period IS NOT NULL AND status <> 'AWAITING_CUSTOMER_CONFIRMATION'`. A constraint comment records the rule |
+
+An AWAITING booking may now overlap another counted commitment of the same customer. Every other pair of counted commitments is refused as before, including AWAITING → CONFIRMED (an Accept puts the row back under the predicate). The narrower predicate only removes rows from the constraint, so existing data always satisfies it; no backfill.
+
+**Moved to the application** (under the `iam.user_commitment_guard` lock that `tournament.begin_command` takes for the customer): FR-BOK-04 (O1 condition 4) — a new Online Booking overlapping an AWAITING one is still refused; the creation predicate already checks every counted commitment, AWAITING included (`OnlineCreationPredicate`, unchanged). FR-LCF-15 — Accept checks the overlap itself and records `LATE_CONFIRM_FAILED_CUSTOMER_CONFLICT` (E7-58, implemented in this same change).
+
+Unchanged on purpose: `booking.derive_commitment_period` and `tr_00_booking_commitment_period` (AWAITING keeps its `commitment_period`), `ck_booking_commitment_period_shape`, the 4-commitment count (FR-BOK-03, FR-LCF-05), the 23P01 → `OVERLAPPING_COMMITMENT` mapping, and every other table, column, index, constraint, trigger, function, grant and data row. No upgrade seed: no column is added. Engine-lane constraint (Booking): needs the Engine owner's review.
+
+- Tests: `LateConfirmAwaitingOverlapTest` (migrated database, application commands through `CommandRunner`) — an AWAITING booking coexists with an overlapping counted commitment of the same customer and keeps its `commitment_period`; it still counts towards the 4-commitment limit; a new Online Booking overlapping it is refused `OVERLAPPING_COMMITMENT` by the creation predicate (and the database alone would accept it); back-to-back stays allowed; two CONFIRMED bookings, and an AWAITING → CONFIRMED move, that overlap are still refused by the constraint; concurrent creations against an AWAITING booking all fail. `MigrationSafetyTest` (the migration on the seeded database); the `.dbm`/migration identity check in `MigrationFilesTest`.
+
 ## Product Owner decisions (26 Sep 2026)
 
 A1 overlapping Maintenance allowed · A2 booking horizon is a deployment setting, default 120 days · A4 rate-limit table approved · A5 reports FR-AUD-11/12 at launch · A6 venue alerts = live + Web Push + audible alert · A8 configurable = fees and points only · A9 Venue never returns to ONBOARDING · A10 login limits stored as `LOGIN` rate-limit rows · A11 read-only customer wallet screen (PCR-004, no DB change) · review self-reporting allowed, duplicate open reports blocked.

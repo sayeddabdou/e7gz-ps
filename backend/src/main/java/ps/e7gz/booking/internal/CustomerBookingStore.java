@@ -32,7 +32,7 @@ class CustomerBookingStore {
             SELECT b.id, b.venue_id, b.source, b.status, b.terminal_reason, b.resource_name_snapshot, b.activity,
                    b.console_type, b.play_mode, b.start_at, b.end_at, b.nominal_booked_minutes, b.venue_price_total,
                    b.booking_fee_snapshot, b.total_amount, b.venue_response_expires_at, b.response_pause_started_at,
-                   b.terminal_at,
+                   b.late_confirm_pause_started_at, b.terminal_at,
             """ + ContactVisibility.HISTORY_FACTS + """
               FROM booking.booking b
              WHERE b.customer_id = :customerId
@@ -85,6 +85,7 @@ class CustomerBookingStore {
                 startAt, endAt, rs.getInt("nominal_booked_minutes"), Money.of(rs.getBigDecimal("venue_price_total")),
                 Money.of(rs.getBigDecimal("booking_fee_snapshot")), Money.of(rs.getBigDecimal("total_amount")),
                 instant(rs, "venue_response_expires_at"), instant(rs, "response_pause_started_at") != null,
+                instant(rs, "late_confirm_pause_started_at") != null,
                 new ContactVisibility.Facts(BookingSource.valueOf(rs.getString("source")), status, startAt, endAt,
                         instant(rs, "terminal_at"), instant(rs, "venue_response_expired_at"),
                         instant(rs, "late_confirm_reopened_at")));
@@ -98,6 +99,7 @@ class CustomerBookingStore {
     record Row(UUID bookingId, UUID venueId, BookingStatus status, BookingTerminalReason terminalReason,
                String resourceName, Activity activity, ConsoleType consoleType, PlayMode playMode, Instant startAt,
                Instant endAt, int nominalBookedMinutes, Money venuePriceTotal, Money bookingFee, Money totalAmount,
-               Instant venueResponseExpiresAt, boolean venueResponsePaused, ContactVisibility.Facts contactFacts) {
+               Instant venueResponseExpiresAt, boolean venueResponsePaused, boolean lateConfirmPaused,
+               ContactVisibility.Facts contactFacts) {
     }
 }

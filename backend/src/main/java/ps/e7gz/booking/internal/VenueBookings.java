@@ -1,10 +1,13 @@
 package ps.e7gz.booking.internal;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
 import org.springframework.stereotype.Component;
+import ps.e7gz.booking.api.LateConfirmWindows;
 import ps.e7gz.booking.internal.VenueAnswerStore.ViewRow;
 import ps.e7gz.common.codes.BookingSource;
 import ps.e7gz.common.codes.BookingStatus;
@@ -33,14 +36,16 @@ public class VenueBookings {
     private final CustomerContacts customers;
     private final VenueAccountVenues accounts;
     private final BookingHistoryStore histories;
+    private final LateConfirmWindows lateConfirms;
 
     VenueBookings(CommandRunner runner, VenueAnswerStore store, CustomerContacts customers,
-                  VenueAccountVenues accounts, BookingHistoryStore histories) {
+                  VenueAccountVenues accounts, BookingHistoryStore histories, LateConfirmWindows lateConfirms) {
         this.runner = runner;
         this.store = store;
         this.customers = customers;
         this.accounts = accounts;
         this.histories = histories;
+        this.lateConfirms = lateConfirms;
     }
 
     /** A page of the venue's bookings; {@code nextCursor} is null on the last page. */
@@ -63,15 +68,13 @@ public class VenueBookings {
     /** PENDING requests of the signed-in account's venue, soonest deadline first. */
     public List<VenueBookingRow> pending(UUID venueAccountId) {
         UUID venueId = accounts.venueOf(Objects.requireNonNull(venueAccountId, "venueAccountId"));
-        return runner.run(new Read<>(context -> store.pending(context, venueId).stream()
-                .map(row -> row(context, row)).toList()));
+        return runner.run(new Read<>(context -> rows(context, store.pending(context, venueId))));
     }
 
     /** VENUE_RESPONSE_EXPIRED requests of the venue whose start has not come yet (strictly {@code now < startAt}). */
     public List<VenueBookingRow> missed(UUID venueAccountId) {
         UUID venueId = accounts.venueOf(Objects.requireNonNull(venueAccountId, "venueAccountId"));
-        return runner.run(new Read<>(context -> store.missed(context, venueId, context.commandNow()).stream()
-                .map(row -> row(context, row)).toList()));
+        return runner.run(new Read<>(context -> rows(context, store.missed(context, venueId, context.commandNow()))));
     }
 
     /**
@@ -92,7 +95,7 @@ public class VenueBookings {
             UUID usernameMatch = filter.q() == null ? null
                     : customers.findByUsername(context, filter.q()).orElse(null);
             List<ViewRow> rows = store.page(context, venueId, filter, usernameMatch, after, size + 1);
-            List<VenueBookingRow> page = rows.stream().limit(size).map(row -> row(context, row)).toList();
+            List<VenueBookingRow> page = rows(context, rows.stream().limit(size).toList());
             return new Page(page, rows.size() > size
                     ? BookingCursor.encode(new BookingCursor.Position(page.getLast().startAt(),
                             page.getLast().bookingId()))
@@ -108,14 +111,14 @@ public class VenueBookings {
             ViewRow row = store.view(context, bookingId)
                     .filter(found -> found.venueId().equals(venueId))
                     .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND));
-            return new Detail(row(context, row), histories.forVenue(context, bookingId));
+            return new Detail(rows(context, List.of(row)).getFirst(), histories.forVenue(context, bookingId));
         }));
     }
 
     /** The booking as it is now on the command's transaction, after the command's own writes. */
     VenueBookingRow current(CommandContext context, UUID bookingId) {
-        return row(context, store.view(context, bookingId)
-                .orElseThrow(() -> new IllegalStateException("Booking " + bookingId + " vanished")));
+        return rows(context, List.of(store.view(context, bookingId)
+                .orElseThrow(() -> new IllegalStateException("Booking " + bookingId + " vanished")))).getFirst();
     }
 
     /** Whether the venue may see the customer's phone of {@code bookingId} now; hidden when unknown. */
@@ -125,7 +128,19 @@ public class VenueBookings {
                 .orElse(false);
     }
 
-    private VenueBookingRow row(CommandContext context, ViewRow row) {
+    /**
+     * The venue's view of {@code rows}. The open Late Confirmation deadlines of the AWAITING ones come from the Late
+     * Confirmation module in one read for the whole list ({@link LateConfirmWindows}, E7-58), never one per row.
+     */
+    private List<VenueBookingRow> rows(CommandContext context, List<ViewRow> rows) {
+        Map<UUID, Instant> deadlines = lateConfirms.openDeadlines(context, rows.stream()
+                .filter(row -> row.status() == BookingStatus.AWAITING_CUSTOMER_CONFIRMATION)
+                .map(ViewRow::bookingId).toList());
+        return rows.stream().map(row -> row(context, row, deadlines.get(row.bookingId()))).toList();
+    }
+
+    private VenueBookingRow row(CommandContext context, ViewRow row, Instant lateConfirmExpiresAt) {
+        boolean awaiting = row.status() == BookingStatus.AWAITING_CUSTOMER_CONFIRMATION;
         String username = null;
         String phone = null;
         if (row.source() == BookingSource.ONLINE) {
@@ -138,7 +153,8 @@ public class VenueBookings {
                 row.rejectReasonText(), row.resourceId(), row.resourceName(), row.activity(), row.consoleType(),
                 row.playMode(), row.startAt(), row.endAt(), row.businessDate(), row.nominalBookedMinutes(),
                 row.venuePriceTotal(), row.status() == BookingStatus.PENDING ? row.venueResponseExpiresAt() : null,
-                row.venueResponsePaused(), username, phone, row.walkInName(), row.walkInPhone(), row.createdAt());
+                row.venueResponsePaused(), awaiting ? lateConfirmExpiresAt : null, awaiting && row.lateConfirmPaused(),
+                username, phone, row.walkInName(), row.walkInPhone(), row.createdAt());
     }
 
     /** A read-only command: one snapshot and the database's instant, no locks. */

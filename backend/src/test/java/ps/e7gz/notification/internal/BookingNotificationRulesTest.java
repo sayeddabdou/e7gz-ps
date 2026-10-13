@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -29,6 +31,7 @@ import ps.e7gz.notification.internal.BookingNotificationRules.Reminder;
 import ps.e7gz.notification.internal.BookingNotificationRules.Send;
 import ps.e7gz.notification.internal.NotificationTemplates.Language;
 import ps.e7gz.support.IntegrationTest;
+import ps.e7gz.support.RepoFiles;
 
 /**
  * E7-55: the event-to-notification rules and the copy rules of arch 08 section 4.5, checked against the database's
@@ -63,6 +66,62 @@ class BookingNotificationRulesTest extends IntegrationTest {
             assertThat(codes(IntegrationEvents.BOOKING_CANCELLED, Map.of("terminalReason", operational)))
                     .as(operational).containsExactly("CUSTOMER BOOKING_AUTO_CANCELLED",
                             "VENUE VENUE_BOOKING_AUTO_CANCELLED");
+        }
+    }
+
+    /**
+     * E7-58: the five canonical Late Confirm events (D2) make six notifications - LateConfirmTimedOut one for each
+     * side - and none starts a reminder: a late-confirmed booking gets no BOOKING_STARTS_SOON (PO decision 13 Oct 2026).
+     */
+    @Test
+    void eachLateConfirmEventMapsToItsCodesAndArmsNoReminder() {
+        assertThat(plan(IntegrationEvents.LATE_CONFIRM_INITIATED, Map.of())).isEqualTo(new Plan(List.of(
+                new Send(Recipient.CUSTOMER, "LATE_CONFIRMATION_RECEIVED")), Optional.empty()));
+        assertThat(plan(IntegrationEvents.LATE_CONFIRM_WARNING_DUE, Map.of())).isEqualTo(new Plan(List.of(
+                new Send(Recipient.CUSTOMER, "LATE_CONFIRMATION_EXPIRING")), Optional.empty()));
+        assertThat(plan(IntegrationEvents.LATE_CONFIRM_ACCEPTED, Map.of())).isEqualTo(new Plan(List.of(
+                new Send(Recipient.VENUE, "VENUE_LATE_CONFIRM_ACCEPTED")), Optional.empty()));
+        assertThat(plan(IntegrationEvents.LATE_CONFIRM_DECLINED, Map.of())).isEqualTo(new Plan(List.of(
+                new Send(Recipient.VENUE, "VENUE_LATE_CONFIRM_DECLINED")), Optional.empty()));
+        assertThat(plan(IntegrationEvents.LATE_CONFIRM_TIMED_OUT, Map.of())).isEqualTo(new Plan(List.of(
+                new Send(Recipient.CUSTOMER, "CUSTOMER_CONFIRMATION_EXPIRED"),
+                new Send(Recipient.VENUE, "VENUE_CUSTOMER_CONFIRMATION_EXPIRED")), Optional.empty()));
+    }
+
+    /** The six booking rules of E7-55 and the five Late Confirm ones (E7-58): eleven, and nothing else. */
+    @Test
+    void elevenEventsHaveARule() {
+        assertThat(BookingNotificationRules.eventTypes()).containsExactlyInAnyOrder(
+                IntegrationEvents.BOOKING_CREATED, IntegrationEvents.BOOKING_CONFIRMED,
+                IntegrationEvents.BOOKING_REJECTED, IntegrationEvents.VENUE_RESPONSE_EXPIRED,
+                IntegrationEvents.BOOKING_CANCELLED, IntegrationEvents.BOOKING_STARTED,
+                IntegrationEvents.LATE_CONFIRM_INITIATED, IntegrationEvents.LATE_CONFIRM_WARNING_DUE,
+                IntegrationEvents.LATE_CONFIRM_ACCEPTED, IntegrationEvents.LATE_CONFIRM_DECLINED,
+                IntegrationEvents.LATE_CONFIRM_TIMED_OUT);
+    }
+
+    /**
+     * F1 / PCR-008: a conflicting Accept is the synchronous 409 only, so no rule ever sends
+     * LATE_CONFIRM_SCHEDULE_CONFLICT; its catalogue row (V1) stays, unused.
+     */
+    @Test
+    void noRuleSendsTheScheduleConflictCode() {
+        assertThat(allSends()).noneMatch(send -> send.code().equals("LATE_CONFIRM_SCHEDULE_CONFLICT"));
+        assertThat(catalogue()).contains("LATE_CONFIRM_SCHEDULE_CONFLICT");
+    }
+
+    /**
+     * The customer's push body is the customer app's in-app text for the same code (templates_en.properties header),
+     * read from {@code apps/customer/src/i18n/en.ts}.
+     */
+    @Test
+    void theLateConfirmCustomerPushBodiesAreTheAppsInAppText() throws IOException {
+        String app = Files.readString(RepoFiles.get("apps/customer/src/i18n/en.ts"));
+        Properties english = new NotificationTemplates().all().get(Language.EN);
+        for (String code : List.of("LATE_CONFIRMATION_RECEIVED", "LATE_CONFIRMATION_EXPIRING",
+                "CUSTOMER_CONFIRMATION_EXPIRED")) {
+            String body = english.getProperty(code + ".push.body");
+            assertThat(app).as(code).contains(code + ": \"" + body + "\"");
         }
     }
 
