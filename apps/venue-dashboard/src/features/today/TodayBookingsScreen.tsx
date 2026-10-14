@@ -151,10 +151,11 @@ export function BookingDetailScreen({ api, backLabel, bookingId, onBack }: { api
         <DetailItem label={t.end} value={dateTimeLabel(booking.endAt, t.locale)} />
         <DetailItem label={t.duration} value={t.durationMinutes(booking.nominalBookedMinutes)} />
         <DetailItem label={t.price} value={`${booking.venuePriceTotal.amount} ${booking.venuePriceTotal.currency}`} />
+        {contactName ? <DetailItem label={t.customer} value={contactName} /> : null}
         {booking.terminalReason ? <DetailItem label={t.terminalReason} value={t.terminalReasons[booking.terminalReason]} /> : null}
         {booking.rejectReasonText ? <DetailItem label={t.rejectReason} value={booking.rejectReasonText} /> : null}
       </dl>
-      {contactPhone ? <section style={styles.contact}><h3 style={styles.groupHeading}>{t.contact}</h3>{contactName ? <p><strong>{t.customer}</strong><br />{contactName}</p> : null}<p><strong>{t.customerPhone}</strong><br />{contactPhone}</p></section> : null}
+      {contactPhone ? <section style={styles.contact}><h3 style={styles.groupHeading}>{t.contact}</h3><p><strong>{t.customerPhone}</strong><br />{contactPhone}</p></section> : null}
       {detail.history.length ? <section><h3 style={styles.groupHeading}>{t.history}</h3><ul style={styles.history}>{detail.history.map((entry, index) => <li key={`${entry.at}-${index}`} style={styles.historyItem}><time dateTime={entry.at}>{dateTimeLabel(entry.at, t.locale)}</time> · {entry.toStatus ? messages.bookings.today.statuses[entry.toStatus] : entry.terminalReason ? t.terminalReasons[entry.terminalReason] : entry.eventType ? t.events[entry.eventType] : t.bookingUpdate}</li>)}</ul></section> : null}
     </article>
   </section>;
