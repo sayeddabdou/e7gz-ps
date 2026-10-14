@@ -77,7 +77,7 @@ describe("Today's bookings", () => {
 });
 
 describe("Booking detail", () => {
-  it("shows a returned phone and hides the phone row when it is absent", async () => {
+  it("shows the customer name while hiding the contact block when phone is absent", async () => {
     const get = vi.fn().mockResolvedValue({ data: { data: { booking, history: [] }, meta: { correlationId: "c", serverTime: "2026-10-11T21:30:00Z" } } });
     const { rerender } = render(<MessagesContext.Provider value={messages.en}><BookingDetailScreen api={{ GET: get } as unknown as ApiClient} bookingId="b-1" onBack={vi.fn()} /></MessagesContext.Provider>);
     expect(await screen.findByText("+201001234567")).toBeTruthy();
@@ -85,6 +85,7 @@ describe("Booking detail", () => {
     get.mockResolvedValue({ data: { data: { booking: { ...booking, customer: { username: "omar_k" } }, history: [] }, meta: { correlationId: "c", serverTime: "2026-10-11T21:30:00Z" } } });
     rerender(<MessagesContext.Provider value={messages.en}><BookingDetailScreen api={{ GET: get } as unknown as ApiClient} bookingId="b-2" onBack={vi.fn()} /></MessagesContext.Provider>);
     await waitFor(() => expect(screen.queryByText("+201001234567")).toBeNull());
+    expect(screen.getByText("omar_k")).toBeTruthy();
     expect(screen.queryByText("Customer phone")).toBeNull();
     expect(screen.queryByRole("heading", { name: "Customer contact" })).toBeNull();
   });
