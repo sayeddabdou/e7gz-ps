@@ -184,6 +184,18 @@ final class VenueAnswerDb {
     }
 
     /** Every outbox event type written for the booking, oldest first. */
+    /**
+     * E7-56: the admin alerts about one booking, oldest first, as "KIND SEVERITY bookingId-in-payload detail-present"
+     * - e.g. {@code BOOKING_INTEGRITY_FAILURE SEV_1 <id> true}.
+     */
+    static List<String> adminAlerts(UUID bookingId) {
+        return OWNER.sql("""
+                        SELECT kind || ' ' || severity || ' ' || (payload->>'bookingId') || ' '
+                               || (length(payload->>'detail') > 0)
+                          FROM admin.admin_alert WHERE subject_id = :id ORDER BY created_at""")
+                .param("id", bookingId).query(String.class).list();
+    }
+
     static List<String> outboxTypes(UUID bookingId) {
         return OWNER.sql("SELECT event_type FROM technical.outbox_event WHERE aggregate_id = :id ORDER BY id")
                 .param("id", bookingId).query(String.class).list();

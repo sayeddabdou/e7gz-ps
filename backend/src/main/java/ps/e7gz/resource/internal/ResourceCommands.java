@@ -23,6 +23,9 @@ import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.security.owner.OwnerProtected;
 import ps.e7gz.inventory.ledger.api.ActiveCommitments;
+import ps.e7gz.messaging.api.IntegrationEvents;
+import ps.e7gz.messaging.api.NewOutboxEvent;
+import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.venue.api.OwnerPasswordGate;
 
 /**
@@ -103,32 +106,36 @@ final class ResourceCommands {
      */
     enum BaseStateAction {
         DISABLE(Set.of(ResourceBaseState.ACTIVE), ResourceBaseState.DISABLED, true,
-                ResourceAuditAction.RESOURCE_DISABLED),
+                ResourceAuditAction.RESOURCE_DISABLED, IntegrationEvents.RESOURCE_DISABLED),
         RE_ENABLE(Set.of(ResourceBaseState.DISABLED), ResourceBaseState.ACTIVE, false,
-                ResourceAuditAction.RESOURCE_RE_ENABLED),
+                ResourceAuditAction.RESOURCE_RE_ENABLED, IntegrationEvents.RESOURCE_RE_ENABLED),
         ARCHIVE(Set.of(ResourceBaseState.ACTIVE, ResourceBaseState.DISABLED), ResourceBaseState.ARCHIVED, true,
-                ResourceAuditAction.RESOURCE_ARCHIVED),
+                ResourceAuditAction.RESOURCE_ARCHIVED, IntegrationEvents.RESOURCE_ARCHIVED),
         RESTORE(Set.of(ResourceBaseState.ARCHIVED), ResourceBaseState.ACTIVE, false,
-                ResourceAuditAction.RESOURCE_RESTORED);
+                ResourceAuditAction.RESOURCE_RESTORED, IntegrationEvents.RESOURCE_RESTORED);
 
         private final Set<ResourceBaseState> from;
         private final ResourceBaseState to;
         private final boolean blockedByReservations;
         private final ResourceAuditAction auditAction;
+        /** Refreshes the venue's Nearest Availability rows at once (E7-56, PO decision 12 Oct 2026). */
+        private final String event;
 
         BaseStateAction(Set<ResourceBaseState> from, ResourceBaseState to, boolean blockedByReservations,
-                        ResourceAuditAction auditAction) {
+                        ResourceAuditAction auditAction, String event) {
             this.from = from;
             this.to = to;
             this.blockedByReservations = blockedByReservations;
             this.auditAction = auditAction;
+            this.event = event;
         }
     }
 
     @OwnerProtected("RESOURCE_DISABLE_REENABLE_ARCHIVE_RESTORE")
     record ChangeBaseState(UUID venueAccountId, UUID venueId, UUID resourceId, UUID correlationId,
                            BaseStateAction action, String ownerPassword, OwnerPasswordGate gate,
-                           ActiveCommitments commitments, AuditWriter audit) implements Command<Resources.Resource> {
+                           ActiveCommitments commitments, AuditWriter audit, Outbox outbox)
+            implements Command<Resources.Resource> {
 
         @Override
         public EligibilityCategory eligibilityCategory() {
@@ -171,6 +178,7 @@ final class ResourceCommands {
                     .payload(Map.of("venueId", venueId, "previousState", current.baseState().name(),
                             "newState", action.to.name()))
                     .build());
+            outbox.publish(context, roomEvent(action.event, venueId, resourceId));
             return Resources.read(context.jdbc(), resourceId);
         }
 
@@ -187,7 +195,7 @@ final class ResourceCommands {
     @OwnerProtected("PS_CONSOLE_CHANGE")
     record ChangeConsole(UUID venueAccountId, UUID venueId, UUID resourceId, UUID correlationId, ConsoleType target,
                          String ownerPassword, OwnerPasswordGate gate, ActiveCommitments commitments,
-                         AuditWriter audit) implements Command<Resources.Resource> {
+                         AuditWriter audit, Outbox outbox) implements Command<Resources.Resource> {
 
         @Override
         public EligibilityCategory eligibilityCategory() {
@@ -229,6 +237,7 @@ final class ResourceCommands {
                     .payload(Map.of("venueId", venueId, "previousConsole", current.consoleType().name(),
                             "newConsole", target.name()))
                     .build());
+            outbox.publish(context, roomEvent(IntegrationEvents.RESOURCE_CONSOLE_CHANGED, venueId, resourceId));
             return Resources.read(context.jdbc(), resourceId);
         }
 
@@ -310,6 +319,15 @@ final class ResourceCommands {
      * FR-VEN-14: refused while any current or future blocking reservation remains; nothing is cancelled. The details
      * name each one so the Dashboard can show what to resolve first (PRD acceptance "names the blocking reservation").
      */
+    /**
+     * A room event of {@link IntegrationEvents#INVENTORY_AFFECTING}, in the command's transaction: the venue's Nearest
+     * Availability rows refresh at once, without waiting for the one-minute pass (E7-56, PO decision 12 Oct 2026).
+     */
+    private static NewOutboxEvent roomEvent(String type, UUID venueId, UUID resourceId) {
+        return new NewOutboxEvent(type, "RESOURCE", resourceId,
+                Map.of("venueId", venueId.toString(), "resourceId", resourceId.toString()));
+    }
+
     private static void refuseWhenBlocked(CommandContext context, ActiveCommitments commitments, UUID resourceId) {
         List<ActiveCommitments.Commitment> blocking =
                 commitments.blockingResourceChange(context, resourceId, context.commandNow());

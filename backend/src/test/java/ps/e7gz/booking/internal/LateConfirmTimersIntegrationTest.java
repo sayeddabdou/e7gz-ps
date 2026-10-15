@@ -368,6 +368,9 @@ class LateConfirmTimersIntegrationTest extends IntegrationTest {
             fires++;
         }
         assertThat(DueJobs.job(t2(late)).status()).isEqualTo("FAILED");
+        // E7-56: every failed fire rolled back, and the defect raised one SEV_1 alert, not one per attempt
+        assertThat(VenueAnswerDb.adminAlerts(late))
+                .containsExactly("BOOKING_INTEGRITY_FAILURE SEV_1 " + late + " true");
         assertNothingChanged(late, hold);
         assertThat(events(IntegrationEvents.LATE_CONFIRM_TIMED_OUT, late)).isEmpty();
     }

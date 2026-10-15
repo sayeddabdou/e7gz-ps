@@ -5096,7 +5096,7 @@
     },
     "/api/v1/admin/alerts": {
       "get": {
-        "description": "Open alerts by default (acknowledged=false); acknowledged=true lists the acknowledged ones. kind and severity filter exactly. Cursor paging as the other lists (arch 09 section 1.2). Implemented by E7-56.",
+        "description": "Open alerts by default (acknowledged=false); acknowledged=true lists the acknowledged ones. kind and severity filter exactly. Cursor paging as the other lists (arch 09 section 1.2).",
         "operationId": "adminListAlerts",
         "parameters": [
           {
@@ -5378,7 +5378,7 @@
     },
     "/api/v1/admin/alerts/{alertId}/acknowledge": {
       "post": {
-        "description": "One acknowledgement per alert, audited (ADMIN_ALERT_ACKNOWLEDGED). The same admin acknowledging again gets the same alert back; another admin gets ADMIN_ALERT_ALREADY_ACKNOWLEDGED. Implemented by E7-56.",
+        "description": "One acknowledgement per alert, audited (ADMIN_ALERT_ACKNOWLEDGED). The same admin acknowledging again gets the same alert back; another admin gets ADMIN_ALERT_ALREADY_ACKNOWLEDGED.",
         "operationId": "adminAcknowledgeAlert",
         "parameters": [
           {

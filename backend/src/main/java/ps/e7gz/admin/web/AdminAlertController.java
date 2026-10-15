@@ -20,13 +20,14 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import ps.e7gz.admin.internal.AdminAlertInbox;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.PageView;
+import ps.e7gz.common.web.ResponseMetaFactory;
 
 /**
  * The Platform Admin's alert inbox (NFR-29, arch 11 section 5.4, arch 12 section 6; E7-56, PO decision 15 Oct 2026).
@@ -39,11 +40,18 @@ import ps.e7gz.common.web.PageView;
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class AdminAlertController {
 
+    private final AdminAlertInbox inbox;
+    private final ResponseMetaFactory meta;
+
+    public AdminAlertController(AdminAlertInbox inbox, ResponseMetaFactory meta) {
+        this.inbox = inbox;
+        this.meta = meta;
+    }
+
     @GetMapping
     @Operation(operationId = "adminListAlerts", summary = "Admin alerts, newest first",
             description = "Open alerts by default (acknowledged=false); acknowledged=true lists the acknowledged ones. "
-                    + "kind and severity filter exactly. Cursor paging as the other lists (arch 09 section 1.2). "
-                    + "Implemented by E7-56.")
+                    + "kind and severity filter exactly. Cursor paging as the other lists (arch 09 section 1.2).")
     @ApiError(status = 400, codes = ApiErrorCode.VALIDATION_FAILED)
     public DataResponse<PageView<AdminAlert>> list(
             @AuthenticationPrincipal AuthenticatedSubject admin,
@@ -52,20 +60,22 @@ public class AdminAlertController {
             @RequestParam(required = false) @Size(max = 100) String severity,
             @RequestParam(required = false) String cursor,
             @RequestParam(required = false) @Min(1) @Max(100) Integer limit) {
-        throw NotImplementedYet.stub();
+        AdminAlertInbox.Page page = inbox.list(acknowledged, kind, severity, cursor, limit);
+        return meta.data(new PageView<>(page.items().stream().map(AdminAlert::of).toList(), page.nextCursor()));
     }
 
     @PostMapping("/{alertId}/acknowledge")
     @Operation(operationId = "adminAcknowledgeAlert", summary = "Acknowledge one alert",
             description = "One acknowledgement per alert, audited (ADMIN_ALERT_ACKNOWLEDGED). The same admin "
                     + "acknowledging again gets the same alert back; another admin gets "
-                    + "ADMIN_ALERT_ALREADY_ACKNOWLEDGED. Implemented by E7-56.")
+                    + "ADMIN_ALERT_ALREADY_ACKNOWLEDGED.")
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     @ApiError(status = 409, codes = ApiErrorCode.ADMIN_ALERT_ALREADY_ACKNOWLEDGED)
     public DataResponse<AdminAlert> acknowledge(@AuthenticationPrincipal AuthenticatedSubject admin,
                                                 @PathVariable UUID alertId,
                                                 @Valid @RequestBody(required = false) AcknowledgeAlertRequest request) {
-        throw NotImplementedYet.stub();
+        String reason = request == null ? null : request.reason();
+        return meta.data(AdminAlert.of(inbox.acknowledge(admin.id(), alertId, reason)));
     }
 
     /** An optional note, kept in the acknowledgement's audit row. */
@@ -92,5 +102,11 @@ public class AdminAlertController {
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true, example = "2026-10-15T09:10:00Z")
             Instant acknowledgedAt,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) UUID acknowledgedByAdminId) {
+
+        static AdminAlert of(AdminAlertInbox.Alert alert) {
+            return new AdminAlert(alert.id(), alert.kind(), alert.severity(), alert.subjectType(), alert.subjectId(),
+                    alert.payload(), alert.correlationId(), alert.createdAt(), alert.acknowledgedAt(),
+                    alert.acknowledgedByAdminId());
+        }
     }
 }
