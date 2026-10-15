@@ -31,16 +31,24 @@ public interface HoursChangeBookings {
      * bookings' Resources and every affected Online Booking's Customer - the database refuses a Customer outside it.
      * An empty list writes nothing; a null or repeated id is refused before any write.
      *
-     * <p>Cancellable here: a PENDING or CONFIRMED Online Booking and a CONFIRMED Manual Booking that snapshotted an
-     * Operating Session, of {@code venueId}, starting strictly after the command instant. A PENDING Booking past its
-     * response deadline whose T1 has not run is still PENDING and is cancelled too. Any other id - unknown, of another
-     * venue, ACTIVE, VENUE_RESPONSE_EXPIRED, terminal, a Manual Booking made outside published hours, a booking whose
-     * reservation does not match it, or (until E7-113 Phase 3C) AWAITING_CUSTOMER_CONFIRMATION - is a caller defect:
-     * {@link IllegalStateException}, and the command rolls back.
+     * <p>Cancellable here: a PENDING, CONFIRMED or AWAITING_CUSTOMER_CONFIRMATION Online Booking and a CONFIRMED Manual
+     * Booking that snapshotted an Operating Session, of {@code venueId}, starting strictly after the command instant. A
+     * PENDING Booking past its response deadline whose T1 has not run is still PENDING and is cancelled too. An AWAITING
+     * Booking (E7-113 Phase 3C, FR-VEN-28) has its Late Confirmation closed in the same transaction - its timer stopped
+     * (T2/T3 superseded, a paused window's pause ended), its {@code LATE_CONFIRM_HOLD} released and its attempt closed
+     * without a Customer response - and no Late Confirm event is written; its {@code BookingCancelled} brings the
+     * customer's notification. Any other id - unknown, of another venue, ACTIVE, VENUE_RESPONSE_EXPIRED, terminal, a
+     * Manual Booking made outside published hours, a booking whose reservation (or, for AWAITING, open Late
+     * Confirmation or hold) does not match it - is a caller defect: {@link IllegalStateException}, and the command
+     * rolls back.
      *
      * <p>E7-113 Phase 3B working decisions (Amr, 15 Oct 2026; pending Sayed's final review): the history rows record
      * actor VENUE with {@code venueAccountId} (D1); a PENDING booking past its deadline is cancelled, never expired
-     * here (D2); an unexpected id fails the whole command (D3).
+     * here (D2); an unexpected id fails the whole command (D3). Phase 3C working decisions (Amr, 15 Oct 2026; NOT yet
+     * approved by Sayed): an AWAITING booking's history actor is the same (C1); an AWAITING booking past its stored
+     * Late Confirm deadline whose T2 has not run is still AWAITING and is cancelled, never timed out here (C2, Option A
+     * - FR-AVL-15 may give T2 the state at the deadline: open for Sayed); a paused window ends at the command instant,
+     * the attempt's deadline and warning kept as recorded (C3).
      *
      * @param venueAccountId the authenticated Venue Account making the change, recorded as the history actor
      */

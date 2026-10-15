@@ -12,6 +12,8 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import ps.e7gz.booking.api.LateConfirmClosures;
+import ps.e7gz.booking.api.LateConfirmWindows;
 import ps.e7gz.booking.internal.VenueAnswerStore.Facts;
 import ps.e7gz.common.codes.ActorType;
 import ps.e7gz.common.codes.BookingSource;
@@ -32,15 +34,27 @@ import ps.e7gz.venue.api.HoursChangeBookings.BookingFacts;
  * The cancellations of an opening-hours change (O5; FR-VEN-23 step 8, FR-VEN-24, Spec v5.0 section 14.8; E7-113 Phase
  * 3B): every booking of the caller's validated affected set ends CANCELLED / VENUE_OPENING_HOURS_CHANGED in the
  * caller's command, after {@code begin_command} has locked the venue, the bookings' Resources and their Customers.
+ * E7-113 Phase 3C adds AWAITING_CUSTOMER_CONFIRMATION (FR-VEN-28).
  *
  * <p>The whole batch is checked first and only then written, so an id that should not be here fails before any write;
  * either way the thrown {@link IllegalStateException} rolls the whole command back (D11 of E7-47: a caller or data
  * defect, ERROR, 500 - never a refusal the venue could act on; the stale-preview 409 is the Venue command's).
  *
+ * <p>The check pass reads, for a PENDING or CONFIRMED booking, its own active BOOKING reservation; for an AWAITING one
+ * (Phase 3C), which holds no active BOOKING reservation, its active {@code LATE_CONFIRM_HOLD} on the booking's Resource
+ * and interval, and - in one {@link LateConfirmWindows#openDeadlines} read for the batch - that it has an open Late
+ * Confirmation. Whether that hold is the very one the attempt records ({@code hold_reservation_id}) is not readable
+ * here (the Late Confirmation module owns the table): {@link LateConfirmClosures#closeForCancellation} checks it in the
+ * write pass and {@code tr_late_confirmation_integrity} again at commit; either failure rolls the whole command back.
+ *
  * <p>Then, in booking-id order and at one instant, the command's {@code now}, each booking: an emergency-paused PENDING
  * timer's pause ends (FR-OPS-37, FR-OPS-41; {@code ck_booking_pause_state_scope} needs it before the booking leaves
- * PENDING); the transition; the release of its own BOOKING reservation; the history row; its jobs withdrawn - T1 while
- * PENDING, T4 and T5 while CONFIRMED (a LEASED job is left to its worker, which re-reads the booking); and one
+ * PENDING); for an AWAITING booking, first its Late Confirmation is closed through
+ * {@link LateConfirmClosures#closeForCancellation} - its paused window's pause ended (same CHECK, before it leaves
+ * AWAITING), its hold released, its attempt closed without a Customer response, T2 and T3 superseded (Phase 3A); the
+ * transition; the release of its own BOOKING reservation (none for AWAITING: the closure released its hold); the history
+ * row; its jobs withdrawn - T1 while PENDING, T4 and T5 while CONFIRMED (a LEASED job is left to its worker, which
+ * re-reads the booking; an AWAITING booking has neither, its T2/T3 went with the closure); and one
  * {@code BookingCancelled} - {@link BookingEvents#manualCancelled} with {@code source} MANUAL for a Manual Booking.
  * Last, the Booking Fee decisions of every Online Booking in one {@link BookingFeeRefunds#recordDecisions} batch, the
  * command's only Loyalty entry point: one Loyalty context serves every Customer. A Manual Booking has no customer and
@@ -56,7 +70,15 @@ import ps.e7gz.venue.api.HoursChangeBookings.BookingFacts;
  * VENUE with the authenticated Venue Account, as for the venue's own Manual cancellation (the change is the venue's
  * explicit operation, never SYSTEM); D2 - a PENDING booking past its response deadline whose T1 has not run is still
  * PENDING, holds its reservation and is cancelled, its T1 superseded - the expiry is not run here; D3 - an unexpected
- * id fails the whole command, never skipped. AWAITING_CUSTOMER_CONFIRMATION is Phase 3C and refused until then.
+ * id fails the whole command, never skipped.
+ *
+ * <p>E7-113 Phase 3C working decisions (Amr, 15 Oct 2026; NOT yet approved by Sayed - needed before the final merge):
+ * C1 - an AWAITING booking's history actor is VENUE with the authenticated Venue Account, as D1; C2 (Option A) - an
+ * AWAITING booking past its stored Late Confirm deadline whose T2 has not run is still AWAITING, holds its hold and is
+ * cancelled with {@code VENUE_OPENING_HOURS_CHANGED}, its T2 superseded - no timeout is synthesised here. Open for
+ * Sayed: FR-AVL-15 may give T2 the state once the deadline is reached ({@link #requireOpenAttempts} is the one place
+ * that decision would change); C3 - a paused Late Confirm window ends at the command instant, its attempt's
+ * {@code expires_at} and {@code warning_sent_at} stay as recorded (the Phase 3A closure; E7-83 is not touched).
  */
 @Component
 class HoursChangeCancellation {
@@ -70,15 +92,20 @@ class HoursChangeCancellation {
     private final ScheduledJobs jobs;
     private final Outbox outbox;
     private final ResponseTimerPauses pauses;
+    private final LateConfirmClosures closures;
+    private final LateConfirmWindows windows;
 
     HoursChangeCancellation(VenueAnswerStore store, ReservationLedger ledger, BookingFeeRefunds refunds,
-                            ScheduledJobs jobs, Outbox outbox, ResponseTimerPauses pauses) {
+                            ScheduledJobs jobs, Outbox outbox, ResponseTimerPauses pauses,
+                            LateConfirmClosures closures, LateConfirmWindows windows) {
         this.store = store;
         this.ledger = ledger;
         this.refunds = refunds;
         this.jobs = jobs;
         this.outbox = outbox;
         this.pauses = pauses;
+        this.closures = closures;
+        this.windows = windows;
     }
 
     /** The ids in the order they are cancelled; a null list or element or a repeated id is refused before any SQL. */
@@ -108,12 +135,16 @@ class HoursChangeCancellation {
         for (UUID bookingId : ordered) {
             batch.add(validated(context, bookingId, venueId, sessions.get(bookingId), now));
         }
+        requireOpenAttempts(context, batch);
 
         List<BookingFeeRefunds.Decision> decisions = new ArrayList<>();
         for (Cancellable next : batch) {
             Facts booking = next.booking();
             UUID bookingId = booking.bookingId();
             BookingStatus from = booking.status();
+            if (from == BookingStatus.AWAITING_CUSTOMER_CONFIRMATION) {
+                closures.closeForCancellation(context, bookingId, REASON, now);
+            }
             if (from == BookingStatus.PENDING && booking.responsePaused()) {
                 Duration accumulated = store.endResponsePause(context, bookingId, now)
                         .orElseThrow(() -> integrityFailure(bookingId, "the paused response timer did not end"));
@@ -122,12 +153,14 @@ class HoursChangeCancellation {
             if (!store.terminate(context, bookingId, from, BookingStatus.CANCELLED, REASON, now, null)) {
                 throw integrityFailure(bookingId, "the booking left " + from + " under the command's locks");
             }
-            ledger.release(context, next.reservation().id(), now, REASON.name());
+            if (from != BookingStatus.AWAITING_CUSTOMER_CONFIRMATION) {
+                ledger.release(context, next.reservation().id(), now, REASON.name());
+            }
             UUID history = store.insertTransition(context, bookingId, now, from, BookingStatus.CANCELLED, REASON,
                     ActorType.VENUE, venueAccountId, CorrelationId.require());
             if (from == BookingStatus.PENDING) {
                 jobs.supersede(context, VenueAnswers.venueResponseExpiryKey(bookingId));
-            } else {
+            } else if (from == BookingStatus.CONFIRMED) {
                 jobs.supersede(context, ManualBookingCommand.bookingStartKey(bookingId));
                 jobs.supersede(context, ManualBookingCommand.bookingCompleteKey(bookingId));
             }
@@ -141,7 +174,10 @@ class HoursChangeCancellation {
         refunds.recordDecisions(context, decisions);
     }
 
-    /** One booking of the batch checked under the command's locks, with its own active reservation; writes nothing. */
+    /**
+     * One booking of the batch checked under the command's locks, with its own active reservation - the
+     * {@code LATE_CONFIRM_HOLD} of an AWAITING booking; writes nothing.
+     */
     private Cancellable validated(CommandContext context, UUID bookingId, UUID venueId, BookingFacts session,
                                   Instant now) {
         Facts booking = store.facts(context, bookingId)
@@ -156,8 +192,7 @@ class HoursChangeCancellation {
         boolean cancellable = switch (status) {
             case PENDING -> booking.source() == BookingSource.ONLINE;
             case CONFIRMED -> booking.source() == BookingSource.ONLINE || session.insideOperatingSession();
-            case AWAITING_CUSTOMER_CONFIRMATION -> throw integrityFailure(bookingId,
-                    "an AWAITING_CUSTOMER_CONFIRMATION booking is not cancelled by an hours change yet (Phase 3C)");
+            case AWAITING_CUSTOMER_CONFIRMATION -> booking.source() == BookingSource.ONLINE;
             case VENUE_RESPONSE_EXPIRED, ACTIVE, NO_SHOW, COMPLETED, REJECTED, CANCELLED -> false;
         };
         if (!cancellable) {
@@ -171,12 +206,40 @@ class HoursChangeCancellation {
         if (booking.source() == BookingSource.ONLINE && booking.customerId() == null) {
             throw integrityFailure(bookingId, "Online booking without a Customer");
         }
-        return new Cancellable(booking, ownReservation(context, booking));
+        ReservationOwner owner = status == BookingStatus.AWAITING_CUSTOMER_CONFIRMATION
+                ? ReservationOwner.lateConfirmHold(bookingId)
+                : ReservationOwner.booking(bookingId);
+        return new Cancellable(booking, ownReservation(context, booking, owner));
     }
 
-    /** The booking's own active BOOKING reservation on exactly its Resource and interval; anything else is a defect. */
-    private ActiveReservation ownReservation(CommandContext context, Facts booking) {
-        ActiveReservation reservation = ledger.activeOf(context, ReservationOwner.booking(booking.bookingId()))
+    /**
+     * Every AWAITING booking of the batch has an open Late Confirmation, in one read before any write. C2 (Option A,
+     * provisional): its stored deadline is deliberately not compared with the command instant - a booking still
+     * AWAITING is cancelled even past it. Were Sayed to give T2 the state at the deadline (FR-AVL-15), the check would
+     * be added here.
+     */
+    private void requireOpenAttempts(CommandContext context, List<Cancellable> batch) {
+        List<UUID> awaiting = batch.stream().map(Cancellable::booking)
+                .filter(booking -> booking.status() == BookingStatus.AWAITING_CUSTOMER_CONFIRMATION)
+                .map(Facts::bookingId)
+                .toList();
+        if (awaiting.isEmpty()) {
+            return;
+        }
+        Map<UUID, Instant> open = windows.openDeadlines(context, awaiting);
+        for (UUID bookingId : awaiting) {
+            if (!open.containsKey(bookingId)) {
+                throw integrityFailure(bookingId, "AWAITING booking has no open Late Confirmation");
+            }
+        }
+    }
+
+    /**
+     * The booking's own active reservation of {@code owner} - its BOOKING reservation, or the LATE_CONFIRM_HOLD of an
+     * AWAITING booking - on exactly its Resource and interval; anything else is a defect.
+     */
+    private ActiveReservation ownReservation(CommandContext context, Facts booking, ReservationOwner owner) {
+        ActiveReservation reservation = ledger.activeOf(context, owner)
                 .orElseThrow(() -> integrityFailure(booking.bookingId(),
                         booking.status() + " booking holds no active reservation"));
         if (!reservation.resourceId().equals(booking.resourceId())

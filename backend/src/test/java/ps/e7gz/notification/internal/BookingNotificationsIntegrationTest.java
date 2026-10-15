@@ -358,6 +358,52 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
         assertThat(notifications(manual)).as("no customer, and the venue made the change").isEmpty();
     }
 
+    /**
+     * E7-113 Phase 3C, end to end (FR-VEN-28): the REAL hours-change cancellation of an AWAITING booking closes its Late
+     * Confirmation in the same command and writes one BookingCancelled - no Late Confirm event - so this one consumer
+     * tells the customer once, VENUE_OPENING_HOURS_CHANGED, and nothing about the Late Confirmation; redelivery makes
+     * nothing new.
+     */
+    @Test
+    void theRealHoursChangeCancellationOfAnAwaitingBookingTellsTheCustomerOnceAndNothingAboutTheLateConfirm() {
+        Booking booking = flows.lateConfirmed();
+        List<String> eventsBefore = bookingEventTypes(booking);
+        assertThat(eventsBefore).contains(IntegrationEvents.LATE_CONFIRM_INITIATED);
+
+        cancelByHoursChange(booking.venueId(), booking.venueAccountId(), List.of(booking));
+
+        // committed, read on another connection: the booking, its closed attempt and the one event it gained
+        assertThat(db.sql("SELECT status || ' ' || terminal_reason FROM booking.booking WHERE id = :id")
+                .param("id", booking.bookingId()).query(String.class).single())
+                .isEqualTo("CANCELLED VENUE_OPENING_HOURS_CHANGED");
+        assertThat(db.sql("""
+                        SELECT closed_at IS NOT NULL AND customer_response IS NULL
+                          FROM booking.late_confirmation WHERE booking_id = :id""")
+                .param("id", booking.bookingId()).query(Boolean.class).single())
+                .as("the attempt closed without a Customer response").isTrue();
+        List<String> eventsAfter = bookingEventTypes(booking);
+        assertThat(eventsAfter.subList(0, eventsBefore.size())).isEqualTo(eventsBefore);
+        assertThat(eventsAfter.subList(eventsBefore.size(), eventsAfter.size()))
+                .containsExactly(IntegrationEvents.BOOKING_CANCELLED);
+        assertThat(outboxEvent(booking, IntegrationEvents.BOOKING_CANCELLED).text("terminalReason"))
+                .isEqualTo("VENUE_OPENING_HOURS_CHANGED");
+        assertThat(db.sql("SELECT count(*) FROM technical.outbox_event WHERE event_type ILIKE '%OpeningHours%'")
+                .query(Long.class).single()).as("no event for the hours change itself").isZero();
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_CANCELLED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.BOOKING_CANCELLED,
+                "CUSTOMER VENUE_OPENING_HOURS_CHANGED " + booking.customerId());
+        assertThat(notifications(booking)).containsExactlyInAnyOrderElementsOf(beforeLateConfirm(booking,
+                "CUSTOMER LATE_CONFIRMATION_RECEIVED " + booking.customerId(),
+                "CUSTOMER VENUE_OPENING_HOURS_CHANGED " + booking.customerId()));
+        assertThat(customerCodes(booking)).as("no Late Confirm outcome is told")
+                .doesNotContain("CUSTOMER_CONFIRMATION_EXPIRED", "LATE_CONFIRMATION_EXPIRING");
+        assertThat(venueCodes(booking)).as("no venue notification for its own change")
+                .doesNotContain("VENUE_LATE_CONFIRM_DECLINED", "VENUE_CUSTOMER_CONFIRMATION_EXPIRED",
+                        "VENUE_LATE_CONFIRM_ACCEPTED");
+    }
+
     /** PO decision 13 Oct 2026: the venue name the event recorded wins over the name when the notification is made. */
     @Test
     void theVenueNameAnEventCarriesIsTheOneTheCustomerSees() {
