@@ -207,6 +207,22 @@ Unchanged on purpose: `booking.derive_commitment_period` and `tr_00_booking_comm
 
 - Tests: `LateConfirmAwaitingOverlapTest` (migrated database, application commands through `CommandRunner`) — an AWAITING booking coexists with an overlapping counted commitment of the same customer and keeps its `commitment_period`; it still counts towards the 4-commitment limit; a new Online Booking overlapping it is refused `OVERLAPPING_COMMITMENT` by the creation predicate (and the database alone would accept it); back-to-back stays allowed; two CONFIRMED bookings, and an AWAITING → CONFIRMED move, that overlap are still refused by the constraint; concurrent creations against an AWAITING booking all fail. `MigrationSafetyTest` (the migration on the seeded database); the `.dbm`/migration identity check in `MigrationFilesTest`.
 
+### v1.1.36 — admin.raise_alert, the one producer of Admin Alerts (E7-56, 15 Oct 2026)
+
+Product Owner decisions 4 Oct 2026 (E7-32 review) and 15 Oct 2026 (E7-56); NFR-29, arch 11 §5.4. `.dbm` block `v1_1_36_admin_raise_alert` = Flyway `V202610150400__admin_raise_alert.sql`, byte for byte. **For Product Owner review.**
+
+**Why.** An alert must be able to commit in the same transaction as the command that found the problem (for example `SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR` at startAt, E7-60), on either runtime connection, but `e7gz_app_runtime` has no INSERT or UPDATE on `admin.admin_alert` (v1.1.29).
+
+| Object | Change |
+|---|---|
+| `admin.raise_alert(p_kind, p_severity, p_subject_type, p_subject_id, p_payload, p_correlation_id) → uuid` | New. `SECURITY DEFINER`, `search_path = pg_catalog, pg_temp`; inserts one open alert and returns its id. EXECUTE for both runtime roles through the security baseline (neither internal nor admin-only); none for PUBLIC |
+
+Every rule stays with the table: `admin.guard_admin_alert` refuses a pre-acknowledged row, a future `created_at` and a credential/secret payload key; `ck_admin_alert_values` refuses a blank kind, severity or subject type and a non-object payload. `kind` and `severity` stay open text: `SEV_1`/`SEV_2`/`SEV_3` and the existing `RISK` abuse signal are all valid. A new function only: every existing row and object is unaffected; no backfill.
+
+Unchanged on purpose: `admin.admin_alert` (columns, constraints, indexes, triggers, grants - still no INSERT or UPDATE for `e7gz_app_runtime`), `admin.acknowledge_alert`, every other object and data row.
+
+- Tests: `AdminAlertsIntegrationTest` (both runtime roles raise through the producer; a direct INSERT by `e7gz_app_runtime` is still refused; a credential payload key is refused), `MigrationSafetyTest` (the migration on the seeded database), the `.dbm`/migration identity check in `MigrationFilesTest`.
+
 ## Product Owner decisions (26 Sep 2026)
 
 A1 overlapping Maintenance allowed · A2 booking horizon is a deployment setting, default 120 days · A4 rate-limit table approved · A5 reports FR-AUD-11/12 at launch · A6 venue alerts = live + Web Push + audible alert · A8 configurable = fees and points only · A9 Venue never returns to ONBOARDING · A10 login limits stored as `LOGIN` rate-limit rows · A11 read-only customer wallet screen (PCR-004, no DB change) · review self-reporting allowed, duplicate open reports blocked.
