@@ -101,11 +101,11 @@ Late Confirm, check-in / late / no-show, start-time revalidation, completion; al
 | S3-P0 | E7-54 | Platform | Sprint 3 API contract | Add all Sprint 3 API endpoints as stubs by day 2. | S2-P0 |
 | S3-P1 | E7-55 | Platform | Booking and attendance notifications | Send the right notification for every booking and attendance event. | S2-P4 |
 | S3-P2 | E7-56 | Platform | Admin alerts | Alerts to the admin when something is seriously wrong. | S2-P2 |
-| S3-P3 | E7-57 | Platform | Profile and account management | Edit profile, change username, phone, email, reset password. | S0-P6 |
+| S3-P3 | E7-57 | Platform | Profile and account management | Edit profile, change username, phone, email, reset password. | S0-P6, S3-P2 |
 | S3-E1 | E7-58 | Engine | Late Confirm (O3) | Late Confirm: the venue offers a late slot, the customer accepts in time. | S2-E2, S2-P6, S3-P1 |
 | S3-E5 | E7-113 | Engine | Opening-hours change: cancel affected bookings (O5) | When a venue saves new opening hours, cancel the future bookings the new hours no longer cover, release their holds and tell the customers. | S1-P3, S2-E4, S3-E1, S3-P1 |
 | S3-E2 | E7-59 | Engine | Check-in, late present, no-show (O13) | Check-in, "arrived late", and no-show. | S2-E2, S3-P1 |
-| S3-E3 | E7-60 | Engine | Start-time revalidation (O11) | Re-check everything at start time and cancel with the right reason if needed. | S3-E2, S3-P1 |
+| S3-E3 | E7-60 | Engine | Start-time revalidation (O11) | Re-check everything at start time and cancel with the right reason if needed. | S3-E2, S3-P1, S3-P2 |
 | S3-E4 | E7-61 | Engine | Completion and attendance defaults (O12) | Finish bookings automatically and set the final attendance result. | S3-E2, S3-P1 |
 | S3-E6 | E7-114 | Engine | Venue cancels a confirmed booking (FR-VEN-03) | The venue cancels a CONFIRMED online booking with the Owner PIN; the customer gets a full refund classification and a notification. | S3-P0, S2-E2, S3-P1 |
 | S3-E7 | E7-115 | Engine | Venue Overview API (FR-VEN-35) | The backend for the Dashboard home page: today's and this month's revenue, today's bookings and pending requests. | S3-P0, S2-E4 |
@@ -1944,7 +1944,7 @@ Finish by running the checks in CLAUDE.md §4, then give me a short summary, the
 
 **What this task does:** Edit profile, change username, phone, email, reset password.
 
-Lane: Platform · Depends on: S0-P6
+Lane: Platform · Depends on: S0-P6, S3-P2
 
 ```text
 Read CLAUDE.md first. You are implementing task S3-P3 — "Profile and account management" (Platform lane) of the E7GZ PS build plan.
@@ -2090,7 +2090,7 @@ Finish by running the checks in CLAUDE.md §4, then give me a short summary, the
 
 **What this task does:** Re-check everything at start time and cancel with the right reason if needed.
 
-Lane: Engine · Depends on: S3-E2, S3-P1
+Lane: Engine · Depends on: S3-E2, S3-P1, S3-P2
 
 ```text
 Read CLAUDE.md first. You are implementing task S3-E3 — "Start-time revalidation (O11)" (Engine lane) of the E7GZ PS build plan.
