@@ -18,6 +18,9 @@ import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.security.owner.OwnerProtected;
+import ps.e7gz.messaging.api.IntegrationEvents;
+import ps.e7gz.messaging.api.NewOutboxEvent;
+import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.pricing.internal.Pricing.DefaultPrice;
 import ps.e7gz.pricing.internal.Pricing.RoomOverride;
 import ps.e7gz.resource.api.ResourceCatalog;
@@ -37,7 +40,7 @@ final class PricingCommands {
     @OwnerProtected("VENUE_PRICING_CHANGE")
     record SetDefaults(UUID venueAccountId, UUID venueId, UUID correlationId, List<DefaultPrice> defaults,
                            String ownerPassword, OwnerPasswordGate gate, VenueActivities activities,
-                           AuditWriter audit) implements Command<Void> {
+                           AuditWriter audit, Outbox outbox) implements Command<Void> {
 
         @Override
         public EligibilityCategory eligibilityCategory() {
@@ -68,6 +71,9 @@ final class PricingCommands {
                     .payload(Map.of("previous", previous.stream().map(PricingCommands::row).toList(),
                             "defaults", defaults.stream().map(PricingCommands::row).toList()))
                     .build());
+            // E7-56 (PO decision 12 Oct 2026): the venue's Nearest Availability rows refresh at once
+            outbox.publish(context, new NewOutboxEvent(IntegrationEvents.VENUE_PRICING_CHANGED, "VENUE", venueId,
+                    Map.of("venueId", venueId.toString())));
             return null;
         }
 
@@ -85,7 +91,7 @@ final class PricingCommands {
     @OwnerProtected("ROOM_PRICE_OVERRIDE_SET_RESET")
     record SetOverrides(UUID venueAccountId, UUID venueId, UUID resourceId, UUID correlationId,
                         List<RoomOverride> prices, String ownerPassword, OwnerPasswordGate gate,
-                        ResourceCatalog resources, AuditWriter audit) implements Command<Void> {
+                        ResourceCatalog resources, AuditWriter audit, Outbox outbox) implements Command<Void> {
 
         @Override
         public EligibilityCategory eligibilityCategory() {
@@ -123,6 +129,9 @@ final class PricingCommands {
                                     : PricingAuditAction.ROOM_PRICE_OVERRIDE_SET, AuditActor.venue(venueAccountId),
                             resourceId, correlationId)
                     .ownerPasswordCheck(check).contextVenue(venueId).payload(payload).build());
+            // E7-56 (PO decision 12 Oct 2026): the venue's Nearest Availability rows refresh at once
+            outbox.publish(context, new NewOutboxEvent(IntegrationEvents.ROOM_OVERRIDE_CHANGED, "RESOURCE", resourceId,
+                    Map.of("venueId", venueId.toString(), "resourceId", resourceId.toString())));
             return null;
         }
 

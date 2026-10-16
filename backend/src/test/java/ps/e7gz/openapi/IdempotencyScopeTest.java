@@ -77,6 +77,9 @@ class IdempotencyScopeTest {
             "admin notification \"try again\" (E7-43: re-sends a message, no commitment, money or points; a second "
                     + "press answers NOTIFICATION_DELIVERY_NOT_DEAD_LETTER)", List.of(
                     "post /api/v1/admin/notification-deliveries/{deliveryId}/recover"),
+            "admin alert acknowledge (E7-56: no commitment, money or points; acknowledging again by the same admin "
+                    + "returns the same alert)", List.of(
+                    "post /api/v1/admin/alerts/{alertId}/acknowledge"),
             "customer password reset and profile (no commitment, money or points; SPRINT-3-CONTRACT.md)", List.of(
                     "post /api/v1/customer/auth/password-reset/request",
                     "post /api/v1/customer/auth/password-reset/complete",

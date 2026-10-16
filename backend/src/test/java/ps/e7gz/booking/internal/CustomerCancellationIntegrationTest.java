@@ -224,6 +224,9 @@ class CustomerCancellationIntegrationTest extends IntegrationTest {
         assertThat(history(created.bookingId())).hasSize(1);
         assertThat(events(IntegrationEvents.BOOKING_CANCELLED, created.bookingId())).isEmpty();
         assertThat(refunds(created.bookingId())).isZero();
+        // E7-56: rolled back, yet one SEV_1 alert committed on its own after the rollback
+        assertThat(VenueAnswerDb.adminAlerts(created.bookingId()))
+                .containsExactly("BOOKING_INTEGRITY_FAILURE SEV_1 " + created.bookingId() + " true");
     }
 
     // ------------------------------------------------------------------------------------------------------ helpers

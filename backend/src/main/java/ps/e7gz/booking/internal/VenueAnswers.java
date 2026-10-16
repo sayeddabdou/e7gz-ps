@@ -8,6 +8,8 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import ps.e7gz.admin.api.AdminAlerts;
+import ps.e7gz.admin.api.NewAdminAlert;
 import ps.e7gz.booking.internal.VenueAnswerStore.Facts;
 import ps.e7gz.common.codes.ActorType;
 import ps.e7gz.common.codes.BookingSource;
@@ -73,11 +75,12 @@ class VenueAnswers {
     private final Outbox outbox;
     private final BookingFeeRefunds refunds;
     private final ResponseTimerPauses pauses;
+    private final AdminAlerts alerts;
 
     VenueAnswers(VenueAnswerStore store, VenueBookings bookings, VenueEligibility venues, ResourceStates resources,
                  UnresolvedEmergencies emergencies, AvailabilityQuery availability, ReservationLedger ledger,
                  CustomerActivation activation, ActiveBans bans, ScheduledJobs jobs, Outbox outbox,
-                 BookingFeeRefunds refunds, ResponseTimerPauses pauses) {
+                 BookingFeeRefunds refunds, ResponseTimerPauses pauses, AdminAlerts alerts) {
         this.store = store;
         this.bookings = bookings;
         this.venues = venues;
@@ -91,6 +94,7 @@ class VenueAnswers {
         this.outbox = outbox;
         this.refunds = refunds;
         this.pauses = pauses;
+        this.alerts = alerts;
     }
 
     // ------------------------------------------------------------------------------------------------------ Accept
@@ -349,11 +353,15 @@ class VenueAnswers {
      * act on and never a cancellation (not SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR, which FR-BOK-28 ties to startAt).
      * Logged here at ERROR with the booking and correlation IDs; the thrown exception rolls the whole command back -
      * the Idempotency-Key record is never completed, so nothing is replayed - and the API answers a generic 500
-     * without rule text. No Platform Admin alert: that path (E7-56) does not exist yet (reported to the PO).
+     * without rule text. One SEV_1 BOOKING_INTEGRITY_FAILURE admin alert is raised once the command has rolled back
+     * (E7-56).
      */
-    private static IllegalStateException integrityFailure(UUID bookingId, String detail) {
+    private IllegalStateException integrityFailure(UUID bookingId, String detail) {
         log.error("Booking integrity failure: {} (bookingId={}, correlationId={})", detail, bookingId,
                 CorrelationId.current().map(UUID::toString).orElse("none"));
+        // E7-56 (PO decisions 10, 12 and 15 Oct 2026): SEV_1, committed on its own once this command has rolled back
+        CorrelationId.current().ifPresent(correlation -> alerts.raiseAfterRollback(
+                NewAdminAlert.bookingIntegrityFailure(bookingId, detail, correlation)));
         return new IllegalStateException("Booking " + bookingId + " integrity failure: " + detail);
     }
 

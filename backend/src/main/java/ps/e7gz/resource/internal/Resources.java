@@ -15,6 +15,7 @@ import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.inventory.ledger.api.ActiveCommitments;
+import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.resource.internal.ResourceCommands.BaseStateAction;
 import ps.e7gz.venue.api.OwnerPasswordGate;
 import ps.e7gz.venue.api.VenueAccountVenues;
@@ -37,15 +38,17 @@ public class Resources {
     private final ActiveCommitments commitments;
     private final AuditWriter audit;
     private final JdbcClient jdbc;
+    private final Outbox outbox;
 
     public Resources(CommandRunner runner, OwnerPasswordGate gate, VenueAccountVenues accounts,
-                     ActiveCommitments commitments, AuditWriter audit, DataSource appDataSource) {
+                     ActiveCommitments commitments, AuditWriter audit, DataSource appDataSource, Outbox outbox) {
         this.runner = runner;
         this.gate = gate;
         this.accounts = accounts;
         this.commitments = commitments;
         this.audit = audit;
         this.jdbc = JdbcClient.create(appDataSource);
+        this.outbox = outbox;
     }
 
     public record Resource(UUID id, UUID venueId, Activity activity, String name, ConsoleType consoleType,
@@ -108,7 +111,7 @@ public class Resources {
         requireOwn(venueId, resourceId);
         UUID correlationId = CorrelationId.require();
         return gate.run(new ResourceCommands.ChangeBaseState(venueAccountId, venueId, resourceId, correlationId,
-                change.action, ownerPassword, gate, commitments, audit), venueAccountId, correlationId);
+                change.action, ownerPassword, gate, commitments, audit, outbox), venueAccountId, correlationId);
     }
 
     public Resource changeConsole(UUID venueAccountId, UUID resourceId, ConsoleType target, String ownerPassword) {
@@ -116,7 +119,7 @@ public class Resources {
         requireOwn(venueId, resourceId);
         UUID correlationId = CorrelationId.require();
         return gate.run(new ResourceCommands.ChangeConsole(venueAccountId, venueId, resourceId, correlationId,
-                target, ownerPassword, gate, commitments, audit), venueAccountId, correlationId);
+                target, ownerPassword, gate, commitments, audit, outbox), venueAccountId, correlationId);
     }
 
     // ------------------------------------------------------------------------------------------ shared

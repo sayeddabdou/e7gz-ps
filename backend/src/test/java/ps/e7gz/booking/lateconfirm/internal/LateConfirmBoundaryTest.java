@@ -23,6 +23,7 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
+import ps.e7gz.admin.api.AdminAlerts;
 import ps.e7gz.booking.api.LateConfirmBookings;
 import ps.e7gz.booking.api.LateConfirmBookings.Booking;
 import ps.e7gz.booking.internal.LateConfirmTestWorld;
@@ -345,7 +346,7 @@ class LateConfirmBoundaryTest extends IntegrationTest {
         LateConfirmCommands initiate = new LateConfirmCommands(bookings, store, venues, areas, sessions, snapshots,
                 availability, mock(UnresolvedEmergencies.class), mock(CustomerActivation.class),
                 mock(ActiveBans.class), ledger, jobs, mock(Outbox.class), mock(BookingFeeRefunds.class),
-                mock(ResponseTimerPauses.class), contacts);
+                mock(ResponseTimerPauses.class), contacts, mock(AdminAlerts.class));
         CommandAnswer<SentLateConfirmation> answer = initiate.initiate(command, BOOKING, VENUE, ACCOUNT);
 
         assertThat(answer).isInstanceOf(CommandAnswer.Ok.class);

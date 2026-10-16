@@ -224,6 +224,36 @@ class MigrationFilesTest {
                 .doesNotContain("GRANT");
     }
 
+    /**
+     * v1.1.36 (E7-56): the migration is the model's own block, byte for byte; it adds the one SECURITY DEFINER producer
+     * of Admin Alerts with a fixed search_path and changes no table, trigger or grant (the security baseline grants
+     * EXECUTE; e7gz_app_runtime keeps no INSERT or UPDATE on admin.admin_alert).
+     */
+    @Test
+    void adminRaiseAlertMigrationIsTheModelsV1136Block() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String open = "<genericsql name=\"v1_1_36_admin_raise_alert\">\n\t<definition> <![CDATA[\n";
+        int start = model.indexOf(open);
+        assertThat(start).as("v1.1.36 block in the .dbm").isPositive();
+        String block = model.substring(start + open.length(), model.indexOf("]]> </definition>", start));
+        String migration = classpath("db/migration/V202610150400__admin_raise_alert.sql");
+        assertThat(migration).isEqualTo(block);
+
+        String sql = migration.substring(migration.indexOf("CREATE FUNCTION"));
+        assertThat(sql)
+                .startsWith("CREATE FUNCTION admin.raise_alert(p_kind text, p_severity text, p_subject_type text, "
+                        + "p_subject_id uuid,\n")
+                .contains("RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp")
+                .containsOnlyOnce("INSERT INTO admin.admin_alert(")
+                .doesNotContain("acknowledged")
+                .doesNotContain("UPDATE ")
+                .doesNotContain("DROP ")
+                .doesNotContain("ALTER ")
+                .doesNotContain("GRANT")
+                .doesNotContain("REVOKE")
+                .doesNotContain("TRIGGER");
+    }
+
     /** One {@code CREATE OR REPLACE FUNCTION ... $function$;} definition, from its first line to its end. */
     private static String function(String sql, String open) {
         int start = sql.indexOf(open);
