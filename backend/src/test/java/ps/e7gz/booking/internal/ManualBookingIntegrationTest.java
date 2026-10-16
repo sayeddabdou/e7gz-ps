@@ -489,6 +489,23 @@ class ManualBookingIntegrationTest extends IntegrationTest {
         assertRefused(() -> manual.cancel(closed.account.id(), completed), ApiErrorCode.BOOKING_STATE_CHANGED);
     }
 
+    /**
+     * D11 (E7-47) and E7-56: a Manual Booking without its reservation is a data defect - the cancel rolls back, the
+     * booking stays as it was, and one SEV_1 BOOKING_INTEGRITY_FAILURE alert commits on its own after the rollback.
+     */
+    @Test
+    void aWalkInWithoutItsReservationIsAnIntegrityFailureThatRaisesOneAdminAlert() {
+        OnlineBookingWorld world = OnlineBookingWorld.create();
+        UUID id = manual.create(world.account.id(), walkIn(world, 60)).bookingId();
+        VenueAnswerDb.reservationLost(reservation(id).id());
+
+        assertThatThrownBy(() -> manual.cancel(world.account.id(), id))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("integrity failure");
+
+        assertThat(VenueAnswerDb.booking(id).status()).isNotEqualTo("CANCELLED");
+        assertThat(VenueAnswerDb.adminAlerts(id)).containsExactly("BOOKING_INTEGRITY_FAILURE SEV_1 " + id + " true");
+    }
+
     /** The cancel response as this test stores it: no contact field, so no phone replay rule is needed. */
     record Cancelled(UUID bookingId, String status) {
     }

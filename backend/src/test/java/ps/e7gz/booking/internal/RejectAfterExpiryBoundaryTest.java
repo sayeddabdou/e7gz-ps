@@ -16,6 +16,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import ps.e7gz.admin.api.AdminAlerts;
 import ps.e7gz.booking.internal.VenueAnswerStore.Facts;
 import ps.e7gz.common.codes.BookingSource;
 import ps.e7gz.common.codes.BookingStatus;
@@ -54,7 +55,7 @@ class RejectAfterExpiryBoundaryTest {
     private final VenueAnswers answers = new VenueAnswers(store, bookings, mock(VenueEligibility.class),
             mock(ResourceStates.class), mock(UnresolvedEmergencies.class), mock(AvailabilityQuery.class), ledger,
             mock(CustomerActivation.class), mock(ActiveBans.class), mock(ScheduledJobs.class), mock(Outbox.class),
-            refunds, mock(ResponseTimerPauses.class));
+            refunds, mock(ResponseTimerPauses.class), mock(AdminAlerts.class));
     private CorrelationId.Scope correlation;
 
     @BeforeEach

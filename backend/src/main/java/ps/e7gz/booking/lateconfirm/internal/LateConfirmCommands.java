@@ -8,6 +8,8 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import ps.e7gz.admin.api.AdminAlerts;
+import ps.e7gz.admin.api.NewAdminAlert;
 import ps.e7gz.booking.api.LateConfirmBookings;
 import ps.e7gz.booking.api.LateConfirmBookings.Booking;
 import ps.e7gz.booking.api.LateConfirmBookings.Transition;
@@ -86,12 +88,13 @@ class LateConfirmCommands {
     private final BookingFeeRefunds refunds;
     private final ResponseTimerPauses pauses;
     private final VenueContacts contacts;
+    private final AdminAlerts alerts;
 
     LateConfirmCommands(LateConfirmBookings bookings, LateConfirmStore store, VenueEligibility venues, AreaLookup areas,
                         OperatingSessions sessions, SessionSnapshots snapshots, AvailabilityQuery availability,
                         UnresolvedEmergencies emergencies, CustomerActivation activation, ActiveBans bans,
                         ReservationLedger ledger, ScheduledJobs jobs, Outbox outbox, BookingFeeRefunds refunds,
-                        ResponseTimerPauses pauses, VenueContacts contacts) {
+                        ResponseTimerPauses pauses, VenueContacts contacts, AdminAlerts alerts) {
         this.bookings = bookings;
         this.store = store;
         this.venues = venues;
@@ -108,6 +111,7 @@ class LateConfirmCommands {
         this.refunds = refunds;
         this.pauses = pauses;
         this.contacts = contacts;
+        this.alerts = alerts;
     }
 
     // ------------------------------------------------------------------------------------------------------ Initiate
@@ -559,9 +563,12 @@ class LateConfirmCommands {
      * A broken Late Confirm invariant is a data defect, never a refusal (as E7-47 D11): ERROR with the booking and
      * correlation IDs; the thrown exception rolls the command back and the API answers a generic 500.
      */
-    private static IllegalStateException integrityFailure(UUID bookingId, String detail) {
+    private IllegalStateException integrityFailure(UUID bookingId, String detail) {
         log.error("Late Confirm integrity failure: {} (bookingId={}, correlationId={})", detail, bookingId,
                 CorrelationId.current().map(UUID::toString).orElse("none"));
+        // E7-56 (PO decisions 10, 12 and 15 Oct 2026): SEV_1, committed on its own once this command has rolled back
+        CorrelationId.current().ifPresent(correlation -> alerts.raiseAfterRollback(
+                NewAdminAlert.bookingIntegrityFailure(bookingId, detail, correlation)));
         return new IllegalStateException("Booking " + bookingId + " Late Confirm integrity failure: " + detail);
     }
 }

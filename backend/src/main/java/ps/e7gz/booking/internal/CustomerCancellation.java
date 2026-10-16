@@ -7,6 +7,8 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import ps.e7gz.admin.api.AdminAlerts;
+import ps.e7gz.admin.api.NewAdminAlert;
 import ps.e7gz.booking.internal.VenueAnswerStore.Facts;
 import ps.e7gz.common.codes.ActorType;
 import ps.e7gz.common.codes.BookingSource;
@@ -63,15 +65,17 @@ class CustomerCancellation {
     private final ScheduledJobs jobs;
     private final Outbox outbox;
     private final ResponseTimerPauses pauses;
+    private final AdminAlerts alerts;
 
     CustomerCancellation(VenueAnswerStore store, ReservationLedger ledger, BookingFeeRefunds refunds,
-                         ScheduledJobs jobs, Outbox outbox, ResponseTimerPauses pauses) {
+                         ScheduledJobs jobs, Outbox outbox, ResponseTimerPauses pauses, AdminAlerts alerts) {
         this.store = store;
         this.ledger = ledger;
         this.refunds = refunds;
         this.jobs = jobs;
         this.outbox = outbox;
         this.pauses = pauses;
+        this.alerts = alerts;
     }
 
     void cancel(CommandContext context, UUID bookingId, UUID customerId) {
@@ -134,9 +138,12 @@ class CustomerCancellation {
         return reservation;
     }
 
-    private static IllegalStateException integrityFailure(UUID bookingId, String detail) {
+    private IllegalStateException integrityFailure(UUID bookingId, String detail) {
         log.error("Booking integrity failure: {} (bookingId={}, correlationId={})", detail, bookingId,
                 CorrelationId.current().map(UUID::toString).orElse("none"));
+        // E7-56 (PO decisions 10, 12 and 15 Oct 2026): SEV_1, committed on its own once this command has rolled back
+        CorrelationId.current().ifPresent(correlation -> alerts.raiseAfterRollback(
+                NewAdminAlert.bookingIntegrityFailure(bookingId, detail, correlation)));
         return new IllegalStateException("Booking " + bookingId + " integrity failure: " + detail);
     }
 }

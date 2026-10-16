@@ -4,10 +4,12 @@ import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
 import java.util.List;
 import javax.sql.DataSource;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import ps.e7gz.messaging.api.DeadLetterAlerts;
 import ps.e7gz.messaging.api.OutboxAttempts;
 import ps.e7gz.messaging.api.OutboxConsumer;
 
@@ -26,12 +28,14 @@ class OutboxWorkerConfig {
 
     @Bean
     OutboxLoop outboxLoop(List<OutboxConsumer> consumers, JdbcOutboxStore store, DataSource appDataSource,
-                          OutboxProperties properties) {
+                          OutboxProperties properties, ObjectProvider<DeadLetterAlerts> deadLetterAlerts) {
+        List<DeadLetterAlerts> alerts = deadLetterAlerts.orderedStream().toList();
         ConsumerRegistry registry = new ConsumerRegistry(consumers);
         String process = ManagementFactory.getRuntimeMXBean().getName();      // pid@host
         List<OutboxDispatcher> dispatchers = new ArrayList<>();
         for (int i = 1; i <= properties.threads(); i++) {
-            dispatchers.add(new OutboxDispatcher(process + "/" + i, registry, store, appDataSource, properties));
+            dispatchers.add(new OutboxDispatcher(process + "/" + i, registry, store, appDataSource, properties,
+                    alerts));
         }
         return new OutboxLoop(dispatchers, appDataSource, properties.tick());
     }

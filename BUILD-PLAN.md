@@ -101,11 +101,11 @@ Late Confirm, check-in / late / no-show, start-time revalidation, completion; al
 | S3-P0 | E7-54 | Platform | Sprint 3 API contract | Add all Sprint 3 API endpoints as stubs by day 2. | S2-P0 |
 | S3-P1 | E7-55 | Platform | Booking and attendance notifications | Send the right notification for every booking and attendance event. | S2-P4 |
 | S3-P2 | E7-56 | Platform | Admin alerts | Alerts to the admin when something is seriously wrong. | S2-P2 |
-| S3-P3 | E7-57 | Platform | Profile and account management | Edit profile, change username, phone, email, reset password. | S0-P6 |
+| S3-P3 | E7-57 | Platform | Profile and account management | Edit profile, change username, phone, email, reset password. | S0-P6, S3-P2 |
 | S3-E1 | E7-58 | Engine | Late Confirm (O3) | Late Confirm: the venue offers a late slot, the customer accepts in time. | S2-E2, S2-P6, S3-P1 |
 | S3-E5 | E7-113 | Engine | Opening-hours change: cancel affected bookings (O5) | When a venue saves new opening hours, cancel the future bookings the new hours no longer cover, release their holds and tell the customers. | S1-P3, S2-E4, S3-E1, S3-P1 |
 | S3-E2 | E7-59 | Engine | Check-in, late present, no-show (O13) | Check-in, "arrived late", and no-show. | S2-E2, S3-P1 |
-| S3-E3 | E7-60 | Engine | Start-time revalidation (O11) | Re-check everything at start time and cancel with the right reason if needed. | S3-E2, S3-P1 |
+| S3-E3 | E7-60 | Engine | Start-time revalidation (O11) | Re-check everything at start time and cancel with the right reason if needed. | S3-E2, S3-P1, S3-P2 |
 | S3-E4 | E7-61 | Engine | Completion and attendance defaults (O12) | Finish bookings automatically and set the final attendance result. | S3-E2, S3-P1 |
 | S3-E6 | E7-114 | Engine | Venue cancels a confirmed booking (FR-VEN-03) | The venue cancels a CONFIRMED online booking with the Owner PIN; the customer gets a full refund classification and a notification. | S3-P0, S2-E2, S3-P1 |
 | S3-E7 | E7-115 | Engine | Venue Overview API (FR-VEN-35) | The backend for the Dashboard home page: today's and this month's revenue, today's bookings and pending requests. | S3-P0, S2-E4 |
@@ -1911,7 +1911,7 @@ Done when (write these as tests first where possible):
 
 Carry-forward from the Sprint 0 review (do these too):
 - Alert on refresh-token reuse: when AuthSessions.refresh detects a reused rotated token (today only log.warn), raise an admin alert (arch 10 section 2.3: 'revokes the entire chain and alerts'). Sprint 0 review S-9.
-- Alert when an account reaches the per-account login limit added by E7-57.
+- Alert when an account reaches the per-account login limit added by E7-57: moved to E7-57 (PO decision 15 Oct 2026, below).
 - Audit Platform Admin and Venue Account login success and failure with the AuditWriter: account id when known, audience and outcome only, never the identifier, the password or the IP in clear. If no alert or audit catalogue code fits, ask the PO before adding one.
 
 Carry-forward from the E7-32 review (PO decisions 4 Oct 2026, do these too):
@@ -1926,6 +1926,16 @@ Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
 - Booking integrity failure alert (E7-47 D11, PO decision 10 Oct 2026): VenueAnswers.integrityFailure and CustomerCancellation.integrityFailure (booking/internal) only log at ERROR and roll the command back ('No Platform Admin alert until E7-56 exists'). Raise a SEV_1 alert with the booking ID, the detail and the correlation ID. The command is rolled back, so the alert must commit in its own transaction after the rollback, never inside the failed command. Alert kind BOOKING_INTEGRITY_FAILURE (PO decision 12 Oct 2026). booking/ files are Engine lane: Amr reviews that part.
 - Outbox dead-letter alert (E7-41: 'The admin alert is E7-56'): an outbox event that reaches DEAD_LETTER (today the dispatcher only logs it at ERROR, Sev-2) raises one SEV_2 alert of kind OUTBOX_DEAD_LETTER (PO decision 12 Oct 2026) with the event id, type, aggregate, last error and the event's correlation ID. A notification delivery in DEAD_LETTER raises no alert (PO decision 12 Oct 2026): the admin 'try again' route of E7-43 handles it.
 
+PO decisions 15 Oct 2026 (E7-56 preparation, do these too):
+- Admin alert routes (no contract had them): add them in this task, contract commit first - GET /admin/alerts (open alerts by default; acknowledged, kind and severity filters; newest first, cursor paging) and POST /admin/alerts/{alertId}/acknowledge {reason?} -> 200 AdminAlert. Regenerate packages/api-client, tell the Clients lane (E7-86 builds the inbox) and record both routes in arch 09 section 4.1 as E7-55 did.
+- A different admin acknowledging an alert already acknowledged is 409 ADMIN_ALERT_ALREADY_ACKNOWLEDGED (new code).
+- Booking integrity alerts cover every site that logs an integrity failure: VenueAnswers, CustomerCancellation, ManualCancellation and LateConfirmCommands (its T2/T3 handlers included).
+- SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR has no producer until E7-60: build the typed alert in admin.api (booking ID, resource ID, unexpected state, startAt, detection time, conflicting source when known, correlation ID; SEV_1) and meet 'done when' with a test through it. E7-60 raises it.
+- The login-limit alert moves to E7-57, which raises it through this task's alert API.
+- New names: alert kinds REFRESH_TOKEN_REUSE (SEV_2) and ACCOUNT_LOGIN_LIMIT_REACHED (SEV_3, raised by E7-57); audit actions ADMIN_LOGIN_SUCCEEDED, ADMIN_LOGIN_FAILED, VENUE_ACCOUNT_LOGIN_SUCCEEDED and VENUE_ACCOUNT_LOGIN_FAILED (payload: audience and outcome only).
+- A failed login for an unknown identifier is not audited: there is no account to be the subject (audit_event.subject_id is NOT NULL), and the rate limiter covers it.
+- From the E7-58 review: add 'Open the Dashboard to view the booking.' to the English VENUE_CUSTOMER_CONFIRMATION_EXPIRED push body, as the Arabic has.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -1934,7 +1944,7 @@ Finish by running the checks in CLAUDE.md §4, then give me a short summary, the
 
 **What this task does:** Edit profile, change username, phone, email, reset password.
 
-Lane: Platform · Depends on: S0-P6
+Lane: Platform · Depends on: S0-P6, S3-P2
 
 ```text
 Read CLAUDE.md first. You are implementing task S3-P3 — "Profile and account management" (Platform lane) of the E7GZ PS build plan.
@@ -1955,11 +1965,14 @@ Carry-forward from E7-13 (do these too):
 Carry-forward from the Sprint 0 review (do these too):
 - Replace unverified registrations (PO decision 2 Oct 2026, Sprint 0 review S-3): when someone registers with a phone or username held by an account that was never phone-verified, the old account is replaced (phone and username released, its OTP challenges superseded, its refresh tokens revoked) and the new registration goes ahead. A verified account still returns PHONE_TAKEN / USERNAME_TAKEN. uq_user_account_phone_e164 covers unverified rows today, and anonymisation is an admin-only producer. If this needs a schema or function change, make it a new migration + .dbm + change report for PO review (CLAUDE.md section 5). Test: registering on an unverified phone succeeds, and the old account can no longer log in.
 - Verifying through resend sets a new password: a phone verification that started from /otp/send (by phone, without the registration's own challenge) must include a new password in the same request (PasswordPolicy). It sets the password and revokes every refresh token of that account, so an account someone else created with your phone cannot be kept by them. Contract change: regenerate OpenAPI and tell the Clients lane.
-- Per-account login limit (PO decision 2 Oct 2026, Sprint 0 review S-7): in addition to the existing per (identifier + IP) limit, count failed logins per account across all IPs: 50 failures in 1 hour pause login for that account for 15 minutes (iam.security_rate_limit_counter, limiter_type LOGIN, its own action_class such as CUSTOMER_ACCOUNT / VENUE_ACCOUNT / ADMIN_ACCOUNT, cooldown_until; no schema change, but note the new action_class values in the change report). All three audiences. Fails closed like the existing limiter. E7-56 raises the alert.
+- Per-account login limit (PO decision 2 Oct 2026, Sprint 0 review S-7): in addition to the existing per (identifier + IP) limit, count failed logins per account across all IPs: 50 failures in 1 hour pause login for that account for 15 minutes (iam.security_rate_limit_counter, limiter_type LOGIN, its own action_class such as CUSTOMER_ACCOUNT / VENUE_ACCOUNT / ADMIN_ACCOUNT, cooldown_until; no schema change, but note the new action_class values in the change report). All three audiences. Fails closed like the existing limiter. This task raises the alert through E7-56 (PO decision 15 Oct 2026, below).
 - Password reset and change hash through the Argon2id gate from E7-24.
 
 Carry-forward from E7-54 (PO decisions 11 Oct 2026, do this too):
 - Fill the stubs of the Sprint 3 contract (E7-54, packages/api-client/SPRINT-3-CONTRACT.md) and keep their shapes: CustomerProfileController and the password-reset routes of CustomerAuthController. Phone change is two steps: POST /customer/profile/phone {phone} -> 201 {otpChallengeId} (PHONE_CHANGE code to the new phone), then POST /customer/profile/phone/verify {otpChallengeId, code} -> the profile. Password reset is by phone OTP only: request {phone} -> 201 {otpChallengeId}, an unknown or never-verified phone is 404 NOT_FOUND; complete {otpChallengeId, code, password} -> 204 and every refresh token of the account is revoked. POST /customer/profile/email and /email/verify stay 501 until the PO decides email verification: do not build them (no EMAIL_CHANGED yet). Replace this task's lines in backend/src/test/java/ps/e7gz/openapi/Sprint3StubHttpTest.java with your own tests.
+
+PO decision 15 Oct 2026 (from E7-56, do this too):
+- Alert when an account reaches the per-account login limit (moved here from E7-56): raise an admin alert of kind ACCOUNT_LOGIN_LIMIT_REACHED, severity SEV_3, through E7-56's admin alert API (admin.api), with the account id and audience only - never the identifier, the password or the IP. Merge main once E7-56 is merged.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2077,7 +2090,7 @@ Finish by running the checks in CLAUDE.md §4, then give me a short summary, the
 
 **What this task does:** Re-check everything at start time and cancel with the right reason if needed.
 
-Lane: Engine · Depends on: S3-E2, S3-P1
+Lane: Engine · Depends on: S3-E2, S3-P1, S3-P2
 
 ```text
 Read CLAUDE.md first. You are implementing task S3-E3 — "Start-time revalidation (O11)" (Engine lane) of the E7GZ PS build plan.
@@ -2105,6 +2118,9 @@ Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
 Carry-forward from the Sprint 3 review (PO decisions 12 Oct 2026, do these too):
 - Events: the start publishes BookingStarted (already in IntegrationEvents and VenueStreamSignals since E7-48); a revalidation cancellation publishes BookingCancelled with its terminalReason (already mapped). Do not publish them twice for the same transition.
 - One notification path (PO decision 12 Oct 2026): booking, Late Confirm and attendance notifications are created only by E7-55's notification consumer from integration events - never by calling Notifications.notify in this task. Map the start-time cancellations there: VENUE_BOOKING_AUTO_CANCELLED (the Sprint 3 half of the E7-55/E7-80 split) and the customer code of each cancellation reason that exists now, with copy and one exactly-once test per code. E7-55 runs first in Sprint 3: merge main once it is merged.
+
+PO decision 15 Oct 2026 (from E7-56, do this too):
+- Raise the SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR admin alert through E7-56's typed alert in admin.api (SEV_1, the full payload of arch 12 section 6.2), in the same command as the cancellation. Merge main once E7-56 is merged.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2307,6 +2323,9 @@ Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
 - Missed / Expired requests page (PO decision 12 Oct 2026; FRS F-08, FR-BOK-21). The backend exists since E7-47; the Dashboard /missed-requests page is a title only, and E7-52 is done. Build it from GET /venue/requests/missed: each request with its room, start and the time left to start from meta.serverTime; Reject After Expiry (POST /venue/bookings/{bookingId}/reject-after-expiry, Idempotency-Key, no Owner PIN; 409 BOOKING_STATE_CHANGED and 422 DEADLINE_PASSED at or after startAt refresh the list); refresh on the stream's CHANGED signal and on the 30-second poll, as the Pending list does. Initiate Late Confirm (step 1) from this list. EN and AR.
 - Venue notifications page (PO decision 12 Oct 2026; FR-NTF-09): from GET /venue/notifications and POST /venue/notifications/{notificationId}/read, which E7-55 adds to the contract (build against pnpm mock until it is merged). Newest first, cursor paging, mark as read, text from the code in the account's language (EN and AR); a booking notification opens that booking.
 - Show customer.phone on the Pending and Missed request cards when the API returns it (FR-DIS-09: visible from PENDING; absent from the JSON once hidden). Today the Pending card shows only the username.
+
+PO decision 15 Oct 2026 (E7-53 review, do this too):
+- Add a 'Cancel walk-in' action to the booking detail of a MANUAL booking that is CONFIRMED or ACTIVE (FR-MAN-08, PCR-007): POST /venue/bookings/{bookingId}/cancel-manual (E7-48; no Owner PIN; Idempotency-Key required, kept on retry), with a confirmation step and the 409 BOOKING_STATE_CHANGED message. No task built it (E7-53 did not have it in scope). EN and AR.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.

@@ -35,6 +35,15 @@ Added by E7-55 (PO decision 12 Oct 2026, FR-NTF-09), implemented in the same PR,
 
 `VenueNotification.code` is a `notification_catalogue` code; the Dashboard renders the text in EN and AR from the code (ADR-021). The booking codes it receives today: `VENUE_NEW_BOOKING_REQUEST`, `VENUE_PENDING_REQUEST_EXPIRING`, `VENUE_BOOKING_AUTO_CANCELLED`, each with `bookingId` and empty `params`.
 
+Added by E7-56 (PO decision 15 Oct 2026, NFR-29), implemented in the same PR, not a stub:
+
+| Surface | Endpoint | Controller | Implemented by |
+|---|---|---|---|
+| Admin | `GET /admin/alerts?acknowledged=&kind=&severity=&cursor=&limit=` → `PageView<AdminAlert>`; open alerts (`acknowledged=false`) by default, newest first | `admin/web/AdminAlertController` | E7-56 (page: E7-86) |
+| Admin | `POST /admin/alerts/{alertId}/acknowledge` `{reason?}` → 200 `AdminAlert`; the same admin again returns the same alert; another admin → 409 `ADMIN_ALERT_ALREADY_ACKNOWLEDGED`; unknown → 404 | `admin/web/AdminAlertController` | E7-56 |
+
+`AdminAlert.kind` and `severity` are open text: the kinds raised today are `SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR`, `BOOKING_INTEGRITY_FAILURE`, `INVARIANT_VIOLATION`, `OUTBOX_DEAD_LETTER`, `REFRESH_TOKEN_REUSE` and `TOURNAMENT_CANCELLATION_ABUSE` (`ACCOUNT_LOGIN_LIMIT_REACHED` from E7-57); severities `SEV_1`, `SEV_2`, `SEV_3` and `RISK` (the abuse signal). `payload` is diagnostic data (ids, states, instants), never rule text: the Admin web shows it as data.
+
 Not in Sprint 3: `GET /customer/account-standing` (Sprint 4, E7-65), `POST /customer/account/deletion-request` (Sprint 7), `GET /venue/revenue` (Sprint 7, E7-104).
 
 ## 1. PO decisions (11 Oct 2026)

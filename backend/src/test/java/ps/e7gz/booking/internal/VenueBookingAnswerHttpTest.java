@@ -226,6 +226,10 @@ class VenueBookingAnswerHttpTest extends IntegrationTest {
         assertThat(VenueAnswerDb.idempotencyRecords(world.account.id(), rejectKey)).isZero();
         assertThat(output.getAll()).contains("ERROR").contains("Booking integrity failure")
                 .contains("bookingId=" + created.bookingId()).contains("correlationId=" + correlationId);
+        // E7-56: one SEV_1 alert per finding, each committed after its rollback - Accept (the slot is not blocked) and
+        // Reject (no reservation) describe the lost reservation through their own checks
+        assertThat(VenueAnswerDb.adminAlerts(created.bookingId())).hasSize(2)
+                .containsOnly("BOOKING_INTEGRITY_FAILURE SEV_1 " + created.bookingId() + " true");
     }
 
     @Test

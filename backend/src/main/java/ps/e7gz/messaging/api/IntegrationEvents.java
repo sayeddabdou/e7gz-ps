@@ -132,21 +132,46 @@ public final class IntegrationEvents {
     public static final String LATE_CONFIRM_WARNING_DUE = "LateConfirmWarningDue";
 
     /**
+     * {@code {venueId, resourceId}}, aggregate {@code RESOURCE}: the venue disabled a room (FR-VEN-03; E7-26, published
+     * since E7-56, PO decision 12 Oct 2026). Its four siblings below carry the same payload.
+     */
+    public static final String RESOURCE_DISABLED = "ResourceDisabled";
+    /** The venue re-enabled a disabled room (FR-VEN-03); as {@link #RESOURCE_DISABLED}. */
+    public static final String RESOURCE_RE_ENABLED = "ResourceReEnabled";
+    /** The venue archived a room (FR-VEN-03); as {@link #RESOURCE_DISABLED}. */
+    public static final String RESOURCE_ARCHIVED = "ResourceArchived";
+    /** The venue restored an archived room to ACTIVE (FR-VEN-03); as {@link #RESOURCE_DISABLED}. */
+    public static final String RESOURCE_RESTORED = "ResourceRestored";
+    /** PS4 to PS5 or back (FR-VEN-14, FR-VEN-15; its price overrides were cleared); as {@link #RESOURCE_DISABLED}. */
+    public static final String RESOURCE_CONSOLE_CHANGED = "ResourceConsoleChanged";
+    /**
+     * {@code {venueId}}, aggregate {@code VENUE}: the venue's default prices changed (FR-VEN-43; E7-27, published since
+     * E7-56).
+     */
+    public static final String VENUE_PRICING_CHANGED = "VenuePricingChanged";
+    /**
+     * {@code {venueId, resourceId}}, aggregate {@code RESOURCE}: a room's price overrides were set or reset
+     * (FR-VEN-43; E7-27, published since E7-56).
+     */
+    public static final String ROOM_OVERRIDE_CHANGED = "RoomOverrideChanged";
+
+    /**
      * Every event that can change a venue's availability and so refreshes its Nearest Availability rows (arch 05
      * section 5.3, arch 08 section 7): reservation hold or release, Resource state, selling blocks (maintenance,
      * closures, emergencies), opening hours and prices. Each carries the {@code venueId} it touches;
-     * {@link #AREA_DEACTIVATED} carries an {@code areaId} instead. Only the E7-23 events, {@link #RESERVATION_HELD}
-     * (E7-46) and {@link #RESERVATION_RELEASED} (E7-47) are written so far (PO decision 9 Oct 2026); the other producers add theirs in their own tasks.
+     * {@link #AREA_DEACTIVATED} carries an {@code areaId} instead. Written so far (PO decision 9 Oct 2026): the E7-23
+     * events, {@link #RESERVATION_HELD} (E7-46), {@link #RESERVATION_RELEASED} (E7-47) and the room state and price
+     * events (E7-56, PO decision 12 Oct 2026); the other producers add theirs in their own tasks.
      */
     public static final Set<String> INVENTORY_AFFECTING = Set.of(
             RESERVATION_HELD, RESERVATION_RELEASED,
-            "ResourceDisabled", "ResourceReEnabled", "ResourceArchived", "ResourceRestored",
-            "ResourceConsoleChanged", "ResourceRestrictionChanged",
+            RESOURCE_DISABLED, RESOURCE_RE_ENABLED, RESOURCE_ARCHIVED, RESOURCE_RESTORED,
+            RESOURCE_CONSOLE_CHANGED, "ResourceRestrictionChanged",
             "MaintenanceCreated", "MaintenanceEdited", "MaintenanceDeleted",
             "ClosureCreated",
             "EmergencyDeclared", "EmergencyExtended", "EmergencyEnded", "EmergencyConverted",
             "OpeningHoursChanged",
-            "VenuePricingChanged", "RoomOverrideChanged",
+            VENUE_PRICING_CHANGED, ROOM_OVERRIDE_CHANGED,
             VENUE_MARKETPLACE_STATUS_CHANGED,
             AREA_DEACTIVATED);
 
