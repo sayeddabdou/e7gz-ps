@@ -1974,6 +1974,10 @@ Carry-forward from E7-54 (PO decisions 11 Oct 2026, do this too):
 PO decision 15 Oct 2026 (from E7-56, do this too):
 - Alert when an account reaches the per-account login limit (moved here from E7-56): raise an admin alert of kind ACCOUNT_LOGIN_LIMIT_REACHED, severity SEV_3, with the account id and audience only - never the identifier, the password or the IP. Identity must not depend on admin.api (admin already depends on identity: a module cycle), so raise it through E7-56's port identity.api.SecurityAlerts: add one method there (e.g. accountLoginLimitReached(audience, accountId)) and implement it in admin/internal AdminAlertReporters, as refreshTokenReused is. Merge main once E7-56 is merged.
 
+PO decisions 16 Oct 2026 (E7-57, do these too):
+- Release an unverified account without a schema change: the row stays (nothing is hard-deleted); its phone becomes 'released:' || id (a placeholder, as anonymisation writes 'anonymised:' || id), its username released_<id>, its full name, email and password hash are emptied so nobody can log in, its open OTP codes are superseded and its refresh tokens revoked. Record the placeholder values in the change report.
+- An unverified holder inside its 30-day username cooldown keeps its username: the new registration gets USERNAME_TAKEN (its phone is still released when the phone was the conflict).
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
