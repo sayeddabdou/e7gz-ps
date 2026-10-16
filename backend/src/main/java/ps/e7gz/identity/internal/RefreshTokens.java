@@ -108,6 +108,21 @@ final class RefreshTokens {
     }
 
     /**
+     * Revokes every still-valid refresh token of one account (E7-57: password reset, a verification through resend, a
+     * released unverified account). Access tokens live 15 minutes and stop with the next refresh.
+     */
+    static void revokeAll(CommandContext ctx, AuthSubjectType type, UUID subjectId) {
+        ctx.jdbc().sql("""
+                        UPDATE iam.auth_refresh_token SET revoked_at = :now
+                         WHERE subject_type = :type AND subject_id = :subject AND revoked_at IS NULL
+                        """)
+                .param("now", OtpChallenges.utc(ctx.commandNow()))
+                .param("type", type.name())
+                .param("subject", subjectId)
+                .update();
+    }
+
+    /**
      * Whether a customer may hold a session, with the User row share-locked until commit: anonymisation
      * ({@code iam.anonymise_user}) locks the row for update and then revokes every customer token, so a token issued
      * here is either refused after it or revoked by it (FR-ACC-10).

@@ -85,6 +85,20 @@ class AdminAlertReporters implements InvariantViolationReporter, DeadLetterAlert
         }
     }
 
+    /**
+     * ACCOUNT_LOGIN_LIMIT_REACHED, SEV_3 (PO decision 15 Oct 2026, E7-57), about the paused account; the payload is the
+     * audience only - never the identifier, the password or the IP. In a transaction of its own: the pause is committed.
+     */
+    @Override
+    public void accountLoginLimitReached(AuthSubjectType audience, UUID accountId) {
+        try {
+            alerts.raiseAlone(new NewAdminAlert(AdminAlertKind.ACCOUNT_LOGIN_LIMIT_REACHED, AdminAlertSeverity.SEV_3,
+                    subjectType(audience), accountId, Map.of("audience", audience.name()), CorrelationId.require()));
+        } catch (RuntimeException failure) {
+            log.error("Login limit on {} {} raised no admin alert", audience, accountId, failure);
+        }
+    }
+
     /** The account table each audience lives in, as audit subject types name them. */
     static String subjectType(AuthSubjectType audience) {
         return switch (audience) {

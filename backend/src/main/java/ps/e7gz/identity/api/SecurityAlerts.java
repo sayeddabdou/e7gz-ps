@@ -15,4 +15,10 @@ public interface SecurityAlerts {
      * presented again. The chain is already revoked and committed when this is called.
      */
     void refreshTokenReused(AuthSubjectType audience, UUID subjectId);
+
+    /**
+     * The per-account login limit (Sprint 0 review S-7, PO decision 15 Oct 2026; E7-57): this account's 50th failed
+     * login in an hour paused its login for 15 minutes. Called once per pause, after the pause committed.
+     */
+    void accountLoginLimitReached(AuthSubjectType audience, UUID accountId);
 }

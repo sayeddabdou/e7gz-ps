@@ -22,16 +22,16 @@ import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.ResponseMetaFactory;
 import ps.e7gz.identity.internal.AuthSessions;
+import ps.e7gz.identity.internal.CustomerProfiles;
 import ps.e7gz.identity.internal.CustomerRegistration;
 import ps.e7gz.identity.internal.PasswordPolicy;
 
 /**
  * Customer registration, phone verification, sessions and password reset (arch 09 section 2 and section 3.1;
- * FR-ACC-01…06, FR-ACC-09; arch 10 section 2). Public: no access token (arch 09 section 1.2). Password reset is a stub of
- * the Sprint 3 contract (E7-54) until E7-57. Size limits below are technical input bounds, not Product rules.
+ * FR-ACC-01…06, FR-ACC-09; arch 10 section 2). Public: no access token (arch 09 section 1.2). Password reset: E7-57
+ * (contract E7-54). Size limits below are technical input bounds, not Product rules.
  */
 @RestController
 @RequestMapping("/api/v1/customer/auth")
@@ -41,11 +41,14 @@ public class CustomerAuthController {
     static final int MAX_TEXT = 200;
 
     private final CustomerRegistration registration;
+    private final CustomerProfiles profiles;
     private final AuthSessions sessions;
     private final ResponseMetaFactory meta;
 
-    public CustomerAuthController(CustomerRegistration registration, AuthSessions sessions, ResponseMetaFactory meta) {
+    public CustomerAuthController(CustomerRegistration registration, CustomerProfiles profiles, AuthSessions sessions,
+                                  ResponseMetaFactory meta) {
         this.registration = registration;
+        this.profiles = profiles;
         this.sessions = sessions;
         this.meta = meta;
     }
@@ -53,7 +56,10 @@ public class CustomerAuthController {
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(operationId = "customerRegister",
-            summary = "Register; the account stays unverified until the phone OTP is verified (FR-ACC-01, FR-ACC-02)")
+            summary = "Register; the account stays unverified until the phone OTP is verified (FR-ACC-01, FR-ACC-02)",
+            description = "A phone or username held by an account that never verified its phone is taken over: that "
+                    + "account is released and can no longer log in (Sprint 0 review S-3, E7-57). A verified holder "
+                    + "keeps them: PHONE_TAKEN / USERNAME_TAKEN.")
     @ApiError(status = 422, codes = {ApiErrorCode.USERNAME_TAKEN, ApiErrorCode.PHONE_TAKEN})
     @ApiError(status = 429, codes = {ApiErrorCode.OTP_RESEND_TOO_SOON, ApiErrorCode.OTP_HOURLY_LIMIT_REACHED})
     public DataResponse<CustomerRegistrationView> register(@Valid @RequestBody CustomerRegisterRequest request) {
@@ -75,12 +81,17 @@ public class CustomerAuthController {
     @PostMapping("/verify-phone")
     @Operation(operationId = "customerVerifyPhone",
             summary = "Verify the phone with the SMS code; the account becomes Account Verified and a session starts "
-                    + "(FR-ACC-02, FR-ACC-04, arch 09 section 2)")
+                    + "(FR-ACC-02, FR-ACC-04, arch 09 section 2)",
+            description = "A code from otp/send (not the registration's own) needs password: it replaces the old "
+                    + "password and ends every other session, so an account someone else created with this phone "
+                    + "cannot be kept by them (Sprint 0 review, E7-57). Without it: VALIDATION_FAILED on password, "
+                    + "and the code stays usable. With the registration's code the password is optional.")
+    @ApiError(status = 400, codes = ApiErrorCode.VALIDATION_FAILED)
     @ApiError(status = 403, codes = ApiErrorCode.ACCOUNT_DELETED)
     @ApiError(status = 422, codes = {ApiErrorCode.OTP_INVALID, ApiErrorCode.OTP_EXPIRED})
     @ApiError(status = 429, codes = ApiErrorCode.OTP_ATTEMPTS_EXCEEDED)
     public DataResponse<CustomerAuthTokens> verifyPhone(@Valid @RequestBody CustomerVerifyPhoneRequest request) {
-        UUID userId = registration.verifyPhone(request.otpChallengeId(), request.code());
+        UUID userId = registration.verifyPhone(request.otpChallengeId(), request.code(), request.password());
         AuthSessions.TokenPair tokens = sessions.start(AuthSubjectType.CUSTOMER, userId)
                 .orElseThrow(() -> new ApiException(ApiErrorCode.ACCOUNT_DELETED));          // anonymised meanwhile
         return meta.data(CustomerAuthTokens.of(tokens));
@@ -119,13 +130,12 @@ public class CustomerAuthController {
             summary = "Send a password reset code to the account's verified phone (FR-ACC-09)",
             description = "By phone OTP only: reset by email waits for email verification (PO decision 11 Oct 2026, "
                     + "E7-54). A phone with no account, or whose account never verified it, is NOT_FOUND, like "
-                    + "otp/send. The OTP limits of FR-ACC-04 apply; a new code supersedes the previous one. "
-                    + "Implemented by E7-57.")
+                    + "otp/send. The OTP limits of FR-ACC-04 apply; a new code supersedes the previous one.")
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     @ApiError(status = 429, codes = {ApiErrorCode.OTP_RESEND_TOO_SOON, ApiErrorCode.OTP_HOURLY_LIMIT_REACHED})
     public DataResponse<CustomerOtpChallengeView> requestPasswordReset(
             @Valid @RequestBody CustomerPasswordResetRequest request) {
-        throw NotImplementedYet.stub();
+        return meta.data(new CustomerOtpChallengeView(profiles.requestPasswordReset(request.phone())));
     }
 
     @PostMapping("/password-reset/complete")
@@ -134,12 +144,12 @@ public class CustomerAuthController {
             summary = "Set a new password with the reset code; every session ends (FR-ACC-09)",
             description = "No old password (FR-ACC-09). The new password follows VALIDATION RULES §2.1, otherwise 400 "
                     + "VALIDATION_FAILED on field password. Every refresh token of the account is revoked, so the "
-                    + "customer logs in again (PO decision 11 Oct 2026, E7-54). Implemented by E7-57.")
+                    + "customer logs in again (PO decision 11 Oct 2026, E7-54). Sends PASSWORD_RESET.")
     @ApiError(status = 403, codes = ApiErrorCode.ACCOUNT_DELETED)
     @ApiError(status = 422, codes = {ApiErrorCode.OTP_INVALID, ApiErrorCode.OTP_EXPIRED})
     @ApiError(status = 429, codes = ApiErrorCode.OTP_ATTEMPTS_EXCEEDED)
     public void completePasswordReset(@Valid @RequestBody CustomerPasswordResetCompleteRequest request) {
-        throw NotImplementedYet.stub();
+        profiles.completePasswordReset(request.otpChallengeId(), request.code(), request.password());
     }
 
     /** Arch 09 section 2: {@code {fullName, username, phone, email, password}}, all required (FR-ACC-01). */
@@ -176,7 +186,17 @@ public class CustomerAuthController {
     @Schema(name = "CustomerVerifyPhoneRequest")
     public record CustomerVerifyPhoneRequest(
             @NotNull @Schema(example = "9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d") UUID otpChallengeId,
-            @NotBlank @Pattern(regexp = "[0-9]{6}") @Schema(example = "482913") String code) {
+            @NotBlank @Pattern(regexp = "[0-9]{6}") @Schema(example = "482913") String code,
+            @Size(max = MAX_TEXT)
+            @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY, nullable = true,
+                    description = "Required for a code from otp/send; optional for the registration's own code. "
+                            + "At least 8 characters, with at least one letter and one digit (VALIDATION RULES §2.1).")
+            String password) {
+
+        @Override
+        public String toString() {
+            return "CustomerVerifyPhoneRequest[<redacted>]";
+        }
     }
 
     @Schema(name = "CustomerPasswordResetRequest")

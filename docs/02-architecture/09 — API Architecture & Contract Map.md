@@ -8,6 +8,7 @@
 **Updated:** 11 October 2026 — Sprint 3 contract decisions (E7-54): phone change confirm route, password reset by phone OTP, email routes kept as stubs (`§3.1`); venue-side Late Confirm codes (`§4.1`).
 **Updated:** 12 October 2026 — E7-58 decision: the neutral Late Confirm failure records `LATE_CONFIRM_FAILED_BOOKING_LIMIT` only for the 4-commitment limit; a ban or deactivated account records no booking event (`§4.1`).
 **Updated:** 15 October 2026 — E7-56 decisions: admin alert list and acknowledge routes (`§5`) and `ADMIN_ALERT_ALREADY_ACKNOWLEDGED` (`§1.5`).
+**Updated:** 16 October 2026 — E7-57: `verify-phone` takes `password` for a code from `otp/send` (`§3.1`).
 
 **Style.** REST + JSON over HTTPS, base `/api/v1`, OpenAPI 3.1 generated from code, typed TypeScript clients generated for all three surfaces (`ADR-012`).
 
@@ -209,7 +210,7 @@ sequenceDiagram
 |---|---|---|---|
 | `POST` | `/customer/auth/register` | — | `FR-ACC-01`, `FR-ACC-06` |
 | `POST` | `/customer/auth/otp/send` | — | `FR-ACC-04` |
-| `POST` | `/customer/auth/verify-phone` | — | `FR-ACC-02`, `FR-ACC-04` |
+| `POST` | `/customer/auth/verify-phone` `{otpChallengeId, code, password?}` — `password` is required for a code from `otp/send` (not the registration's own): it replaces the old password and revokes every session (Sprint 0 review, E7-57) | — | `FR-ACC-02`, `FR-ACC-04` |
 | `POST` | `/customer/auth/login` · `/refresh` · `/logout` | mixed | — |
 | `POST` | `/customer/auth/password-reset/request` · `/complete` | — | `FR-ACC-09` |
 | `GET` `PATCH` | `/customer/profile` | customer | `FR-ACC-07` |

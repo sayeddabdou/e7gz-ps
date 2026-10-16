@@ -43,6 +43,7 @@ public class AuthSessions {
     private final PasswordEncoder passwords;
     private final AccessTokens accessTokens;
     private final LoginRateLimiter rateLimiter;
+    private final AccountLoginLimiter accountLimiter;
     private final JdbcClient jdbc;
     private final Map<AuthSubjectType, LoginAccountDirectory> directories = new EnumMap<>(AuthSubjectType.class);
     private final Map<AuthSubjectType, ActiveSubjectCheck> activeChecks = new EnumMap<>(AuthSubjectType.class);
@@ -53,6 +54,7 @@ public class AuthSessions {
     private final List<SecurityAlerts> securityAlerts;
 
     AuthSessions(CommandRunner runner, PasswordEncoder passwords, AccessTokens accessTokens, LoginRateLimiter rateLimiter,
+                 AccountLoginLimiter accountLimiter,
                  DataSource appDataSource, ObjectProvider<LoginAccountDirectory> directories,
                  ObjectProvider<ActiveSubjectCheck> activeChecks, AuditWriter audit,
                  ObjectProvider<SecurityAlerts> securityAlerts) {
@@ -60,6 +62,7 @@ public class AuthSessions {
         this.passwords = passwords;
         this.accessTokens = accessTokens;
         this.rateLimiter = rateLimiter;
+        this.accountLimiter = accountLimiter;
         this.jdbc = JdbcClient.create(appDataSource);
         directories.orderedStream().forEach(d -> register(this.directories, d.subjectType(), d));
         activeChecks.orderedStream().forEach(c -> register(this.activeChecks, c.subjectType(), c));
@@ -83,7 +86,8 @@ public class AuthSessions {
     }
 
     /**
-     * @throws ApiException {@code RATE_LIMITED} beyond 10 attempts in 15 minutes, {@code UNAUTHENTICATED} for an
+     * @throws ApiException {@code RATE_LIMITED} beyond 10 attempts in 15 minutes, or while the account's login is
+     *         paused after 50 failures in an hour (S-7, E7-57), {@code UNAUTHENTICATED} for an
      *         unknown identifier or a wrong password, {@code FORBIDDEN} for a venue or admin account that may not log in
      */
     public TokenPair login(AuthSubjectType audience, String loginIdentifier, String password, String clientIp) {
@@ -101,7 +105,14 @@ public class AuthSessions {
             throw new ApiException(ApiErrorCode.UNAUTHENTICATED);       // not audited: no account (E7-56)
         }
         UUID accountId = account.get().id();
+        // S-7 (E7-57): a paused account is refused whatever the password - checked after the hash, so a paused account
+        // costs the same time as any other
+        if (accountLimiter.paused(audience, accountId)) {
+            auditRefusal(audience, accountId, LoginOutcome.LOGIN_PAUSED);
+            throw new ApiException(ApiErrorCode.RATE_LIMITED);
+        }
         if (!passwordMatches) {
+            accountLimiter.countFailure(audience, accountId);
             auditRefusal(audience, accountId, LoginOutcome.WRONG_PASSWORD);
             throw new ApiException(ApiErrorCode.UNAUTHENTICATED);
         }

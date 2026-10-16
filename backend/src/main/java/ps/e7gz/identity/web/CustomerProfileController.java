@@ -13,6 +13,7 @@ import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,14 +22,17 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
 import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
+import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.identity.internal.CustomerProfiles;
 import ps.e7gz.identity.web.CustomerAuthController.CustomerOtpChallengeView;
 
 /**
- * The customer's own profile (arch 09 §3.1, FRS §4.1). Stubs of the Sprint 3 contract (E7-54) until E7-57; email
+ * The customer's own profile (arch 09 §3.1, FRS §4.1; E7-57, contract E7-54). Email
  * change and verification wait for the PO's email-verification decision (deferred 30 Sep 2026; stubs kept, PO decision
  * 11 Oct 2026). None of these writes is in ADR-015's scope (no commitment, money or points), so the Idempotency-Key is
  * optional. A phone or email change becomes authoritative only after the new value is verified (FR-ACC-07,
@@ -40,18 +44,27 @@ import ps.e7gz.identity.web.CustomerAuthController.CustomerOtpChallengeView;
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class CustomerProfileController {
 
+    private final CustomerProfiles profiles;
+    private final ResponseMetaFactory meta;
+
+    public CustomerProfileController(CustomerProfiles profiles, ResponseMetaFactory meta) {
+        this.profiles = profiles;
+        this.meta = meta;
+    }
+
     @GetMapping
     @Operation(operationId = "customerGetProfile", summary = "My profile (FR-ACC-07)",
-            description = "Also for a banned customer (FR-ACC-17). Implemented by E7-57.")
-    public DataResponse<CustomerProfile> get() {
-        throw NotImplementedYet.stub();
+            description = "Also for a banned customer (FR-ACC-17).")
+    public DataResponse<CustomerProfile> get(@AuthenticationPrincipal AuthenticatedSubject customer) {
+        return meta.data(CustomerProfile.of(profiles.get(customer.id())));
     }
 
     @PatchMapping
     @Operation(operationId = "customerUpdateProfile", summary = "Change my full name, freely (FR-ACC-07)",
-            description = "Username, phone and email have their own routes. Implemented by E7-57.")
-    public DataResponse<CustomerProfile> update(@Valid @RequestBody CustomerProfileUpdateRequest request) {
-        throw NotImplementedYet.stub();
+            description = "Username, phone and email have their own routes.")
+    public DataResponse<CustomerProfile> update(@AuthenticationPrincipal AuthenticatedSubject customer,
+                                                @Valid @RequestBody CustomerProfileUpdateRequest request) {
+        return meta.data(CustomerProfile.of(profiles.changeFullName(customer.id(), request.fullName())));
     }
 
     @PostMapping("/username")
@@ -60,23 +73,29 @@ public class CustomerProfileController {
             description = "Unique on the trimmed, case-insensitive form (FR-ACC-06): USERNAME_TAKEN. Inside the 30-day "
                     + "cooldown it is USERNAME_COOLDOWN_ACTIVE (enforced by the database, Spec v5 §7.5); the profile's "
                     + "usernameChangeAvailableAt says when. Reviews show the new username at once (FR-ACC-08). "
-                    + "Implemented by E7-57.")
+                    + "Exactly the current username changes nothing.")
     @ApiError(status = 422, codes = {ApiErrorCode.USERNAME_TAKEN, ApiErrorCode.USERNAME_COOLDOWN_ACTIVE})
-    public DataResponse<CustomerProfile> changeUsername(@Valid @RequestBody CustomerUsernameChangeRequest request) {
-        throw NotImplementedYet.stub();
+    public DataResponse<CustomerProfile> changeUsername(@AuthenticationPrincipal AuthenticatedSubject customer,
+                                                        @Valid @RequestBody CustomerUsernameChangeRequest request) {
+        return meta.data(CustomerProfile.of(profiles.changeUsername(customer.id(), request.username())));
     }
 
     @PostMapping("/phone")
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(operationId = "customerStartPhoneChange",
             summary = "Send a code to the new phone; the phone changes only once it is verified (FR-ACC-07)",
-            description = "A phone held by another verified account is PHONE_TAKEN (FR-ACC-01). The OTP limits of "
-                    + "FR-ACC-04 apply. Confirm with POST /customer/profile/phone/verify (PO decision 11 Oct 2026, "
-                    + "E7-54). Implemented by E7-57.")
+            description = "A phone held by another verified account is PHONE_TAKEN (FR-ACC-01); the account's own "
+                    + "phone is VALIDATION_FAILED on phone (an unverified one is verified through otp/send). The OTP "
+                    + "limits of FR-ACC-04 apply. Confirm with POST /customer/profile/phone/verify (PO decision 11 "
+                    + "Oct 2026, E7-54).")
+    @ApiError(status = 400, codes = ApiErrorCode.VALIDATION_FAILED)
+    @ApiError(status = 403, codes = ApiErrorCode.ACCOUNT_DELETED)
     @ApiError(status = 422, codes = ApiErrorCode.PHONE_TAKEN)
     @ApiError(status = 429, codes = {ApiErrorCode.OTP_RESEND_TOO_SOON, ApiErrorCode.OTP_HOURLY_LIMIT_REACHED})
-    public DataResponse<CustomerOtpChallengeView> startPhoneChange(@Valid @RequestBody CustomerPhoneChangeRequest request) {
-        throw NotImplementedYet.stub();
+    public DataResponse<CustomerOtpChallengeView> startPhoneChange(
+            @AuthenticationPrincipal AuthenticatedSubject customer,
+            @Valid @RequestBody CustomerPhoneChangeRequest request) {
+        return meta.data(new CustomerOtpChallengeView(profiles.startPhoneChange(customer.id(), request.phone())));
     }
 
     @PostMapping("/phone/verify")
@@ -84,12 +103,16 @@ public class CustomerProfileController {
             summary = "Confirm the new phone with its code; it becomes the account's phone (FR-ACC-07)",
             description = "A route added by the PO decision of 11 Oct 2026 (E7-54) for the second step of the phone "
                     + "change. A challenge that is not this customer's phone change is NOT_FOUND. A phone taken by "
-                    + "another account meanwhile is PHONE_TAKEN. Implemented by E7-57.")
+                    + "another verified account meanwhile is PHONE_TAKEN, and the code stays usable; an account that "
+                    + "never verified it gives it up (Sprint 0 review S-3). Sends PHONE_CHANGED.")
+    @ApiError(status = 403, codes = ApiErrorCode.ACCOUNT_DELETED)
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     @ApiError(status = 422, codes = {ApiErrorCode.OTP_INVALID, ApiErrorCode.OTP_EXPIRED, ApiErrorCode.PHONE_TAKEN})
     @ApiError(status = 429, codes = ApiErrorCode.OTP_ATTEMPTS_EXCEEDED)
-    public DataResponse<CustomerProfile> verifyPhoneChange(@Valid @RequestBody CustomerOtpCodeRequest request) {
-        throw NotImplementedYet.stub();
+    public DataResponse<CustomerProfile> verifyPhoneChange(@AuthenticationPrincipal AuthenticatedSubject customer,
+                                                           @Valid @RequestBody CustomerOtpCodeRequest request) {
+        return meta.data(CustomerProfile.of(
+                profiles.verifyPhoneChange(customer.id(), request.otpChallengeId(), request.code())));
     }
 
     @PostMapping("/email")
@@ -135,6 +158,12 @@ public class CustomerProfileController {
                             + "null when it may change now (FR-ACC-07).", example = "2026-11-10T12:00:00Z")
             Instant usernameChangeAvailableAt,
             @NotNull @Schema(example = "2026-10-01T09:30:00Z") Instant joinedAt) {
+
+        static CustomerProfile of(CustomerProfiles.Profile profile) {
+            return new CustomerProfile(profile.userId(), profile.fullName(), profile.username(), profile.phone(),
+                    profile.phoneVerified(), profile.email(), profile.emailVerified(),
+                    profile.usernameChangeAvailableAt(), profile.joinedAt());
+        }
     }
 
     @Schema(name = "CustomerProfileUpdateRequest")

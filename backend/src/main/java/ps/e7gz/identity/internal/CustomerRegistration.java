@@ -1,5 +1,6 @@
 package ps.e7gz.identity.internal;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import javax.sql.DataSource;
@@ -51,13 +52,17 @@ public class CustomerRegistration {
             throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "password");               // VALIDATION RULES §2.1
         }
         String phone = e164(customer.phone());
+        String username = customer.username().strip();                                   // FR-ACC-06: trimmed
         String code = OtpCodes.newCode();
         UUID userId = UUID.randomUUID();
         UUID challengeId = UUID.randomUUID();
+        // S-3 (E7-57): an unverified holder of the phone or username is locked and released by the command
+        List<UUID> holders = UnverifiedAccounts.holders(jdbc, phone, username).stream()
+                .map(UnverifiedAccounts.Holder::userId).toList();
         runner.run(new RegisterCustomerCommand(
                 userId,
                 customer.fullName().strip(),
-                customer.username().strip(),                                                 // FR-ACC-06: trimmed
+                username,
                 phone,
                 customer.email().strip(),
                 passwords.encode(customer.password()),                                       // arch 10 §2.2
@@ -65,7 +70,8 @@ public class CustomerRegistration {
                 challengeId,
                 OtpCodes.hash(code),
                 otpCipher.seal(challengeId, code),
-                outbox));
+                outbox,
+                holders));
         return new Registered(userId, challengeId);
     }
 
@@ -87,16 +93,25 @@ public class CustomerRegistration {
         return challengeId;
     }
 
-    /** Checks the code; on success the account is Account Verified (FR-ACC-02). Returns the verified User. */
-    public UUID verifyPhone(UUID challengeId, String code) {
+    /**
+     * Checks the code; on success the account is Account Verified (FR-ACC-02). Returns the verified User. A code from
+     * {@code /otp/send} needs {@code password}, which replaces the old one and ends every session (Sprint 0 review,
+     * E7-57); for the registration's own code it is optional and, when given, replaces it the same way.
+     */
+    public UUID verifyPhone(UUID challengeId, String code, String password) {
+        if (password != null && !PasswordPolicy.isAcceptable(password)) {
+            throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "password");               // VALIDATION RULES §2.1
+        }
         UUID userId = challengeOwner(challengeId)
                 .orElseThrow(() -> new ApiException(ApiErrorCode.OTP_INVALID, "code"));
-        return switch (runner.run(new VerifyPhoneCommand(userId, challengeId, code))) {
+        String hash = password == null ? null : passwords.encode(password);           // the Argon2id gate (E7-24)
+        return switch (runner.run(new VerifyPhoneCommand(userId, challengeId, code, hash))) {
             case VERIFIED -> userId;
             case INVALID -> throw new ApiException(ApiErrorCode.OTP_INVALID, "code");
             case EXPIRED -> throw new ApiException(ApiErrorCode.OTP_EXPIRED, "code");
             case ATTEMPTS_EXCEEDED -> throw new ApiException(ApiErrorCode.OTP_ATTEMPTS_EXCEEDED, "code");
             case ACCOUNT_DELETED -> throw new ApiException(ApiErrorCode.ACCOUNT_DELETED);
+            case PASSWORD_REQUIRED -> throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "password");
         };
     }
 
