@@ -112,9 +112,9 @@ class CustomerRegistrationHttpTest extends IntegrationTest {
     }
 
     @Test
-    void theUsernameIsUniqueTrimmedAndCaseInsensitive() throws Exception {
+    void theUsernameOfAVerifiedAccountIsTakenTrimmedAndCaseInsensitive() throws Exception {
         String username = randomUsername();
-        register("A", username, randomLocalPhone(), "a@example.com", "Passw0rd1").andExpect(status().isCreated());
+        verifiedAs(username, randomLocalPhone());
 
         register("B", "  " + username.toUpperCase() + " ", randomLocalPhone(), "b@example.com", "Passw0rd1")
                 .andExpect(status().isUnprocessableEntity())
@@ -122,13 +122,85 @@ class CustomerRegistrationHttpTest extends IntegrationTest {
     }
 
     @Test
-    void thePhoneIsUniqueWhateverFormItIsWrittenIn() throws Exception {
+    void thePhoneOfAVerifiedAccountIsTakenWhateverFormItIsWrittenIn() throws Exception {
         String local = randomLocalPhone();
-        register("A", randomUsername(), local, "a@example.com", "Passw0rd1").andExpect(status().isCreated());
+        verifiedAs(randomUsername(), local);
 
         register("B", randomUsername(), "+2" + local, "b@example.com", "Passw0rd1")
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error.code").value("PHONE_TAKEN"));
+    }
+
+    // ------------------------------------------------------------------------------------------------ S-3 (E7-57)
+
+    /**
+     * Sprint 0 review S-3 (E7-57): registering on a phone and username held by an account that was never verified
+     * replaces it - the new registration goes ahead, and the old account can no longer log in or refresh.
+     */
+    @Test
+    void registeringOnAnUnverifiedAccountsPhoneAndUsernameReleasesIt() throws Exception {
+        String username = randomUsername();
+        String local = randomLocalPhone();
+        UUID old = TestCustomers.insert(db, false, "x", username).id();
+        db.sql("UPDATE iam.user_account SET phone_e164 = :phone WHERE id = :id").param("phone", e164(local))
+                .param("id", old).update();
+        insertRefreshToken(old);
+
+        register("New", username, local, "new@example.com", "Passw0rd1").andExpect(status().isCreated());
+
+        Map<String, Object> released = db.sql("""
+                        SELECT phone_e164, username, full_name, email, password_hash FROM iam.user_account
+                         WHERE id = :id""").param("id", old).query().singleRow();
+        assertThat(released).containsEntry("phone_e164", "released:" + old)
+                .containsEntry("username", "released_" + old.toString().replace("-", ""))
+                .containsEntry("full_name", "").containsEntry("email", "").containsEntry("password_hash", "");
+        assertThat(db.sql("""
+                        SELECT count(*) FROM iam.auth_refresh_token
+                         WHERE subject_id = :id AND revoked_at IS NULL""").param("id", old)
+                .query(Long.class).single()).isZero();
+    }
+
+    /** PO decision 16 Oct 2026: an unverified holder inside its username cooldown keeps it: USERNAME_TAKEN. */
+    @Test
+    void anUnverifiedHolderInsideItsUsernameCooldownKeepsItsUsername() throws Exception {
+        String username = randomUsername();
+        UUID old = TestCustomers.insert(db, false, "x").id();
+        db.sql("UPDATE iam.user_account SET username = :username WHERE id = :id")
+                .param("username", username).param("id", old).update();        // the change starts its cooldown
+
+        register("New", username, randomLocalPhone(), "new@example.com", "Passw0rd1")
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("USERNAME_TAKEN"));
+        assertThat(db.sql("SELECT username FROM iam.user_account WHERE id = :id").param("id", old)
+                .query(String.class).single()).isEqualTo(username);
+    }
+
+    /**
+     * Sprint 0 review (E7-57): a code from otp/send verifies only with a new password, which replaces the old one and
+     * ends every session - an account someone else created with this phone cannot be kept by them.
+     */
+    @Test
+    void verifyingThroughAResendNeedsANewPasswordAndEndsTheOtherSessions() throws Exception {
+        String phone = e164(randomLocalPhone());
+        UUID userId = insertUnverifiedUser(phone);
+        insertRefreshToken(userId);
+        UUID fresh = sendOtp(phone).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()
+                .transform(this::read).path("data").path("otpChallengeId").asText().transform(UUID::fromString);
+        String code = sms.lastCode.get(phone);
+
+        verify(fresh, code).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.error.field").value("password"));
+        verify(fresh, code, "short").andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.field").value("password"));
+        verify(fresh, code, "N3wPassword").andExpect(status().isOk());
+
+        assertThat(db.sql("""
+                        SELECT count(*) FROM iam.auth_refresh_token
+                         WHERE subject_id = :id AND revoked_at IS NULL""").param("id", userId)
+                .query(Long.class).single()).as("only the session the verification started").isOne();
+        assertThat(db.sql("SELECT attempts FROM iam.otp_challenge WHERE id = :id").param("id", fresh)
+                .query(Integer.class).single()).as("the refused tries counted no attempt").isOne();
     }
 
     @Test
@@ -308,7 +380,7 @@ class CustomerRegistrationHttpTest extends IntegrationTest {
         verify(old, "111111")
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error.code").value("OTP_INVALID"));
-        verify(fresh, sms.lastCode.get(phone)).andExpect(status().isOk());
+        verify(fresh, sms.lastCode.get(phone), "N3wPassword").andExpect(status().isOk());       // a resend (E7-57)
     }
 
     @Test
@@ -426,6 +498,27 @@ class CustomerRegistrationHttpTest extends IntegrationTest {
 
     private ResultActions verify(UUID challengeId, String code) throws Exception {
         return postJson(AUTH + "/verify-phone", Map.of("otpChallengeId", challengeId.toString(), "code", code));
+    }
+
+    private ResultActions verify(UUID challengeId, String code, String password) throws Exception {
+        return postJson(AUTH + "/verify-phone",
+                Map.of("otpChallengeId", challengeId.toString(), "code", code, "password", password));
+    }
+
+    /** A registered and verified account with this username and phone. */
+    private void verifiedAs(String username, String localPhone) throws Exception {
+        JsonNode body = register("A", username, localPhone, "a@example.com", "Passw0rd1")
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString().transform(this::read);
+        UUID challenge = UUID.fromString(body.path("data").path("otpChallengeId").asText());
+        verify(challenge, sms.lastCode.get(e164(localPhone))).andExpect(status().isOk());
+    }
+
+    private void insertRefreshToken(UUID userId) {
+        db.sql("""
+                        INSERT INTO iam.auth_refresh_token (id, subject_id, subject_type, token_hash, issued_at, expires_at)
+                        VALUES (gen_random_uuid(), :id, 'CUSTOMER', :hash, now(), now() + interval '30 days')""")
+                .param("id", userId).param("hash", UUID.randomUUID().toString()).update();
     }
 
     private ResultActions postJson(String path, Map<String, String> body) throws Exception {

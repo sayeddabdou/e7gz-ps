@@ -24,8 +24,8 @@ final class OtpChallenges {
     }
 
     /** One challenge as the verification flow reads it. */
-    record Challenge(UUID userId, String destination, String codeHash, Instant expiresAt, int attempts,
-                     Instant consumedAt, Instant supersededAt) {
+    record Challenge(UUID userId, String destination, String codeHash, Instant issuedAt, Instant expiresAt,
+                     int attempts, Instant consumedAt, Instant supersededAt) {
     }
 
     /** Issues a new challenge at the command instant. */
@@ -58,7 +58,7 @@ final class OtpChallenges {
 
     static Optional<Challenge> find(CommandContext ctx, UUID id, OtpPurpose purpose) {
         return ctx.jdbc().sql("""
-                        SELECT user_id, destination, code_hash, expires_at, attempts, consumed_at, superseded_at
+                        SELECT user_id, destination, code_hash, issued_at, expires_at, attempts, consumed_at, superseded_at
                           FROM iam.otp_challenge
                          WHERE id = :id AND purpose = :purpose
                         """)
@@ -68,6 +68,7 @@ final class OtpChallenges {
                         rs.getObject("user_id", UUID.class),
                         rs.getString("destination"),
                         rs.getString("code_hash"),
+                        instant(rs.getObject("issued_at", OffsetDateTime.class)),
                         instant(rs.getObject("expires_at", OffsetDateTime.class)),
                         rs.getInt("attempts"),
                         instant(rs.getObject("consumed_at", OffsetDateTime.class)),

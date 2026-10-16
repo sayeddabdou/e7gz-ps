@@ -17,7 +17,8 @@ import ps.e7gz.identity.api.LoginAccountDirectory;
  * case-insensitive like {@code ux_user_username_normalized} (FR-ACC-06). An unverified account can log in (FR-ACC-03:
  * verification gates marketplace actions, not access); an anonymised one cannot (FR-ACC-10).
  *
- * <p>Access: a customer token works while the account exists and is not anonymised. Verification and bans are checked
+ * <p>Access: a customer token works while the account exists and is neither anonymised nor released (an unverified
+ * account whose phone or username a new registration took, E7-57). Verification and bans are checked
  * by the commands that need them ({@code CustomerActivation}, FR-ACC-17), never here.
  */
 @Component
@@ -68,7 +69,10 @@ class CustomerAccounts implements LoginAccountDirectory, ActiveSubjectCheck {
 
     @Override
     public boolean isActive(UUID subjectId) {
-        return jdbc.sql("SELECT count(*) FROM iam.user_account WHERE id = :id AND anonymised_at IS NULL")
+        // A released unverified account (S-3, E7-57) holds no session either
+        return jdbc.sql("""
+                        SELECT count(*) FROM iam.user_account
+                         WHERE id = :id AND anonymised_at IS NULL AND phone_e164 NOT LIKE 'released:%'""")
                 .param("id", subjectId)
                 .query(Integer.class).single() == 1;
     }

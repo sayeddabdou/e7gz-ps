@@ -44,6 +44,15 @@ Added by E7-56 (PO decision 15 Oct 2026, NFR-29), implemented in the same PR, no
 
 `AdminAlert.kind` and `severity` are open text: the kinds raised today are `SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR`, `BOOKING_INTEGRITY_FAILURE`, `INVARIANT_VIOLATION`, `OUTBOX_DEAD_LETTER`, `REFRESH_TOKEN_REUSE` and `TOURNAMENT_CANCELLATION_ABUSE` (`ACCOUNT_LOGIN_LIMIT_REACHED` from E7-57); severities `SEV_1`, `SEV_2`, `SEV_3` and `RISK` (the abuse signal). `payload` is diagnostic data (ids, states, instants), never rule text: the Admin web shows it as data.
 
+Changed by E7-57 (Sprint 0 review and PO decisions of 2 and 16 Oct 2026); tell the Clients lane (E7-64 builds the app screens):
+
+| Route | Change |
+|---|---|
+| `POST /customer/auth/verify-phone` | New optional field `password`. **Required** for a code from `otp/send` (not the registration's own): it replaces the old password and revokes every other session. Without it → 400 `VALIDATION_FAILED` on `password`, and the code stays usable. The app's "resend code" screen must ask for a new password. |
+| `POST /customer/auth/register` | A phone or username held by an account that never verified its phone is taken over: that account is released (placeholders, cannot log in). A verified holder still gives `PHONE_TAKEN` / `USERNAME_TAKEN`; an unverified holder inside its 30-day username cooldown gives `USERNAME_TAKEN`. |
+| `POST /customer/profile/phone` | Also 400 `VALIDATION_FAILED` on `phone` for the account's own phone, and 403 `ACCOUNT_DELETED`. |
+| Every login | 429 `RATE_LIMITED` also while the account is paused: 50 failed logins in an hour from any IPs pause it for 15 minutes. |
+
 Not in Sprint 3: `GET /customer/account-standing` (Sprint 4, E7-65), `POST /customer/account/deletion-request` (Sprint 7), `GET /venue/revenue` (Sprint 7, E7-104).
 
 ## 1. PO decisions (11 Oct 2026)

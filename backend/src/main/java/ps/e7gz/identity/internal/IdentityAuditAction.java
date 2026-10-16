@@ -43,6 +43,8 @@ enum IdentityAuditAction implements AuditAction {
     enum LoginOutcome {
         SUCCEEDED,
         WRONG_PASSWORD,
-        ACCOUNT_NOT_ALLOWED
+        ACCOUNT_NOT_ALLOWED,
+        /** The account's login is paused by the per-account limit (E7-57); the password was not the reason. */
+        LOGIN_PAUSED
     }
 }

@@ -223,6 +223,15 @@ Unchanged on purpose: `admin.admin_alert` (columns, constraints, indexes, trigge
 
 - Tests: `AdminAlertsIntegrationTest` (both runtime roles raise through the producer; a direct INSERT by `e7gz_app_runtime` is still refused; a credential payload key is refused), `MigrationSafetyTest` (the migration on the seeded database), the `.dbm`/migration identity check in `MigrationFilesTest`.
 
+### No schema change — values written by E7-57 (16 Oct 2026)
+
+E7-57 adds no migration; it writes new values in existing open-text columns, recorded here as the task asks (Sprint 0 review S-3 and S-7; PO decisions 2 and 16 Oct 2026).
+
+| Column | New values | Meaning |
+|---|---|---|
+| `iam.security_rate_limit_counter.action_class` (with `limiter_type = LOGIN`) | `CUSTOMER_ACCOUNT`, `VENUE_ACCOUNT`, `ADMIN_ACCOUNT` | The per-account login limit: `subject_key_hash` = SHA-256 of the account id; 50 failures in 1 hour set `cooldown_until` = now + 15 minutes. The existing (identifier + IP) rows keep `CUSTOMER` / `VENUE` / `ADMIN`. |
+| `iam.user_account.phone_e164` | `released: || id` | An account that never verified its phone, released when a new registration or a verified phone change needed its phone or username. As anonymisation, a placeholder that is never a phone. Its `username` becomes `released_<id>` (unless inside its 30-day username cooldown), and `full_name`, `email` and `password_hash` are emptied; `anonymised_at` stays NULL. |
+
 ## Product Owner decisions (26 Sep 2026)
 
 A1 overlapping Maintenance allowed · A2 booking horizon is a deployment setting, default 120 days · A4 rate-limit table approved · A5 reports FR-AUD-11/12 at launch · A6 venue alerts = live + Web Push + audible alert · A8 configurable = fees and points only · A9 Venue never returns to ONBOARDING · A10 login limits stored as `LOGIN` rate-limit rows · A11 read-only customer wallet screen (PCR-004, no DB change) · review self-reporting allowed, duplicate open reports blocked.
