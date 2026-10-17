@@ -320,7 +320,9 @@ final class OpeningHoursCommands {
         List<Affected> affected = new ArrayList<>();
         for (Commitment row : uncovered) {
             BookingFacts booking = facts.get(row.owner().id());
-            if (booking != null && booking.insideOperatingSession() && CANCELLABLE.contains(booking.status())) {
+            // FR-AVL-15: an AWAITING booking whose stored Late Confirm deadline is reached belongs to T2, not to O5
+            if (booking != null && booking.insideOperatingSession() && CANCELLABLE.contains(booking.status())
+                    && !booking.lateConfirmTimedOut()) {
                 affected.add(new Affected(booking.bookingId(), row.resourceId(), row.plannedStart(),
                         row.plannedEnd(), booking.source() == BookingSource.ONLINE ? booking.customerId() : null,
                         booking.protectedCancellation()));

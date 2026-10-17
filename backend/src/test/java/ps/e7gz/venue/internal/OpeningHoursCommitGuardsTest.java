@@ -244,7 +244,7 @@ class OpeningHoursCommitGuardsTest extends IntegrationTest {
         public Map<UUID, BookingFacts> facts(CommandContext command, Collection<UUID> bookingIds) {
             Map<UUID, BookingFacts> facts = new java.util.HashMap<>(real.facts(command, bookingIds));
             facts.computeIfPresent(booking, (id, f) -> new BookingFacts(id, BookingStatus.CONFIRMED,
-                    BookingSource.ONLINE, customer, f.insideOperatingSession()));
+                    BookingSource.ONLINE, customer, f.insideOperatingSession(), false));
             return facts;
         }
 

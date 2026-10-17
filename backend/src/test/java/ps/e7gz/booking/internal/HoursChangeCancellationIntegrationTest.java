@@ -589,45 +589,85 @@ class HoursChangeCancellationIntegrationTest extends IntegrationTest {
     }
 
     /**
-     * C2, Option A - PROVISIONAL (Amr, 15 Oct 2026), PENDING SAYED'S FINAL PRODUCT REVIEW: an AWAITING booking at and
-     * one second past its stored Late Confirm deadline, whose T2 has not run, is still AWAITING and is cancelled by the
-     * hours change - no timeout is synthesised, T2 is superseded. FR-AVL-15 may give T2 the state from the deadline;
-     * if Sayed decides so, this test changes with {@code HoursChangeCancellation#requireOpenAttempts}.
+     * FR-AVL-15 (Amr's E7-113 decision 1, replacing C2 Option A): the stored Late Confirm deadline is authoritative. At
+     * and one second past it, an AWAITING booking whose window is not paused belongs to T2 even though T2 has not run:
+     * the port refuses it as an uncancellable id (D3) and the whole command rolls back - the booking stays AWAITING
+     * with its open attempt, its hold and its T2 for the worker, and nothing is written.
      */
     @ParameterizedTest
     @EnumSource(value = Boundary.class, names = {"AT", "ONE_SECOND_AFTER"})
-    void c2ProvisionalAnAwaitingBookingAtOrPastItsDeadlineWhoseT2HasNotRunIsCancelled(Boundary side) {
+    void anAwaitingBookingAtOrPastItsDeadlineBelongsToT2AndIsNeverCancelledByTheHoursChange(Boundary side) {
         OnlineBookingWorld world = OnlineBookingWorld.create();
         UUID late = awaiting(world, world.customer.id(), world.start());
-        Attempt initiated = attempt(late).orElseThrow();
-        // the stored deadline only moves later (guard_late_confirmation_mutation): put it just after the initiation,
-        // wait until a deadline one second before "now" is still after the initiation, then move it inside the command
-        LateConfirmDb.deadlineAt(late, initiated.initiatedAt().plusMillis(1));
-        Deadlines.awaitDatabaseClockPast(initiated.initiatedAt().plusSeconds(2));
-        assertThat(job(t2(late)).orElseThrow().status()).as("T2 has not run").isEqualTo("PENDING");
+        Attempt initiated = deadlineMovable(late);
+        List<String> typesBefore = outboxTypes(late);
+        List<HistoryRow> historyBefore = history(late);
+
+        assertThatThrownBy(() -> runner.run(TestCommands.under(scope(late), command -> {
+            Deadlines.moveTo(command, side, "booking.late_confirmation.expires_at", initiated.id());
+            port.cancel(command, world.venue.id(), world.account.id(), List.of(late));
+            return command.commandNow();
+        }))).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("the Late Confirm deadline has passed: T2 owns the booking (FR-AVL-15)");
+
+        assertThat(booking(late).status()).isEqualTo("AWAITING_CUSTOMER_CONFIRMATION");
+        assertThat(history(late)).isEqualTo(historyBefore);
+        Attempt open = attempt(late).orElseThrow();
+        assertThat(open.closedAt()).isNull();
+        assertThat(open.response()).isNull();
+        assertThat(job(t2(late)).orElseThrow().status()).as("T2 keeps the booking").isEqualTo("PENDING");
+        assertThat(count("loyalty.booking_fee_refund WHERE booking_id = :id", late)).isZero();
+        assertThat(outboxTypes(late)).isEqualTo(typesBefore);
+        assertThat(reservations(late)).filteredOn(r -> r.id().equals(open.holdId()))
+                .singleElement().satisfies(hold -> assertThat(hold.active()).isTrue());
+        assertLateConfirmIntegrityHolds(late);
+    }
+
+    /**
+     * The other side of the boundary: one second before the stored deadline the window is still open, so the hours
+     * change cancels the AWAITING booking - no timeout is synthesised, T2 is superseded.
+     */
+    @Test
+    void anAwaitingBookingOneSecondBeforeItsDeadlineIsCancelledByTheHoursChange() {
+        OnlineBookingWorld world = OnlineBookingWorld.create();
+        UUID late = awaiting(world, world.customer.id(), world.start());
+        Attempt initiated = deadlineMovable(late);
         List<String> typesBefore = outboxTypes(late);
 
         Instant[] deadline = new Instant[1];
         Instant at = runner.run(TestCommands.under(scope(late), command -> {
-            deadline[0] = Deadlines.moveTo(command, side, "booking.late_confirmation.expires_at", initiated.id());
+            deadline[0] = Deadlines.moveTo(command, Boundary.ONE_SECOND_BEFORE, "booking.late_confirmation.expires_at",
+                    initiated.id());
             port.cancel(command, world.venue.id(), world.account.id(), List.of(late));
             return command.commandNow();
         }));
 
-        assertThat(at).isEqualTo(side.now(deadline[0]));
+        assertThat(at).isEqualTo(Boundary.ONE_SECOND_BEFORE.now(deadline[0]));
         assertThat(booking(late).status()).isEqualTo("CANCELLED");
         assertThat(booking(late).terminalReason()).as("never CUSTOMER_RECONFIRM_TIMEOUT here").isEqualTo(REASON);
         assertCancelledBy(world, late, BookingStatus.AWAITING_CUSTOMER_CONFIRMATION, at);
         Attempt closed = attempt(late).orElseThrow();
         assertThat(closed.closedAt()).isEqualTo(at);
         assertThat(closed.response()).as("no TIMED_OUT is synthesised").isNull();
-        assertThat(closed.respondedAt()).isNull();
         assertThat(closed.expiresAt()).as("the deadline stays as recorded").isEqualTo(deadline[0]);
         assertThat(job(t2(late)).orElseThrow().status()).isEqualTo("SUPERSEDED");
         assertRefundedOnTheCancellation(late, world.customer.id());
         assertOnlyBookingCancelledAdded(late, typesBefore);
         LATE_CONFIRM_EVENTS.forEach(type -> assertThat(events(type, late)).as(type).isEmpty());
         assertLateConfirmIntegrityHolds(late);
+    }
+
+    /**
+     * The stored deadline only moves later (guard_late_confirmation_mutation): put it just after the initiation and wait
+     * until a deadline one second before "now" is still after the initiation, so a command can move it to its own
+     * instant's boundary. T2 has not run.
+     */
+    private static Attempt deadlineMovable(UUID late) {
+        Attempt initiated = attempt(late).orElseThrow();
+        LateConfirmDb.deadlineAt(late, initiated.initiatedAt().plusMillis(1));
+        Deadlines.awaitDatabaseClockPast(initiated.initiatedAt().plusSeconds(2));
+        assertThat(job(t2(late)).orElseThrow().status()).as("T2 has not run").isEqualTo("PENDING");
+        return initiated;
     }
 
     /**

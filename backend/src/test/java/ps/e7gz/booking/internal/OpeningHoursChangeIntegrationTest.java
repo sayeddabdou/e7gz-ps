@@ -58,6 +58,8 @@ import ps.e7gz.common.codes.AuthSubjectType;
 import ps.e7gz.common.codes.ConsoleType;
 import ps.e7gz.common.codes.PlayMode;
 import ps.e7gz.common.command.CommandRunner;
+import ps.e7gz.common.command.CommandScope;
+import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
@@ -68,7 +70,10 @@ import ps.e7gz.messaging.api.IntegrationEvents;
 import ps.e7gz.messaging.api.StoredResponse;
 import ps.e7gz.support.IntegrationTest;
 import ps.e7gz.support.PostgresTestContainer;
+import ps.e7gz.support.boundary.TestCommands;
 import ps.e7gz.support.fixtures.Fixtures;
+import ps.e7gz.venue.api.OperatingSessions;
+import ps.e7gz.venue.api.SessionSnapshots;
 import ps.e7gz.venue.internal.OpeningHoursService;
 
 /**
@@ -135,6 +140,12 @@ class OpeningHoursChangeIntegrationTest extends IntegrationTest {
 
     @Autowired
     OpeningHoursService hoursService;
+
+    @Autowired
+    OperatingSessions operatingSessions;
+
+    @Autowired
+    SessionSnapshots sessionSnapshots;
 
     private CorrelationId.Scope correlation;
     private ExecutorService pool;
@@ -562,6 +573,47 @@ class OpeningHoursChangeIntegrationTest extends IntegrationTest {
         assertThat(LateConfirmDb.attempt(awaiting.bookingId())).contains(attemptBefore);
         assertThat(jobStatus(LateConfirmDb.t2(awaiting.bookingId()))).isEqualTo("PENDING");
         assertThat(auditOf(correlationId)).as("the Owner Password success row went with it").isEmpty();
+    }
+
+    // ================================================================ decision 1: the Late Confirm deadline (FR-AVL-15)
+
+    /**
+     * Amr's E7-113 decision 1: once an AWAITING booking's stored Late Confirm deadline is reached (window not paused),
+     * T2 owns it even though T2 has not run. A preview made while its window was open listed it; the commit recomputes
+     * the set under the locks without it, so the token no longer matches: the established 409, nothing written, and the
+     * refreshed preview no longer lists it - the booking stays AWAITING for T2.
+     */
+    @Test
+    void anAwaitingBookingWhoseDeadlineIsReachedAfterThePreviewIsLeftToT2AndTheCommitIsRefreshed() throws Exception {
+        Venue v = venue();
+        Booked awaiting = awaiting(v, v.world.customer.id(), v.world.room, v.tomorrowAt(12));
+        Booked pending = online(v, v.world.anotherCustomer(), v.room2, v.tomorrowAt(12));
+        Map<String, Object> change = v.closingTomorrow();
+        JsonNode preview = preview(v, change).andReturn().getResponse().getContentAsString().transform(this::data);
+        assertThat(ids(preview)).containsExactlyInAnyOrder(awaiting.bookingId(), pending.bookingId());
+        // FIXTURE (setup only, no racer running): the stored deadline is reached, as if the window had been shorter
+        LateConfirmDb.deadlineAt(awaiting.bookingId(), LateConfirmDb.attempt(awaiting.bookingId()).orElseThrow()
+                .initiatedAt().plusMillis(1));
+        Map<UUID, Snapshot> before = snapshots(List.of(awaiting.bookingId(), pending.bookingId()));
+        UUID correlationId = UUID.randomUUID();
+
+        expectError(commit(v, change, preview.path("previewToken").asText(), PIN, UUID.randomUUID(), correlationId),
+                409, ApiErrorCode.AFFECTED_SET_CHANGED_REFRESH_PREVIEW);
+
+        assertThat(snapshots(List.of(awaiting.bookingId(), pending.bookingId()))).isEqualTo(before);
+        assertThat(writesOf(correlationId)).isZero();
+        assertThat(v.version()).isEqualTo(1);
+        assertThat(jobStatus(LateConfirmDb.t2(awaiting.bookingId()))).as("T2 keeps it").isEqualTo("PENDING");
+        JsonNode refreshed = preview(v, change).andExpect(jsonPath("$.data.ownerPasswordRequired").value(false))
+                .andReturn().getResponse().getContentAsString().transform(this::data);
+        assertThat(ids(refreshed)).containsExactly(pending.bookingId());
+
+        UUID committed = UUID.randomUUID();
+        commit(v, change, refreshed.path("previewToken").asText(), null, UUID.randomUUID(), committed)
+                .andExpect(status().isOk());
+        assertCancelledByTheChange(v, pending.bookingId(), terminalAt(pending.bookingId()), committed);
+        assertThat(VenueAnswerDb.booking(awaiting.bookingId()).status()).isEqualTo("AWAITING_CUSTOMER_CONFIRMATION");
+        assertThat(jobStatus(LateConfirmDb.t2(awaiting.bookingId()))).isEqualTo("PENDING");
     }
 
     // ================================================================ outcomes

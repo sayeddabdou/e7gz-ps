@@ -81,10 +81,10 @@ import ps.e7gz.venue.api.HoursChangeBookings;
  * guarded {@code Deadlines.move}, inside that racer's own transaction - the decision is still the real handler's or
  * the real port's.
  *
- * <p>C2, Option A - PROVISIONAL (Amr, 15 Oct 2026), PENDING SAYED'S FINAL PRODUCT REVIEW: an AWAITING booking at or
- * past its stored deadline whose T2 has not committed is still AWAITING, and O5 may cancel it. T2-A, T2-D and the C2
- * boundary tests rest on it; if Sayed decides FR-AVL-15 gives T2 the state from the deadline, they change with
- * {@code HoursChangeCancellation}.
+ * <p>FR-AVL-15 (Amr's E7-113 decision 1, replacing C2 Option A): the stored deadline is authoritative. At or past it,
+ * an AWAITING booking whose window is not paused belongs to T2 even before T2 commits: O5 is refused and writes
+ * nothing, and the real T2 then times it out (T2-A, the C2 boundary). O5 still wins a booking whose deadline is ahead
+ * of its instant, even when T2's job is already due (T2-D): T2 then finds its job superseded.
  */
 class HoursChangeRaceLateConfirmIntegrationTest extends IntegrationTest {
 
@@ -144,7 +144,7 @@ class HoursChangeRaceLateConfirmIntegrationTest extends IntegrationTest {
     // ---------------------------------------------------------------- T2-A: O5 commits, then T2 fires
 
     @Test
-    void t2A_o5CommitsFirstThenTheRealT2WorkerCannotLeaseItsSupersededJob() {
+    void t2A_pastTheDeadlineO5IsRefusedAndTheRealT2WorkerThenTimesTheBookingOut() {
         OnlineBookingWorld world = OnlineBookingWorld.create();
         Late late = awaiting(world);
         WorkerProbe probe = new WorkerProbe(realT2(), null, null);
@@ -152,23 +152,21 @@ class HoursChangeRaceLateConfirmIntegrationTest extends IntegrationTest {
         DueJobs due = DueJobs.of(context, t2);
         Instant deadline = makeT2Due(due, late);
         List<String> outboxBefore = outbox(late);
-
-        Instant at = runner.run(o5(world, late, null, null));
-
-        assertThat(at).as("C2 Option A: past the deadline, T2 not committed").isAfter(deadline);
-        assertCancelledByTheHoursChange(world, late, at, deadline);
-        assertTimer(t2(late.id()), "SUPERSEDED", 0);
-        assertTimer(t3(late.id()), "SUPERSEDED", 0);
-        assertNewEvents(late, outboxBefore, IntegrationEvents.BOOKING_CANCELLED + " " + late.id(),
-                IntegrationEvents.RESERVATION_RELEASED + " " + late.holdId());
         Committed before = committed(late);
+        O5Probe o5 = new O5Probe();
 
-        assertThat(due.fire(t2(late.id()))).as("the worker settles nothing").isFalse();
-        assertThat(due.fire(t2(late.id()))).as("nor on a second poll").isFalse();
+        assertO5RefusedForT2(() -> runner.run(o5(world, late, o5, null)));
 
-        assertThat(t2.fires()).as("job_lease refused the superseded T2: the handler never ran").isZero();
-        assertThat(committed(late)).as("every committed fact, the timers included").isEqualTo(before);
-        assertThat(events(IntegrationEvents.LATE_CONFIRM_TIMED_OUT, late.id())).isEmpty();
+        assertThat(o5.attempts()).as("O5 ran once and was refused").isEqualTo(1);
+        assertThat(o5.cancelledRuns()).isZero();
+        assertThat(committed(late)).as("O5 wrote nothing: still AWAITING, T2 still PENDING").isEqualTo(before);
+
+        assertThat(due.fire(t2(late.id()))).as("the real worker fired T2").isTrue();
+        assertThat(t2.fires()).isEqualTo(1);
+        assertThat(probe.outcome()).isInstanceOf(JobOutcome.Done.class);
+        assertTimedOutByT2(late, deadline);
+        assertNewEvents(late, outboxBefore, IntegrationEvents.LATE_CONFIRM_TIMED_OUT + " " + late.id(),
+                IntegrationEvents.RESERVATION_RELEASED + " " + late.holdId());
     }
 
     // ---------------------------------------------------------------- T2-B: T2 commits, then O5
@@ -253,13 +251,14 @@ class HoursChangeRaceLateConfirmIntegrationTest extends IntegrationTest {
     // ---------------------------------------------------------------- T2-D: O5 in flight, T2 waits
 
     @Test
-    void t2D_anO5InFlightMakesTheT2WorkerWaitThenO5CommitsAndTheWorkerCannotLease() throws Exception {
+    void t2D_beforeTheDeadlineAnO5InFlightMakesTheDueT2WorkerWaitThenO5CommitsAndTheWorkerCannotLease()
+            throws Exception {
         OnlineBookingWorld world = OnlineBookingWorld.create();
         Late late = awaiting(world);
         WorkerProbe probe = new WorkerProbe(realT2(), null, null);
         GatedCommandJobHandler t2 = GatedCommandJobHandler.counting(probe);
         DueJobs due = DueJobs.of(context, t2);
-        Instant deadline = makeT2Due(due, late);
+        Instant deadline = makeT2DueBeforeItsDeadline(due, late);
         List<String> outboxBefore = outbox(late);
         O5Probe o5 = new O5Probe();
         o5.gate();
@@ -285,7 +284,7 @@ class HoursChangeRaceLateConfirmIntegrationTest extends IntegrationTest {
         }
 
         assertThat(t2.fires()).as("job_lease refused the superseded T2: the handler never ran").isZero();
-        assertThat(at).as("C2 Option A: past the deadline, T2 not committed").isAfter(deadline);
+        assertThat(at).as("O5's instant is before the stored deadline: the window is still open").isBefore(deadline);
         assertCancelledByTheHoursChange(world, late, at, deadline);
         assertTimer(t2(late.id()), "SUPERSEDED", 0);
         assertTimer(t3(late.id()), "SUPERSEDED", 0);
@@ -453,15 +452,16 @@ class HoursChangeRaceLateConfirmIntegrationTest extends IntegrationTest {
                 IntegrationEvents.RESERVATION_RELEASED + " " + late.holdId());
     }
 
-    // ================================================================ C2 boundary (PROVISIONAL Option A)
+    // ================================================================ C2 boundary (FR-AVL-15, decision 1)
 
     /**
-     * C2 boundary, O5 first: O5's own command stores the deadline on {@code side} of its instant (exactly at it, or one
-     * second before it) and cancels; held open, the real T2 worker waits behind it, then cannot lease.
+     * C2 boundary, O5 first: O5's own command stores the deadline exactly at its instant or one second before it (so
+     * the instant is at or past the deadline) - the port refuses the booking as T2's and the whole command, the moved
+     * deadline included, rolls back. The real T2 worker then times the booking out.
      */
     @ParameterizedTest
     @EnumSource(value = Boundary.class, names = {"AT", "ONE_SECOND_AFTER"})
-    void c2Boundary_o5AtOrPastTheDeadlineCommitsFirstWhileT2Waits(Boundary side) throws Exception {
+    void c2Boundary_o5AtOrPastTheDeadlineIsRefusedAndT2ThenTimesTheBookingOut(Boundary side) {
         OnlineBookingWorld world = OnlineBookingWorld.create();
         Late late = awaiting(world);
         WorkerProbe probe = new WorkerProbe(realT2(), null, null);
@@ -469,37 +469,21 @@ class HoursChangeRaceLateConfirmIntegrationTest extends IntegrationTest {
         DueJobs due = DueJobs.of(context, t2);
         makeT2DueForTheBoundary(due, late);
         List<String> outboxBefore = outbox(late);
+        Committed before = committed(late);
         O5Probe o5 = new O5Probe();
-        o5.gate();
-        Instant at;
-        try {
-            Future<Instant> cancelling = pool.submit(() -> inOwnCorrelation(o5(world, late, o5, side)));
-            LockWaits.await(o5.reached, TIMEOUT, cancelling, "O5's gate after the port's cancel");
-            assertUncommittedO5(o5, late);
 
-            Future<Boolean> worker = pool.submit(() -> due.fire(t2(late.id())));
-            List<Waiter> waiting = LockWaits.awaitBlockedBy(o5.pid(), worker, TIMEOUT);
-            log.info("C2 {} O5-first: O5 backend {} holds its transaction open; waiting behind it: {}", side,
-                    o5.pid(), waiting);
-            assertThat(t2.fires()).isZero();
+        assertO5RefusedForT2(() -> runner.run(o5(world, late, o5, side)));
 
-            o5.release();
-            at = cancelling.get(TIMEOUT.toSeconds(), TimeUnit.SECONDS);
-            assertThat(worker.get(TIMEOUT.toSeconds(), TimeUnit.SECONDS)).as("the worker settles nothing").isFalse();
-            assertWorkerWaitedBehind(waiting, o5.pid());
-            assertThat(o5.attempts()).isEqualTo(1);
-        } finally {
-            o5.release();
-        }
+        assertThat(o5.pinnedDeadline()).as("O5 read the deadline it had just pinned on the %s side", side)
+                .isNotNull();
+        assertThat(o5.attempts()).isEqualTo(1);
+        assertThat(o5.cancelledRuns()).isZero();
+        assertThat(committed(late)).as("nothing of O5, its deadline move included").isEqualTo(before);
 
-        Instant deadline = o5.pinnedDeadline();
-        assertThat(at).as("O5's instant is exactly on the %s side of the stored deadline", side)
-                .isEqualTo(side.now(deadline));
-        assertThat(t2.fires()).isZero();
-        assertCancelledByTheHoursChange(world, late, at, deadline);
-        assertTimer(t2(late.id()), "SUPERSEDED", 0);
-        assertTimer(t3(late.id()), "SUPERSEDED", 0);
-        assertNewEvents(late, outboxBefore, IntegrationEvents.BOOKING_CANCELLED + " " + late.id(),
+        assertThat(due.fire(t2(late.id()))).as("the real worker fired T2").isTrue();
+        assertThat(probe.outcome()).isInstanceOf(JobOutcome.Done.class);
+        assertTimedOutByT2(late, late.initiatedAt().plusMillis(1));
+        assertNewEvents(late, outboxBefore, IntegrationEvents.LATE_CONFIRM_TIMED_OUT + " " + late.id(),
                 IntegrationEvents.RESERVATION_RELEASED + " " + late.holdId());
     }
 
@@ -773,6 +757,31 @@ class HoursChangeRaceLateConfirmIntegrationTest extends IntegrationTest {
         }));
         assertDueAndStillAwaiting(late, t2(late.id()), deadline, deadline);
         return deadline;
+    }
+
+    /**
+     * T2 made due ({@code DueJobs.makeDue}) while its stored deadline is still ahead, for O5 to win before it: FIXTURE
+     * {@link LateConfirmDb#deadlineAt} as {@link #makeT2Due}, then one committed command moves the deadline (guarded,
+     * later only) a minute past its own instant and makes T2 due at that instant.
+     */
+    private Instant makeT2DueBeforeItsDeadline(DueJobs due, Late late) {
+        LateConfirmDb.deadlineAt(late.id(), late.initiatedAt().plusMillis(1));
+        Instant[] dueAt = new Instant[1];
+        Instant deadline = runner.run(TestCommands.under(scope(late), command -> {
+            Instant at = command.commandNow().plus(Duration.ofMinutes(1));
+            Deadlines.move(command, EXPIRES_AT, late.attemptId(), at);
+            due.makeDue(command, t2(late.id()), command.commandNow());
+            dueAt[0] = command.commandNow();
+            return at;
+        }));
+        assertDueAndStillAwaiting(late, t2(late.id()), dueAt[0], deadline);
+        return deadline;
+    }
+
+    /** O5 on a booking whose stored deadline is reached: the port's caller-defect refusal, nothing written. */
+    private static void assertO5RefusedForT2(org.assertj.core.api.ThrowableAssert.ThrowingCallable call) {
+        assertThatThrownBy(call).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("the Late Confirm deadline has passed: T2 owns the booking (FR-AVL-15)");
     }
 
     /**

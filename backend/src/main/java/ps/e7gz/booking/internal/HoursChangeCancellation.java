@@ -73,11 +73,12 @@ import ps.e7gz.venue.api.HoursChangeBookings.BookingFacts;
  * id fails the whole command, never skipped.
  *
  * <p>E7-113 Phase 3C working decisions (Amr, 15 Oct 2026; NOT yet approved by Sayed - needed before the final merge):
- * C1 - an AWAITING booking's history actor is VENUE with the authenticated Venue Account, as D1; C2 (Option A) - an
- * AWAITING booking past its stored Late Confirm deadline whose T2 has not run is still AWAITING, holds its hold and is
- * cancelled with {@code VENUE_OPENING_HOURS_CHANGED}, its T2 superseded - no timeout is synthesised here. Open for
- * Sayed: FR-AVL-15 may give T2 the state once the deadline is reached ({@link #requireOpenAttempts} is the one place
- * that decision would change); C3 - a paused Late Confirm window ends at the command instant, its attempt's
+ * C1 - an AWAITING booking's history actor is VENUE with the authenticated Venue Account, as D1; C2 - replaced by
+ * Amr's E7-113 engineering decision 1 (FR-AVL-15): the stored Late Confirm deadline is authoritative, so an AWAITING
+ * booking whose window is not paused and whose deadline is at or before the command instant belongs to T2 even before
+ * the worker runs - it is not in the affected set and, named here anyway, fails the command
+ * ({@code BookingFacts.lateConfirmTimedOut}; no timeout is synthesised here either); C3 - a paused Late Confirm window
+ * ends at the command instant, its attempt's
  * {@code expires_at} and {@code warning_sent_at} stay as recorded (the Phase 3A closure; E7-83 is not touched).
  */
 @Component
@@ -192,9 +193,13 @@ class HoursChangeCancellation {
         boolean cancellable = switch (status) {
             case PENDING -> booking.source() == BookingSource.ONLINE;
             case CONFIRMED -> booking.source() == BookingSource.ONLINE || session.insideOperatingSession();
-            case AWAITING_CUSTOMER_CONFIRMATION -> booking.source() == BookingSource.ONLINE;
+            case AWAITING_CUSTOMER_CONFIRMATION -> booking.source() == BookingSource.ONLINE
+                    && !session.lateConfirmTimedOut();
             case VENUE_RESPONSE_EXPIRED, ACTIVE, NO_SHOW, COMPLETED, REJECTED, CANCELLED -> false;
         };
+        if (status == BookingStatus.AWAITING_CUSTOMER_CONFIRMATION && session.lateConfirmTimedOut()) {
+            throw integrityFailure(bookingId, "the Late Confirm deadline has passed: T2 owns the booking (FR-AVL-15)");
+        }
         if (!cancellable) {
             throw integrityFailure(bookingId, status + " " + booking.source()
                     + (session.insideOperatingSession() ? "" : " outside an Operating Session")
@@ -213,10 +218,8 @@ class HoursChangeCancellation {
     }
 
     /**
-     * Every AWAITING booking of the batch has an open Late Confirmation, in one read before any write. C2 (Option A,
-     * provisional): its stored deadline is deliberately not compared with the command instant - a booking still
-     * AWAITING is cancelled even past it. Were Sayed to give T2 the state at the deadline (FR-AVL-15), the check would
-     * be added here.
+     * Every AWAITING booking of the batch has an open Late Confirmation, in one read before any write. Its deadline was
+     * already compared with the command instant in {@link #validated} (FR-AVL-15, decision 1), from the same read.
      */
     private void requireOpenAttempts(CommandContext context, List<Cancellable> batch) {
         List<UUID> awaiting = batch.stream().map(Cancellable::booking)

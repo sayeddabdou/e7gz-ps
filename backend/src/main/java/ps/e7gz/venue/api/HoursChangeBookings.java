@@ -45,10 +45,10 @@ public interface HoursChangeBookings {
      * <p>E7-113 Phase 3B working decisions (Amr, 15 Oct 2026; pending Sayed's final review): the history rows record
      * actor VENUE with {@code venueAccountId} (D1); a PENDING booking past its deadline is cancelled, never expired
      * here (D2); an unexpected id fails the whole command (D3). Phase 3C working decisions (Amr, 15 Oct 2026; NOT yet
-     * approved by Sayed): an AWAITING booking's history actor is the same (C1); an AWAITING booking past its stored
-     * Late Confirm deadline whose T2 has not run is still AWAITING and is cancelled, never timed out here (C2, Option A
-     * - FR-AVL-15 may give T2 the state at the deadline: open for Sayed); a paused window ends at the command instant,
-     * the attempt's deadline and warning kept as recorded (C3).
+     * approved by Sayed): an AWAITING booking's history actor is the same (C1); a paused window ends at the command
+     * instant, the attempt's deadline and warning kept as recorded (C3). Amr's E7-113 decision 1 (FR-AVL-15) replaces
+     * C2 Option A: an AWAITING booking whose unpaused Late Confirm deadline is reached belongs to T2 - it is never in
+     * the affected set, and naming it here is a caller defect like any other uncancellable id.
      *
      * @param venueAccountId the authenticated Venue Account making the change, recorded as the history actor
      */
@@ -59,9 +59,13 @@ public interface HoursChangeBookings {
      *                               Bookings); {@code null} for a Manual Booking
      * @param insideOperatingSession whether the Booking snapshotted an Operating Session; a Manual Booking made outside
      *                               published hours did not (FR-MAN-03) and is never affected by an hours change
+     * @param lateConfirmTimedOut    an AWAITING booking whose open Late Confirmation is not paused and whose stored
+     *                               deadline is at or before the command instant: T2 owns its outcome (FR-AVL-15, Amr's
+     *                               E7-113 decision 1 superseding C2 Option A), even before the worker has run, so an
+     *                               hours change never cancels it
      */
     record BookingFacts(UUID bookingId, BookingStatus status, BookingSource source, UUID customerId,
-                        boolean insideOperatingSession) {
+                        boolean insideOperatingSession, boolean lateConfirmTimedOut) {
 
         /** A cancellation of it needs the Owner Password: a CONFIRMED Online Booking or an AWAITING one (FR-VEN-25). */
         public boolean protectedCancellation() {
