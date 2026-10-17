@@ -224,6 +224,77 @@ class MigrationFilesTest {
                 .doesNotContain("GRANT");
     }
 
+    /**
+     * v1.1.36 (E7-113): the migration is the model's own block, byte for byte; the table model has the column, its
+     * check and the partial unique index; each of the four functions is its previous definition plus exactly the
+     * superseded-session lines, and both constraints keep their names with a current-sessions predicate.
+     */
+    @Test
+    void operatingSessionSupersessionMigrationIsTheModelsV1136Block() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String open = "<genericsql name=\"v1_1_36_operating_session_supersession\">\n\t<definition> <![CDATA[\n";
+        int start = model.indexOf(open);
+        assertThat(start).as("v1.1.36 block in the .dbm").isPositive();
+        String block = model.substring(start + open.length(), model.indexOf("]]> </definition>", start));
+        String migration = classpath("db/migration/V202610171400__operating_session_supersession.sql");
+        assertThat(migration).isEqualTo(block);
+
+        int tableStart = model.indexOf("<table name=\"operating_session\" layers");
+        String table = model.substring(tableStart, model.indexOf("</table>", tableStart));
+        assertThat(table).contains("<column name=\"superseded_at\">")
+                .contains("<constraint name=\"ck_operating_session_superseded_after_generation\"")
+                .doesNotContain("<constraint name=\"uq_operating_session_day\"");
+        assertThat(model).contains("<index name=\"uq_operating_session_day\" table=\"venue.operating_session\"")
+                .contains("<predicate> <![CDATA[superseded_at IS NULL]]> </predicate>");
+        assertThat(migration).contains("ADD COLUMN superseded_at timestamp with time zone;")
+                .contains("DROP CONSTRAINT uq_operating_session_day;")
+                .contains("CREATE UNIQUE INDEX uq_operating_session_day ON venue.operating_session\n"
+                        + "    USING btree (venue_id, operating_day)\n    WHERE superseded_at IS NULL;")
+                .contains("ADD CONSTRAINT ex_session_no_overlap\n"
+                        + "    EXCLUDE USING gist (venue_id WITH =, session_period WITH &&)\n"
+                        + "    WHERE (superseded_at IS NULL);")
+                .doesNotContain("UPDATE ")
+                .doesNotContain("DISABLE TRIGGER")
+                .doesNotContain("GRANT");
+
+        String baseline = classpath("db/migration/V1__baseline.sql");
+        String identifiers = classpath("db/migration/V202609291200__guard_error_identifiers.sql");
+        assertAddedLinesOnly(baseline, migration, "CREATE OR REPLACE FUNCTION venue.guard_operating_session()",
+                " -- v1.1.36: supersession is set once, on a referenced session only, and a superseded session never "
+                        + "changes again.\n"
+                        + " IF TG_OP='UPDATE' AND OLD.superseded_at IS NOT NULL AND NEW IS DISTINCT FROM OLD THEN\n"
+                        + "   RAISE EXCEPTION 'A superseded Operating Session is history and never changes';\n"
+                        + " END IF;\n"
+                        + " IF TG_OP='UPDATE' AND NEW.superseded_at IS NOT NULL AND OLD.superseded_at IS NULL"
+                        + " AND NOT v_referenced THEN\n"
+                        + "   RAISE EXCEPTION 'Only a referenced Operating Session is superseded; an unreferenced one is "
+                        + "regenerated';\n"
+                        + " END IF;\n");
+        assertAddedLinesOnly(baseline, migration, "CREATE OR REPLACE FUNCTION booking.validate_booking_insert_snapshot()",
+                "        IF os.superseded_at IS NOT NULL THEN  -- v1.1.36: a new booking never snapshots superseded "
+                        + "history\n"
+                        + "            RAISE EXCEPTION 'a new booking cannot snapshot a superseded Operating Session';\n"
+                        + "        END IF;\n",
+                "              AND s.superseded_at IS NULL  -- v1.1.36: only a current session is published\n");
+        assertAddedLinesOnly(baseline, migration, "CREATE OR REPLACE FUNCTION operations.guard_emergency_lifecycle()",
+                "       AND s.superseded_at IS NULL  -- v1.1.36: the current session, never a superseded historical one\n");
+        String intake = "CREATE OR REPLACE FUNCTION booking.validate_online_booking_intake()";
+        assertThat(function(migration, intake)).isEqualTo(function(identifiers, intake).replace(
+                "s.session_period @> NEW.created_at\n", "s.session_period @> NEW.created_at AND s.superseded_at IS NULL\n"));
+    }
+
+    /** {@code open}'s definition in {@code migration} is its definition in {@code earlier} plus exactly {@code lines}. */
+    private static void assertAddedLinesOnly(String earlier, String migration, String open, String... lines) {
+        String migrated = function(migration, open);
+        String stripped = migrated;
+        for (String line : lines) {
+            assertThat(migrated).as(open).containsOnlyOnce(line);
+            stripped = stripped.replace(line, "");
+        }
+        assertThat(stripped).as("%s is its previous definition plus the v1.1.36 lines", open)
+                .isEqualTo(function(earlier, open));
+    }
+
     /** One {@code CREATE OR REPLACE FUNCTION ... $function$;} definition, from its first line to its end. */
     private static String function(String sql, String open) {
         int start = sql.indexOf(open);

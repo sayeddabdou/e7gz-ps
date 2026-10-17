@@ -207,6 +207,31 @@ Unchanged on purpose: `booking.derive_commitment_period` and `tr_00_booking_comm
 
 - Tests: `LateConfirmAwaitingOverlapTest` (migrated database, application commands through `CommandRunner`) — an AWAITING booking coexists with an overlapping counted commitment of the same customer and keeps its `commitment_period`; it still counts towards the 4-commitment limit; a new Online Booking overlapping it is refused `OVERLAPPING_COMMITMENT` by the creation predicate (and the database alone would accept it); back-to-back stays allowed; two CONFIRMED bookings, and an AWAITING → CONFIRMED move, that overlap are still refused by the constraint; concurrent creations against an AWAITING booking all fail. `MigrationSafetyTest` (the migration on the seeded database); the `.dbm`/migration identity check in `MigrationFilesTest`.
 
+### v1.1.36 — a superseded referenced Operating Session beside its day's current session (E7-113, 17 Oct 2026)
+
+Amr's engineering decision for E7-113, 17 Oct 2026 (not yet a Product Owner decision); FR-VEN-22, FR-VEN-23 step 8, FR-VEN-24, FR-BOK-05, FR-BOK-08/09, FR-MAN-03. `.dbm` block `v1_1_36_operating_session_supersession` = Flyway `V202610171400__operating_session_supersession.sql`, byte for byte; the `operating_session` table model gains `superseded_at` and `ck_operating_session_superseded_after_generation`, and `uq_operating_session_day` is modelled as a partial unique index. **For Product Owner review.**
+
+**Why.** A session a booking references is a historical snapshot that never changes (`venue.guard_operating_session`). With one session per venue and operating day (`uq_operating_session_day`) and no two overlapping sessions (`ex_session_no_overlap`), an hours change left such a day with its OLD session: no session for the new hours could exist, so new Online bookings inside the new hours were refused; and a Manual walk-in inside the old window had to snapshot the old session, so a later unrelated hours change counted it as affected and would have cancelled it.
+
+| Object | Change |
+|---|---|
+| `venue.operating_session.superseded_at` | New, nullable. Set once, at the hours change that stops generating the session, on a referenced session only; NULL = the current session of its day. Column comment |
+| `ck_operating_session_superseded_after_generation` | New check: `superseded_at IS NULL OR superseded_at >= generated_at` |
+| `uq_operating_session_day` | Constraint dropped; partial unique index under the same name on `(venue_id, operating_day) WHERE superseded_at IS NULL` |
+| `ex_session_no_overlap` | Dropped and re-added under the same name, columns, operators and method (`gist`: `venue_id WITH =`, `session_period WITH &&`); predicate `superseded_at IS NULL`. Constraint comment |
+| `venue.guard_operating_session()` | V1 definition plus: a superseded session never changes again; only a referenced session can be superseded |
+| `booking.validate_booking_insert_snapshot()` | V1 definition plus: a new booking never snapshots a superseded session; a Manual Booking is inside a published session only when a CURRENT session contains it |
+| `booking.validate_online_booking_intake()` | v1.1.28 definition plus: the intake window is read from current sessions only |
+| `operations.guard_emergency_lifecycle()` | V1 definition plus: an Emergency's current session is a current session |
+
+**No backfill.** `superseded_at` starts NULL on every existing row. A pinned row written before this change cannot be told safely from a referenced row that still matches the hours by SQL alone (before E7-113 such a row was not restamped), so none is guessed. The application's next regeneration of the venue (the nightly horizon extension or the next hours change) supersedes a pinned row through the guarded path and creates the current session; until then such a row behaves as before. The narrower uniqueness and exclusion only remove rows from the constraints, so existing data satisfies them.
+
+**Application (same change).** `SessionPlan` supersedes a referenced future session the hours no longer generate and inserts the day's current session, in the hours change's or the nightly run's own transaction; started sessions are left as they are. Every reader of a venue's sessions (intake, Late Confirm, Find Available, Nearest Availability, open now, business dates, the schedule, the regeneration itself) reads current sessions only; a booking keeps reading its own historical session by `operating_session_id`.
+
+Unchanged on purpose: every other table, column, constraint, trigger and grant; booking reads by `operating_session_id`; `tournament.assert_tournament_aggregate` (reads its tournament's session by id); the guard identifier mapping (`ex_session_no_overlap` keeps its name). Upgrade seeds: `upgrade-seed/V202610131300.sql` (sessions and a referenced booking as they exist before the migration) and `upgrade-seed/V202610171400.sql` (a superseded session beside its day's current one, with a booking on each). Platform-lane table (Venue) with Engine-lane booking guards: needs both owners' review.
+
+- Tests: `MigrationSafetyTest` (the migration on the seeded database; both seeds); the `.dbm`/migration identity check in `MigrationFilesTest`; `SessionPlanTest`; `OpeningHoursChangeIntegrationTest` (a closed day and a shortened day after an hours change: the historical row and its bookings stay, the current session is created, Online intake inside the new hours succeeds and outside it is refused, availability readers agree, a Manual walk-in in the old window has no snapshot and is not cancelled by a later unrelated hours change); `OperatingSessionSupersessionDbTest` (the database guards: supersession once, only on referenced rows, superseded history never snapshotted, current-only uniqueness and overlap).
+
 ## Product Owner decisions (26 Sep 2026)
 
 A1 overlapping Maintenance allowed · A2 booking horizon is a deployment setting, default 120 days · A4 rate-limit table approved · A5 reports FR-AUD-11/12 at launch · A6 venue alerts = live + Web Push + audible alert · A8 configurable = fees and points only · A9 Venue never returns to ONBOARDING · A10 login limits stored as `LOGIN` rate-limit rows · A11 read-only customer wallet screen (PCR-004, no DB change) · review self-reporting allowed, duplicate open reports blocked.
