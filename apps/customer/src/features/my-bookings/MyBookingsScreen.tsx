@@ -8,6 +8,7 @@ import { errorCodeOf, type ApiClient } from "../../api";
 import { en as t } from "../../i18n/en";
 import { formatMoney } from "../discovery/format";
 import { NotificationInbox } from "../notifications/NotificationInbox";
+import { LateConfirmPanel } from "../late-confirm";
 import { bookingEventText, bookingReasonText, bookingStatusText, canRequestCancellation } from "./bookingText";
 import { customerBookingErrorMessage } from "./errorMessages";
 
@@ -174,8 +175,8 @@ function BookingDetailScreen({
   const keyRef = useRef<string | undefined>(undefined);
   const inFlightRef = useRef(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     setError(undefined);
     try {
       const { data, error: responseError } = await api.GET("/api/v1/customer/bookings/{bookingId}", {
@@ -184,18 +185,18 @@ function BookingDetailScreen({
       if (data) { setBooking(data.data); setServerTime(data.meta.serverTime); }
       else setError(customerBookingErrorMessage(errorCodeOf(responseError)));
     } catch { setError(t.myBookings.errors.network); }
-    finally { setLoading(false); }
+    finally { if (showLoading) setLoading(false); }
   }, [api, bookingId]);
-  useEffect(() => { void Promise.resolve().then(load); }, [load]);
+  useEffect(() => { void Promise.resolve().then(() => load()); }, [load]);
 
   const cancel = async () => {
     if (inFlightRef.current) return;
     inFlightRef.current = true;
     setCancelling(true);
     setCancelError(undefined);
-    const key = keyRef.current ?? idempotencyKeyFactory();
-    keyRef.current = key;
     try {
+      const key = keyRef.current ?? idempotencyKeyFactory();
+      keyRef.current = key;
       const { data, error: responseError } = await api.POST("/api/v1/customer/bookings/{bookingId}/cancel", {
         params: { path: { bookingId }, header: { "Idempotency-Key": key } },
       });
@@ -213,8 +214,17 @@ function BookingDetailScreen({
   const canCancel = canRequestCancellation(booking.status, booking.startAt, serverTime);
   return (
     <View style={styles.screen}>
-      <BackHeader title={t.myBookings.detailTitle} onBack={onBack} />
+      <BackHeader title={booking.status === "AWAITING_CUSTOMER_CONFIRMATION" ? t.lateConfirm.title : t.myBookings.detailTitle} onBack={onBack} />
       <ScrollView contentContainerStyle={styles.content}>
+        {booking.status === "AWAITING_CUSTOMER_CONFIRMATION" && booking.lateConfirm ? (
+          <LateConfirmPanel
+            api={api}
+            booking={booking}
+            idempotencyKeyFactory={idempotencyKeyFactory}
+            onReload={() => load(false)}
+            serverTime={serverTime}
+          />
+        ) : null}
         <View style={styles.card}>
           <View style={styles.rowBetween}><Text style={styles.cardTitle}>{booking.venue.name}</Text><StatusPill status={booking.status} /></View>
           <Text style={styles.body}>{resourceLabel(booking.resource)}</Text>
@@ -294,8 +304,8 @@ function formatDateTime(value: string) { return `${formatDate(value)} · ${forma
 function createIdempotencyKey(): string {
   if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
   const bytes = new Uint8Array(16);
-  if (typeof globalThis.crypto?.getRandomValues === "function") globalThis.crypto.getRandomValues(bytes);
-  else for (let index = 0; index < bytes.length; index += 1) bytes[index] = Math.floor(Math.random() * 256);
+  if (typeof globalThis.crypto?.getRandomValues !== "function") throw new Error("Secure randomness is unavailable");
+  globalThis.crypto.getRandomValues(bytes);
   bytes[6] = (bytes[6]! & 0x0f) | 0x40;
   bytes[8] = (bytes[8]! & 0x3f) | 0x80;
   const hex = [...bytes].map((value) => value.toString(16).padStart(2, "0")).join("");

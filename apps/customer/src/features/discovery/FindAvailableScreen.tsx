@@ -4,7 +4,7 @@ import type { components } from "@e7gz/api-client";
 import { nativeLogicalSpacing, nativeTokens } from "@e7gz/tokens/native";
 import { errorCodeOf, errorFieldOf, type ApiClient } from "../../api";
 import { en as t } from "../../i18n/en";
-import { allHalfHourTimes, buildDateOptions, durationOptions, formatTwelveHourTime, type DateOption } from "../booking/selectionOptions";
+import { allQuarterHourTimes, buildDateOptions, durationOptions, formatTwelveHourTime, type DateOption } from "../booking/selectionOptions";
 import { discoveryErrorMessage } from "./errorMessages";
 
 type Activity = components["schemas"]["Activity"];
@@ -60,7 +60,7 @@ export function FindAvailableScreen({ api, areas, initialActivity, referenceDate
     <Text style={styles.label}>{t.findAvailable.date}</Text>
     <ScrollView horizontal contentContainerStyle={styles.row} showsHorizontalScrollIndicator={false}>{dateOptions.map((option) => <DateChoice key={option.value} option={option} selected={option.value === date} onPress={() => { setDate(option.value); setStartTime(""); setError(undefined); }} />)}</ScrollView>
     <Text style={styles.label}>{t.findAvailable.startTime}</Text>
-    {date ? <View accessibilityLabel={t.findAvailable.startTime} style={styles.timeGrid}>{allHalfHourTimes.map((value) => <Choice key={value} label={formatTwelveHourTime(value)} selected={value === startTime} time onPress={() => { setStartTime(value); setError(undefined); }} />)}</View> : <Text style={styles.hint}>{t.booking.chooseDateFirst}</Text>}
+    {date ? <View accessibilityLabel={t.findAvailable.startTime} style={styles.timeGrid}>{allQuarterHourTimes.map((value) => <Choice key={value} label={formatTwelveHourTime(value)} selected={value === startTime} time onPress={() => { setStartTime(value); setError(undefined); }} />)}</View> : <Text style={styles.hint}>{t.booking.chooseDateFirst}</Text>}
     <Text style={styles.label}>{t.booking.duration}</Text>
     <ScrollView horizontal contentContainerStyle={styles.row} showsHorizontalScrollIndicator={false}>{durationOptions.map((value) => <Choice key={value} label={t.booking.durationValue(value)} selected={value === durationMinutes} onPress={() => setDurationMinutes(value)} />)}</ScrollView>
     {error ? <View accessibilityRole="alert" style={styles.error}><Text style={styles.errorText}>{error}</Text></View> : null}
