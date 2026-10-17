@@ -74,8 +74,11 @@ import ps.e7gz.venue.internal.OpeningHoursService;
 /**
  * E7-113 Phase 4: the opening-hours commit end to end ({@code POST /api/v1/venue/opening-hours/commit}, FR-VEN-23
  * steps 6–9, FR-VEN-24…FR-VEN-28) on genuine bookings - created, accepted, expired and Late Confirmed by their own
- * commands - in a venue whose hours were saved through the same API (full days, so the venue is open now and every
- * later day has its own session). The change closes tomorrow's weekday: tomorrow's bookings are newly outside the hours.
+ * commands - in a venue whose hours were saved through the same API: 24-hour sessions that open at a whole hour chosen
+ * from the database clock so that the current session contains now with at least 10 hours left (Online intake needs
+ * the venue open now and at least 10 minutes before the session ends, FR-BOK-08/09). Every instant is placed relative to
+ * those sessions, so the fixture holds at any time of day; no business rule is relaxed. "Tomorrow" is the next
+ * operating day; the change closes its weekday, so its bookings are newly outside the hours.
  *
  * <p>Fault injection is test-only and lives in the database of the test: a trigger this class creates and drops, scoped
  * to one test venue's rows, raising either right after the Loyalty write or at COMMIT. Nothing in production is changed
@@ -165,9 +168,9 @@ class OpeningHoursChangeIntegrationTest extends IntegrationTest {
     @Test
     void theCommitSavesTheHoursAndCancelsExactlyTheNewlyUncoveredBookingsInOneBatch() throws Exception {
         Venue v = venue();
-        Instant noon = v.tomorrowAt(12);
-        Booked pending = online(v, v.world.customer.id(), v.world.room, noon);
-        Booked confirmed = confirmed(v, v.world.anotherCustomer(), v.room2, noon);
+        Instant slot = v.tomorrowAt(12);
+        Booked pending = online(v, v.world.customer.id(), v.world.room, slot);
+        Booked confirmed = confirmed(v, v.world.anotherCustomer(), v.room2, slot);
         Booked awaiting = awaiting(v, v.world.anotherCustomer(), v.room3, v.tomorrowAt(15));
         UUID manual = manual(v, v.world.room, v.tomorrowAt(18));
         // Not affected: another day, a booking the customer already cancelled, a VENUE_RESPONSE_EXPIRED one (it holds
@@ -612,7 +615,10 @@ class OpeningHoursChangeIntegrationTest extends IntegrationTest {
 
     // ================================================================ fixtures
 
-    /** A venue with saved full-day hours (open now; every later day its own session), three PS5 rooms and a PIN. */
+    /**
+     * A venue with saved 24-hour sessions opening at {@code open} (the current one started today and has at least 10
+     * hours left), three PS5 rooms and a PIN. {@code today} is the current operating day.
+     */
     private final class Venue {
 
         final OnlineBookingWorld world;
@@ -620,31 +626,37 @@ class OpeningHoursChangeIntegrationTest extends IntegrationTest {
         final Fixtures.Resource room3;
         final String token;
         final LocalDate today;
+        final LocalTime open;
 
         Venue(OnlineBookingWorld world, Fixtures.Resource room2, Fixtures.Resource room3, String token,
-              LocalDate today) {
+              LocalDate today, LocalTime open) {
             this.world = world;
             this.room2 = room2;
             this.room3 = room3;
             this.token = token;
             this.today = today;
+            this.open = open;
         }
 
-        Instant dayAt(int days, int hour) {
-            return today.plusDays(days).atTime(hour, 0).atZone(CAIRO).toInstant();
+        /** {@code hoursAfterOpen} (0…23) into the session of the operating day {@code days} after today. */
+        Instant dayAt(int days, int hoursAfterOpen) {
+            return today.plusDays(days).atTime(open).plusHours(hoursAfterOpen).atZone(CAIRO).toInstant();
         }
 
-        Instant tomorrowAt(int hour) {
-            return dayAt(1, hour);
+        Instant tomorrowAt(int hoursAfterOpen) {
+            return dayAt(1, hoursAfterOpen);
         }
 
-        /** A whole hour at least 30 minutes away, today: inside today's started session. */
+        /** A whole hour at least 30 minutes away, inside the current (started) session. */
         Instant todayLater() {
             Instant now = OnlineBookingWorld.dbNow().plus(Duration.ofMinutes(30));
             Instant start = now.atZone(CAIRO).plusHours(1).withMinute(0).withSecond(0).withNano(0).toInstant();
-            assertThat(LocalDate.ofInstant(start.plus(Duration.ofHours(1)), CAIRO)).as("not past midnight")
-                    .isEqualTo(today);
+            assertThat(start.plus(Duration.ofHours(1))).as("inside the current session").isBefore(dayAt(1, 0));
             return start;
+        }
+
+        Map<String, Object> proposal(List<Map<String, Object>> days) {
+            return OpeningHoursChangeIntegrationTest.proposal(open, days);
         }
 
         int tomorrowWeekday() {
@@ -673,23 +685,31 @@ class OpeningHoursChangeIntegrationTest extends IntegrationTest {
                         INSERT INTO iam.venue_owner_secret (venue_account_id, owner_password_hash, changed_at, version)
                         VALUES (:account, :hash, now() - interval '1 day', 0)""")
                 .param("account", world.account.id()).param("hash", passwords.encode(PIN)).update();
-        LocalDate today = LocalDate.ofInstant(OnlineBookingWorld.dbNow(), CAIRO);
-        assertThat(LocalTime.ofInstant(OnlineBookingWorld.dbNow(), CAIRO))
-                .as("Online intake closes 10 minutes before today's session ends at midnight")
-                .isBefore(LocalTime.of(22, 0));
-        Venue v = new Venue(world, room2, room3, accessTokens.issue(AuthSubjectType.VENUE, world.account.id()), today);
-        Map<String, Object> fullDays = proposal(List.of());
+        // The sessions open at max(0, hour now - 12): the current session (today's) started at most 12h59m ago, so it
+        // has at least 11 hours left (10 across a spring-forward change) and the next operating day's session starts
+        // that far ahead - at any time of day. The fixture needs only a few of those hours (todayLater, intake cutoff).
+        java.time.LocalDateTime now = java.time.LocalDateTime.ofInstant(OnlineBookingWorld.dbNow(), CAIRO);
+        LocalTime open = LocalTime.of(Math.max(0, now.getHour() - 12), 0);
+        Venue v = new Venue(world, room2, room3, accessTokens.issue(AuthSubjectType.VENUE, world.account.id()),
+                now.toLocalDate(), open);
+        Map<String, Object> fullDays = v.proposal(List.of());
         String token = preview(v, fullDays).andExpect(jsonPath("$.data.affected.length()").value(0))
                 .andReturn().getResponse().getContentAsString().transform(this::data).path("previewToken").asText();
         commit(v, fullDays, token, null, UUID.randomUUID(), UUID.randomUUID()).andExpect(status().isOk());
         assertThat(v.version()).isEqualTo(1);
+        assertThat(OWNER.sql("""
+                        SELECT count(*) FROM venue.operating_session
+                         WHERE venue_id = :v AND operating_day = :d AND session_period @> clock_timestamp()
+                           AND upper(session_period) > clock_timestamp() + interval '4 hours'""")
+                .param("v", world.venue.id()).param("d", v.today).query(Long.class).single())
+                .as("today's session is open now with hours left").isEqualTo(1);
         return v;
     }
 
-    private static Map<String, Object> proposal(List<Map<String, Object>> days) {
+    private static Map<String, Object> proposal(LocalTime open, List<Map<String, Object>> days) {
         Map<String, Object> proposal = new LinkedHashMap<>();
-        proposal.put("defaultOpen", "00:00:00");
-        proposal.put("defaultClose", "00:00:00");
+        proposal.put("defaultOpen", open + ":00");
+        proposal.put("defaultClose", open + ":00");
         proposal.put("defaultFullDay", true);
         proposal.put("days", days);
         return proposal;
@@ -764,8 +784,9 @@ class OpeningHoursChangeIntegrationTest extends IntegrationTest {
                                                    String ownerPassword, UUID key) {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> days = (List<Map<String, Object>>) proposal.get("days");
-        OpeningHoursService.Proposal hours = new OpeningHoursService.Proposal(LocalTime.MIDNIGHT, LocalTime.MIDNIGHT,
-                true, days.stream().map(d -> new OpeningHoursService.Day((Integer) d.get("weekday"),
+        LocalTime open = LocalTime.parse((String) proposal.get("defaultOpen"));
+        OpeningHoursService.Proposal hours = new OpeningHoursService.Proposal(open, open, true,
+                days.stream().map(d -> new OpeningHoursService.Day((Integer) d.get("weekday"),
                         ps.e7gz.common.codes.OpeningDayMode.valueOf((String) d.get("mode")), null, null)).toList());
         String fingerprint = String.format("%064x", new java.math.BigInteger(1,
                 (proposal + "|" + previewToken + "|" + ownerPassword).getBytes(java.nio.charset.StandardCharsets.UTF_8))
