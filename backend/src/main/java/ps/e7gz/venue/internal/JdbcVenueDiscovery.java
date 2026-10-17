@@ -117,9 +117,13 @@ class JdbcVenueDiscovery implements VenueDiscovery {
 
     static final String OPEN_STATE = """
             SELECT EXISTS (SELECT 1 FROM venue.operating_session s
-                            WHERE s.venue_id = :venue AND s.session_period @> CAST(:at AS timestamptz)) AS open_now,
+                            WHERE s.venue_id = :venue AND s.session_period @> CAST(:at AS timestamptz)
+                              AND """ + OperatingSessionStore.EFFECTIVE + """
+            ) AS open_now,
                    (SELECT min(lower(s.session_period)) FROM venue.operating_session s
-                     WHERE s.venue_id = :venue AND lower(s.session_period) > CAST(:at AS timestamptz)) AS next_start
+                     WHERE s.venue_id = :venue AND lower(s.session_period) > CAST(:at AS timestamptz)
+                       AND """ + OperatingSessionStore.EFFECTIVE + """
+            ) AS next_start
             """;
 
     private final JdbcClient jdbc;

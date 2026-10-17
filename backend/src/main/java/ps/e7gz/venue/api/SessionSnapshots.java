@@ -18,10 +18,18 @@ import ps.e7gz.common.command.CommandContext;
 public interface SessionSnapshots {
 
     /**
-     * The Venue's session whose {@code session_period} {@code [start, end)} contains {@code at}; empty when none does.
-     * Reads on the command's own transaction.
+     * The Venue's session whose {@code session_period} {@code [start, end)} contains {@code at}, among those its current
+     * hours still offer; empty when none does. A historical session the hours no longer generate is never offered
+     * (Amr's E7-113 decision 2). Reads on the command's own transaction.
      */
     Optional<Session> containing(CommandContext command, UUID venueId, Instant at);
+
+    /**
+     * Any session row containing {@code at}, a superseded historical one included - exactly what
+     * {@code booking.validate_booking_insert_snapshot} requires a Manual Booking to snapshot (a Manual Booking may be
+     * made outside published hours, FR-MAN-03, so its permission never depends on a session). Only for that snapshot.
+     */
+    Optional<Session> anyContaining(CommandContext command, UUID venueId, Instant at);
 
     /** One session: its absolute {@code [start, end)} and the Venue-local wall clock it was generated from. */
     record Session(UUID id, LocalDate operatingDay, Instant start, Instant end, LocalDateTime localStart,

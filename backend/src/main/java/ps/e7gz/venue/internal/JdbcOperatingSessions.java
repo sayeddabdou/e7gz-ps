@@ -31,12 +31,17 @@ class JdbcOperatingSessions implements OperatingSessions {
                AND s.session_period @> CAST(:at AS timestamptz)
             """;
 
-    /** {@code upper(session_period)} is the first instant outside the session. */
+    /**
+     * {@code upper(session_period)} is the first instant outside the session. Only sessions the current hours still
+     * offer ({@link OperatingSessionStore#EFFECTIVE}): it answers "open now", intake and availability.
+     */
     static final String ENDING_AFTER = """
             SELECT s.operating_day, lower(s.session_period) AS start_at, upper(s.session_period) AS end_at
               FROM venue.operating_session s
              WHERE s.venue_id = :venueId
                AND upper(s.session_period) > CAST(:after AS timestamptz)
+               AND """ + OperatingSessionStore.EFFECTIVE + """
+
              ORDER BY lower(s.session_period)
             """;
 

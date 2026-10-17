@@ -616,6 +616,57 @@ class OpeningHoursChangeIntegrationTest extends IntegrationTest {
         assertThat(jobStatus(LateConfirmDb.t2(awaiting.bookingId()))).isEqualTo("PENDING");
     }
 
+    // ================================================================ decision 2: superseded historical sessions
+
+    /**
+     * Amr's E7-113 decision 2: tomorrow's session row stays (the cancelled bookings reference it, FR-VEN-22), but the
+     * day is closed now, so it is superseded - no new Online booking fits it (INTERVAL_NOT_WITHIN_ONE_SESSION), and the
+     * session readers behind intake, Find Available, Nearest Availability and Late Confirm no longer offer it. A Manual
+     * walk-in, which FR-MAN-03 allows outside published hours, still snapshots the row, because
+     * {@code booking.validate_booking_insert_snapshot} requires it of any session row containing it. A referenced
+     * session the new hours still generate (the day after) is restamped and keeps taking bookings.
+     */
+    @Test
+    void aSupersededHistoricalSessionNeverTakesANewBookingWhileAMatchingReferencedOneStillDoes() throws Exception {
+        Venue v = venue();
+        Booked pending = online(v, v.world.customer.id(), v.world.room, v.tomorrowAt(12));
+        Booked dayAfter = online(v, v.world.anotherCustomer(), v.world.room, v.dayAt(2, 12));
+        UUID tomorrowSession = sessionOf(pending.bookingId());
+        UUID dayAfterSession = sessionOf(dayAfter.bookingId());
+        Map<String, Object> change = v.closingTomorrow();
+        commit(v, change, previewToken(v, change), null, UUID.randomUUID(), UUID.randomUUID())
+                .andExpect(status().isOk());
+        assertThat(VenueAnswerDb.booking(pending.bookingId()).status()).isEqualTo("CANCELLED");
+        assertThat(OWNER.sql("SELECT count(*) FROM venue.operating_session WHERE id = :id")
+                .param("id", tomorrowSession).query(Long.class).single()).as("the historical row stays").isEqualTo(1);
+
+        // Online: tomorrow is closed, its kept row offers nothing.
+        assertThatThrownBy(() -> online(v, v.world.anotherCustomer(), v.room2, v.tomorrowAt(14)))
+                .isInstanceOfSatisfying(ApiException.class,
+                        e -> assertThat(e.code()).isEqualTo(ApiErrorCode.INTERVAL_NOT_WITHIN_ONE_SESSION));
+        // Manual: a walk-in outside published hours (FR-MAN-03); the database requires the row's snapshot.
+        UUID walkIn = manual(v, v.room3, v.tomorrowAt(14));
+        assertThat(sessionOf(walkIn)).as("tr_20 / validate_booking_insert_snapshot").isEqualTo(tomorrowSession);
+        // The readers behind intake and availability.
+        Instant noonTomorrow = v.tomorrowAt(12);
+        CommandScope venueOnly = CommandScope.shared(LockSet.builder().venues(v.world.venue.id()).build());
+        java.util.Optional<SessionSnapshots.Session> containing = runner.run(TestCommands.under(venueOnly,
+                ctx -> sessionSnapshots.containing(ctx, v.world.venue.id(), noonTomorrow)));
+        assertThat(containing).isEmpty();
+        List<OperatingSessions.SessionPeriod> upcoming = runner.run(TestCommands.under(venueOnly,
+                ctx -> operatingSessions.endingAfter(ctx, v.world.venue.id(), noonTomorrow.minusSeconds(1))));
+        assertThat(upcoming).extracting(OperatingSessions.SessionPeriod::operatingDay)
+                .doesNotContain(v.today.plusDays(1)).contains(v.today.plusDays(2));
+
+        // The referenced session the new hours still generate was restamped and keeps taking Online bookings.
+        assertThat(OWNER.sql("""
+                        SELECT s.generated_from_version = t.version FROM venue.operating_session s
+                          JOIN venue.venue_opening_template t ON t.id = s.opening_template_id WHERE s.id = :id""")
+                .param("id", dayAfterSession).query(Boolean.class).single()).isTrue();
+        Booked another = online(v, v.world.anotherCustomer(), v.room2, v.dayAt(2, 12));
+        assertThat(sessionOf(another.bookingId())).isEqualTo(dayAfterSession);
+    }
+
     // ================================================================ outcomes
 
     private void assertCancelledByTheChange(Venue v, UUID bookingId, Instant at, UUID correlationId) {

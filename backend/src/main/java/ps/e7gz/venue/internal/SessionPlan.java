@@ -14,9 +14,12 @@ import ps.e7gz.venue.internal.SessionGenerator.PlannedSession;
  * What a regeneration does to a venue's {@code venue.operating_session} rows (ADR-009), decided without touching the
  * database so the rules are testable on their own:
  * <ul>
- *   <li>A session a Booking or Tournament references is a historical snapshot (FR-VEN-22): it is never deleted or
- *       changed ({@code venue.guard_operating_session}). Its operating day keeps that session, even when the hours now
- *       say otherwise (PO decision 3 Oct 2026, E7-25), and the change is reported in {@link #pinnedDays}.</li>
+ *   <li>A session a Booking or Tournament references is a historical snapshot (FR-VEN-22): it is never deleted and its
+ *       bounds never change ({@code venue.guard_operating_session}). Its operating day keeps that session, even when
+ *       the hours now say otherwise (PO decision 3 Oct 2026, E7-25), and the change is reported in {@link #pinnedDays}.
+ *       Such a pinned row keeps its old {@code generated_from_version}, which marks it superseded: no new booking is
+ *       ever placed in it ({@link OperatingSessionStore#EFFECTIVE}; Amr's E7-113 decision 2). A referenced session that
+ *       still matches the hours is restamped like any other, so it stays effective.</li>
  *   <li>A session that has already started, or an earlier day's, is left as it is: a change applies to sessions still
  *       to come.</li>
  *   <li>Every other session is regenerated: kept when it is already exactly what the hours generate (only its
@@ -26,7 +29,8 @@ import ps.e7gz.venue.internal.SessionGenerator.PlannedSession;
  * </ul>
  *
  * @param delete     unreferenced sessions to delete
- * @param restamp    unreferenced sessions that already match, whose {@code generated_from_version} is brought up to date
+ * @param restamp    sessions still to come that already match (referenced or not), whose {@code generated_from_version}
+ *                   is brought up to date
  * @param insert     new sessions
  * @param kept       sessions left in place (referenced, started or earlier)
  * @param pinnedDays operating days whose referenced session differs from what the hours generate
@@ -77,8 +81,12 @@ record SessionPlan(List<UUID> delete, List<UUID> restamp, List<PlannedSession> i
             if (row.referenced() || started) {
                 kept.add(row);
                 occupied.put(row.operatingDay(), row);
-                if (row.referenced() && !started && !same(row, want, templateId, timezone)) {
-                    pinnedDays.add(row.operatingDay());
+                if (row.referenced() && !started) {
+                    if (!same(row, want, templateId, timezone)) {
+                        pinnedDays.add(row.operatingDay());
+                    } else if (row.version() != version) {
+                        restamp.add(row.id());                   // the guard allows the generation stamp to move
+                    }
                 }
             } else if (same(row, want, templateId, timezone)) {
                 occupied.put(row.operatingDay(), row);

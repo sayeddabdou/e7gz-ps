@@ -30,6 +30,22 @@ final class OperatingSessionStore {
 
     private static final Logger log = LoggerFactory.getLogger(OperatingSessionStore.class);
 
+    /**
+     * SQL condition on {@code venue.operating_session s}: the session is one the venue's current hours still offer (Amr's
+     * E7-113 decision 2). A referenced session the hours no longer generate is kept as a historical snapshot (FR-VEN-22)
+     * with the generation version it had; it is superseded when that version is older than the template's and it had
+     * not started when the template last changed ({@code updated_at}, the change's command instant) - a session that had
+     * started then stays in place and in use, as a change applies to sessions still to come. Every other future session
+     * is regenerated or restamped to the current version ({@link SessionPlan}). Readers that decide whether a new
+     * booking, a Late Confirmation or an availability answer fits the hours use it; readers of an existing booking's
+     * history (its business date) do not.
+     */
+    static final String EFFECTIVE = """
+            (NOT EXISTS (SELECT 1 FROM venue.venue_opening_template t
+                          WHERE t.id = s.opening_template_id
+                            AND s.generated_from_version < t.version
+                            AND lower(s.session_period) > t.updated_at))""";
+
     private OperatingSessionStore() {
     }
 

@@ -72,8 +72,8 @@ class ManualBookingBusinessDateBoundaryTest {
         when(availability.isFree(any(), eq(TABLE.resourceId()), any(), any())).thenReturn(PredicateResult.free());
         when(prices.resolve(any(), eq(TABLE.resourceId()), eq(null))).thenReturn(Optional.of(Money.of("100.00")));
         when(resources.name(any(), eq(TABLE.resourceId()))).thenReturn(Optional.of("Table 1"));
-        // [14:00 Friday, 02:00 Saturday): the session containing an instant, as the venue module answers
-        when(snapshots.containing(any(), eq(VENUE), any())).thenAnswer(call -> {
+        // [14:00 Friday, 02:00 Saturday): the session row containing an instant (the Manual snapshot, E7-113)
+        when(snapshots.anyContaining(any(), eq(VENUE), any())).thenAnswer(call -> {
             Instant at = call.getArgument(2);
             return !at.isBefore(OPENS) && at.isBefore(CLOSES) ? Optional.of(SESSION) : Optional.empty();
         });
