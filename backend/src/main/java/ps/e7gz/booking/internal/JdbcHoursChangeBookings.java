@@ -31,13 +31,13 @@ class JdbcHoursChangeBookings implements HoursChangeBookings {
             return Map.of();
         }
         return command.jdbc().sql("""
-                        SELECT id, status, source, operating_session_id IS NOT NULL AS inside_session
+                        SELECT id, status, source, customer_id, operating_session_id IS NOT NULL AS inside_session
                           FROM booking.booking
                          WHERE id IN (:ids)""")
                 .param("ids", bookingIds)
                 .query((rs, n) -> new BookingFacts(rs.getObject("id", UUID.class),
                         BookingStatus.valueOf(rs.getString("status")), BookingSource.valueOf(rs.getString("source")),
-                        rs.getBoolean("inside_session")))
+                        rs.getObject("customer_id", UUID.class), rs.getBoolean("inside_session")))
                 .list().stream()
                 .collect(Collectors.toMap(BookingFacts::bookingId, Function.identity()));
     }

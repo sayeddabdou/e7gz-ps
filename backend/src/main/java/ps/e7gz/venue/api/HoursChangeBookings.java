@@ -55,10 +55,13 @@ public interface HoursChangeBookings {
     void cancel(CommandContext command, UUID venueId, UUID venueAccountId, List<UUID> bookingIds);
 
     /**
+     * @param customerId             the Online Booking's Customer, whom a cancelling command must lock (with their
+     *                               Bookings); {@code null} for a Manual Booking
      * @param insideOperatingSession whether the Booking snapshotted an Operating Session; a Manual Booking made outside
      *                               published hours did not (FR-MAN-03) and is never affected by an hours change
      */
-    record BookingFacts(UUID bookingId, BookingStatus status, BookingSource source, boolean insideOperatingSession) {
+    record BookingFacts(UUID bookingId, BookingStatus status, BookingSource source, UUID customerId,
+                        boolean insideOperatingSession) {
 
         /** A cancellation of it needs the Owner Password: a CONFIRMED Online Booking or an AWAITING one (FR-VEN-25). */
         public boolean protectedCancellation() {

@@ -36,7 +36,8 @@ class IdempotencyScopeTest {
             "post /api/v1/venue/bookings/{bookingId}/cancel-confirmed",         // venue cancels CONFIRMED, E7-114
             "post /api/v1/venue/bookings/{bookingId}/check-in",                 // check-in, E7-59
             "post /api/v1/venue/bookings/{bookingId}/late-present",             // Mark Present - Late, E7-59
-            "post /api/v1/venue/bookings/{bookingId}/no-show");                 // no-show, E7-59
+            "post /api/v1/venue/bookings/{bookingId}/no-show",                  // no-show, E7-59
+            "post /api/v1/venue/opening-hours/commit");                         // hours change cancels, E7-113
 
     /** Writes outside ADR-015's scope, so the header is accepted but optional. */
     static final Map<String, List<String>> OPTIONAL = Map.of(
@@ -72,7 +73,7 @@ class IdempotencyScopeTest {
                     "delete /api/v1/venue/resources/{resourceId}/price-override", "post /api/v1/venue/images",
                     "put /api/v1/venue/images/order", "post /api/v1/venue/images/{imageId}/confirm",
                     "post /api/v1/venue/images/{imageId}/remove", "post /api/v1/venue/opening-hours/preview",
-                    "post /api/v1/venue/opening-hours/commit", "post /api/v1/venue/owner-password",
+                    "post /api/v1/venue/owner-password",
                     "patch /api/v1/venue/settings"),
             "admin notification \"try again\" (E7-43: re-sends a message, no commitment, money or points; a second "
                     + "press answers NOTIFICATION_DELIVERY_NOT_DEAD_LETTER)", List.of(

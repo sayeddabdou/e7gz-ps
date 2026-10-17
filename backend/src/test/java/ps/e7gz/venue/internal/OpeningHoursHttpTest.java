@@ -258,7 +258,7 @@ class OpeningHoursHttpTest extends IntegrationTest {
     }
 
     @Test
-    void aBookingTheNewHoursNoLongerCoverIsPreviewedAndTheCommitChangesNothing() throws Exception {
+    void aBookingTheNewHoursNoLongerCoverIsPreviewedAndTheCommitCancelsIt() throws Exception {
         save(proposal("12:00:00", "23:00:00", false, List.of()));
         LocalDate day = today.plusDays(10);
         Session session = session(day);
@@ -278,10 +278,13 @@ class OpeningHoursHttpTest extends IntegrationTest {
         assertThat(Instant.parse(preview.path("affected").get(0).path("startAt").asText()))
                 .isEqualTo(at(day.atTime(13, 0)));
 
-        // Cancelling it is not built yet: 501, and nothing changes.
-        commit(later, preview.path("previewToken").asText()).andExpect(status().isNotImplemented());
-        call(get(HOURS), null).andExpect(jsonPath("$.data.version").value(1));
-        assertThat(session(day.plusDays(1)).localStart()).isEqualTo(day.plusDays(1).atTime(12, 0));
+        // E7-113: the commit saves the hours and cancels it (a CONFIRMED Manual Booking needs no Owner Password).
+        commit(later, preview.path("previewToken").asText()).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.version").value(2));
+        assertThat(OWNER.sql("SELECT status || ' ' || terminal_reason FROM booking.booking WHERE id = :id")
+                .param("id", booking).query(String.class).single()).isEqualTo("CANCELLED VENUE_OPENING_HOURS_CHANGED");
+        assertThat(session(day)).as("the session the booking referenced keeps its row").isEqualTo(session);
+        assertThat(session(day.plusDays(1)).localStart()).isEqualTo(day.plusDays(1).atTime(15, 0));
 
         // Hours that still cover it affect nothing.
         preview(proposal("11:00:00", "23:00:00", false, List.of()))
@@ -395,7 +398,8 @@ class OpeningHoursHttpTest extends IntegrationTest {
     }
 
     private ResultActions commit(Map<String, Object> proposal, String previewToken) throws Exception {
-        return call(post(HOURS + "/commit"), Map.of("proposal", proposal, "previewToken", previewToken));
+        return call(post(HOURS + "/commit").header("Idempotency-Key", UUID.randomUUID().toString()),
+                Map.of("proposal", proposal, "previewToken", previewToken));
     }
 
     private String previewToken(Map<String, Object> proposal) throws Exception {

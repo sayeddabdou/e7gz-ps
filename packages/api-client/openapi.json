@@ -29477,24 +29477,24 @@
     },
     "/api/v1/venue/opening-hours/commit": {
       "post": {
+        "description": "Saves the hours and cancels every affected booking (CANCELLED / VENUE_OPENING_HOURS_CHANGED, FR-VEN-24, FR-VEN-28) in one transaction: the affected set is recomputed under the venue, room and customer locks, and a set different from the preview's is AFFECTED_SET_CHANGED_REFRESH_PREVIEW with nothing changed. The Owner Password (body, never a header) is needed only when a CONFIRMED online or an AWAITING booking is cancelled: absent is OWNER_PASSWORD_REQUIRED, wrong is OWNER_PASSWORD_INVALID (audited, FR-VEN-05). Each affected online booking gets a full Booking Fee refund decision; the customer is notified from BookingCancelled. A venue account disabled meanwhile is FORBIDDEN. Implemented by E7-25 and E7-113.",
         "operationId": "venueCommitOpeningHours",
         "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
           {
             "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
             "in": "header",
             "name": "X-Correlation-Id",
             "required": false,
             "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Accepted on every write; a replay returns the stored response (ADR-015).",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "format": "uuid",
               "type": "string"
             }
           }
@@ -29713,7 +29713,8 @@
                           "properties": {
                             "code": {
                               "enum": [
-                                "TOURNAMENT_CONFLICT_BLOCKS_SAVE"
+                                "TOURNAMENT_CONFLICT_BLOCKS_SAVE",
+                                "IDEMPOTENCY_KEY_REUSED"
                               ],
                               "type": "string"
                             }
@@ -29733,7 +29734,7 @@
                 }
               }
             },
-            "description": "error.code: TOURNAMENT_CONFLICT_BLOCKS_SAVE",
+            "description": "error.code: TOURNAMENT_CONFLICT_BLOCKS_SAVE | IDEMPOTENCY_KEY_REUSED",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {
