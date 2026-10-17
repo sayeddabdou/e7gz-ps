@@ -12,7 +12,7 @@ import ps.e7gz.common.command.CommandContext;
  * Read-only: which materialized Operating Session ({@code venue.operating_session}, ADR-009) of a Venue contains an
  * instant, for the business date (arch 04 section 4.3, {@code FR-AVL-14}), and which sessions are still to come, for
  * Nearest Availability. The materialized rows are the authority; the
- * weekly opening-hours template is never consulted. Only current sessions are read - superseded history (v1.1.36)
+ * weekly opening-hours template is never consulted. Only current sessions are read - superseded history (v1.1.37)
  * never is - and {@code ex_session_no_overlap} makes the answer unique among them.
  */
 public interface OperatingSessions {

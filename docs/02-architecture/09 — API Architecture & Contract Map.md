@@ -7,6 +7,8 @@
 **Updated:** 10 October 2026 — E7-43 decisions: admin "try again" for a dead-lettered notification delivery (`§5`) and `NOTIFICATION_DELIVERY_NOT_DEAD_LETTER` (`§1.5`).
 **Updated:** 11 October 2026 — Sprint 3 contract decisions (E7-54): phone change confirm route, password reset by phone OTP, email routes kept as stubs (`§3.1`); venue-side Late Confirm codes (`§4.1`).
 **Updated:** 12 October 2026 — E7-58 decision: the neutral Late Confirm failure records `LATE_CONFIRM_FAILED_BOOKING_LIMIT` only for the 4-commitment limit; a ban or deactivated account records no booking event (`§4.1`).
+**Updated:** 15 October 2026 — E7-56 decisions: admin alert list and acknowledge routes (`§5`) and `ADMIN_ALERT_ALREADY_ACKNOWLEDGED` (`§1.5`).
+**Updated:** 16 October 2026 — E7-57: `verify-phone` takes `password` for a code from `otp/send` (`§3.1`).
 
 **Style.** REST + JSON over HTTPS, base `/api/v1`, OpenAPI 3.1 generated from code, typed TypeScript clients generated for all three surfaces (`ADR-012`).
 
@@ -132,6 +134,7 @@ Representative members, each traced:
 | `IDEMPOTENCY_KEY_REUSED` | 422 | `ADR-015` |
 | `BOOKING_STATE_CHANGED` | **409** | the booking is no longer in the state the action needs (e.g. the customer cancelled a second before the venue's Accept): refresh and look again. Used by customer cancel, venue accept / reject / reject after expiry and cancel manual. Product Owner decision, 5 Oct 2026 (E7-39) |
 | `NOTIFICATION_DELIVERY_NOT_DEAD_LETTER` | **409** | admin "try again" on a delivery that is not `DEAD_LETTER` (already sent, or still being retried by the system): there is nothing to retry. Product Owner decision, 10 Oct 2026 (E7-43) |
+| `ADMIN_ALERT_ALREADY_ACKNOWLEDGED` | **409** | an admin acknowledges an alert another admin already acknowledged (one acknowledgement per alert, `admin.acknowledge_alert`); the same admin acknowledging again returns the alert. Product Owner decision, 15 Oct 2026 (E7-56) |
 | `CUSTOMER_NOT_ELIGIBLE` | 422 | `FR-BOK-14` — the venue's Accept fails the always-on customer check (banned, deleted or restricted); the booking stays PENDING, nothing is cancelled. Neutral: the venue is never told why. Product Owner decision D9, 10 Oct 2026 (E7-47) |
 
 **General codes** — Product Owner decision, 29 Sep 2026 (E7-12). Used only where no more specific code above applies:
@@ -207,7 +210,7 @@ sequenceDiagram
 |---|---|---|---|
 | `POST` | `/customer/auth/register` | — | `FR-ACC-01`, `FR-ACC-06` |
 | `POST` | `/customer/auth/otp/send` | — | `FR-ACC-04` |
-| `POST` | `/customer/auth/verify-phone` | — | `FR-ACC-02`, `FR-ACC-04` |
+| `POST` | `/customer/auth/verify-phone` `{otpChallengeId, code, password?}` — `password` is required for a code from `otp/send` (not the registration's own): it replaces the old password and revokes every session (Sprint 0 review, E7-57) | — | `FR-ACC-02`, `FR-ACC-04` |
 | `POST` | `/customer/auth/login` · `/refresh` · `/logout` | mixed | — |
 | `POST` | `/customer/auth/password-reset/request` · `/complete` | — | `FR-ACC-09` |
 | `GET` `PATCH` | `/customer/profile` | customer | `FR-ACC-07` |
@@ -438,6 +441,7 @@ Rules (`ADR-011`): the Owner Password is a PIN of exactly 4 digits (PCR-006). Bo
 | Fees | `GET PUT /admin/fees` — global booking fee, tournament creation fee | `FR-ADM-10` |
 | Global rules | `GET /admin/global-rules` — **read-only** for the no-show ladder | `FR-TRS-13`, `NFR-37` |
 | Notifications | `GET /admin/notifications` · `/alerts` | `FR-NTF-10` |
+| Admin alerts | `GET /admin/alerts?acknowledged=&kind=&severity=&cursor=&limit=` — open alerts by default, newest first, cursor paging · `POST /admin/alerts/{alertId}/acknowledge` `{reason?}` → 200 the alert; the same admin again returns it, another admin → 409 `ADMIN_ALERT_ALREADY_ACKNOWLEDGED` | `NFR-29`, `11 §5.4`, `12 §6` — Product Owner decision, 15 Oct 2026 (E7-56) |
 | Notification delivery recovery | `POST /admin/notification-deliveries/{deliveryId}/recover` `{reason}` → 204 — "try again" for one `DEAD_LETTER` delivery through `notification.recover_dead_letter` (audited); an outbox event in `DEAD_LETTER` stays final | `08 §4.3` — Product Owner decisions, 9 and 10 Oct 2026 (E7-41, E7-43) |
 | Global search | `GET /admin/search?q=` | `FR-ADM-01` |
 | Settings | `GET PATCH /admin/settings` | `FR-ADM-01` |

@@ -15,7 +15,7 @@ import ps.e7gz.venue.internal.SessionPlan.ExistingSession;
 import ps.e7gz.venue.internal.SessionPlan.Interval;
 
 /**
- * E7-25 step 3: referenced sessions are immutable and only unreferenced ones are regenerated. E7-113 (v1.1.36): a
+ * E7-25 step 3: referenced sessions are immutable and only unreferenced ones are regenerated. E7-113 (v1.1.37): a
  * referenced future session the hours no longer generate is superseded and its day gets the current session beside it;
  * a started one is left as it is. Monday 5 Oct 2026, Africa/Cairo (+03:00).
  */

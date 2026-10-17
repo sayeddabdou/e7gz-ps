@@ -23,7 +23,7 @@ import ps.e7gz.venue.internal.SessionPlan.ExistingSession;
 /**
  * The opening-hours tables and the materialized Operating Sessions (ADR-009), always on a command's transaction with
  * the venue locked. Session rows are written with ordinary DML; {@code venue.guard_operating_session} refuses any
- * change to a referenced one but its supersession (v1.1.36), and {@code ex_session_no_overlap} /
+ * change to a referenced one but its supersession (v1.1.37), and {@code ex_session_no_overlap} /
  * {@code uq_operating_session_day} stay the authority on overlap among current sessions.
  */
 final class OperatingSessionStore {
@@ -31,7 +31,7 @@ final class OperatingSessionStore {
     private static final Logger log = LoggerFactory.getLogger(OperatingSessionStore.class);
 
     /**
-     * SQL condition on {@code venue.operating_session s}: a current session, not superseded history (v1.1.36). A
+     * SQL condition on {@code venue.operating_session s}: a current session, not superseded history (v1.1.37). A
      * referenced session the hours no longer generate is kept as a historical snapshot (FR-VEN-22) with
      * {@code superseded_at} set, beside its day's current session ({@link SessionPlan}). Every reader of the venue's
      * sessions uses it - intake, Late Confirm, availability, open now, business dates, the schedule; a booking reads its

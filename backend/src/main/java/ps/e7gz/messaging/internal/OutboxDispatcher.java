@@ -11,6 +11,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import ps.e7gz.common.correlation.CorrelationId;
+import ps.e7gz.messaging.api.DeadLetterAlerts;
 import ps.e7gz.messaging.api.OutboxConsumer;
 import ps.e7gz.messaging.api.OutboxEvent;
 import ps.e7gz.messaging.api.PermanentDeliveryFailure;
@@ -24,8 +25,8 @@ import ps.e7gz.messaging.api.PermanentDeliveryFailure;
  *   <li>run every consumer of its type, with the event's correlation ID open on the thread;</li>
  *   <li>record the result through the {@code technical.outbox_*} functions: all accepted - {@code DISPATCHED}; a
  *       failure - back to {@code PENDING} after the back-off of arch 08 section 4.3; a {@link PermanentDeliveryFailure}
- *       or the last attempt failed - {@code DEAD_LETTER}, which is final (logged at ERROR, Sev-2; the admin alert is
- *       E7-56; PO decision 9 Oct 2026);</li>
+ *       or the last attempt failed - {@code DEAD_LETTER}, which is final (logged at ERROR, Sev-2, and one SEV_2 admin
+ *       alert in the same transaction, E7-56; PO decisions 9 and 12 Oct 2026);</li>
  *   <li>commit.</li>
  * </ol>
  * A dispatcher that dies mid-delivery leaves the event {@code PENDING} with the same attempt count: the lock goes with
@@ -45,14 +46,21 @@ final class OutboxDispatcher {
     private final JdbcOutboxStore store;
     private final DataSource dataSource;
     private final OutboxProperties properties;
+    private final List<DeadLetterAlerts> deadLetterAlerts;
 
     OutboxDispatcher(String name, ConsumerRegistry consumers, JdbcOutboxStore store, DataSource appDataSource,
                      OutboxProperties properties) {
+        this(name, consumers, store, appDataSource, properties, List.of());
+    }
+
+    OutboxDispatcher(String name, ConsumerRegistry consumers, JdbcOutboxStore store, DataSource appDataSource,
+                     OutboxProperties properties, List<DeadLetterAlerts> deadLetterAlerts) {
         this.name = name;
         this.consumers = consumers;
         this.store = store;
         this.dataSource = appDataSource;
         this.properties = properties;
+        this.deadLetterAlerts = List.copyOf(deadLetterAlerts);
     }
 
     String name() {
@@ -98,9 +106,11 @@ final class OutboxDispatcher {
             if (failure == null) {
                 store.markDispatched(jdbc, event.id());
             } else if (failure instanceof PermanentDeliveryFailure || attempt >= properties.maxAttempts()) {
-                store.markDeadLetter(jdbc, event.id(), describe(failure));
+                String lastError = describe(failure);
+                store.markDeadLetter(jdbc, event.id(), lastError);
                 log.error("Outbox {} {} DEAD_LETTER after attempt {} (Sev-2)", event.eventType(), event.id(), attempt,
                         failure);
+                alertDeadLetter(jdbc, event, lastError);
             } else {
                 store.markRetry(jdbc, event.id(), properties.delayAfter(attempt), describe(failure));
                 log.warn("Outbox {} {} attempt {} failed; retried in {}", event.eventType(), event.id(), attempt,
@@ -128,6 +138,25 @@ final class OutboxDispatcher {
             }
         }
         return failure;
+    }
+
+    /**
+     * The Platform Admin alert of a dead letter (E7-56, PO decision 12 Oct 2026): in this transaction, so it commits
+     * with the DEAD_LETTER mark - once per event. Behind a savepoint: an alert that fails is logged and rolled back alone,
+     * and the event still reaches DEAD_LETTER (it must never go back to being delivered because its alert failed).
+     */
+    private void alertDeadLetter(JdbcClient jdbc, OutboxEvent event, String lastError) {
+        for (DeadLetterAlerts alerts : deadLetterAlerts) {
+            jdbc.sql("SAVEPOINT dead_letter_alert").update();
+            try {
+                alerts.deadLettered(jdbc, event, lastError);
+                jdbc.sql("RELEASE SAVEPOINT dead_letter_alert").update();
+            } catch (RuntimeException alertFailure) {
+                jdbc.sql("ROLLBACK TO SAVEPOINT dead_letter_alert").update();
+                log.error("Outbox {} {} DEAD_LETTER raised no admin alert", event.eventType(), event.id(),
+                        alertFailure);
+            }
+        }
     }
 
     /** Class and message only: an exception message never carries an OTP, a secret or a full phone number. */

@@ -19,6 +19,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import ps.e7gz.admin.api.AdminAlerts;
 import ps.e7gz.booking.internal.VenueAnswerStore.Facts;
 import ps.e7gz.common.codes.ActorType;
 import ps.e7gz.common.codes.BookingSource;
@@ -52,7 +53,7 @@ class CustomerCancellationBoundaryTest {
     private final ScheduledJobs jobs = mock(ScheduledJobs.class);
     private final ResponseTimerPauses pauses = mock(ResponseTimerPauses.class);
     private final CustomerCancellation cancellation = new CustomerCancellation(store, ledger,
-            mock(BookingFeeRefunds.class), jobs, mock(Outbox.class), pauses);
+            mock(BookingFeeRefunds.class), jobs, mock(Outbox.class), pauses, mock(AdminAlerts.class));
     private CorrelationId.Scope correlation;
 
     @BeforeEach

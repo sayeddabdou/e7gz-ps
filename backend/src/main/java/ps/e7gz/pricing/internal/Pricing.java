@@ -20,6 +20,7 @@ import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.money.Money;
+import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.resource.api.ResourceCatalog;
 import ps.e7gz.venue.api.OwnerPasswordGate;
 import ps.e7gz.venue.api.VenueAccountVenues;
@@ -43,15 +44,17 @@ public class Pricing {
     private final OwnerPasswordGate gate;
     private final AuditWriter audit;
     private final JdbcClient jdbc;
+    private final Outbox outbox;
 
     public Pricing(OwnerPasswordGate gate, VenueAccountVenues accounts, VenueActivities activities,
-                   ResourceCatalog resources, AuditWriter audit, DataSource appDataSource) {
+                   ResourceCatalog resources, AuditWriter audit, DataSource appDataSource, Outbox outbox) {
         this.accounts = accounts;
         this.activities = activities;
         this.resources = resources;
         this.gate = gate;
         this.audit = audit;
         this.jdbc = JdbcClient.create(appDataSource);
+        this.outbox = outbox;
     }
 
     /** One venue default: console and play mode exactly for PlayStation ({@code ck_price_dimensions}). */
@@ -83,7 +86,7 @@ public class Pricing {
         List<DefaultPrice> defaults = validateDefaults(input);
         UUID correlationId = CorrelationId.require();
         gate.run(new PricingCommands.SetDefaults(venueAccountId, venueId, correlationId, defaults,
-                ownerPassword, gate, activities, audit), venueAccountId, correlationId);
+                ownerPassword, gate, activities, audit, outbox), venueAccountId, correlationId);
         return view(venueId);
     }
 
@@ -109,7 +112,7 @@ public class Pricing {
         }
         UUID correlationId = CorrelationId.require();
         gate.run(new PricingCommands.SetOverrides(venueAccountId, venueId, resourceId, correlationId, prices,
-                ownerPassword, gate, resources, audit), venueAccountId, correlationId);
+                ownerPassword, gate, resources, audit, outbox), venueAccountId, correlationId);
         return view(venueId);
     }
 

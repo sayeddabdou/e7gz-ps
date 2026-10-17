@@ -1,7 +1,6 @@
 package ps.e7gz.openapi;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -56,20 +55,11 @@ class Sprint3StubHttpTest extends IntegrationTest {
         notImplemented(get("/api/v1/venue/overview"), venue);                               // E7-115
     }
 
+    /** E7-57 built the profile and password reset; only the email pair waits for the PO's email decision. */
     @Test
-    void profileAndPasswordResetAreStubs() throws Exception {
-        notImplemented(get("/api/v1/customer/profile"), customer);                          // E7-57
-        notImplemented(json(patch("/api/v1/customer/profile"), "{\"fullName\":\"Omar Hassan\"}"), customer);
-        notImplemented(json(post("/api/v1/customer/profile/username"), "{\"username\":\"omar_h2\"}"), customer);
-        notImplemented(json(post("/api/v1/customer/profile/phone"), "{\"phone\":\"01012345678\"}"), customer);
-        notImplemented(json(post("/api/v1/customer/profile/phone/verify"), CHALLENGE), customer);
+    void emailChangeAndVerificationAreStillStubs() throws Exception {
         notImplemented(json(post("/api/v1/customer/profile/email"), "{\"email\":\"omar@example.com\"}"), customer);
         notImplemented(json(post("/api/v1/customer/profile/email/verify"), CHALLENGE), customer);
-        // Public: no token at all (arch 09 §1.2).
-        notImplemented(json(post("/api/v1/customer/auth/password-reset/request"), "{\"phone\":\"01012345678\"}"), null);
-        notImplemented(json(post("/api/v1/customer/auth/password-reset/complete"),
-                "{\"otpChallengeId\":\"" + UUID.randomUUID() + "\",\"code\":\"123456\",\"password\":\"secret123\"}"),
-                null);
     }
 
     private void notImplemented(MockHttpServletRequestBuilder request, String token) throws Exception {

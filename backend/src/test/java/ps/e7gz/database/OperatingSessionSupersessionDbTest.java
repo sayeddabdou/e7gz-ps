@@ -23,7 +23,7 @@ import ps.e7gz.support.PostgresTestContainer;
 import ps.e7gz.support.fixtures.Fixtures;
 
 /**
- * v1.1.36 (E7-113): the database side of a superseded Operating Session, written as the owner with every trigger on.
+ * v1.1.37 (E7-113): the database side of a superseded Operating Session, written as the owner with every trigger on.
  * A referenced session is superseded once and never changes again; an unreferenced one is never superseded; the day
  * then takes exactly one current session beside it, which may overlap the superseded history but no other current
  * session; a new booking never snapshots superseded history, and a Manual walk-in inside the old window only is out of

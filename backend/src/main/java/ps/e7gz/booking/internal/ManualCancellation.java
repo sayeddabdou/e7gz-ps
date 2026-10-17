@@ -6,6 +6,8 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import ps.e7gz.admin.api.AdminAlerts;
+import ps.e7gz.admin.api.NewAdminAlert;
 import ps.e7gz.booking.internal.VenueAnswerStore.Facts;
 import ps.e7gz.common.codes.ActorType;
 import ps.e7gz.common.codes.BookingSource;
@@ -52,15 +54,17 @@ class ManualCancellation {
     private final ScheduledJobs jobs;
     private final Outbox outbox;
     private final VenueEligibility venues;
+    private final AdminAlerts alerts;
 
     ManualCancellation(VenueAnswerStore store, VenueBookings bookings, ReservationLedger ledger, ScheduledJobs jobs,
-                       Outbox outbox, VenueEligibility venues) {
+                       Outbox outbox, VenueEligibility venues, AdminAlerts alerts) {
         this.store = store;
         this.bookings = bookings;
         this.ledger = ledger;
         this.jobs = jobs;
         this.outbox = outbox;
         this.venues = venues;
+        this.alerts = alerts;
     }
 
     VenueBookingRow cancel(CommandContext context, UUID bookingId, UUID venueId, UUID venueAccountId) {
@@ -104,9 +108,12 @@ class ManualCancellation {
     }
 
     /** D11 (E7-47): a CONFIRMED or ACTIVE booking without its reservation is a data defect - ERROR, 500, rolled back. */
-    private static IllegalStateException integrityFailure(UUID bookingId, String detail) {
+    private IllegalStateException integrityFailure(UUID bookingId, String detail) {
         log.error("Booking integrity failure: {} (bookingId={}, correlationId={})", detail, bookingId,
                 CorrelationId.current().map(UUID::toString).orElse("none"));
+        // E7-56 (PO decisions 10, 12 and 15 Oct 2026): SEV_1, committed on its own once this command has rolled back
+        CorrelationId.current().ifPresent(correlation -> alerts.raiseAfterRollback(
+                NewAdminAlert.bookingIntegrityFailure(bookingId, detail, correlation)));
         return new IllegalStateException("Booking " + bookingId + " integrity failure: " + detail);
     }
 }

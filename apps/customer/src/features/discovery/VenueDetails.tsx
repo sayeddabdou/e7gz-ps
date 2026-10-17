@@ -18,6 +18,8 @@ export function VenueDetails({
   activity: initialActivity,
   coordinates,
   focusVersion = 0,
+  onOpenMyBookings,
+  onOpenProfile,
   onBack,
 }: {
   api: ApiClient;
@@ -25,6 +27,8 @@ export function VenueDetails({
   activity: Activity;
   coordinates?: Coordinates | undefined;
   focusVersion?: number;
+  onOpenMyBookings?(): void;
+  onOpenProfile?(): void;
   onBack(): void;
 }) {
   const [activity, setActivity] = useState<Activity>(initialActivity);
@@ -76,8 +80,8 @@ export function VenueDetails({
   }
   if (!details) return null;
 
-  if (bookingOpen) {
-    return <BookingFlow api={api} initialActivity={activity} initialDetails={details} initialResourceId={bookingResourceId} onBack={() => setBookingOpen(false)} referenceDate={serverTime ? new Date(serverTime) : undefined} />;
+  if (bookingOpen && serverTime) {
+    return <BookingFlow api={api} initialActivity={activity} initialDetails={details} initialResourceId={bookingResourceId} initialServerTime={serverTime} onBack={() => setBookingOpen(false)} onOpenMyBookings={onOpenMyBookings} onOpenProfile={onOpenProfile} />;
   }
 
   const nearest = formatInstant(details.nearestAvailableAt);

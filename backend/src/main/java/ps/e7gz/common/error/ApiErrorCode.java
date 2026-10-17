@@ -101,6 +101,11 @@ public enum ApiErrorCode {
      */
     NOTIFICATION_DELIVERY_NOT_DEAD_LETTER(409),
     /**
+     * An admin acknowledges an alert another admin already acknowledged: one acknowledgement per alert
+     * ({@code admin.acknowledge_alert}). The same admin acknowledging again is not an error. PO decision 15 Oct 2026 (E7-56).
+     */
+    ADMIN_ALERT_ALREADY_ACKNOWLEDGED(409),
+    /**
      * The venue's Accept is refused because the customer is not eligible now (FR-BOK-14's always-on customer check:
      * banned, deleted or restricted). Neutral on purpose: the venue is never told why. The booking is unchanged. PO
      * decision D9, 10 Oct 2026 (E7-47).

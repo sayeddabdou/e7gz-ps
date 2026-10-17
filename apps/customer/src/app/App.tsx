@@ -89,7 +89,7 @@ const tournamentsIcon = tabIcon("tab-icon-tournaments", "trophy", "trophy-outlin
 const bookingsIcon = tabIcon("tab-icon-bookings", "calendar", "calendar-outline");
 const profileIcon = tabIcon("tab-icon-profile", "person", "person-outline");
 
-function HomeScreen({ api }: { api: ApiClient }) {
+function HomeScreen({ api, onOpenMyBookings, onOpenProfile }: { api: ApiClient; onOpenMyBookings(): void; onOpenProfile(): void }) {
   const [focusVersion, setFocusVersion] = useState(0);
   const initialFocus = useRef(true);
   useFocusEffect(useCallback(() => {
@@ -98,7 +98,7 @@ function HomeScreen({ api }: { api: ApiClient }) {
   }, []));
   return (
     <SafeAreaView edges={["top"]} style={styles.screen}>
-      <DiscoveryScreen api={api} focusVersion={focusVersion} />
+      <DiscoveryScreen api={api} focusVersion={focusVersion} onOpenMyBookings={onOpenMyBookings} onOpenProfile={onOpenProfile} />
     </SafeAreaView>
   );
 }
@@ -253,7 +253,7 @@ export function App({
                 title: t.tabs.home,
               }}
             >
-              {() => <HomeScreen api={api} />}
+              {() => <HomeScreen api={api} onOpenMyBookings={() => navigationRef.navigate("bookings")} onOpenProfile={() => navigationRef.navigate("profile")} />}
             </Tab.Screen>
             <Tab.Screen
               name="tournaments"

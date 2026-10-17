@@ -616,7 +616,7 @@ class OpeningHoursChangeIntegrationTest extends IntegrationTest {
         assertThat(jobStatus(LateConfirmDb.t2(awaiting.bookingId()))).isEqualTo("PENDING");
     }
 
-    // ================================================================ v1.1.36: superseded sessions beside current ones
+    // ================================================================ v1.1.37: superseded sessions beside current ones
 
     /**
      * A closed day: tomorrow's session row stays as superseded history (its cancelled bookings reference it, FR-VEN-22)

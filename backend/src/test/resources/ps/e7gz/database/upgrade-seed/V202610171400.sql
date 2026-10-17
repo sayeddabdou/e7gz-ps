@@ -1,4 +1,4 @@
--- Upgrade-path seed, loaded right after V202610171400 (operating session supersession, v1.1.36): the referenced
+-- Upgrade-path seed, loaded right after V202610171400 (operating session supersession, v1.1.37): the referenced
 -- session of 1 Mar 2031 superseded as an hours change does it, the day's current session (now 16:00-23:00) beside it
 -- with a Manual Booking that snapshots it, and an out-of-hours walk-in inside the OLD window only - no snapshot - so
 -- every later migration also runs over superseded history and two sessions of one operating day.

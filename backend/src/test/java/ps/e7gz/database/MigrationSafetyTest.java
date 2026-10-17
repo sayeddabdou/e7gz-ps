@@ -192,7 +192,7 @@ class MigrationSafetyTest {
         assertThat(count("SELECT count(*) FROM technical.scheduled_job"
                 + " WHERE correlation_id = '5afe0000-0000-4000-8000-000000000107'"))
                 .as("jobs that kept their creating command's correlation ID").isEqualTo(2L);
-        // v1.1.36 (E7-113): sessions written before superseded_at stayed current; the seeded day keeps its superseded
+        // v1.1.37 (E7-113): sessions written before superseded_at stayed current; the seeded day keeps its superseded
         // history beside its current session, each with its own booking, and the walk-in in the old window has none.
         assertThat(count("""
                 SELECT count(*) FROM venue.operating_session

@@ -62,16 +62,29 @@ const failed = (code: string, status = 422) => new Response(
   { status, headers: { "Content-Type": "application/json" } },
 );
 
-function renderFlow(fetch: jest.Mock, overrides?: Partial<React.ComponentProps<typeof BookingFlow>>) {
-  const api = createCustomerApiClient(config, fetch);
+function renderFlow(fetch: jest.Mock, overrides?: Partial<React.ComponentProps<typeof BookingFlow>>, profilePhoneVerified = true) {
+  const api = createCustomerApiClient(config, async (request: Request) => request.url.endsWith("/customer/profile")
+    ? ok({
+        userId: "u-1",
+        fullName: "Omar Hassan",
+        username: "omar_h",
+        phone: "+201012345678",
+        phoneVerified: profilePhoneVerified,
+        email: "omar@example.com",
+        emailVerified: false,
+        usernameChangeAvailableAt: null,
+        joinedAt: "2026-10-01T09:30:00Z",
+      })
+    : fetch(request));
   return render(
     <BookingFlow
       api={api}
       initialActivity="PLAYSTATION"
       initialDetails={details}
+      initialPhoneVerified
       idempotencyKeyFactory={() => "11111111-1111-4111-8111-111111111111"}
       onBack={() => {}}
-      referenceDate={new Date("2026-10-08T12:00:00Z")}
+      initialServerTime="2026-10-08T12:00:00Z"
       {...overrides}
     />,
   );
@@ -109,6 +122,15 @@ describe("BookingFlow", () => {
     expect(screen.getByRole("button", { name: "5:00 PM" }).props.accessibilityState.selected).toBe(true);
     expect(screen.getByRole("button", { name: "Review price" }).props.accessibilityState.disabled).toBe(false);
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("hides starts before the server-time lead boundary and keeps exactly 15 minutes", () => {
+    const fetch = jest.fn();
+    renderFlow(fetch, { initialResourceId: details.resources[0]!.id });
+
+    fireEvent.press(screen.getByRole("button", { name: "Today, Thursday 8 October" }));
+    expect(screen.queryByRole("button", { name: "3:00 PM" })).toBeNull();
+    expect(screen.getByRole("button", { name: "3:15 PM" })).toBeTruthy();
   });
 
   it("reloads resources when activity changes and retries a failed reload", async () => {
@@ -164,14 +186,57 @@ describe("BookingFlow", () => {
     });
 
     fireEvent.press(screen.getByRole("button", { name: "Monday 12 October" }));
-    fireEvent.press(screen.getByRole("button", { name: "1:30 AM" }));
+    fireEvent.press(screen.getByRole("button", { name: "12:00 AM" }));
     fireEvent.press(screen.getByRole("button", { name: "2 hours" }));
     fireEvent.press(screen.getByRole("button", { name: "Review price" }));
 
     expect(await screen.findByRole("header", { name: "Booking summary" })).toBeTruthy();
-    expect(requests[0]!.url).toContain("startAt=2026-10-12T22%3A30%3A00.000Z");
+    expect(requests[0]!.url).toContain("startAt=2026-10-12T21%3A00%3A00.000Z");
     expect(screen.getByText("Tue, Oct 13, 2026")).toBeTruthy();
-    expect(screen.getByText("1:30 AM")).toBeTruthy();
+    expect(screen.getByText("12:00 AM")).toBeTruthy();
+  });
+
+  it("uses 15-minute starts and hides times that cannot fit before session close", () => {
+    const fetch = jest.fn();
+    renderFlow(fetch, {
+      initialDetails: {
+        ...details,
+        openingHours: [{ weekday: 0, closed: false, opensAtLocal: "18:00:00", closesAtLocal: "02:00:00" }],
+      },
+      initialResourceId: details.resources[0]!.id,
+    });
+
+    fireEvent.press(screen.getByRole("button", { name: "Monday 12 October" }));
+    expect(screen.getByRole("button", { name: "6:15 PM" })).toBeTruthy();
+    fireEvent.press(screen.getByRole("button", { name: "2 hours" }));
+    expect(screen.getByRole("button", { name: "12:00 AM" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "12:15 AM" })).toBeNull();
+  });
+
+  it("blocks time selection from the profile response until the customer's phone is verified", async () => {
+    const fetch = jest.fn();
+    const openProfile = jest.fn();
+    renderFlow(fetch, { initialPhoneVerified: undefined, onOpenProfile: openProfile }, false);
+
+    fireEvent.press(screen.getByRole("button", { name: "Monday 12 October" }));
+    expect(await screen.findByText("Verify your phone before choosing a booking time.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "6:00 PM" })).toBeNull();
+    fireEvent.press(screen.getByRole("button", { name: "Go to Profile" }));
+    expect(openProfile).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the intake notice but lets the server make the final submission decision", async () => {
+    const fetch = jest.fn(async (request: Request) => request.method === "GET"
+      ? ok(quote)
+      : failed("ONLINE_INTAKE_WINDOW_CLOSED", 422));
+    renderFlow(fetch, { initialDetails: { ...details, openNow: false } });
+    await reachSummary();
+
+    expect(screen.getByText("Online booking intake is currently closed for this venue.")).toBeTruthy();
+    const confirm = screen.getByRole("button", { name: "Confirm booking" });
+    expect(confirm.props.accessibilityState.disabled).toBe(false);
+    fireEvent.press(confirm);
+    expect(await screen.findByText("The venue is no longer accepting online requests in this operating session.")).toBeTruthy();
   });
 
   it("refuses a quote returned for a different duration instead of showing a false total", async () => {
@@ -318,5 +383,35 @@ describe("BookingFlow", () => {
     await reachSummary();
     fireEvent.press(screen.getByRole("button", { name: "Confirm booking" }));
     expect(await screen.findByText("The venue response deadline has passed. Refresh My Bookings for the latest status.")).toBeTruthy();
+  });
+
+  it("links to My Bookings and polls until the pending booking changes", async () => {
+    const openMyBookings = jest.fn();
+    const confirmed = {
+      ...booking,
+      status: "CONFIRMED" as const,
+      history: [{
+        at: "2026-10-12T15:09:00Z",
+        kind: "STATUS_TRANSITION" as const,
+        eventType: null,
+        fromStatus: "PENDING" as const,
+        toStatus: "CONFIRMED" as const,
+        terminalReason: null,
+      }],
+    };
+    const fetch = jest.fn(async (request: Request) => {
+      if (request.method === "POST") return ok(booking, 201);
+      if (request.url.includes(`/bookings/${booking.bookingId}`)) return ok(confirmed);
+      return ok(quote);
+    });
+    renderFlow(fetch, { onOpenMyBookings: openMyBookings, pendingPollIntervalMs: 10 });
+    await reachSummary();
+    fireEvent.press(screen.getByRole("button", { name: "Confirm booking" }));
+
+    const viewBookings = await screen.findByRole("button", { name: "View My Bookings" });
+    fireEvent.press(viewBookings);
+    expect(openMyBookings).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("header", { name: "Booking status updated" })).toBeTruthy();
+    expect(screen.getAllByText(/Confirmed/u).length).toBeGreaterThan(0);
   });
 });

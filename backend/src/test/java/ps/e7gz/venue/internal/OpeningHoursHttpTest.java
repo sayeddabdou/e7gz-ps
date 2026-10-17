@@ -252,7 +252,7 @@ class OpeningHoursHttpTest extends IntegrationTest {
                 + " WHERE id = :id").param("id", referenced.id()).update()).isInstanceOf(DataAccessException.class);
 
         // New hours that still cover the Booking commit. The referenced session keeps its row and bounds (FR-VEN-22),
-        // superseded (v1.1.36, E7-113); its day gets the new hours' current session beside it.
+        // superseded (v1.1.37, E7-113); its day gets the new hours' current session beside it.
         save(proposal("10:00:00", "23:00:00", false, List.of()));
         assertThat(sessionById(referenced.id())).isEqualTo(referenced);
         assertThat(superseded(referenced.id())).isTrue();
@@ -443,7 +443,7 @@ class OpeningHoursHttpTest extends IntegrationTest {
                 .param("venue", venue).query(LocalDate.class).list();
     }
 
-    /** The day's current session (v1.1.36: a superseded one may stand beside it). */
+    /** The day's current session (v1.1.37: a superseded one may stand beside it). */
     private Session session(LocalDate day) {
         return OWNER.sql("""
                         SELECT id, local_start, local_end, lower(session_period) AS s, upper(session_period) AS e,

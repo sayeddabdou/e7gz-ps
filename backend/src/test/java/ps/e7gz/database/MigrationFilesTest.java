@@ -225,16 +225,46 @@ class MigrationFilesTest {
     }
 
     /**
-     * v1.1.36 (E7-113): the migration is the model's own block, byte for byte; the table model has the column, its
+     * v1.1.36 (E7-56): the migration is the model's own block, byte for byte; it adds the one SECURITY DEFINER producer
+     * of Admin Alerts with a fixed search_path and changes no table, trigger or grant (the security baseline grants
+     * EXECUTE; e7gz_app_runtime keeps no INSERT or UPDATE on admin.admin_alert).
+     */
+    @Test
+    void adminRaiseAlertMigrationIsTheModelsV1136Block() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String open = "<genericsql name=\"v1_1_36_admin_raise_alert\">\n\t<definition> <![CDATA[\n";
+        int start = model.indexOf(open);
+        assertThat(start).as("v1.1.36 block in the .dbm").isPositive();
+        String block = model.substring(start + open.length(), model.indexOf("]]> </definition>", start));
+        String migration = classpath("db/migration/V202610150400__admin_raise_alert.sql");
+        assertThat(migration).isEqualTo(block);
+
+        String sql = migration.substring(migration.indexOf("CREATE FUNCTION"));
+        assertThat(sql)
+                .startsWith("CREATE FUNCTION admin.raise_alert(p_kind text, p_severity text, p_subject_type text, "
+                        + "p_subject_id uuid,\n")
+                .contains("RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp")
+                .containsOnlyOnce("INSERT INTO admin.admin_alert(")
+                .doesNotContain("acknowledged")
+                .doesNotContain("UPDATE ")
+                .doesNotContain("DROP ")
+                .doesNotContain("ALTER ")
+                .doesNotContain("GRANT")
+                .doesNotContain("REVOKE")
+                .doesNotContain("TRIGGER");
+    }
+
+    /**
+     * v1.1.37 (E7-113): the migration is the model's own block, byte for byte; the table model has the column, its
      * check and the partial unique index; each of the four functions is its previous definition plus exactly the
      * superseded-session lines, and both constraints keep their names with a current-sessions predicate.
      */
     @Test
-    void operatingSessionSupersessionMigrationIsTheModelsV1136Block() throws IOException {
+    void operatingSessionSupersessionMigrationIsTheModelsV1137Block() throws IOException {
         String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
-        String open = "<genericsql name=\"v1_1_36_operating_session_supersession\">\n\t<definition> <![CDATA[\n";
+        String open = "<genericsql name=\"v1_1_37_operating_session_supersession\">\n\t<definition> <![CDATA[\n";
         int start = model.indexOf(open);
-        assertThat(start).as("v1.1.36 block in the .dbm").isPositive();
+        assertThat(start).as("v1.1.37 block in the .dbm").isPositive();
         String block = model.substring(start + open.length(), model.indexOf("]]> </definition>", start));
         String migration = classpath("db/migration/V202610171400__operating_session_supersession.sql");
         assertThat(migration).isEqualTo(block);
@@ -260,7 +290,7 @@ class MigrationFilesTest {
         String baseline = classpath("db/migration/V1__baseline.sql");
         String identifiers = classpath("db/migration/V202609291200__guard_error_identifiers.sql");
         assertAddedLinesOnly(baseline, migration, "CREATE OR REPLACE FUNCTION venue.guard_operating_session()",
-                " -- v1.1.36: supersession is set once, on a referenced session only, and a superseded session never "
+                " -- v1.1.37: supersession is set once, on a referenced session only, and a superseded session never "
                         + "changes again.\n"
                         + " IF TG_OP='UPDATE' AND OLD.superseded_at IS NOT NULL AND NEW IS DISTINCT FROM OLD THEN\n"
                         + "   RAISE EXCEPTION 'A superseded Operating Session is history and never changes';\n"
@@ -271,13 +301,13 @@ class MigrationFilesTest {
                         + "regenerated';\n"
                         + " END IF;\n");
         assertAddedLinesOnly(baseline, migration, "CREATE OR REPLACE FUNCTION booking.validate_booking_insert_snapshot()",
-                "        IF os.superseded_at IS NOT NULL THEN  -- v1.1.36: a new booking never snapshots superseded "
+                "        IF os.superseded_at IS NOT NULL THEN  -- v1.1.37: a new booking never snapshots superseded "
                         + "history\n"
                         + "            RAISE EXCEPTION 'a new booking cannot snapshot a superseded Operating Session';\n"
                         + "        END IF;\n",
-                "              AND s.superseded_at IS NULL  -- v1.1.36: only a current session is published\n");
+                "              AND s.superseded_at IS NULL  -- v1.1.37: only a current session is published\n");
         assertAddedLinesOnly(baseline, migration, "CREATE OR REPLACE FUNCTION operations.guard_emergency_lifecycle()",
-                "       AND s.superseded_at IS NULL  -- v1.1.36: the current session, never a superseded historical one\n");
+                "       AND s.superseded_at IS NULL  -- v1.1.37: the current session, never a superseded historical one\n");
         String intake = "CREATE OR REPLACE FUNCTION booking.validate_online_booking_intake()";
         assertThat(function(migration, intake)).isEqualTo(function(identifiers, intake).replace(
                 "s.session_period @> NEW.created_at\n", "s.session_period @> NEW.created_at AND s.superseded_at IS NULL\n"));
@@ -291,7 +321,7 @@ class MigrationFilesTest {
             assertThat(migrated).as(open).containsOnlyOnce(line);
             stripped = stripped.replace(line, "");
         }
-        assertThat(stripped).as("%s is its previous definition plus the v1.1.36 lines", open)
+        assertThat(stripped).as("%s is its previous definition plus the v1.1.37 lines", open)
                 .isEqualTo(function(earlier, open));
     }
 

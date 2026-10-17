@@ -1,5 +1,5 @@
 -- =====================================================================================================
--- E7-113 / physical model v1.1.36 — a referenced Operating Session the hours no longer generate is superseded, and
+-- E7-113 / physical model v1.1.37 — a referenced Operating Session the hours no longer generate is superseded, and
 -- the operating day gets its current session beside it (Amr's engineering decision for E7-113, 17 Oct 2026; FR-VEN-22,
 -- FR-VEN-23 step 8, FR-VEN-24, FR-BOK-05, FR-BOK-08/09, FR-MAN-03). For Product Owner review.
 --
@@ -42,7 +42,7 @@ ALTER TABLE venue.operating_session
     ADD CONSTRAINT ck_operating_session_superseded_after_generation
     CHECK (superseded_at IS NULL OR superseded_at >= generated_at);
 
-COMMENT ON COLUMN venue.operating_session.superseded_at IS E'v1.1.36: when an hours change stopped generating this referenced session; NULL = the current session of its day. A superseded session is history: it is never offered to a new booking and never changes again.';
+COMMENT ON COLUMN venue.operating_session.superseded_at IS E'v1.1.37: when an hours change stopped generating this referenced session; NULL = the current session of its day. A superseded session is history: it is never offered to a new booking and never changes again.';
 
 ALTER TABLE venue.operating_session
     DROP CONSTRAINT uq_operating_session_day;
@@ -59,7 +59,7 @@ ALTER TABLE venue.operating_session
     EXCLUDE USING gist (venue_id WITH =, session_period WITH &&)
     WHERE (superseded_at IS NULL);
 
-COMMENT ON CONSTRAINT ex_session_no_overlap ON venue.operating_session IS E'No two current sessions of a venue overlap (v1.1.36: superseded history is exempt).';
+COMMENT ON CONSTRAINT ex_session_no_overlap ON venue.operating_session IS E'No two current sessions of a venue overlap (v1.1.37: superseded history is exempt).';
 
 CREATE OR REPLACE FUNCTION venue.guard_operating_session()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $function$
@@ -67,7 +67,7 @@ DECLARE v_referenced boolean;
 BEGIN
  SELECT EXISTS(SELECT 1 FROM booking.booking b WHERE b.operating_session_id=OLD.id)
      OR EXISTS(SELECT 1 FROM tournament.tournament t WHERE t.operating_session_id=OLD.id) INTO v_referenced;
- -- v1.1.36: supersession is set once, on a referenced session only, and a superseded session never changes again.
+ -- v1.1.37: supersession is set once, on a referenced session only, and a superseded session never changes again.
  IF TG_OP='UPDATE' AND OLD.superseded_at IS NOT NULL AND NEW IS DISTINCT FROM OLD THEN
    RAISE EXCEPTION 'A superseded Operating Session is history and never changes';
  END IF;
@@ -121,7 +121,7 @@ BEGIN
         IF os.venue_id <> NEW.venue_id THEN
             RAISE EXCEPTION 'booking Operating Session must belong to the Booking venue';
         END IF;
-        IF os.superseded_at IS NOT NULL THEN  -- v1.1.36: a new booking never snapshots superseded history
+        IF os.superseded_at IS NOT NULL THEN  -- v1.1.37: a new booking never snapshots superseded history
             RAISE EXCEPTION 'a new booking cannot snapshot a superseded Operating Session';
         END IF;
         IF NOT (os.session_period @> tstzrange(NEW.start_at, NEW.end_at, '[)')) THEN
@@ -156,7 +156,7 @@ BEGIN
             FROM venue.operating_session s
             WHERE s.venue_id = NEW.venue_id
               AND s.session_period @> tstzrange(NEW.start_at, NEW.end_at, '[)')
-              AND s.superseded_at IS NULL  -- v1.1.36: only a current session is published
+              AND s.superseded_at IS NULL  -- v1.1.37: only a current session is published
         ) THEN
             RAISE EXCEPTION 'Manual Booking inside a published Operating Session must store the normal session snapshot';
         END IF;
@@ -280,7 +280,7 @@ BEGIN
       FROM venue.operating_session s
      WHERE s.venue_id = NEW.venue_id
        AND NEW.declared_at <@ s.session_period
-       AND s.superseded_at IS NULL  -- v1.1.36: the current session, never a superseded historical one
+       AND s.superseded_at IS NULL  -- v1.1.37: the current session, never a superseded historical one
      ORDER BY lower(s.session_period)
      LIMIT 1;
     IF v_session_end IS NULL THEN

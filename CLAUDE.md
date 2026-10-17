@@ -4,7 +4,7 @@ E7GZ PS is a marketplace for booking PlayStation / gaming rooms at venues in one
 
 ## 1. Sources of truth (in this order)
 
-1. `docs/01-product/` — Product Specification v5.0 (frozen) › PRD v1.1 › FRS v1.1 › PCR-001/002/003/004/005/006 (an approved PCR overrides the FRS lines it amends). Behaviour, status names, reason codes and timers come **only** from here.
+1. `docs/01-product/` — Product Specification v5.0 (frozen) › PRD v1.1 › FRS v1.1 › PCR-001/002/003/004/005/006/007/008 (an approved PCR overrides the FRS lines it amends). Behaviour, status names, reason codes and timers come **only** from here.
 2. `docs/02-architecture/` — the architecture pack (00–14). How to build it. Short name: "arch NN" = `docs/02-architecture/NN — *.md`.
 3. `docs/04-erd/physical/` — the database. The `.dbm` is the authority for every schema/table/column/function name. `V1__…sql` is the baseline migration; the security baseline holds all grants.
 4. `docs/03-design/` — visual reference only. Never take a status, rule, timer or message from a prototype (see its README).
@@ -40,7 +40,7 @@ packages/api-client/     openapi.json + generated TS client
 docs/                    product, architecture, design, ERD (read-only for code tasks)
 ```
 
-Modules and the tables they own: arch 03 §1. A module calls another only through its `api` package (ArchUnit enforces it).
+Modules and the tables they own: arch 03 §1. A module calls another only through its `api` package, and no two modules may depend on each other in a cycle (ArchUnit enforces both). When the module you need already depends on yours, declare a port in **your** `api` and let the other module implement it (e.g. `identity.api.SecurityAlerts` and `messaging.api.DeadLetterAlerts`, implemented by `admin`; E7-56).
 
 ## 4. Commands
 
@@ -48,7 +48,9 @@ Modules and the tables they own: arch 03 §1. A module calls another only throug
 docker compose up -d                 # postgres (postgis) on 5433, seaweedfs (S3), mailpit
 cd backend && ./gradlew check        # unit + integration (Testcontainers) + ArchUnit
 ./gradlew bootRun --args='--spring.profiles.active=api'     # or worker; api,worker runs both (photo copies, Nearest Availability refresh and every outbox event, the OTP SMS included, need worker)
-                                     # needs E7GZ_JWT_SECRET (Base64, 64 bytes), E7GZ_OTP_PAYLOAD_KEY and E7GZ_IDEMPOTENCY_FINGERPRINT_KEY (Base64, 32 bytes each: openssl rand -base64 32)
+                                     # needs E7GZ_JWT_SECRET (Base64, 64 bytes), E7GZ_OTP_PAYLOAD_KEY and E7GZ_IDEMPOTENCY_FINGERPRINT_KEY (Base64, 32 bytes each);
+                                     # make each on one line: node -e "process.stdout.write(require('crypto').randomBytes(64).toString('base64'))" (32 for the
+                                     # other two). `openssl rand -base64 64` wraps the line, and openssl on Windows can add a stray CR: the app refuses both
 ./gradlew bootRun --args='--spring.profiles.active=admin-bootstrap --e7gz.admin-bootstrap.email=… --e7gz.admin-bootstrap.full-name=…'
                                      # one-off: first Platform Admin (password typed, or E7GZ_ADMIN_BOOTSTRAP_PASSWORD)
 ./gradlew bootRun --args='--spring.profiles.active=availability-rebuild'
@@ -67,7 +69,7 @@ pnpm mock                            # Prism mock server from openapi.json
 **Database (ADR-026/027/028)**
 - The DB already enforces invariants (exclusion constraints, state machines, snapshots, deadlines, append-only). The app makes decisions; the DB refuses bad writes. Do not duplicate DB rules in Java and do not work around a guard — map its error (arch 09).
 - Every business write: one `READ COMMITTED` transaction opened through the `CommandRunner` (arch 04 §2.1), which calls `tournament.begin_command` / `admin.begin_command` with the lock set, and retries on `40001`.
-- Producer-only tables (deletion requests, anonymisation, username changes, review reports, reviews, configuration, ledgers) are written **only** by calling their producer functions (arch 04 §2.2).
+- Producer-only tables (deletion requests, anonymisation, username changes, review reports, reviews, configuration, ledgers, admin alerts) are written **only** by calling their producer functions (arch 04 §2.2). Admin alerts: `admin.raise_alert`, from Java only through `admin.api.AdminAlerts` (`raise` inside the command; `raiseAfterRollback` for a failure that rolls its command back; E7-56).
 - Never edit `V1__baseline.sql`. A schema change = new migration `V<yyyyMMddHHmm>__<what>.sql` + update the `.dbm` in `docs/04-erd/physical` + the change report, reviewed by the Product Owner. Timestamped versions stop the three of us clashing.
 - Closed value lists are `text` + `CHECK`; Java enums must match them exactly (a test checks this).
 

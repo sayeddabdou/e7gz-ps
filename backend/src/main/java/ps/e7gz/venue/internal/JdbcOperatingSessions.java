@@ -25,7 +25,7 @@ class JdbcOperatingSessions implements OperatingSessions {
 
     /**
      * {@code session_period} is written {@code '[)'}: the start is inside, the end is not. Current sessions only
-     * (v1.1.36): superseded history may overlap the current session of its day.
+     * (v1.1.37): superseded history may overlap the current session of its day.
      */
     static final String OPERATING_DAY_AT = """
             SELECT s.operating_day

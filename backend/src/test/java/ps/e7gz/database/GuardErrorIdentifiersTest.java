@@ -135,7 +135,7 @@ class GuardErrorIdentifiersTest {
 
     /**
      * What a later migration does to one of these functions, so a fresh install (every migration) still compares with
-     * this upgrade: v1.1.36 (E7-113) reads the Online intake window from current sessions only.
+     * this upgrade: v1.1.37 (E7-113) reads the Online intake window from current sessions only.
      */
     private static FunctionState laterMigrations(String name, FunctionState upgraded) {
         if (!name.equals("booking.validate_online_booking_intake")) {

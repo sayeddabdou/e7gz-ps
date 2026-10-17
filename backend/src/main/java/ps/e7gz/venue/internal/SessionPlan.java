@@ -16,7 +16,7 @@ import ps.e7gz.venue.internal.SessionGenerator.PlannedSession;
  * <ul>
  *   <li>A session a Booking or Tournament references is a historical snapshot (FR-VEN-22): it is never deleted and its
  *       bounds never change ({@code venue.guard_operating_session}). When the hours no longer generate it, it is
- *       superseded ({@code superseded_at}, v1.1.36) and its day gets the session the hours generate, beside it - the
+ *       superseded ({@code superseded_at}, v1.1.37) and its day gets the session the hours generate, beside it - the
  *       row and every reference to it stay, but no new booking is ever placed in it ({@link
  *       OperatingSessionStore#EFFECTIVE}; Amr's E7-113 decision). Its day is reported in {@link #supersededDays}. A
  *       referenced session that still matches the hours is restamped like any other and stays current.</li>

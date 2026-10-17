@@ -207,9 +207,34 @@ Unchanged on purpose: `booking.derive_commitment_period` and `tr_00_booking_comm
 
 - Tests: `LateConfirmAwaitingOverlapTest` (migrated database, application commands through `CommandRunner`) — an AWAITING booking coexists with an overlapping counted commitment of the same customer and keeps its `commitment_period`; it still counts towards the 4-commitment limit; a new Online Booking overlapping it is refused `OVERLAPPING_COMMITMENT` by the creation predicate (and the database alone would accept it); back-to-back stays allowed; two CONFIRMED bookings, and an AWAITING → CONFIRMED move, that overlap are still refused by the constraint; concurrent creations against an AWAITING booking all fail. `MigrationSafetyTest` (the migration on the seeded database); the `.dbm`/migration identity check in `MigrationFilesTest`.
 
-### v1.1.36 — a superseded referenced Operating Session beside its day's current session (E7-113, 17 Oct 2026)
+### v1.1.36 — admin.raise_alert, the one producer of Admin Alerts (E7-56, 15 Oct 2026)
 
-Amr's engineering decision for E7-113, 17 Oct 2026 (not yet a Product Owner decision); FR-VEN-22, FR-VEN-23 step 8, FR-VEN-24, FR-BOK-05, FR-BOK-08/09, FR-MAN-03. `.dbm` block `v1_1_36_operating_session_supersession` = Flyway `V202610171400__operating_session_supersession.sql`, byte for byte; the `operating_session` table model gains `superseded_at` and `ck_operating_session_superseded_after_generation`, and `uq_operating_session_day` is modelled as a partial unique index. **For Product Owner review.**
+Product Owner decisions 4 Oct 2026 (E7-32 review) and 15 Oct 2026 (E7-56); NFR-29, arch 11 §5.4. `.dbm` block `v1_1_36_admin_raise_alert` = Flyway `V202610150400__admin_raise_alert.sql`, byte for byte. **For Product Owner review.**
+
+**Why.** An alert must be able to commit in the same transaction as the command that found the problem (for example `SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR` at startAt, E7-60), on either runtime connection, but `e7gz_app_runtime` has no INSERT or UPDATE on `admin.admin_alert` (v1.1.29).
+
+| Object | Change |
+|---|---|
+| `admin.raise_alert(p_kind, p_severity, p_subject_type, p_subject_id, p_payload, p_correlation_id) → uuid` | New. `SECURITY DEFINER`, `search_path = pg_catalog, pg_temp`; inserts one open alert and returns its id. EXECUTE for both runtime roles through the security baseline (neither internal nor admin-only); none for PUBLIC |
+
+Every rule stays with the table: `admin.guard_admin_alert` refuses a pre-acknowledged row, a future `created_at` and a credential/secret payload key; `ck_admin_alert_values` refuses a blank kind, severity or subject type and a non-object payload. `kind` and `severity` stay open text: `SEV_1`/`SEV_2`/`SEV_3` and the existing `RISK` abuse signal are all valid. A new function only: every existing row and object is unaffected; no backfill.
+
+Unchanged on purpose: `admin.admin_alert` (columns, constraints, indexes, triggers, grants - still no INSERT or UPDATE for `e7gz_app_runtime`), `admin.acknowledge_alert`, every other object and data row.
+
+- Tests: `AdminAlertsIntegrationTest` (both runtime roles raise through the producer; a direct INSERT by `e7gz_app_runtime` is still refused; a credential payload key is refused), `MigrationSafetyTest` (the migration on the seeded database), the `.dbm`/migration identity check in `MigrationFilesTest`.
+
+### No schema change — values written by E7-57 (16 Oct 2026)
+
+E7-57 adds no migration; it writes new values in existing open-text columns, recorded here as the task asks (Sprint 0 review S-3 and S-7; PO decisions 2 and 16 Oct 2026).
+
+| Column | New values | Meaning |
+|---|---|---|
+| `iam.security_rate_limit_counter.action_class` (with `limiter_type = LOGIN`) | `CUSTOMER_ACCOUNT`, `VENUE_ACCOUNT`, `ADMIN_ACCOUNT` | The per-account login limit: `subject_key_hash` = SHA-256 of the account id; 50 failures in 1 hour set `cooldown_until` = now + 15 minutes. The existing (identifier + IP) rows keep `CUSTOMER` / `VENUE` / `ADMIN`. |
+| `iam.user_account.phone_e164` | `released: || id` | An account that never verified its phone, released when a new registration or a verified phone change needed its phone or username. As anonymisation, a placeholder that is never a phone. Its `username` becomes `released_<id>` (unless inside its 30-day username cooldown), and `full_name`, `email` and `password_hash` are emptied; `anonymised_at` stays NULL. |
+
+### v1.1.37 — a superseded referenced Operating Session beside its day's current session (E7-113, 17 Oct 2026)
+
+Amr's engineering decision for E7-113, 17 Oct 2026 (not yet a Product Owner decision); FR-VEN-22, FR-VEN-23 step 8, FR-VEN-24, FR-BOK-05, FR-BOK-08/09, FR-MAN-03. `.dbm` block `v1_1_37_operating_session_supersession` = Flyway `V202610171400__operating_session_supersession.sql`, byte for byte; the `operating_session` table model gains `superseded_at` and `ck_operating_session_superseded_after_generation`, and `uq_operating_session_day` is modelled as a partial unique index. **For Product Owner review.**
 
 **Why.** A session a booking references is a historical snapshot that never changes (`venue.guard_operating_session`). With one session per venue and operating day (`uq_operating_session_day`) and no two overlapping sessions (`ex_session_no_overlap`), an hours change left such a day with its OLD session: no session for the new hours could exist, so new Online bookings inside the new hours were refused; and a Manual walk-in inside the old window had to snapshot the old session, so a later unrelated hours change counted it as affected and would have cancelled it.
 

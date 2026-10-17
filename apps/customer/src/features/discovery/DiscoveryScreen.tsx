@@ -30,10 +30,14 @@ export function DiscoveryScreen({
   api,
   location = expoLocationAccess,
   focusVersion = 0,
+  onOpenMyBookings,
+  onOpenProfile,
 }: {
   api: ApiClient;
   location?: LocationAccess;
   focusVersion?: number;
+  onOpenMyBookings?(): void;
+  onOpenProfile?(): void;
 }) {
   const [locationResult, setLocationResult] = useState<LocationResult>();
   const [manual, setManual] = useState(false);
@@ -166,7 +170,7 @@ export function DiscoveryScreen({
   };
 
   if (venueId) {
-    return <VenueDetails api={api} venueId={venueId} activity={activity} coordinates={coordinates} focusVersion={focusVersion} onBack={() => setVenueId(undefined)} />;
+    return <VenueDetails api={api} venueId={venueId} activity={activity} coordinates={coordinates} focusVersion={focusVersion} onBack={() => setVenueId(undefined)} onOpenMyBookings={onOpenMyBookings} onOpenProfile={onOpenProfile} />;
   }
 
   if (findingAvailable && serverTime) {

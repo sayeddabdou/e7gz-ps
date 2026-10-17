@@ -2,6 +2,7 @@ package ps.e7gz.identity.internal;
 
 import java.time.Duration;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -12,6 +13,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import ps.e7gz.audit.api.AuditWriter;
 import ps.e7gz.common.codes.AuthSubjectType;
 import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.error.ApiErrorCode;
@@ -20,6 +22,8 @@ import ps.e7gz.common.security.AccessTokens;
 import ps.e7gz.common.security.ActiveSubjectCheck;
 import ps.e7gz.identity.api.LoginAccountDirectory;
 import ps.e7gz.identity.api.LoginAccountDirectory.LoginAccount;
+import ps.e7gz.identity.api.SecurityAlerts;
+import ps.e7gz.identity.internal.IdentityAuditAction.LoginOutcome;
 
 /**
  * Login, refresh and logout for the three identity types (arch 10 section 2, arch 09 section 2). Each session is a
@@ -39,23 +43,32 @@ public class AuthSessions {
     private final PasswordEncoder passwords;
     private final AccessTokens accessTokens;
     private final LoginRateLimiter rateLimiter;
+    private final AccountLoginLimiter accountLimiter;
     private final JdbcClient jdbc;
     private final Map<AuthSubjectType, LoginAccountDirectory> directories = new EnumMap<>(AuthSubjectType.class);
     private final Map<AuthSubjectType, ActiveSubjectCheck> activeChecks = new EnumMap<>(AuthSubjectType.class);
     /** Verified in place of a missing account, so an unknown identifier costs the same as a wrong password. */
     private final String decoyHash;
+    private final AuditWriter audit;
+    /** The Platform Admin side (E7-56); none in a context without it. */
+    private final List<SecurityAlerts> securityAlerts;
 
     AuthSessions(CommandRunner runner, PasswordEncoder passwords, AccessTokens accessTokens, LoginRateLimiter rateLimiter,
+                 AccountLoginLimiter accountLimiter,
                  DataSource appDataSource, ObjectProvider<LoginAccountDirectory> directories,
-                 ObjectProvider<ActiveSubjectCheck> activeChecks) {
+                 ObjectProvider<ActiveSubjectCheck> activeChecks, AuditWriter audit,
+                 ObjectProvider<SecurityAlerts> securityAlerts) {
         this.runner = runner;
         this.passwords = passwords;
         this.accessTokens = accessTokens;
         this.rateLimiter = rateLimiter;
+        this.accountLimiter = accountLimiter;
         this.jdbc = JdbcClient.create(appDataSource);
         directories.orderedStream().forEach(d -> register(this.directories, d.subjectType(), d));
         activeChecks.orderedStream().forEach(c -> register(this.activeChecks, c.subjectType(), c));
         this.decoyHash = passwords.encode(RefreshTokens.newRawToken());
+        this.audit = audit;
+        this.securityAlerts = securityAlerts.orderedStream().toList();
     }
 
     /** A new session: the access JWT and the raw refresh token, which exists only in this response. */
@@ -73,7 +86,8 @@ public class AuthSessions {
     }
 
     /**
-     * @throws ApiException {@code RATE_LIMITED} beyond 10 attempts in 15 minutes, {@code UNAUTHENTICATED} for an
+     * @throws ApiException {@code RATE_LIMITED} beyond 10 attempts in 15 minutes, or while the account's login is
+     *         paused after 50 failures in an hour (S-7, E7-57), {@code UNAUTHENTICATED} for an
      *         unknown identifier or a wrong password, {@code FORBIDDEN} for a venue or admin account that may not log in
      */
     public TokenPair login(AuthSubjectType audience, String loginIdentifier, String password, String clientIp) {
@@ -87,13 +101,26 @@ public class AuthSessions {
         // An anonymised customer has an empty hash and is not found anyway; either way the decoy is verified instead.
         String hash = account.map(LoginAccount::passwordHash).filter(h -> !h.isEmpty()).orElse(decoyHash);
         boolean passwordMatches = passwords.matches(password, hash);
-        if (account.isEmpty() || !passwordMatches) {
+        if (account.isEmpty()) {
+            throw new ApiException(ApiErrorCode.UNAUTHENTICATED);       // not audited: no account (E7-56)
+        }
+        UUID accountId = account.get().id();
+        // S-7 (E7-57): a paused account is refused whatever the password - checked after the hash, so a paused account
+        // costs the same time as any other
+        if (accountLimiter.paused(audience, accountId)) {
+            auditRefusal(audience, accountId, LoginOutcome.LOGIN_PAUSED);
+            throw new ApiException(ApiErrorCode.RATE_LIMITED);
+        }
+        if (!passwordMatches) {
+            accountLimiter.countFailure(audience, accountId);
+            auditRefusal(audience, accountId, LoginOutcome.WRONG_PASSWORD);
             throw new ApiException(ApiErrorCode.UNAUTHENTICATED);
         }
         if (!account.get().active()) {
+            auditRefusal(audience, accountId, LoginOutcome.ACCOUNT_NOT_ALLOWED);
             throw new ApiException(ApiErrorCode.FORBIDDEN);                              // FR-VEN-08
         }
-        return start(audience, account.get().id())
+        return start(audience, accountId, LoginAudit.of(audit, audience, accountId, LoginOutcome.SUCCEEDED))
                 .orElseThrow(() -> new ApiException(ApiErrorCode.UNAUTHENTICATED));
     }
 
@@ -102,10 +129,29 @@ public class AuthSessions {
      * when a customer was anonymised meanwhile.
      */
     public Optional<TokenPair> start(AuthSubjectType type, UUID subjectId) {
+        return start(type, subjectId, Optional.empty());
+    }
+
+    /** {@link #start}, with a staff login's success audit row in the same command (E7-56). */
+    private Optional<TokenPair> start(AuthSubjectType type, UUID subjectId, Optional<LoginAudit> loginAudit) {
         String refreshToken = RefreshTokens.newRawToken();
-        boolean issued = runner.run(
-                new IssueSessionCommand(type, subjectId, UUID.randomUUID(), RefreshTokens.hash(refreshToken)));
+        boolean issued = runner.run(new IssueSessionCommand(type, subjectId, UUID.randomUUID(),
+                RefreshTokens.hash(refreshToken), loginAudit));
         return issued ? Optional.of(new TokenPair(accessTokens.issue(type, subjectId), refreshToken)) : Optional.empty();
+    }
+
+    /**
+     * The audit row of a refused staff login for a known account (E7-56): audience and outcome only. A failing audit is
+     * logged, and the login is still refused with its own answer.
+     */
+    private void auditRefusal(AuthSubjectType audience, UUID accountId, LoginOutcome outcome) {
+        LoginAudit.of(audit, audience, accountId, outcome).ifPresent(refusal -> {
+            try {
+                runner.run(new RecordLoginRefusalCommand(refusal));
+            } catch (RuntimeException failure) {
+                log.error("Login refusal audit failed (subjectType={}, subjectId={})", audience, accountId, failure);
+            }
+        });
     }
 
     /**
@@ -130,6 +176,7 @@ public class AuthSessions {
             case RotateRefreshTokenCommand.Reused reused -> {
                 log.warn("Refresh token reuse: token chain revoked (subjectType={}, subjectId={})",
                         audience, reused.subjectId());
+                securityAlerts.forEach(alerts -> alerts.refreshTokenReused(audience, reused.subjectId())); // E7-56
                 throw new ApiException(ApiErrorCode.UNAUTHENTICATED);
             }
             case RotateRefreshTokenCommand.Refused refused -> throw new ApiException(ApiErrorCode.UNAUTHENTICATED);

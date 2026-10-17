@@ -103,6 +103,34 @@ describe("MyBookingsScreen", () => {
     expect(await screen.findByText("No upcoming bookings")).toBeTruthy();
   });
 
+  it("keeps a conflicting Late Confirm awaiting after the detail reload", async () => {
+    const awaiting = {
+      ...detail,
+      status: "AWAITING_CUSTOMER_CONFIRMATION" as const,
+      lateConfirm: { expiresAt: "2026-10-12T17:05:00Z", paused: false },
+    };
+    let detailReads = 0;
+    const api = createCustomerApiClient(config, async (request: Request) => {
+      if (request.url.endsWith("/bookings/b-1/late-confirm/accept")) {
+        return response({ code: "LATE_CONFIRM_CUSTOMER_CONFLICT" }, 409);
+      }
+      if (request.url.includes("/bookings/b-1")) {
+        detailReads += 1;
+        return response(awaiting);
+      }
+      return response({ items: [{ ...booking, status: awaiting.status, displayBucket: "upcoming" }], nextCursor: null });
+    });
+    render(<MyBookingsScreen api={api} idempotencyKeyFactory={() => "44444444-4444-4444-8444-444444444444"} />);
+
+    fireEvent.press(await screen.findByText("Game Zone"));
+    fireEvent.press(await screen.findByRole("button", { name: "Accept Booking" }));
+
+    expect(await screen.findByText("You can't accept this booking because it overlaps another booking of yours.")).toBeTruthy();
+    expect(screen.getByText(/^\d{2}:\d{2}$/u)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Decline" }).props.accessibilityState.disabled).toBe(false);
+    expect(detailReads).toBeGreaterThanOrEqual(2);
+  });
+
   it("prevents double cancellation and reuses the idempotency key on retry", async () => {
     const cancelRequests: Request[] = [];
     let cancellationAttempt = 0;
@@ -129,11 +157,11 @@ describe("MyBookingsScreen", () => {
     const confirm = screen.getByText("Yes, cancel booking");
     fireEvent.press(confirm);
     fireEvent.press(confirm);
-    expect(cancelRequests).toHaveLength(1);
+    await waitFor(() => expect(cancelRequests).toHaveLength(1), { timeout: 5_000 });
     releaseFirst();
     expect(await screen.findByText("Too many requests. Try again later.")).toBeTruthy();
     fireEvent.press(screen.getByText("Retry cancellation"));
-    await waitFor(() => expect(cancelRequests).toHaveLength(2));
+    await waitFor(() => expect(cancelRequests).toHaveLength(2), { timeout: 5_000 });
     expect(cancelRequests[0]?.headers.get("Idempotency-Key")).toBe(idempotencyKey);
     expect(cancelRequests[1]?.headers.get("Idempotency-Key")).toBe(idempotencyKey);
     expect(await screen.findByText("Booking cancelled")).toBeTruthy();
