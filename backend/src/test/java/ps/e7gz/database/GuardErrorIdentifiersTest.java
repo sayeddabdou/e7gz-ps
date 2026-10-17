@@ -130,7 +130,21 @@ class GuardErrorIdentifiersTest {
     void upgradeAndFreshInstallEndWithTheSameFunctions() {
         assertThat(upgradedState.keySet()).containsExactlyElementsOf(FUNCTIONS.keySet());
         FUNCTIONS.keySet().forEach(name ->
-                assertThat(upgradedState.get(name)).as(name).isEqualTo(freshState.get(name)));
+                assertThat(laterMigrations(name, upgradedState.get(name))).as(name).isEqualTo(freshState.get(name)));
+    }
+
+    /**
+     * What a later migration does to one of these functions, so a fresh install (every migration) still compares with
+     * this upgrade: v1.1.37 (E7-113) reads the Online intake window from current sessions only.
+     */
+    private static FunctionState laterMigrations(String name, FunctionState upgraded) {
+        if (!name.equals("booking.validate_online_booking_intake")) {
+            return upgraded;
+        }
+        String before = "s.session_period @> NEW.created_at\n";
+        assertThat(upgraded.definition()).containsOnlyOnce(before);
+        return new FunctionState(upgraded.definition().replace(before,
+                "s.session_period @> NEW.created_at AND s.superseded_at IS NULL\n"), upgraded.attributes());
     }
 
     @Test

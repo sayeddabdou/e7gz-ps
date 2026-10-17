@@ -61,6 +61,10 @@ class BookingNotificationRulesTest extends IntegrationTest {
                 .containsExactly("CUSTOMER VENUE_RESPONSE_EXPIRED");
         assertThat(codes(IntegrationEvents.BOOKING_CANCELLED, Map.of("terminalReason", "CUSTOMER_CANCELLED")))
                 .containsExactly("CUSTOMER BOOKING_CANCELLED");
+        // E7-113: the customer only, one per booking, and no reminder
+        assertThat(plan(IntegrationEvents.BOOKING_CANCELLED, Map.of("terminalReason", "VENUE_OPENING_HOURS_CHANGED")))
+                .isEqualTo(new Plan(List.of(new Send(Recipient.CUSTOMER, "VENUE_OPENING_HOURS_CHANGED")),
+                        Optional.empty()));
         for (String operational : List.of("VENUE_EMERGENCY_CLOSURE", "RESOURCE_EMERGENCY_OUTAGE",
                 "RESOURCE_OWNER_REVIEW_REQUIRED")) {
             assertThat(codes(IntegrationEvents.BOOKING_CANCELLED, Map.of("terminalReason", operational)))
@@ -115,11 +119,11 @@ class BookingNotificationRulesTest extends IntegrationTest {
      * read from {@code apps/customer/src/i18n/en.ts}.
      */
     @Test
-    void theLateConfirmCustomerPushBodiesAreTheAppsInAppText() throws IOException {
+    void theLateConfirmAndHoursChangeCustomerPushBodiesAreTheAppsInAppText() throws IOException {
         String app = Files.readString(RepoFiles.get("apps/customer/src/i18n/en.ts"));
         Properties english = new NotificationTemplates().all().get(Language.EN);
         for (String code : List.of("LATE_CONFIRMATION_RECEIVED", "LATE_CONFIRMATION_EXPIRING",
-                "CUSTOMER_CONFIRMATION_EXPIRED")) {
+                "CUSTOMER_CONFIRMATION_EXPIRED", "VENUE_OPENING_HOURS_CHANGED")) {
             String body = english.getProperty(code + ".push.body");
             assertThat(app).as(code).contains(code + ": \"" + body + "\"");
         }
@@ -133,6 +137,8 @@ class BookingNotificationRulesTest extends IntegrationTest {
         assertThat(plan(IntegrationEvents.BOOKING_STARTED, Map.of()).isEmpty()).isTrue();
         assertThat(plan(IntegrationEvents.BOOKING_CANCELLED,
                 Map.of("terminalReason", "VENUE_CANCELLED_MANUAL_BOOKING", "source", "MANUAL")).isEmpty()).isTrue();
+        assertThat(plan(IntegrationEvents.BOOKING_CANCELLED,
+                Map.of("terminalReason", "VENUE_OPENING_HOURS_CHANGED", "source", "MANUAL")).isEmpty()).isTrue();
     }
 
     /** A cancellation reason no task has wired yet sends nothing until its producer task adds it. */

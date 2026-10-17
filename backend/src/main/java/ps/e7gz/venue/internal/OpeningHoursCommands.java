@@ -7,15 +7,20 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
+import ps.e7gz.audit.api.AuditActor;
+import ps.e7gz.audit.api.AuditRecord;
+import ps.e7gz.audit.api.AuditWriter;
+import ps.e7gz.audit.api.OwnerPasswordCheck;
+import ps.e7gz.common.codes.BookingSource;
 import ps.e7gz.common.codes.BookingStatus;
 import ps.e7gz.common.codes.ReservationType;
 import ps.e7gz.common.command.Command;
@@ -26,10 +31,12 @@ import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.security.owner.OwnerPasswordNotRequired;
+import ps.e7gz.common.security.owner.OwnerProtected;
 import ps.e7gz.inventory.ledger.api.ActiveCommitments;
 import ps.e7gz.inventory.ledger.api.ActiveCommitments.Commitment;
 import ps.e7gz.venue.api.HoursChangeBookings;
 import ps.e7gz.venue.api.HoursChangeBookings.BookingFacts;
+import ps.e7gz.venue.api.OwnerPasswordGate;
 import ps.e7gz.venue.internal.OperatingSessionStore.Template;
 
 /**
@@ -48,8 +55,15 @@ final class OpeningHoursCommands {
     private static final Set<ReservationType> TOURNAMENT_ROWS = EnumSet.of(ReservationType.TOURNAMENT_APPROVAL_HOLD,
             ReservationType.TOURNAMENT_HOLD);
 
-    /** A future Booking the new hours would cancel. */
-    record Affected(UUID bookingId, UUID resourceId, Instant startAt, Instant endAt, boolean protectedCancellation) {
+    /** The Owner Password matrix id of a commit that cancels a protected booking (FRS §2.4, FR-VEN-25). */
+    static final String PROTECTED_ACTION = "HOURS_CLOSURE_SAVE_CANCELLING_PROTECTED";
+
+    /**
+     * A future Booking the new hours would cancel. {@code customerId} is the Online Booking's Customer, whom the commit
+     * locks; {@code null} for a Manual Booking. It is not part of the preview token: a booking never changes Customer.
+     */
+    record Affected(UUID bookingId, UUID resourceId, Instant startAt, Instant endAt, UUID customerId,
+                    boolean protectedCancellation) {
     }
 
     /** The complete impact preview (FR-VEN-23 step 5), bound to its exact affected set by the token (arch 03 §5). */
@@ -58,6 +72,22 @@ final class OpeningHoursCommands {
         /** Step 6 (FR-VEN-25): only a CONFIRMED Online or an AWAITING cancellation needs the Owner Password. */
         boolean ownerPasswordRequired() {
             return affected.stream().anyMatch(Affected::protectedCancellation);
+        }
+
+        /**
+         * The rows a commit cancelling this set must lock before it starts (arch 04 §2.1, arch 05 §4.2): the venue,
+         * every affected booking's Resource and every affected Online Booking's Customer - {@code begin_command} then
+         * also locks those Customers' Bookings, Late Confirmations and reservations.
+         */
+        LockSet lockSet(UUID venueId) {
+            LockSet.Builder locks = LockSet.builder().venues(venueId);
+            affected.forEach(row -> {
+                locks.resources(row.resourceId());
+                if (row.customerId() != null) {
+                    locks.users(row.customerId());
+                }
+            });
+            return locks.build();
         }
     }
 
@@ -87,17 +117,17 @@ final class OpeningHoursCommands {
     }
 
     /**
-     * Steps 6–8: recompute the impact under the lock; a different set than the preview showed aborts with a refreshed
-     * preview (FR-VEN-26); then save the hours and regenerate the sessions in the same transaction (ADR-009).
+     * Steps 6–8 without the Owner Password (FRS §2.4 "Hours/Closure with no protected cancellation"): the hours, the
+     * sessions and the cancellation of every affected PENDING Online or CONFIRMED Manual Booking, in one transaction.
+     * When the set recomputed under the locks has a protected cancellation - a booking became CONFIRMED or AWAITING
+     * since the preview - it answers {@code 423 OWNER_PASSWORD_REQUIRED} and writes nothing (FR-VEN-25).
      *
-     * <p>Cancelling affected Bookings (step 8's cancellations, step 9's notifications, FR-VEN-28) needs the Booking,
-     * Late Confirm and Messaging modules, which do not exist yet (PO decision 3 Oct 2026): E7-113 builds it. Until then a
-     * change that would cancel anything answers 501 and changes nothing. So every change that commits cancels nothing
-     * and needs no Owner Password (FRS §2.4, "Hours/Closure with no protected cancellation").
+     * @param locks the lock set of the affected set the caller computed before the command ({@link Impact#lockSet});
+     *              the command refuses a recomputed set it does not cover
      */
     @OwnerPasswordNotRequired("HOURS_CLOSURE_NO_PROTECTED_CANCELLATION")
-    record Commit(UUID venueId, OpeningHours hours, String previewToken, Readers readers)
-            implements Command<Template> {
+    record Commit(UUID venueId, UUID venueAccountId, OpeningHours hours, String previewToken, LockSet locks,
+                  Readers readers) implements Command<Template> {
 
         @Override
         public EligibilityCategory eligibilityCategory() {
@@ -106,26 +136,135 @@ final class OpeningHoursCommands {
 
         @Override
         public CommandScope scope() {
-            return CommandScope.shared(LockSet.builder().venues(venueId).build());
+            return CommandScope.shared(locks);
         }
 
         @Override
         public Template execute(CommandContext context) {
-            ZoneId zone = OperatingSessionStore.zoneOf(context.jdbc(), venueId);
-            Optional<Template> current = OperatingSessionStore.template(context.jdbc(), venueId);
-            Template proposed = proposed(venueId, hours, current);
-            Impact impact = impact(context, proposed, zone, readers);
-            if (!impact.previewToken().equals(previewToken)) {
-                throw new ApiException(ApiErrorCode.AFFECTED_SET_CHANGED_REFRESH_PREVIEW);
-            }
-            if (!impact.affected().isEmpty()) {
-                throw new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED);
-            }
-            Template saved = OperatingSessionStore.save(context, proposed, current.isEmpty());
-            OperatingSessionStore.apply(context, saved, zone,
-                    OperatingSessionStore.plan(context, saved, zone, readers.horizonDays()));
-            return saved;
+            return committed(context, venueId, venueAccountId, hours, previewToken, locks, readers, false);
         }
+    }
+
+    /**
+     * Steps 6–8 with the Owner Password (FRS §2.4 "Hours/Closure save cancelling protected bookings", FR-VEN-25): the
+     * password is checked first, inside this transaction (arch 10 §3); its success is audited on its own row
+     * (FR-VEN-05, arch 10 §8.1) - the hours change itself has no audit row (PO decision 3 Oct 2026). Then as
+     * {@link Commit}, every affected booking included. Run through {@link OwnerPasswordGate#run} (via
+     * {@link Protected}), which audits a refusal.
+     */
+    @OwnerProtected(PROTECTED_ACTION)
+    record ProtectedCommit(UUID venueId, UUID venueAccountId, OpeningHours hours, String previewToken, LockSet locks,
+                           String ownerPassword, UUID correlationId, Readers readers, OwnerPasswordGate gate,
+                           AuditWriter audit) implements Command<Template> {
+
+        @Override
+        public EligibilityCategory eligibilityCategory() {
+            return EligibilityCategory.C_INTERNAL_VENUE_OPERATION;
+        }
+
+        @Override
+        public CommandScope scope() {
+            return CommandScope.shared(locks);
+        }
+
+        @Override
+        public Template execute(CommandContext context) {
+            OwnerPasswordCheck check = gate.verify(context, venueAccountId, ownerPassword);
+            audit.write(context, AuditRecord.builder(VenueAccountAuditAction.OWNER_PASSWORD_ACCEPTED,
+                            AuditActor.venue(venueAccountId), venueAccountId, correlationId)
+                    .ownerPasswordCheck(check)
+                    .payload(Map.of("protectedAction", PROTECTED_ACTION))
+                    .build());
+            return committed(context, venueId, venueAccountId, hours, previewToken, locks, readers, true);
+        }
+
+        /** Never the Owner Password (NFR-21): a record's own {@code toString} would print it. */
+        @Override
+        public String toString() {
+            return "ProtectedCommit[venueId=" + venueId + ", venueAccountId=" + venueAccountId + "]";
+        }
+    }
+
+    /**
+     * The command {@link OwnerPasswordGate#run} is given for a protected commit: the Idempotency-Key wrapper around a
+     * {@link ProtectedCommit}, which checks the password itself. It only carries the action id the gate audits a refusal
+     * under, and adds nothing to the transaction.
+     */
+    @OwnerProtected(PROTECTED_ACTION)
+    record Protected<R>(Command<R> command) implements Command<R> {
+
+        Protected {
+            Objects.requireNonNull(command, "command");
+        }
+
+        @Override
+        public EligibilityCategory eligibilityCategory() {
+            return command.eligibilityCategory();
+        }
+
+        @Override
+        public CommandScope scope() {
+            return command.scope();
+        }
+
+        @Override
+        public R execute(CommandContext context) {
+            return command.execute(context);
+        }
+    }
+
+    /**
+     * Steps 6–8 under the command's locks: the account, the recomputed impact and its token (FR-VEN-26), the locks it
+     * needs, the Owner Password it needs, then the cancellations (FR-VEN-24, FR-VEN-28: one Booking port call, one
+     * Loyalty batch) and the hours with their sessions (ADR-009) - all in this one transaction or none of it.
+     * Referenced sessions keep their row (Spec v5.0 §14.6), cancelled bookings included.
+     */
+    private static Template committed(CommandContext context, UUID venueId, UUID venueAccountId, OpeningHours hours,
+                                      String previewToken, LockSet locks, Readers readers, boolean passwordChecked) {
+        requireEnabledAccount(context, venueId, venueAccountId);
+        ZoneId zone = OperatingSessionStore.zoneOf(context.jdbc(), venueId);
+        Optional<Template> current = OperatingSessionStore.template(context.jdbc(), venueId);
+        Template proposed = proposed(venueId, hours, current);
+        Impact impact = impact(context, proposed, zone, readers);
+        if (!impact.previewToken().equals(previewToken)) {
+            throw new ApiException(ApiErrorCode.AFFECTED_SET_CHANGED_REFRESH_PREVIEW);
+        }
+        // The token binds the bookings, not who must be locked: a set the caller's locks do not cover was computed
+        // from a different set than this one - the venue is shown the refreshed preview (FR-VEN-26), nothing is written.
+        if (!covers(locks, impact.affected())) {
+            throw new ApiException(ApiErrorCode.AFFECTED_SET_CHANGED_REFRESH_PREVIEW);
+        }
+        if (!passwordChecked && impact.ownerPasswordRequired()) {
+            throw new ApiException(ApiErrorCode.OWNER_PASSWORD_REQUIRED);
+        }
+        readers.bookings().cancel(context, venueId, venueAccountId,
+                impact.affected().stream().map(Affected::bookingId).toList());
+        Template saved = OperatingSessionStore.save(context, proposed, current.isEmpty());
+        OperatingSessionStore.apply(context, saved, zone,
+                OperatingSessionStore.plan(context, saved, zone, readers.horizonDays()));
+        return saved;
+    }
+
+    /**
+     * Category C (FRS §2.3): the acting account is the venue's own and ENABLED, read under the command's lock on the
+     * venue and its account. The token filter refuses a disabled account first (401); this is the race of one disabled
+     * between the request and the command - FORBIDDEN before any write, as for the venue's other commands.
+     */
+    private static void requireEnabledAccount(CommandContext context, UUID venueId, UUID venueAccountId) {
+        String status = context.jdbc().sql("""
+                        SELECT account_status FROM iam.venue_account WHERE id = :account AND venue_id = :venue""")
+                .param("account", venueAccountId).param("venue", venueId)
+                .query(String.class).optional()
+                .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND));
+        if (!"ENABLED".equals(status)) {
+            throw new ApiException(ApiErrorCode.FORBIDDEN);
+        }
+    }
+
+    /** Every affected booking's Resource and Online Customer is in {@code locks}. */
+    private static boolean covers(LockSet locks, Collection<Affected> affected) {
+        return affected.stream().allMatch(row -> locks.resources().contains(row.resourceId())
+                && (row.customerId() == null || locks.users().contains(row.customerId())));
     }
 
     /** The nightly run: the same regeneration from the saved hours, which in practice adds the new last day. */
@@ -181,9 +320,12 @@ final class OpeningHoursCommands {
         List<Affected> affected = new ArrayList<>();
         for (Commitment row : uncovered) {
             BookingFacts booking = facts.get(row.owner().id());
-            if (booking != null && booking.insideOperatingSession() && CANCELLABLE.contains(booking.status())) {
+            // FR-AVL-15: an AWAITING booking whose stored Late Confirm deadline is reached belongs to T2, not to O5
+            if (booking != null && booking.insideOperatingSession() && CANCELLABLE.contains(booking.status())
+                    && !booking.lateConfirmTimedOut()) {
                 affected.add(new Affected(booking.bookingId(), row.resourceId(), row.plannedStart(),
-                        row.plannedEnd(), booking.protectedCancellation()));
+                        row.plannedEnd(), booking.source() == BookingSource.ONLINE ? booking.customerId() : null,
+                        booking.protectedCancellation()));
             }
         }
         affected.sort(Comparator.comparing(Affected::startAt).thenComparing(Affected::bookingId));

@@ -59,6 +59,17 @@ class LateConfirmStore {
              WHERE id = :id AND closed_at IS NULL AND warning_sent_at IS NULL
             """;
 
+    /**
+     * E7-113: an operational cancellation closes the attempt with no Customer response - {@code customer_response} and
+     * {@code responded_at} stay NULL, and the deadline and warning stay as recorded
+     * ({@code guard_late_confirmation_mutation}). Only the open attempt.
+     */
+    static final String CLOSE_WITHOUT_RESPONSE = """
+            UPDATE booking.late_confirmation
+               SET closed_at = :at
+             WHERE id = :id AND closed_at IS NULL
+            """;
+
     /** The open attempts' deadlines of several bookings in one query (the booking lists, E7-58 Phase 2C). */
     static final String OPEN_DEADLINES = """
             SELECT l.booking_id, l.expires_at
@@ -101,6 +112,14 @@ class LateConfirmStore {
     /** @return false when the attempt is closed or was already warned: nothing to send */
     boolean markWarned(CommandContext command, UUID lateConfirmationId, Instant at) {
         return command.jdbc().sql(MARK_WARNED)
+                .param("id", Objects.requireNonNull(lateConfirmationId, "lateConfirmationId"))
+                .param("at", utc(at))
+                .update() == 1;
+    }
+
+    /** @return false when the attempt is no longer open */
+    boolean closeWithoutResponse(CommandContext command, UUID lateConfirmationId, Instant at) {
+        return command.jdbc().sql(CLOSE_WITHOUT_RESPONSE)
                 .param("id", Objects.requireNonNull(lateConfirmationId, "lateConfirmationId"))
                 .param("at", utc(at))
                 .update() == 1;

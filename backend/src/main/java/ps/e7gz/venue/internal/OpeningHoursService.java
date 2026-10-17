@@ -5,17 +5,33 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Function;
 import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
+import ps.e7gz.audit.api.AuditWriter;
 import ps.e7gz.common.codes.OpeningDayMode;
+import ps.e7gz.common.command.Command;
+import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.command.CommandRunner;
+import ps.e7gz.common.command.CommandScope;
+import ps.e7gz.common.command.EligibilityCategory;
+import ps.e7gz.common.command.LockSet;
+import ps.e7gz.common.correlation.CorrelationId;
+import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.error.ApiException;
 import ps.e7gz.inventory.ledger.api.ActiveCommitments;
+import ps.e7gz.messaging.api.Idempotency;
+import ps.e7gz.messaging.api.IdempotentRequest;
+import ps.e7gz.messaging.api.IdempotentResult;
+import ps.e7gz.messaging.api.StoredResponse;
 import ps.e7gz.venue.api.HoursChangeBookings;
+import ps.e7gz.venue.api.OwnerPasswordGate;
 import ps.e7gz.venue.internal.OpeningHoursCommands.Impact;
 import ps.e7gz.venue.internal.OpeningHoursCommands.Readers;
 import ps.e7gz.venue.internal.OperatingSessionStore.Template;
@@ -35,15 +51,21 @@ public class OpeningHoursService {
     private final Readers readers;
     private final OperatingSessionProperties properties;
     private final JdbcClient jdbc;
+    private final Idempotency idempotency;
+    private final OwnerPasswordGate gate;
+    private final AuditWriter audit;
 
     OpeningHoursService(CommandRunner runner, VenueAccounts accounts, ActiveCommitments commitments,
                         HoursChangeBookings bookings, OperatingSessionProperties properties,
-                        DataSource appDataSource) {
+                        DataSource appDataSource, Idempotency idempotency, OwnerPasswordGate gate, AuditWriter audit) {
         this.runner = runner;
         this.accounts = accounts;
         this.readers = new Readers(commitments, bookings, properties.horizonDays());
         this.properties = properties;
         this.jdbc = JdbcClient.create(appDataSource);
+        this.idempotency = idempotency;
+        this.gate = gate;
+        this.audit = audit;
     }
 
     /** The hours as the Dashboard shows them; {@code version} 0 means they were never saved. */
@@ -92,11 +114,71 @@ public class OpeningHoursService {
                 .toList(), impact.ownerPasswordRequired());
     }
 
-    /** FR-VEN-23 steps 6–8, all or nothing. See {@link OpeningHoursCommands.Commit} for what is not built yet. */
-    public View commit(UUID venueAccountId, Proposal proposal, String previewToken) {
+    /**
+     * FR-VEN-23 steps 6–9, all or nothing, once per Idempotency-Key (ADR-015: it cancels bookings and moves Booking Fee
+     * refunds). The affected set is computed first, without writing, only to name the locks the commit takes: the
+     * venue, every affected Resource and every affected Online Customer. The commit recomputes the set under those locks
+     * and refuses one its token or its locks do not match (409 AFFECTED_SET_CHANGED_REFRESH_PREVIEW, FR-VEN-26). A set
+     * with a CONFIRMED Online or an AWAITING booking runs the protected command, which checks the Owner Password
+     * (FR-VEN-25; missing 423 OWNER_PASSWORD_REQUIRED, wrong 423 OWNER_PASSWORD_INVALID, audited); a set without one
+     * runs the unprotected command, which still answers 423 OWNER_PASSWORD_REQUIRED if, under the locks, one became
+     * protected. Both write nothing when refused, the idempotency record included.
+     *
+     * <p>A retry with the same key and request returns the stored answer without running anything; the first pass is
+     * then only a read. If that read is refused (a Tournament hold appeared), the commit still runs, under the venue
+     * lock alone, so a replay answers as stored and a new request is refused under the lock as before.
+     */
+    public <R> IdempotentResult<R> commit(UUID venueAccountId, Proposal proposal, String previewToken,
+                                          String ownerPassword, IdempotentRequest key, StoredResponse<R> response,
+                                          Function<View, R> view) {
+        Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(view, "view");
         UUID venueId = accounts.venueOf(venueAccountId);
-        Template saved = runner.run(new OpeningHoursCommands.Commit(venueId, hours(proposal), previewToken, readers));
-        return view(OperatingSessionStore.zoneOf(jdbc, venueId), saved);
+        OpeningHours hours = hours(proposal);
+        ZoneId zone = OperatingSessionStore.zoneOf(jdbc, venueId);
+        Function<Template, R> answer = saved -> view.apply(view(zone, saved));
+
+        LockSet locks;
+        boolean protectedSet;
+        try {
+            Impact planned = runner.run(new OpeningHoursCommands.Preview(venueId, hours, readers));
+            locks = planned.lockSet(venueId);
+            protectedSet = planned.ownerPasswordRequired();
+        } catch (ApiException refused) {
+            if (refused.code() != ApiErrorCode.TOURNAMENT_CONFLICT_BLOCKS_SAVE) {
+                throw refused;
+            }
+            locks = LockSet.builder().venues(venueId).build();
+            protectedSet = false;
+        }
+        if (!protectedSet) {
+            return runner.run(idempotency.wrap(key, response, new Mapped<>(new OpeningHoursCommands.Commit(venueId,
+                    venueAccountId, hours, previewToken, locks, readers), answer)));
+        }
+        UUID correlationId = CorrelationId.require();
+        return gate.run(new OpeningHoursCommands.Protected<>(idempotency.wrap(key, response,
+                new Mapped<>(new OpeningHoursCommands.ProtectedCommit(venueId, venueAccountId, hours, previewToken,
+                        locks, ownerPassword, correlationId, readers, gate, audit), answer))),
+                venueAccountId, correlationId);
+    }
+
+    /** A command's result mapped to the response, in the command's transaction. */
+    private record Mapped<T, R>(Command<T> command, Function<T, R> mapping) implements Command<R> {
+
+        @Override
+        public EligibilityCategory eligibilityCategory() {
+            return command.eligibilityCategory();
+        }
+
+        @Override
+        public CommandScope scope() {
+            return command.scope();
+        }
+
+        @Override
+        public R execute(CommandContext context) {
+            return mapping.apply(command.execute(context));
+        }
     }
 
     /** Extends every venue with saved hours by the new day; one command per venue, so one failure stops no other. */
