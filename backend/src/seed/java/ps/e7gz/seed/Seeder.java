@@ -1,7 +1,11 @@
 package ps.e7gz.seed;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -9,6 +13,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import ps.e7gz.admin.internal.SeedAdmins;
 import ps.e7gz.common.codes.Activity;
+import ps.e7gz.common.codes.ActorType;
 import ps.e7gz.common.codes.ConsoleType;
 import ps.e7gz.common.codes.MarketplaceStatus;
 import ps.e7gz.common.codes.OpeningDayMode;
@@ -20,6 +25,8 @@ import ps.e7gz.common.geo.Coordinates;
 import ps.e7gz.common.money.Money;
 import ps.e7gz.geography.internal.Areas;
 import ps.e7gz.identity.internal.PhoneNumbers;
+import ps.e7gz.messaging.api.IdempotentRequest;
+import ps.e7gz.messaging.api.StoredResponse;
 import ps.e7gz.pricing.internal.Pricing;
 import ps.e7gz.resource.internal.Resources;
 import ps.e7gz.venue.internal.MarketplaceAction;
@@ -119,7 +126,11 @@ final class Seeder {
             }
             if (plan.hours() != null) {
                 String token = hours.preview(accountId, plan.hours()).previewToken();
-                hours.commit(accountId, plan.hours(), token);
+                // A fresh venue cancels nothing; the commit still takes an Idempotency-Key (E7-113, ADR-015).
+                hours.commit(accountId, plan.hours(), token, null, new IdempotentRequest(ActorType.VENUE, accountId,
+                                "POST /api/v1/venue/opening-hours/commit", UUID.randomUUID().toString(),
+                                sha256(token)), StoredResponse.of(OpeningHoursService.View.class, 200),
+                        view -> view);
             }
             if (plan.status() != MarketplaceStatus.ONBOARDING) {
                 status(venueId, MarketplaceAction.COMPLETE_ONBOARDING);
@@ -218,6 +229,16 @@ final class Seeder {
     private static <T> T inScope(Supplier<T> action) {
         try (CorrelationId.Scope ignored = CorrelationId.open(CorrelationId.generate())) {
             return action.get();
+        }
+    }
+
+    /** A request fingerprint for the seed's own commits: lower-case hex SHA-256 ({@code ck_idempotency_values}). */
+    private static String sha256(String value) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(impossible);
         }
     }
 }
