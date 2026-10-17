@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { components } from "@e7gz/api-client";
 import { apiErrorOf, type ApiClient } from "../../api";
 import { useMessages } from "../../i18n";
+import { createIdempotencyKey } from "../requests/LiveRequestsProvider";
 import { setupErrorMessage } from "./errorMessages";
 import { OwnerPasswordDialog } from "./OwnerPasswordDialog";
 import { setupStyles as styles } from "./styles";
@@ -28,6 +29,8 @@ export function OpeningHoursEditor({ api }: { api: ApiClient }) {
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [timezone, setTimezone] = useState("Africa/Cairo");
   const [resourceNames, setResourceNames] = useState<Record<string, string>>({});
+  // One Idempotency-Key per preview (ADR-015, E7-113): a retry of the same commit replays instead of running twice.
+  const commitKeys = useRef(new Map<string, string>());
 
   useEffect(() => {
     let active = true;
@@ -98,7 +101,10 @@ export function OpeningHoursEditor({ api }: { api: ApiClient }) {
     setError(undefined);
     setPasswordError(undefined);
     try {
+      const idempotencyKey = commitKeys.current.get(preview.previewToken) ?? createIdempotencyKey();
+      commitKeys.current.set(preview.previewToken, idempotencyKey);
       const result = await api.POST("/api/v1/venue/opening-hours/commit", {
+        params: { header: { "Idempotency-Key": idempotencyKey } },
         body: { proposal, previewToken: preview.previewToken, ...(ownerPassword ? { ownerPassword } : {}) },
       });
       if (result.data) {
