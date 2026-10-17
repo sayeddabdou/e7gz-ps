@@ -23,8 +23,10 @@ import ps.e7gz.messaging.api.CommandAnswer;
 import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.scheduling.api.JobOutcome;
 import ps.e7gz.scheduling.api.ScheduledJob;
+import ps.e7gz.scheduling.api.ScheduledJobs;
 import ps.e7gz.support.boundary.Deadlines;
 import ps.e7gz.support.boundary.TestCommands;
+import ps.e7gz.support.fixtures.Fixtures;
 
 /**
  * Test support for other modules (E7-55): real Online Bookings driven through this package's own commands - create,
@@ -53,6 +55,7 @@ public final class BookingFlows {
     private final LateConfirmDb lateConfirms;
     private final ManualBookings manualBookings;
     private final Outbox outbox;
+    private final ScheduledJobs jobs;
 
     private BookingFlows(ApplicationContext context) {
         this.creation = context.getBean(OnlineBookingCreation.class);
@@ -65,6 +68,7 @@ public final class BookingFlows {
         this.lateConfirms = new LateConfirmDb(runner, creation, store, answers);
         this.manualBookings = context.getBean(ManualBookings.class);
         this.outbox = context.getBean(Outbox.class);
+        this.jobs = context.getBean(ScheduledJobs.class);
     }
 
     public static BookingFlows of(ApplicationContext context) {
@@ -106,6 +110,84 @@ public final class BookingFlows {
                 ManualBookingRequest.of(world.room.id(), PlayMode.SINGLE, world.start(), 60, null, null));
         return new Booking(created.bookingId(), null, world.venue.id(), world.venue.name(), world.account.id(),
                 world.room.id(), created.startAt(), null);
+    }
+
+    // ---------------------------------------------------------------------------- E7-59 attendance (O13)
+
+    /**
+     * An ACTIVE Online Booking, 60 minutes long, that started {@code startedAgo} before the database clock: created and
+     * accepted through the real commands, then started as T4 would start it ({@link BookingStates#started}; the start
+     * is E7-60's). Its reservation covers exactly the booked interval.
+     */
+    public Booking active(Duration startedAgo) {
+        return started(pending(), startedAgo);
+    }
+
+    /**
+     * One customer at one venue, for a series of their bookings (E7-59: consecutive no-shows). Each
+     * {@link Customer#nextActive} is a new ACTIVE Online Booking of the same customer and room, made as {@link #active}
+     * makes one; the previous one must no longer hold a commitment (a no-show ends it).
+     */
+    public Customer customer() {
+        return new Customer(OnlineBookingWorld.create());
+    }
+
+    public final class Customer {
+
+        private final OnlineBookingWorld world;
+
+        private Customer(OnlineBookingWorld world) {
+            this.world = world;
+        }
+
+        public Booking nextActive(Duration startedAgo) {
+            return started(pending(world, world.start()), startedAgo);
+        }
+    }
+
+    private Booking started(Booking booking, Duration startedAgo) {
+        accept(booking);
+        runner.run(TestCommands.under(scope(booking),
+                context -> jobs.supersede(context, VenueAnswerDb.bookingStart(booking.bookingId()))));
+        Instant start = OnlineBookingWorld.dbNow().minus(startedAgo);
+        BookingStates.started(booking.bookingId(), start);
+        return new Booking(booking.bookingId(), booking.customerId(), booking.venueId(), booking.venueName(),
+                booking.venueAccountId(), booking.resourceId(), start, booking.venueResponseExpiresAt());
+    }
+
+    /**
+     * Two ACTIVE Online Bookings of ONE venue, of two customers on two rooms, both started {@code startedAgo} before the
+     * database clock (as {@link #active}).
+     */
+    public List<Booking> twoActiveAtOneVenue(Duration startedAgo) {
+        OnlineBookingWorld world = OnlineBookingWorld.create();
+        List<Booking> bookings = List.of(pending(world, world.start()),
+                pendingOf(world, world.anotherCustomer(), world.anotherRoom(room -> room), world.start()));
+        return bookings.stream().map(booking -> started(booking, startedAgo)).toList();
+    }
+
+    private Booking pendingOf(OnlineBookingWorld world, UUID customerId, Fixtures.Resource room, Instant start) {
+        CreatedBooking created = creation.create(world.request(customerId, room, start, 60));
+        return new Booking(created.bookingId(), created.customerId(), world.venue.id(), world.venue.name(),
+                world.account.id(), room.id(), created.startAt(), created.venueResponseExpiresAt());
+    }
+
+    /** A walk-in Manual Booking, created ACTIVE at the command instant through the real command (E7-48). */
+    public Booking walkIn() {
+        OnlineBookingWorld world = OnlineBookingWorld.create();
+        VenueBookingRow created = manualBookings.create(world.account.id(),
+                ManualBookingRequest.of(world.room.id(), PlayMode.SINGLE, null, 60, null, null));
+        return new Booking(created.bookingId(), null, world.venue.id(), world.venue.name(), world.account.id(),
+                world.room.id(), created.startAt(), null);
+    }
+
+    /**
+     * A walk-in of {@code minutes} on the booking's room, starting now, through the real command: the room must be free
+     * now under the normal rules (FR-ATT-05: the resource may be sold again manually). @return its Booking ID
+     */
+    public UUID walkInOnRoomOf(Booking booking, int minutes) {
+        return manualBookings.create(booking.venueAccountId(),
+                ManualBookingRequest.of(booking.resourceId(), PlayMode.SINGLE, null, minutes, null, null)).bookingId();
     }
 
     public void accept(Booking booking) {

@@ -135,7 +135,13 @@ final class BookingNotificationRules {
             Map.entry(IntegrationEvents.LATE_CONFIRM_DECLINED, event -> plan(venue("VENUE_LATE_CONFIRM_DECLINED"))),
             // T2: §52.2 and §52.5 "Customer Confirmation Expired", one for each side
             Map.entry(IntegrationEvents.LATE_CONFIRM_TIMED_OUT, event -> plan(customer("CUSTOMER_CONFIRMATION_EXPIRED"),
-                    venue("VENUE_CUSTOMER_CONFIRMATION_EXPIRED"))));
+                    venue("VENUE_CUSTOMER_CONFIRMATION_EXPIRED"))),
+            // E7-59 attendance (O13). §52.2 "Check-in Recorded" and "No-show Recorded", the customer only: the venue
+            // recorded them itself. Mark Present - Late has no §52.2 notification of its own; its customer-facing
+            // outcome is "Attendance-Unconfirmed Completion" at completion (E7-61)
+            Map.entry(IntegrationEvents.CHECK_IN_RECORDED, event -> plan(customer("CHECK_IN_RECORDED"))),
+            Map.entry(IntegrationEvents.LATE_PRESENT_RECORDED, event -> Plan.NONE),
+            Map.entry(IntegrationEvents.NO_SHOW_RECORDED, event -> plan(customer("NO_SHOW_RECORDED"))));
     // No rule for a conflicting Late Confirm Accept: it is the synchronous 409 LATE_CONFIRM_CUSTOMER_CONFLICT and no
     // event, so LATE_CONFIRM_SCHEDULE_CONFLICT is never produced (F1, PCR-008)
 

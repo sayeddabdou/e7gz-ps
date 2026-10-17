@@ -92,16 +92,34 @@ class BookingNotificationRulesTest extends IntegrationTest {
                 new Send(Recipient.VENUE, "VENUE_CUSTOMER_CONFIRMATION_EXPIRED")), Optional.empty()));
     }
 
-    /** The six booking rules of E7-55 and the five Late Confirm ones (E7-58): eleven, and nothing else. */
+    /**
+     * E7-59, Spec v5 section 52.2: "Check-in Recorded" and "No-show Recorded" to the customer only; Mark Present - Late
+     * sends nothing (its customer outcome is the attendance-unconfirmed completion, E7-61).
+     */
     @Test
-    void elevenEventsHaveARule() {
+    void eachAttendanceEventMapsToItsCustomerCodeAndArmsNoReminder() {
+        assertThat(plan(IntegrationEvents.CHECK_IN_RECORDED, Map.of())).isEqualTo(new Plan(List.of(
+                new Send(Recipient.CUSTOMER, "CHECK_IN_RECORDED")), Optional.empty()));
+        assertThat(plan(IntegrationEvents.NO_SHOW_RECORDED, Map.of())).isEqualTo(new Plan(List.of(
+                new Send(Recipient.CUSTOMER, "NO_SHOW_RECORDED")), Optional.empty()));
+        assertThat(plan(IntegrationEvents.LATE_PRESENT_RECORDED, Map.of()).isEmpty()).isTrue();
+        assertThat(BookingNotificationRules.eventTypes()).doesNotContain("BookingNoShowRecorded");
+    }
+
+    /**
+     * The six booking rules of E7-55, the five Late Confirm ones (E7-58) and the three attendance ones (E7-59):
+     * fourteen, and nothing else.
+     */
+    @Test
+    void fourteenEventsHaveARule() {
         assertThat(BookingNotificationRules.eventTypes()).containsExactlyInAnyOrder(
                 IntegrationEvents.BOOKING_CREATED, IntegrationEvents.BOOKING_CONFIRMED,
                 IntegrationEvents.BOOKING_REJECTED, IntegrationEvents.VENUE_RESPONSE_EXPIRED,
                 IntegrationEvents.BOOKING_CANCELLED, IntegrationEvents.BOOKING_STARTED,
                 IntegrationEvents.LATE_CONFIRM_INITIATED, IntegrationEvents.LATE_CONFIRM_WARNING_DUE,
                 IntegrationEvents.LATE_CONFIRM_ACCEPTED, IntegrationEvents.LATE_CONFIRM_DECLINED,
-                IntegrationEvents.LATE_CONFIRM_TIMED_OUT);
+                IntegrationEvents.LATE_CONFIRM_TIMED_OUT, IntegrationEvents.CHECK_IN_RECORDED,
+                IntegrationEvents.LATE_PRESENT_RECORDED, IntegrationEvents.NO_SHOW_RECORDED);
     }
 
     /**
@@ -119,11 +137,12 @@ class BookingNotificationRulesTest extends IntegrationTest {
      * read from {@code apps/customer/src/i18n/en.ts}.
      */
     @Test
-    void theLateConfirmAndHoursChangeCustomerPushBodiesAreTheAppsInAppText() throws IOException {
+    void theLateConfirmHoursChangeAndAttendanceCustomerPushBodiesAreTheAppsInAppText() throws IOException {
         String app = Files.readString(RepoFiles.get("apps/customer/src/i18n/en.ts"));
         Properties english = new NotificationTemplates().all().get(Language.EN);
         for (String code : List.of("LATE_CONFIRMATION_RECEIVED", "LATE_CONFIRMATION_EXPIRING",
-                "CUSTOMER_CONFIRMATION_EXPIRED", "VENUE_OPENING_HOURS_CHANGED")) {
+                "CUSTOMER_CONFIRMATION_EXPIRED", "VENUE_OPENING_HOURS_CHANGED", "CHECK_IN_RECORDED",
+                "NO_SHOW_RECORDED")) {
             String body = english.getProperty(code + ".push.body");
             assertThat(app).as(code).contains(code + ": \"" + body + "\"");
         }

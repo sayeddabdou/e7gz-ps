@@ -113,6 +113,30 @@ final class BookingStates {
         });
     }
 
+    /**
+     * E7-59: a CONFIRMED Online Booking moved to ACTIVE, as the booking start (T4, E7-60) would move it, with its
+     * interval moved to begin at {@code startAt} - the booking, its commitment and its BOOKING reservation together, so
+     * the reservation still covers exactly the booked interval (the no-show release checks it). The CONFIRMED -> ACTIVE
+     * history row is dated {@code startAt}. The caller withdraws the Accept's T4 job first, which would start it again.
+     */
+    static void started(UUID bookingId, Instant startAt) {
+        VenueAnswerDb.withoutTriggers(jdbc -> {
+            jdbc.sql("""
+                            UPDATE booking.booking
+                               SET end_at = :start + (end_at - start_at), start_at = :start, status = 'ACTIVE',
+                                   commitment_period = tstzrange(:start, :start + (end_at - start_at), '[)')
+                             WHERE id = :id AND status = 'CONFIRMED'""")
+                    .param("start", utc(startAt)).param("id", bookingId).update();
+            jdbc.sql("""
+                            UPDATE inventory.resource_reservation
+                               SET planned_end = :start + (planned_end - planned_start), planned_start = :start,
+                                   planned_range = tstzrange(:start, :start + (planned_end - planned_start), '[)')
+                             WHERE booking_id = :id AND reservation_type = 'BOOKING' AND active_flag""")
+                    .param("start", utc(startAt)).param("id", bookingId).update();
+            history(jdbc, bookingId, startAt, "CONFIRMED", "ACTIVE", null);
+        });
+    }
+
     static Instant minutesFromNow(long minutes) {
         return VenueAnswerDb.dbNow().plus(Duration.ofMinutes(minutes));
     }
