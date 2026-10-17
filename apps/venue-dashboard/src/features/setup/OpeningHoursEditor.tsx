@@ -31,6 +31,9 @@ export function OpeningHoursEditor({ api }: { api: ApiClient }) {
   const [resourceNames, setResourceNames] = useState<Record<string, string>>({});
   // One Idempotency-Key per preview (ADR-015, E7-113): a retry of the same commit replays instead of running twice.
   const commitKeys = useRef(new Map<string, string>());
+  // The venue confirmed cancelling the affected bookings of exactly this preview; a refreshed preview asks again.
+  const [confirmedToken, setConfirmedToken] = useState<string>();
+  const committing = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -96,7 +99,9 @@ export function OpeningHoursEditor({ api }: { api: ApiClient }) {
   };
 
   const commit = async (ownerPassword?: string): Promise<boolean> => {
-    if (!proposal || !preview) return false;
+    if (!proposal || !preview || committing.current) return false;
+    if (preview.affected.length > 0 && confirmedToken !== preview.previewToken) return false;
+    committing.current = true;
     setWorking("commit");
     setError(undefined);
     setPasswordError(undefined);
@@ -119,13 +124,18 @@ export function OpeningHoursEditor({ api }: { api: ApiClient }) {
         return false;
       }
       const message = setupErrorMessage(code, t);
-      if (ownerPassword) setPasswordError(message); else setError(message);
+      if (code === "OWNER_PASSWORD_REQUIRED" && !ownerPassword) {
+        // A booking became protected after the preview (FR-VEN-25): ask for the Owner PIN and commit again.
+        setPasswordError(message);
+        setPasswordOpen(true);
+      } else if (ownerPassword) setPasswordError(message); else setError(message);
       return false;
     } catch {
       const message = t.setup.errors.network;
       if (ownerPassword) setPasswordError(message); else setError(message);
       return false;
     } finally {
+      committing.current = false;
       setWorking(undefined);
     }
   };
@@ -191,11 +201,13 @@ export function OpeningHoursEditor({ api }: { api: ApiClient }) {
             return <li key={item.bookingId} style={styles.field}>
               <strong>{resourceNames[item.resourceId] ?? t.setup.hours.resource}</strong>
               <span><time dateTime={item.startAt}>{affectedDateFormatter.format(start)}, {affectedTimeFormatter.format(start)}</time> – <time dateTime={item.endAt}>{affectedTimeFormatter.format(end)}</time></span>
+              {item.protectedCancellation ? <span style={styles.muted}>{t.setup.hours.needsPin}</span> : null}
             </li>;
           })}</ul> : <p>{t.setup.hours.noAffected}</p>}
-          {preview.affected.length ? <p role="status" style={styles.info}>{t.setup.hours.affectedUnsupported}</p> : preview.ownerPasswordRequired ? <p style={styles.info}>{t.setup.hours.protectedNotice}</p> : null}
-          {/* E7-113 will replace this guard with the backend's protected affected-booking commit flow. */}
-          <button disabled={working === "commit" || preview.affected.length > 0} style={styles.primaryButton} type="button" onClick={() => preview.ownerPasswordRequired ? setPasswordOpen(true) : void commit()}>{working === "commit" ? t.setup.hours.committing : t.setup.hours.commit}</button>
+          {preview.affected.length ? <p role="status" style={styles.info}>{t.setup.hours.affectedWarning(preview.affected.length)}</p> : null}
+          {preview.ownerPasswordRequired ? <p style={styles.info}>{t.setup.hours.protectedNotice}</p> : null}
+          {preview.affected.length ? <label><input checked={confirmedToken === preview.previewToken} type="checkbox" onChange={(event) => setConfirmedToken(event.target.checked ? preview.previewToken : undefined)} /> {t.setup.hours.confirmCancellation}</label> : null}
+          <button disabled={working === "commit" || (preview.affected.length > 0 && confirmedToken !== preview.previewToken)} style={styles.primaryButton} type="button" onClick={() => preview.ownerPasswordRequired ? setPasswordOpen(true) : void commit()}>{working === "commit" ? t.setup.hours.committing : t.setup.hours.commit}</button>
         </section>
       ) : null}
       <OwnerPasswordDialog actionLabel={t.setup.hours.commit} error={passwordError} open={passwordOpen} onCancel={() => { setPasswordOpen(false); setPasswordError(undefined); }} onConfirm={commit} />

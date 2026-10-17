@@ -376,11 +376,24 @@ describe("OpeningHoursEditor", () => {
     }
   });
 
-  it("shows room names and prevents a known 501 when existing bookings are affected", async () => {
+  const hoursGet = () => ok({ defaultOpen: "10:00:00", defaultClose: "23:00:00", defaultFullDay: false, timezone: "Africa/Cairo", version: 1, days: Array.from({ length: 7 }, (_, weekday) => ({ weekday, mode: "DEFAULT", customOpen: null, customClose: null })) });
+  const savedHours = () => ok({ defaultOpen: "15:00:00", defaultClose: "23:00:00", defaultFullDay: false, timezone: "Africa/Cairo", version: 2, days: Array.from({ length: 7 }, (_, weekday) => ({ weekday, mode: "DEFAULT", customOpen: null, customClose: null })) });
+  const room = () => ok([{ id: "r-1", name: "Room 1", activity: "PLAYSTATION", consoleType: "PS5", baseState: "ACTIVE", operationalRestriction: "NONE" }]);
+  const affectedPreview = (protectedCancellation: boolean, token = "p-1") => ok({ previewToken: token, ownerPasswordRequired: protectedCancellation, affected: [{ bookingId: "b-1", resourceId: "r-1", startAt: "2026-10-04T18:00:00Z", endAt: "2026-10-04T19:00:00Z", protectedCancellation }] });
+  const commits = (requests: Request[]) => requests.filter((request) => request.url.endsWith("/commit"));
+
+  it("shows the affected bookings and commits only after the venue confirms the cancellation and enters the Owner PIN", async () => {
+    const bodies: unknown[] = [];
+    let attempt = 0;
     const requests = renderWithApi((api) => <OpeningHoursEditor api={api} />, async (request) => {
-      if (request.url.endsWith("/opening-hours") && request.method === "GET") return ok({ defaultOpen: "10:00:00", defaultClose: "23:00:00", defaultFullDay: false, timezone: "Africa/Cairo", version: 1, days: Array.from({ length: 7 }, (_, weekday) => ({ weekday, mode: "DEFAULT", customOpen: null, customClose: null })) });
-      if (request.url.endsWith("/resources") && request.method === "GET") return ok([{ id: "r-1", name: "Room 1", activity: "PLAYSTATION", consoleType: "PS5", baseState: "ACTIVE", operationalRestriction: "NONE" }]);
-      if (request.url.endsWith("/preview")) return ok({ previewToken: "p-1", ownerPasswordRequired: true, affected: [{ bookingId: "b-1", resourceId: "r-1", startAt: "2026-10-04T18:00:00Z", endAt: "2026-10-04T19:00:00Z", protectedCancellation: true }] });
+      if (request.url.endsWith("/opening-hours") && request.method === "GET") return hoursGet();
+      if (request.url.endsWith("/resources") && request.method === "GET") return room();
+      if (request.url.endsWith("/preview")) return affectedPreview(true);
+      if (request.url.endsWith("/commit")) {
+        bodies.push(await request.clone().json());
+        attempt += 1;
+        return attempt === 1 ? failure("OWNER_PASSWORD_INVALID", 423) : savedHours();
+      }
       throw new Error(`Unexpected request: ${request.method} ${request.url}`);
     });
 
@@ -388,10 +401,83 @@ describe("OpeningHoursEditor", () => {
     expect(await screen.findByText("Room 1")).toBeTruthy();
     expect(screen.queryByText(/b-1|r-1/u)).toBeNull();
     expect(screen.getByText(/9:00 PM/u)).toBeTruthy();
-    expect(screen.queryByText("2026-10-04T18:00:00Z")).toBeNull();
-    expect(screen.getByText(/cannot be saved yet/u)).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Save opening hours" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(requests.some((request) => request.url.endsWith("/commit"))).toBe(false);
+    expect(screen.getByText("Owner PIN required")).toBeTruthy();
+    expect(screen.getByText("Saving these hours cancels the booking listed above. This cannot be undone.")).toBeTruthy();
+    const save = screen.getByRole("button", { name: "Save opening hours" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+
+    fireEvent.click(screen.getByLabelText(/I understand that saving these hours cancels/u));
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    expect(commits(requests)).toHaveLength(0);
+    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "9999" } });
+    fireEvent.submit(screen.getByRole("dialog"));
+    expect(await screen.findByText("The Owner PIN is incorrect.")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "1234" } });
+    fireEvent.submit(screen.getByRole("dialog"));
+    expect(await screen.findByText("Changes saved.")).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(bodies).toEqual([
+      expect.objectContaining({ previewToken: "p-1", ownerPassword: "9999" }),
+      expect.objectContaining({ previewToken: "p-1", ownerPassword: "1234" }),
+    ]);
+    const keys = commits(requests).map((request) => request.headers.get("Idempotency-Key"));
+    expect(keys[0]).toMatch(/^[0-9a-f-]{36}$/u);
+    expect(keys[1]).toBe(keys[0]);
+  });
+
+  it("asks for the Owner PIN when a booking became protected after the preview", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const requests = renderWithApi((api) => <OpeningHoursEditor api={api} />, async (request) => {
+      if (request.url.endsWith("/opening-hours") && request.method === "GET") return hoursGet();
+      if (request.url.endsWith("/resources") && request.method === "GET") return room();
+      if (request.url.endsWith("/preview")) return affectedPreview(false);
+      if (request.url.endsWith("/commit")) {
+        const body = await request.clone().json() as Record<string, unknown>;
+        bodies.push(body);
+        return body.ownerPassword ? savedHours() : failure("OWNER_PASSWORD_REQUIRED", 423);
+      }
+      throw new Error(`Unexpected request: ${request.method} ${request.url}`);
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Preview changes" }));
+    expect(await screen.findByText("Room 1")).toBeTruthy();
+    expect(screen.queryByText("Owner PIN required")).toBeNull();
+    fireEvent.click(screen.getByLabelText(/I understand that saving these hours cancels/u));
+    fireEvent.click(screen.getByRole("button", { name: "Save opening hours" }));
+
+    expect(await screen.findByText("Enter the Owner PIN to continue.")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Owner PIN"), { target: { value: "1234" } });
+    fireEvent.submit(screen.getByRole("dialog"));
+    expect(await screen.findByText("Changes saved.")).toBeTruthy();
+    expect(bodies.map((body) => body.ownerPassword)).toEqual([undefined, "1234"]);
+    const keys = commits(requests).map((request) => request.headers.get("Idempotency-Key"));
+    expect(new Set(keys).size).toBe(1);
+  });
+
+  it("sends one commit for a double click on a confirmed change", async () => {
+    let release: (() => void) | undefined;
+    const requests = renderWithApi((api) => <OpeningHoursEditor api={api} />, async (request) => {
+      if (request.url.endsWith("/opening-hours") && request.method === "GET") return hoursGet();
+      if (request.url.endsWith("/resources") && request.method === "GET") return room();
+      if (request.url.endsWith("/preview")) return affectedPreview(false);
+      if (request.url.endsWith("/commit")) {
+        await new Promise<void>((resolve) => { release = resolve; });
+        return savedHours();
+      }
+      throw new Error(`Unexpected request: ${request.method} ${request.url}`);
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Preview changes" }));
+    fireEvent.click(await screen.findByLabelText(/I understand that saving these hours cancels/u));
+    const save = screen.getByRole("button", { name: "Save opening hours" });
+    fireEvent.click(save);
+    fireEvent.click(save);
+    await waitFor(() => expect(release).toBeDefined());
+    await act(async () => { release!(); });
+    expect(await screen.findByText("Changes saved.")).toBeTruthy();
+    expect(commits(requests)).toHaveLength(1);
   });
 
   it("refreshes an initially empty preview when commit reports a changed affected set", async () => {
@@ -415,7 +501,10 @@ describe("OpeningHoursEditor", () => {
 
     expect(await screen.findByText(/Bookings changed after the first preview/u)).toBeTruthy();
     expect(screen.getByText("Room 1")).toBeTruthy();
+    // The refreshed set must be confirmed again before anything can be committed.
+    expect((screen.getByLabelText(/I understand that saving these hours cancels/u) as HTMLInputElement).checked).toBe(false);
     expect((screen.getByRole("button", { name: "Save opening hours" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(commits(requests)[0]!.headers.get("Idempotency-Key")).toMatch(/^[0-9a-f-]{36}$/u);
     expect(previewCalls).toBe(2);
     expect(requests.filter((request) => request.url.endsWith("/commit"))).toHaveLength(1);
   });
