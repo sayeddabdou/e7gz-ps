@@ -143,9 +143,8 @@ class ManualCreationPredicate {
      */
     private Optional<Session> sessionContaining(CommandContext command, ResourceCatalog.Entry resource, Instant startAt,
                                                 Instant endAt) {
-        // Any session row, a superseded historical one included: tr_20 requires its snapshot (E7-113 decision 2 leaves
-        // the Manual rules as they are - a walk-in may be made outside published hours, FR-MAN-03)
-        return snapshots.anyContaining(command, resource.venueId(), startAt)
+        // A current session only (v1.1.36): inside superseded history the walk-in is out of hours (FR-MAN-03)
+        return snapshots.containing(command, resource.venueId(), startAt)
                 .filter(session -> !session.end().isBefore(endAt));
     }
 

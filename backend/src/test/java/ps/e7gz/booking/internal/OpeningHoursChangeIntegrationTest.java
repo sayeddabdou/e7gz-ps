@@ -616,18 +616,17 @@ class OpeningHoursChangeIntegrationTest extends IntegrationTest {
         assertThat(jobStatus(LateConfirmDb.t2(awaiting.bookingId()))).isEqualTo("PENDING");
     }
 
-    // ================================================================ decision 2: superseded historical sessions
+    // ================================================================ v1.1.36: superseded sessions beside current ones
 
     /**
-     * Amr's E7-113 decision 2: tomorrow's session row stays (the cancelled bookings reference it, FR-VEN-22), but the
-     * day is closed now, so it is superseded - no new Online booking fits it (INTERVAL_NOT_WITHIN_ONE_SESSION), and the
-     * session readers behind intake, Find Available, Nearest Availability and Late Confirm no longer offer it. A Manual
-     * walk-in, which FR-MAN-03 allows outside published hours, still snapshots the row, because
-     * {@code booking.validate_booking_insert_snapshot} requires it of any session row containing it. A referenced
-     * session the new hours still generate (the day after) is restamped and keeps taking bookings.
+     * A closed day: tomorrow's session row stays as superseded history (its cancelled bookings reference it, FR-VEN-22)
+     * and the day has no current session, so no new Online booking fits it and no reader offers it. A Manual walk-in
+     * there is out of hours (FR-MAN-03): it snapshots no session - so a later, unrelated hours change, committed for
+     * real, neither lists nor cancels it. A referenced session the new hours still generate (the day after) stays
+     * current and keeps taking bookings.
      */
     @Test
-    void aSupersededHistoricalSessionNeverTakesANewBookingWhileAMatchingReferencedOneStillDoes() throws Exception {
+    void aClosedDayKeepsItsHistoryOffersNothingAndAWalkInThereSurvivesALaterUnrelatedChange() throws Exception {
         Venue v = venue();
         Booked pending = online(v, v.world.customer.id(), v.world.room, v.tomorrowAt(12));
         Booked dayAfter = online(v, v.world.anotherCustomer(), v.world.room, v.dayAt(2, 12));
@@ -637,34 +636,138 @@ class OpeningHoursChangeIntegrationTest extends IntegrationTest {
         commit(v, change, previewToken(v, change), null, UUID.randomUUID(), UUID.randomUUID())
                 .andExpect(status().isOk());
         assertThat(VenueAnswerDb.booking(pending.bookingId()).status()).isEqualTo("CANCELLED");
-        assertThat(OWNER.sql("SELECT count(*) FROM venue.operating_session WHERE id = :id")
-                .param("id", tomorrowSession).query(Long.class).single()).as("the historical row stays").isEqualTo(1);
+        assertThat(sessionOf(pending.bookingId())).as("the cancelled booking keeps its session").isEqualTo(tomorrowSession);
+        assertThat(superseded(tomorrowSession)).isTrue();
+        assertThat(currentSessions(v, v.today.plusDays(1))).as("a closed day has no current session").isZero();
 
-        // Online: tomorrow is closed, its kept row offers nothing.
         assertThatThrownBy(() -> online(v, v.world.anotherCustomer(), v.room2, v.tomorrowAt(14)))
                 .isInstanceOfSatisfying(ApiException.class,
                         e -> assertThat(e.code()).isEqualTo(ApiErrorCode.INTERVAL_NOT_WITHIN_ONE_SESSION));
-        // Manual: a walk-in outside published hours (FR-MAN-03); the database requires the row's snapshot.
-        UUID walkIn = manual(v, v.room3, v.tomorrowAt(14));
-        assertThat(sessionOf(walkIn)).as("tr_20 / validate_booking_insert_snapshot").isEqualTo(tomorrowSession);
-        // The readers behind intake and availability.
-        Instant noonTomorrow = v.tomorrowAt(12);
-        CommandScope venueOnly = CommandScope.shared(LockSet.builder().venues(v.world.venue.id()).build());
-        java.util.Optional<SessionSnapshots.Session> containing = runner.run(TestCommands.under(venueOnly,
-                ctx -> sessionSnapshots.containing(ctx, v.world.venue.id(), noonTomorrow)));
-        assertThat(containing).isEmpty();
-        List<OperatingSessions.SessionPeriod> upcoming = runner.run(TestCommands.under(venueOnly,
-                ctx -> operatingSessions.endingAfter(ctx, v.world.venue.id(), noonTomorrow.minusSeconds(1))));
-        assertThat(upcoming).extracting(OperatingSessions.SessionPeriod::operatingDay)
-                .doesNotContain(v.today.plusDays(1)).contains(v.today.plusDays(2));
+        assertThat(containing(v, v.tomorrowAt(12))).isEmpty();
+        assertThat(upcomingDays(v, v.tomorrowAt(12).minusSeconds(1))).doesNotContain(v.today.plusDays(1))
+                .contains(v.today.plusDays(2));
 
-        // The referenced session the new hours still generate was restamped and keeps taking Online bookings.
+        UUID walkIn = manual(v, v.room3, v.tomorrowAt(14));
+        assertThat(sessionOf(walkIn)).as("out of hours: no snapshot of the superseded session").isNull();
+        // A later, unrelated change (also close the day after next) - committed - leaves the walk-in alone.
+        Map<String, Object> later = v.proposal(List.of(day(v.tomorrowWeekday(), "CLOSED"),
+                day(v.today.plusDays(3).getDayOfWeek().getValue() - 1, "CLOSED")));
+        JsonNode preview = preview(v, later).andReturn().getResponse().getContentAsString().transform(this::data);
+        assertThat(ids(preview)).doesNotContain(walkIn);
+        commit(v, later, preview.path("previewToken").asText(), null, UUID.randomUUID(), UUID.randomUUID())
+                .andExpect(status().isOk());
+        assertThat(VenueAnswerDb.booking(walkIn).status()).isEqualTo("CONFIRMED");
+        assertThat(OWNER.sql("SELECT count(*) FROM inventory.resource_reservation WHERE booking_id = :id"
+                        + " AND active_flag").param("id", walkIn).query(Long.class).single())
+                .as("its reservation is untouched").isEqualTo(1);
+        assertThat(OWNER.sql("SELECT count(*) FROM loyalty.booking_fee_refund WHERE booking_id = :id")
+                .param("id", walkIn).query(Long.class).single()).isZero();
+
+        assertThat(superseded(dayAfterSession)).isFalse();
         assertThat(OWNER.sql("""
                         SELECT s.generated_from_version = t.version FROM venue.operating_session s
                           JOIN venue.venue_opening_template t ON t.id = s.opening_template_id WHERE s.id = :id""")
-                .param("id", dayAfterSession).query(Boolean.class).single()).isTrue();
+                .param("id", dayAfterSession).query(Boolean.class).single()).as("restamped").isTrue();
         Booked another = online(v, v.world.anotherCustomer(), v.room2, v.dayAt(2, 12));
         assertThat(sessionOf(another.bookingId())).isEqualTo(dayAfterSession);
+    }
+
+    /**
+     * A shortened day: tomorrow now opens six hours later. Its old session row is superseded beside the day's new
+     * current session; the booking in the lost hours is cancelled and still references the old row, the booking the new
+     * hours still cover is untouched and keeps it too. A new Online booking inside the new hours succeeds in the current
+     * session; one inside the old hours only is refused; intake and the availability readers agree. A second change of
+     * the same day leaves two superseded rows and one current session, which is the only one ever offered.
+     */
+    @Test
+    void aShortenedDayGetsItsCurrentSessionBesideItsHistoryAndOnlyTheCurrentOneTakesBookings() throws Exception {
+        Venue v = venue();
+        Booked lost = online(v, v.world.customer.id(), v.world.room, v.tomorrowAt(1));
+        Booked kept = online(v, v.world.anotherCustomer(), v.room2, v.tomorrowAt(10));
+        UUID old = sessionOf(lost.bookingId());
+        UUID todaySession = currentSession(v, v.today);
+        Map<String, Object> shorter = v.proposal(List.of(custom(v.tomorrowWeekday(), v.open.plusHours(6), v.open)));
+        JsonNode preview = preview(v, shorter).andReturn().getResponse().getContentAsString().transform(this::data);
+        assertThat(ids(preview)).containsExactly(lost.bookingId());
+        commit(v, shorter, preview.path("previewToken").asText(), null, UUID.randomUUID(), UUID.randomUUID())
+                .andExpect(status().isOk());
+
+        assertThat(VenueAnswerDb.booking(lost.bookingId()).status()).isEqualTo("CANCELLED");
+        assertThat(VenueAnswerDb.booking(kept.bookingId()).status()).isEqualTo("PENDING");
+        assertThat(sessionOf(lost.bookingId())).isEqualTo(old);
+        assertThat(sessionOf(kept.bookingId())).as("history keeps its references").isEqualTo(old);
+        assertThat(superseded(old)).isTrue();
+        assertThat(OWNER.sql("SELECT lower(session_period) FROM venue.operating_session WHERE id = :id")
+                .param("id", old).query(java.time.OffsetDateTime.class).single().toInstant())
+                .as("its bounds never change").isEqualTo(v.tomorrowAt(0));
+        UUID current = currentSession(v, v.today.plusDays(1));
+        assertThat(current).isNotEqualTo(old);
+        assertThat(superseded(todaySession)).as("today's started session stays as it is").isFalse();
+        assertThat(currentSession(v, v.today)).isEqualTo(todaySession);
+
+        Booked inside = online(v, v.world.anotherCustomer(), v.room3, v.tomorrowAt(12));
+        assertThat(sessionOf(inside.bookingId())).as("the new booking is in the current session").isEqualTo(current);
+        assertThatThrownBy(() -> online(v, v.world.anotherCustomer(), v.room3, v.tomorrowAt(2)))
+                .as("inside the old hours only").isInstanceOfSatisfying(ApiException.class,
+                        e -> assertThat(e.code()).isEqualTo(ApiErrorCode.INTERVAL_NOT_WITHIN_ONE_SESSION));
+        assertThat(containing(v, v.tomorrowAt(2))).isEmpty();
+        assertThat(containing(v, v.tomorrowAt(12))).hasValueSatisfying(session ->
+                assertThat(session.id()).isEqualTo(current));
+        assertThat(upcoming(v, v.tomorrowAt(0).minusSeconds(1))).filteredOn(
+                period -> period.operatingDay().equals(v.today.plusDays(1))).singleElement()
+                .satisfies(period -> assertThat(period.start()).isEqualTo(v.tomorrowAt(6)));
+
+        // Again: the day opens eight hours later. Two superseded rows and one current session; only it is offered.
+        Map<String, Object> shorterStill = v.proposal(List.of(custom(v.tomorrowWeekday(), v.open.plusHours(8),
+                v.open)));
+        JsonNode second = preview(v, shorterStill).andReturn().getResponse().getContentAsString()
+                .transform(this::data);
+        commit(v, shorterStill, second.path("previewToken").asText(), null, UUID.randomUUID(), UUID.randomUUID())
+                .andExpect(status().isOk());
+        assertThat(superseded(current)).as("the first change's current session is history now").isTrue();
+        assertThat(OWNER.sql("""
+                        SELECT count(*) FROM venue.operating_session WHERE venue_id = :v AND operating_day = :d""")
+                .param("v", v.world.venue.id()).param("d", v.today.plusDays(1)).query(Long.class).single())
+                .isEqualTo(3);
+        UUID third = currentSession(v, v.today.plusDays(1));
+        Booked latest = online(v, v.world.anotherCustomer(), v.world.room, v.tomorrowAt(14));
+        assertThat(sessionOf(latest.bookingId())).isEqualTo(third);
+        assertThat(containing(v, v.tomorrowAt(14))).hasValueSatisfying(session ->
+                assertThat(session.id()).isEqualTo(third));
+    }
+
+    private java.util.Optional<SessionSnapshots.Session> containing(Venue v, Instant at) {
+        CommandScope venueOnly = CommandScope.shared(LockSet.builder().venues(v.world.venue.id()).build());
+        return runner.run(TestCommands.under(venueOnly, ctx -> sessionSnapshots.containing(ctx, v.world.venue.id(), at)));
+    }
+
+    private List<OperatingSessions.SessionPeriod> upcoming(Venue v, Instant after) {
+        CommandScope venueOnly = CommandScope.shared(LockSet.builder().venues(v.world.venue.id()).build());
+        return runner.run(TestCommands.under(venueOnly,
+                ctx -> operatingSessions.endingAfter(ctx, v.world.venue.id(), after)));
+    }
+
+    private List<LocalDate> upcomingDays(Venue v, Instant after) {
+        return upcoming(v, after).stream().map(OperatingSessions.SessionPeriod::operatingDay).toList();
+    }
+
+    private static boolean superseded(UUID sessionId) {
+        return OWNER.sql("SELECT superseded_at IS NOT NULL FROM venue.operating_session WHERE id = :id")
+                .param("id", sessionId).query(Boolean.class).single();
+    }
+
+    private static long currentSessions(Venue v, LocalDate day) {
+        return OWNER.sql("""
+                        SELECT count(*) FROM venue.operating_session
+                         WHERE venue_id = :v AND operating_day = :d AND superseded_at IS NULL""")
+                .param("v", v.world.venue.id()).param("d", day).query(Long.class).single();
+    }
+
+    private static UUID currentSession(Venue v, LocalDate day) {
+        return OWNER.sql("""
+                        SELECT id FROM venue.operating_session
+                         WHERE venue_id = :v AND operating_day = :d AND superseded_at IS NULL""")
+                .param("v", v.world.venue.id()).param("d", day).query(UUID.class).single();
     }
 
     // ================================================================ outcomes
@@ -818,6 +921,15 @@ class OpeningHoursChangeIntegrationTest extends IntegrationTest {
         return proposal;
     }
 
+    private static Map<String, Object> custom(int weekday, LocalTime open, LocalTime close) {
+        Map<String, Object> day = new LinkedHashMap<>();
+        day.put("weekday", weekday);
+        day.put("mode", "CUSTOM");
+        day.put("customOpen", open + ":00");
+        day.put("customClose", close + ":00");
+        return day;
+    }
+
     private static Map<String, Object> day(int weekday, String mode) {
         Map<String, Object> day = new LinkedHashMap<>();
         day.put("weekday", weekday);
@@ -957,7 +1069,7 @@ class OpeningHoursChangeIntegrationTest extends IntegrationTest {
 
     private static UUID sessionOf(UUID id) {
         return OWNER.sql("SELECT operating_session_id FROM booking.booking WHERE id = :id").param("id", id)
-                .query(UUID.class).single();
+                .query(UUID.class).optional().orElse(null);
     }
 
     private static UUID reservationOf(UUID bookingId) {

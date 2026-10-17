@@ -15,8 +15,9 @@ import ps.e7gz.venue.internal.SessionPlan.ExistingSession;
 import ps.e7gz.venue.internal.SessionPlan.Interval;
 
 /**
- * E7-25 step 3: referenced sessions are immutable and only unreferenced ones are regenerated; a referenced day keeps
- * its session (PO decision 3 Oct 2026). Monday 5 Oct 2026, Africa/Cairo (+03:00).
+ * E7-25 step 3: referenced sessions are immutable and only unreferenced ones are regenerated. E7-113 (v1.1.36): a
+ * referenced future session the hours no longer generate is superseded and its day gets the current session beside it;
+ * a started one is left as it is. Monday 5 Oct 2026, Africa/Cairo (+03:00).
  */
 class SessionPlanTest {
 
@@ -59,7 +60,8 @@ class SessionPlanTest {
 
         assertThat(plan.delete()).containsExactlyElementsOf(existing.stream().map(ExistingSession::id).toList());
         assertThat(plan.insert()).hasSize(3);
-        assertThat(plan.pinnedDays()).isEmpty();
+        assertThat(plan.supersede()).isEmpty();
+        assertThat(plan.supersededDays()).isEmpty();
     }
 
     @Test
@@ -76,7 +78,7 @@ class SessionPlanTest {
     }
 
     @Test
-    void aReferencedSessionIsNeverDeletedAndItsDayKeepsIt() {
+    void aReferencedSessionTheHoursNoLongerGenerateIsSupersededAndItsDayGetsTheCurrentSession() {
         List<PlannedSession> old = generate(OLD, 2);
         ExistingSession referenced = row(old.get(0), 1, true);
         ExistingSession free = row(old.get(1), 1, false);
@@ -84,13 +86,41 @@ class SessionPlanTest {
         SessionPlan plan = SessionPlan.of(List.of(referenced, free), generate(NEW, 2), TEMPLATE, 2, CAIRO.getId(),
                 NOW);
 
-        assertThat(plan.delete()).containsExactly(free.id());
-        assertThat(plan.kept()).containsExactly(referenced);
-        assertThat(plan.pinnedDays()).containsExactly(MON);
-        assertThat(plan.insert()).extracting(PlannedSession::operatingDay).containsExactly(MON.plusDays(1));
-        // The new hours still decide which reservations are affected on that day.
+        assertThat(plan.delete()).as("a referenced session is never deleted").containsExactly(free.id());
+        assertThat(plan.supersede()).containsExactly(referenced.id());
+        assertThat(plan.supersededDays()).containsExactly(MON);
+        assertThat(plan.kept()).as("superseded history is not a current session").isEmpty();
+        assertThat(plan.insert()).as("Monday gets its current session beside the superseded one")
+                .extracting(PlannedSession::operatingDay).containsExactly(MON, MON.plusDays(1));
         PlannedSession newMonday = generate(NEW, 1).getFirst();
-        assertThat(plan.containers()).contains(new Interval(newMonday.start(), newMonday.end()));
+        assertThat(plan.containers()).contains(new Interval(newMonday.start(), newMonday.end()))
+                .doesNotContain(new Interval(referenced.start(), referenced.end()));
+    }
+
+    @Test
+    void aReferencedSessionThatStillMatchesStaysCurrentAndIsRestamped() {
+        ExistingSession referenced = row(generate(OLD, 1).getFirst(), 1, true);
+
+        SessionPlan plan = SessionPlan.of(List.of(referenced), generate(OLD, 1), TEMPLATE, 2, CAIRO.getId(), NOW);
+
+        assertThat(plan.supersede()).isEmpty();
+        assertThat(plan.kept()).containsExactly(referenced);
+        assertThat(plan.restamp()).containsExactly(referenced.id());
+        assertThat(plan.insert()).isEmpty();
+    }
+
+    @Test
+    void aReferencedSessionOfADayNowClosedIsSupersededAndTheDayHasNoSession() {
+        OpeningHours mondayClosed = OpeningHours.validated(LocalTime.of(12, 0), LocalTime.of(23, 0), false,
+                List.of(new OpeningHours.Day(0, OpeningDayMode.CLOSED, null, null)));
+        ExistingSession referenced = row(generate(OLD, 1).getFirst(), 1, true);
+
+        SessionPlan plan = SessionPlan.of(List.of(referenced), generate(mondayClosed, 1), TEMPLATE, 2,
+                CAIRO.getId(), NOW);
+
+        assertThat(plan.supersede()).containsExactly(referenced.id());
+        assertThat(plan.insert()).isEmpty();
+        assertThat(plan.containers()).isEmpty();
     }
 
     @Test
@@ -107,14 +137,18 @@ class SessionPlanTest {
     }
 
     @Test
-    void aNewSessionThatWouldOverlapAKeptOneIsNotCreated() {
-        // Monday's referenced session runs to 02:00 Tuesday; new hours open Tuesday at 01:00.
+    void aNewSessionThatWouldOverlapAStartedOneIsNotCreated() {
+        // Monday's started session runs to 02:00 Tuesday; new hours open Tuesday at 01:00.
         PlannedSession lateMonday = generate(NEW, 1).getFirst();
-        ExistingSession referenced = row(lateMonday, 1, true);
+        ExistingSession started = row(lateMonday, 1, true);
+        Instant mondayEvening = lateMonday.start().plusSeconds(3600);
         OpeningHours early = OpeningHours.validated(LocalTime.of(1, 0), LocalTime.of(12, 0), false, List.of());
 
-        SessionPlan plan = SessionPlan.of(List.of(referenced), generate(early, 2), TEMPLATE, 2, CAIRO.getId(), NOW);
+        SessionPlan plan = SessionPlan.of(List.of(started), generate(early, 2), TEMPLATE, 2, CAIRO.getId(),
+                mondayEvening);
 
+        assertThat(plan.supersede()).as("a started session is left as it is").isEmpty();
+        assertThat(plan.kept()).containsExactly(started);
         assertThat(plan.skippedDays()).containsExactly(MON.plusDays(1));
         assertThat(plan.insert()).isEmpty();
     }

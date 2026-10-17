@@ -239,7 +239,7 @@ class OpeningHoursHttpTest extends IntegrationTest {
     }
 
     @Test
-    void aReferencedSessionIsNeverChangedAndItsDayKeepsIt() throws Exception {
+    void aReferencedSessionIsNeverChangedAndIsSupersededBesideItsDaysCurrentSession() throws Exception {
         save(proposal("12:00:00", "23:00:00", false, List.of()));
         LocalDate day = today.plusDays(10);
         Session referenced = session(day);
@@ -251,9 +251,12 @@ class OpeningHoursHttpTest extends IntegrationTest {
         assertThatThrownBy(() -> app.sql("UPDATE venue.operating_session SET local_end = local_end - interval '1 hour'"
                 + " WHERE id = :id").param("id", referenced.id()).update()).isInstanceOf(DataAccessException.class);
 
-        // New hours that still cover the Booking commit; the referenced day keeps its session (PO decision 3 Oct 2026).
+        // New hours that still cover the Booking commit. The referenced session keeps its row and bounds (FR-VEN-22),
+        // superseded (v1.1.36, E7-113); its day gets the new hours' current session beside it.
         save(proposal("10:00:00", "23:00:00", false, List.of()));
-        assertThat(session(day)).isEqualTo(referenced);
+        assertThat(sessionById(referenced.id())).isEqualTo(referenced);
+        assertThat(superseded(referenced.id())).isTrue();
+        assertThat(session(day).localStart()).isEqualTo(day.atTime(10, 0));
         assertThat(session(day.plusDays(1)).localStart()).isEqualTo(day.plusDays(1).atTime(10, 0));
     }
 
@@ -283,7 +286,9 @@ class OpeningHoursHttpTest extends IntegrationTest {
                 .andExpect(jsonPath("$.data.version").value(2));
         assertThat(OWNER.sql("SELECT status || ' ' || terminal_reason FROM booking.booking WHERE id = :id")
                 .param("id", booking).query(String.class).single()).isEqualTo("CANCELLED VENUE_OPENING_HOURS_CHANGED");
-        assertThat(session(day)).as("the session the booking referenced keeps its row").isEqualTo(session);
+        assertThat(sessionById(session.id())).as("the session the booking referenced keeps its row").isEqualTo(session);
+        assertThat(superseded(session.id())).isTrue();
+        assertThat(session(day).localStart()).as("the day's current session").isEqualTo(day.atTime(15, 0));
         assertThat(session(day.plusDays(1)).localStart()).isEqualTo(day.plusDays(1).atTime(15, 0));
 
         // Hours that still cover it affect nothing.
@@ -427,17 +432,40 @@ class OpeningHoursHttpTest extends IntegrationTest {
         }
     }
 
+    private boolean superseded(UUID sessionId) {
+        return OWNER.sql("SELECT superseded_at IS NOT NULL FROM venue.operating_session WHERE id = :id")
+                .param("id", sessionId).query(Boolean.class).single();
+    }
+
     private List<LocalDate> sessionDays() {
-        return OWNER.sql("SELECT operating_day FROM venue.operating_session WHERE venue_id = :venue ORDER BY 1")
+        return OWNER.sql("SELECT operating_day FROM venue.operating_session WHERE venue_id = :venue"
+                        + " AND superseded_at IS NULL ORDER BY 1")
                 .param("venue", venue).query(LocalDate.class).list();
     }
 
+    /** The day's current session (v1.1.36: a superseded one may stand beside it). */
     private Session session(LocalDate day) {
         return OWNER.sql("""
                         SELECT id, local_start, local_end, lower(session_period) AS s, upper(session_period) AS e,
                                generated_from_version
-                          FROM venue.operating_session WHERE venue_id = :venue AND operating_day = :day""")
+                          FROM venue.operating_session
+                         WHERE venue_id = :venue AND operating_day = :day AND superseded_at IS NULL""")
                 .param("venue", venue).param("day", day)
+                .query((rs, n) -> new Session(rs.getObject("id", UUID.class),
+                        rs.getObject("local_start", LocalDateTime.class),
+                        rs.getObject("local_end", LocalDateTime.class),
+                        rs.getObject("s", OffsetDateTime.class).toInstant(),
+                        rs.getObject("e", OffsetDateTime.class).toInstant(), rs.getLong("generated_from_version")))
+                .single();
+    }
+
+    /** One session row by id, superseded or not, and whether it is superseded. */
+    private Session sessionById(UUID id) {
+        return OWNER.sql("""
+                        SELECT id, local_start, local_end, lower(session_period) AS s, upper(session_period) AS e,
+                               generated_from_version
+                          FROM venue.operating_session WHERE id = :id""")
+                .param("id", id)
                 .query((rs, n) -> new Session(rs.getObject("id", UUID.class),
                         rs.getObject("local_start", LocalDateTime.class),
                         rs.getObject("local_end", LocalDateTime.class),
