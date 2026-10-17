@@ -254,12 +254,12 @@ class HoursChangeRaceConcurrencyIntegrationTest extends IntegrationTest {
         try (RowLock r2 = RowLock.on("resource.resource", f.r2().id())) {
             Future<CreatedBooking> creating = pool.submit(() -> inCorrelation(creationCorrelation,
                     () -> creation.create(f.world().request(f.b2Customer(), f.r2(), f.b2Start(), 60))));
-            Waiter creator = single(LockWaits.awaitBlockedBy(r2.pid(), creating, TIMEOUT));
+            Waiter creator = single(waitersBehind(r2.pid(), creating));
             assertWaitsInBeginCommand(creator, r2.pid(), "resource.resource");
             assertThat(relationsWritten(creator.pid())).as("the creation has written nothing yet").isEmpty();
 
             Future<Instant> cancelling = pool.submit(() -> inCorrelation(o5Correlation, () -> o5Runner.run(o5)));
-            Waiter waiting = single(LockWaits.awaitBlockedBy(creator.pid(), cancelling, TIMEOUT));
+            Waiter waiting = single(waitersBehind(creator.pid(), cancelling));
             log.info("R2 row lock backend {}; creation backend {} waits: {}; O5 backend {} waits behind it: {}",
                     r2.pid(), creator.pid(), creator, waiting.pid(), waiting);
             assertWaitsInBeginCommand(waiting, creator.pid(), o5WaitsOn);
@@ -391,6 +391,20 @@ class HoursChangeRaceConcurrencyIntegrationTest extends IntegrationTest {
         assertThat(waiter.query()).contains("tournament.begin_command");
         assertThat(tupleLocks(waiter.pid())).as("the row backend %s waits for", waiter.pid())
                 .containsExactly(relation);
+    }
+
+    /**
+     * The backends waiting behind {@code holderPid} once {@code waiter} is among them, read again on a fresh
+     * {@code pg_stat_activity} snapshot: {@link LockWaits#awaitBlockedBy} matches on the live {@code pg_blocking_pids}
+     * while the activity columns come from the statement's snapshot, which may predate the wait (wait_event_type still
+     * null). A backend blocked behind a lock its holder keeps cannot move on, so the second read is stable.
+     */
+    private static List<Waiter> waitersBehind(int holderPid, Future<?> waiter) {
+        List<Waiter> first = LockWaits.awaitBlockedBy(holderPid, waiter, TIMEOUT);
+        List<Waiter> settled = LockWaits.blockedBy(holderPid);
+        assertThat(settled).extracting(Waiter::pid).as("the same backends, still waiting")
+                .isEqualTo(first.stream().map(Waiter::pid).toList());
+        return settled;
     }
 
     private static Waiter single(List<Waiter> waiting) {
