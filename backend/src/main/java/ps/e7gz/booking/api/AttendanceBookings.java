@@ -71,6 +71,36 @@ public interface AttendanceBookings {
     void recordVenueEvent(CommandContext command, UUID bookingId, Instant at, BookingEventType event,
                           UUID venueAccountId);
 
+    /**
+     * E7-70: the next {@code BOOKING_EVENT} history row by a Platform Admin - {@code NO_SHOW_REVERSED} or
+     * {@code ATTENDANCE_CORRECTED} at the reversal or correction instant, which
+     * {@code attendance.assert_attendance_action_audit} matches with the Admin audit row and the Trust event (FR-ATT-11,
+     * FR-ATT-13, FR-AUD-05). The booking's status is not changed here (arch 07 section 7.3).
+     *
+     * @return the history row id (a post-endAt reversal's fee decision rests on its {@code NO_SHOW_REVERSED} row)
+     */
+    UUID recordAdminEvent(CommandContext command, UUID bookingId, Instant at, BookingEventType event, UUID adminId);
+
+    /**
+     * E7-70: the Platform Admin's no-show reversal on the booking side (FR-ATT-12, Product v5.0 section 27.8): NO_SHOW
+     * -> CANCELLED / {@code ADMIN_NO_SHOW_REVERSAL} when {@code at} is before the original {@code endAt}, NO_SHOW ->
+     * COMPLETED at or after it, dated {@code at}, with the STATUS_TRANSITION history row by the Admin. The released
+     * reservation is never re-acquired, so a customer who validly took the freed slot keeps it. No fee decision here:
+     * the caller records it from the returned history row.
+     *
+     * @return the transition, or empty when the booking is no longer NO_SHOW (nothing written)
+     */
+    Optional<Reversal> reverseNoShow(CommandContext command, UUID bookingId, Instant at, UUID adminId);
+
+    /** The status a no-show reversal moved the booking to and its STATUS_TRANSITION history row. */
+    record Reversal(BookingStatus status, UUID historyId) {
+
+        public Reversal {
+            Objects.requireNonNull(status, "status");
+            Objects.requireNonNull(historyId, "historyId");
+        }
+    }
+
     /** A booking as an attendance action decides from it. {@code customerId} is null for a Manual Booking. */
     record Booking(UUID bookingId, UUID venueId, UUID resourceId, UUID customerId, BookingSource source,
                    BookingStatus status, Instant startAt, Instant endAt) {

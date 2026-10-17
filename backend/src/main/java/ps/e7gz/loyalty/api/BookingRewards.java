@@ -21,4 +21,14 @@ public interface BookingRewards {
      * as that command's only Loyalty entry point.
      */
     UUID reconcile(CommandContext command, UUID customerId, UUID bookingId);
+
+    /**
+     * E7-70: the same reconciliation after a Platform Admin attendance correction ({@code ATTENDANCE_CORRECTED}, written
+     * earlier in the same command with its audited reason). {@code loyalty.reconcile_booking} grants or compensates the
+     * reward from the booking's original completion configuration (FR-TRS-08, FR-PTS-03) and requires the correcting
+     * Admin in the Loyalty command, so this opens it with {@code loyalty.begin_admin_command}. Once per command, the
+     * Customer in its lock set; the only other Loyalty entry point it may share the command with is a
+     * {@link BookingFeeRefunds#recordAdminDecision} by the same Admin and Customer (the same immutable context).
+     */
+    UUID reconcileCorrection(CommandContext command, UUID adminId, UUID customerId, UUID bookingId);
 }

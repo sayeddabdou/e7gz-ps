@@ -2,6 +2,7 @@ package ps.e7gz.notification.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static ps.e7gz.support.fixtures.Fixtures.anAdmin;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -30,6 +31,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import ps.e7gz.attendance.internal.AttendanceFlows;
 import ps.e7gz.booking.internal.BookingFlows;
 import ps.e7gz.booking.internal.BookingFlows.Booking;
+import ps.e7gz.common.codes.AttendanceResult;
 import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.LockSet;
@@ -825,6 +827,49 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
         drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_STARTED);
 
         assertThat(notifications(booking)).isEqualTo(before);
+    }
+
+    // ------------------------------------------------------------- E7-70 Admin attendance changes, once each
+
+    /**
+     * §52.2 "No-show Reversed": the customer only, once, from the reversal's one AttendanceCorrected - even when the
+     * Admin's choice is a further correction in the same command; never a "cancelled" or "attendance corrected" code
+     * besides, and no BookingCancelled.
+     */
+    @Test
+    void aNoShowReversalTellsTheCustomerOnce() {
+        Booking booking = flows.active(Duration.ofMinutes(20));
+        attendance.noShow(booking.venueAccountId(), booking.bookingId());
+        drain();
+        attendance.reverseNoShow(anAdmin().create().id(), booking.bookingId(),
+                AttendanceResult.ATTENDED_INTERRUPTED, false, "room was reallocated");
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.ATTENDANCE_CORRECTED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.ATTENDANCE_CORRECTED,
+                "CUSTOMER NO_SHOW_REVERSED " + booking.customerId());
+        assertThat(customerCodes(booking)).doesNotContain("ATTENDANCE_CORRECTED")
+                .noneMatch(code -> code.contains("CANCELLED"));
+        assertThat(venueCodes(booking)).doesNotContain("NO_SHOW_REVERSED");
+        assertThat(outboxEvents(booking, IntegrationEvents.BOOKING_CANCELLED)).isEmpty();
+    }
+
+    /** §52.2 "Check-in Reversed / Attendance Corrected": the customer only, once, from the one AttendanceCorrected. */
+    @Test
+    void anAttendanceCorrectionTellsTheCustomerOnce() {
+        Booking booking = flows.active(Duration.ofMinutes(5));
+        attendance.checkIn(booking.venueAccountId(), booking.bookingId());
+        Booking ended = flows.pastItsEnd(booking, Duration.ofMinutes(5));
+        assertThat(flows.fireCompletion(ended)).as("T5 settled").isTrue();
+        drain();
+        attendance.correct(anAdmin().create().id(), ended.bookingId(),
+                AttendanceResult.ABSENT_NO_SHOW, "checked in the wrong customer");
+
+        drainTwiceAndRedeliver(ended, IntegrationEvents.ATTENDANCE_CORRECTED);
+
+        assertMadeOnceBy(ended, IntegrationEvents.ATTENDANCE_CORRECTED,
+                "CUSTOMER ATTENDANCE_CORRECTED " + ended.customerId());
+        assertThat(venueCodes(ended)).doesNotContain("ATTENDANCE_CORRECTED");
     }
 
     // ------------------------------------------------------------- E7-58 Late Confirm warning, FR-LCF-12

@@ -160,7 +160,11 @@ final class BookingNotificationRules {
             Map.entry(IntegrationEvents.BOOKING_COMPLETED, event -> Plan.NONE),
             // §52.2 "Attendance-Unconfirmed Completion" (FR-NTF-05: it says no attendance reward was applied), the
             // customer only, from the result the completion resolved (attendanceResolved below)
-            Map.entry(IntegrationEvents.ATTENDANCE_RESOLVED, BookingNotificationRules::attendanceResolved));
+            Map.entry(IntegrationEvents.ATTENDANCE_RESOLVED, BookingNotificationRules::attendanceResolved),
+            // E7-70 Admin attendance changes. §52.2 "No-show Reversed" and "Check-in Reversed / Attendance Corrected",
+            // the customer only (§52.2: the customer is told whenever an Admin materially changes a No-show or an
+            // Attendance Result). One per Admin command: a reversal with its further correction is one event, one code
+            Map.entry(IntegrationEvents.ATTENDANCE_CORRECTED, BookingNotificationRules::corrected));
     // No rule for a conflicting Late Confirm Accept: it is the synchronous 409 LATE_CONFIRM_CUSTOMER_CONFLICT and no
     // event, so LATE_CONFIRM_SCHEDULE_CONFLICT is never produced (F1, PCR-008)
 
@@ -217,6 +221,17 @@ final class BookingNotificationRules {
         }
         throw new PermanentDeliveryFailure(event.eventType() + " " + event.id() + " has an unexpected attendanceResult "
                 + result + " for " + (manual ? "a Manual" : "an Online") + " Booking");
+    }
+
+    /** {@code AttendanceCorrected.correction} names the customer code; anything else is a producer defect. */
+    private static Plan corrected(OutboxEvent event) {
+        String correction = event.text("correction");
+        return switch (correction == null ? "" : correction) {
+            case "NO_SHOW_REVERSED" -> plan(customer("NO_SHOW_REVERSED"));
+            case "ATTENDANCE_CORRECTED" -> plan(customer("ATTENDANCE_CORRECTED"));
+            default -> throw new PermanentDeliveryFailure(event.eventType() + " " + event.id()
+                    + " has an unknown correction " + correction);
+        };
     }
 
     /** A Manual Booking's events carry {@code source: MANUAL} and no customer (E7-48, D6). */

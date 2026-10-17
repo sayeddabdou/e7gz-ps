@@ -69,7 +69,11 @@ public class VenueStreamSignals implements OutboxConsumer {
             Map.entry(IntegrationEvents.NO_SHOW_RECORDED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId")),
             // E7-61: T5 completed the booking (PO decision 10 Oct 2026, E7-44 review). AttendanceResolved, written in
             // the same transaction, has no signal of its own: one refetch per completion
-            Map.entry(IntegrationEvents.BOOKING_COMPLETED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId")));
+            Map.entry(IntegrationEvents.BOOKING_COMPLETED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId")),
+            // E7-70: an Admin correction or no-show reversal changes the booking's attendance (and, for a reversal, its
+            // status) for every open Dashboard of the venue
+            Map.entry(IntegrationEvents.ATTENDANCE_CORRECTED,
+                    new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId")));
 
     private final JdbcClient jdbc;
     private final ObjectMapper json;

@@ -153,11 +153,11 @@ class BookingNotificationRulesTest extends IntegrationTest {
     }
 
     /**
-     * The six booking rules of E7-55, the five Late Confirm ones (E7-58), the three attendance ones (E7-59) and the two
-     * completion ones (E7-61): sixteen, and nothing else.
+     * The six booking rules of E7-55, the five Late Confirm ones (E7-58), the three attendance ones (E7-59), the two
+     * completion ones (E7-61) and the Admin attendance one (E7-70): seventeen, and nothing else.
      */
     @Test
-    void sixteenEventsHaveARule() {
+    void seventeenEventsHaveARule() {
         assertThat(BookingNotificationRules.eventTypes()).containsExactlyInAnyOrder(
                 IntegrationEvents.BOOKING_CREATED, IntegrationEvents.BOOKING_CONFIRMED,
                 IntegrationEvents.BOOKING_REJECTED, IntegrationEvents.VENUE_RESPONSE_EXPIRED,
@@ -166,7 +166,29 @@ class BookingNotificationRulesTest extends IntegrationTest {
                 IntegrationEvents.LATE_CONFIRM_ACCEPTED, IntegrationEvents.LATE_CONFIRM_DECLINED,
                 IntegrationEvents.LATE_CONFIRM_TIMED_OUT, IntegrationEvents.CHECK_IN_RECORDED,
                 IntegrationEvents.LATE_PRESENT_RECORDED, IntegrationEvents.NO_SHOW_RECORDED,
-                IntegrationEvents.BOOKING_COMPLETED, IntegrationEvents.ATTENDANCE_RESOLVED);
+                IntegrationEvents.BOOKING_COMPLETED, IntegrationEvents.ATTENDANCE_RESOLVED,
+                IntegrationEvents.ATTENDANCE_CORRECTED);
+    }
+
+    /**
+     * E7-70, Spec v5 section 52.2: an Admin no-show reversal is "No-show Reversed" and an Admin correction "Check-in
+     * Reversed / Attendance Corrected", to the customer only, whatever the chosen result; an unknown correction is a
+     * producer defect, never a guess.
+     */
+    @Test
+    void eachAdminAttendanceChangeMapsToItsCustomerCode() {
+        for (String result : List.of("ATTENDED", "ATTENDED_INTERRUPTED", "ATTENDANCE_UNCONFIRMED")) {
+            assertThat(plan(IntegrationEvents.ATTENDANCE_CORRECTED,
+                    Map.of("correction", "NO_SHOW_REVERSED", "attendanceResult", result)))
+                    .isEqualTo(new Plan(List.of(new Send(Recipient.CUSTOMER, "NO_SHOW_REVERSED")), Optional.empty()));
+        }
+        assertThat(plan(IntegrationEvents.ATTENDANCE_CORRECTED,
+                Map.of("correction", "ATTENDANCE_CORRECTED", "attendanceResult", "ABSENT_NO_SHOW")))
+                .isEqualTo(new Plan(List.of(new Send(Recipient.CUSTOMER, "ATTENDANCE_CORRECTED")), Optional.empty()));
+        assertThatThrownBy(() -> plan(IntegrationEvents.ATTENDANCE_CORRECTED, Map.of("correction", "UNDO")))
+                .isInstanceOf(PermanentDeliveryFailure.class);
+        assertThatThrownBy(() -> plan(IntegrationEvents.ATTENDANCE_CORRECTED, Map.of()))
+                .isInstanceOf(PermanentDeliveryFailure.class);
     }
 
     /**
@@ -189,7 +211,7 @@ class BookingNotificationRulesTest extends IntegrationTest {
         Properties english = new NotificationTemplates().all().get(Language.EN);
         for (String code : List.of("LATE_CONFIRMATION_RECEIVED", "LATE_CONFIRMATION_EXPIRING",
                 "CUSTOMER_CONFIRMATION_EXPIRED", "VENUE_OPENING_HOURS_CHANGED", "CHECK_IN_RECORDED",
-                "NO_SHOW_RECORDED", "ATTENDANCE_UNCONFIRMED_COMPLETION")) {
+                "NO_SHOW_RECORDED", "ATTENDANCE_UNCONFIRMED_COMPLETION", "NO_SHOW_REVERSED", "ATTENDANCE_CORRECTED")) {
             String body = english.getProperty(code + ".push.body");
             assertThat(app).as(code).contains(code + ": \"" + body + "\"");
         }
@@ -315,6 +337,9 @@ class BookingNotificationRulesTest extends IntegrationTest {
         if (type.equals(IntegrationEvents.ATTENDANCE_RESOLVED)) {
             return List.of(Map.of("attendanceResult", "ATTENDED"), Map.of("attendanceResult", "ATTENDANCE_UNCONFIRMED"),
                     Map.of("attendanceResult", "NOT_APPLICABLE", "source", "MANUAL"));
+        }
+        if (type.equals(IntegrationEvents.ATTENDANCE_CORRECTED)) {
+            return List.of(Map.of("correction", "NO_SHOW_REVERSED"), Map.of("correction", "ATTENDANCE_CORRECTED"));
         }
         return List.of(Map.of(), Map.of("source", "MANUAL"));
     }

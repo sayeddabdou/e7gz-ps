@@ -199,7 +199,8 @@ class VenueLiveChannelTest extends IntegrationTest {
     }
 
     /**
-     * E7-59 (PO decision 12 Oct 2026): a check-in, Mark Present - Late or no-show tells every open Dashboard of the
+     * E7-59 (PO decision 12 Oct 2026): a check-in, Mark Present - Late or no-show, or (E7-70) an Admin
+     * attendance correction or no-show reversal, tells every open Dashboard of the
      * venue to refetch the booking - {@code BOOKING CHANGED}, never the CREATED alert.
      */
     @Test
@@ -208,7 +209,8 @@ class VenueLiveChannelTest extends IntegrationTest {
         SseLines onB = open(portB(), venue.id(), hubB());
 
         for (String type : List.of(IntegrationEvents.CHECK_IN_RECORDED, IntegrationEvents.LATE_PRESENT_RECORDED,
-                IntegrationEvents.NO_SHOW_RECORDED)) {
+                IntegrationEvents.NO_SHOW_RECORDED,
+                IntegrationEvents.ATTENDANCE_CORRECTED)) {
             UUID booking = UUID.randomUUID();
             bookingEvent(type, venue.venueId(), booking);
             deliver();

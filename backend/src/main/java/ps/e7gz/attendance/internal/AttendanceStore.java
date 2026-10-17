@@ -76,6 +76,29 @@ class AttendanceStore {
              WHERE a.result IS NULL
             """;
 
+    /**
+     * E7-70: an audited Platform Admin correction replaces a resolved result (FR-ATT-09, FR-ATT-13); the evidence
+     * columns never change, and the resolution instant moves forward to the correction instant
+     * ({@code attendance.guard_attendance_record_mutation}).
+     */
+    static final String CORRECT = """
+            UPDATE attendance.attendance_record
+               SET result = :result, resolved_at = :at
+             WHERE booking_id = :bookingId AND result IS NOT NULL AND result <> :result AND resolved_at < :at
+            """;
+
+    /**
+     * E7-70: the Platform Admin's no-show reversal adds its marker (the no-show itself stays recorded, FR-ATT-11) and
+     * resolves the chosen result at the reversal instant - the post-endAt default ATTENDANCE_UNCONFIRMED, or the result
+     * of the correction written with it.
+     */
+    static final String REVERSE_NO_SHOW = """
+            UPDATE attendance.attendance_record
+               SET no_show_reversed_at = :at, result = :result, resolved_at = :at
+             WHERE booking_id = :bookingId AND no_show_at IS NOT NULL AND no_show_reversed_at IS NULL
+               AND result = 'ABSENT_NO_SHOW'
+            """;
+
     Optional<Evidence> find(CommandContext command, UUID bookingId) {
         return command.jdbc().sql(FIND)
                 .param("id", Objects.requireNonNull(bookingId, "bookingId"))
@@ -112,6 +135,24 @@ class AttendanceStore {
     boolean resolve(CommandContext command, UUID bookingId, AttendanceResult result, Instant at) {
         return command.jdbc().sql(RESOLVE)
                 .param("id", UUID.randomUUID())
+                .param("bookingId", Objects.requireNonNull(bookingId, "bookingId"))
+                .param("result", Objects.requireNonNull(result, "result").name())
+                .param("at", OffsetDateTime.ofInstant(Objects.requireNonNull(at, "at"), ZoneOffset.UTC))
+                .update() == 1;
+    }
+
+    /** Replaces the resolved result with {@code result} at {@code at}. @return false when nothing was replaced */
+    boolean correct(CommandContext command, UUID bookingId, AttendanceResult result, Instant at) {
+        return command.jdbc().sql(CORRECT)
+                .param("bookingId", Objects.requireNonNull(bookingId, "bookingId"))
+                .param("result", Objects.requireNonNull(result, "result").name())
+                .param("at", OffsetDateTime.ofInstant(Objects.requireNonNull(at, "at"), ZoneOffset.UTC))
+                .update() == 1;
+    }
+
+    /** Reverses the standing no-show at {@code at}, resolving {@code result}. @return false when none stands */
+    boolean reverseNoShow(CommandContext command, UUID bookingId, AttendanceResult result, Instant at) {
+        return command.jdbc().sql(REVERSE_NO_SHOW)
                 .param("bookingId", Objects.requireNonNull(bookingId, "bookingId"))
                 .param("result", Objects.requireNonNull(result, "result").name())
                 .param("at", OffsetDateTime.ofInstant(Objects.requireNonNull(at, "at"), ZoneOffset.UTC))

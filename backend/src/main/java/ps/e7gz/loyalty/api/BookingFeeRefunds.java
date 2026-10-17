@@ -43,6 +43,19 @@ public interface BookingFeeRefunds {
     Map<UUID, UUID> recordDecisions(CommandContext command, List<Decision> decisions);
 
     /**
+     * E7-70: the fee decision of a Platform Admin no-show reversal (FRS reason map: {@code ADMIN_NO_SHOW_REVERSAL} is
+     * FULL only if the wrongful no-show caused service loss, otherwise no refund from attendance correction alone;
+     * FR-PTS-15). Opens the Loyalty command with the Admin ({@code loyalty.begin_admin_command}), records the Admin's
+     * explicit, immutable assessment for {@code historyId} ({@code loyalty.assess_service_loss}: confirmed or not
+     * established, with {@code reason}) and the decision resting on it ({@code loyalty.record_refund}), which derives
+     * the amount. {@code historyId} is the CANCELLED / ADMIN_NO_SHOW_REVERSAL transition, or the
+     * {@code NO_SHOW_REVERSED} Booking Event of a reversal after endAt. A later
+     * {@link BookingRewards#reconcileCorrection} by the same Admin shares this Loyalty command. Returns the decision id.
+     */
+    UUID recordAdminDecision(CommandContext command, UUID adminId, UUID customerId, UUID bookingId, UUID historyId,
+                             boolean serviceLoss, String reason);
+
+    /**
      * One terminal Online Booking of the batch: its Customer and the terminal history row its decision is based on.
      */
     record Decision(UUID customerId, UUID bookingId, UUID terminalHistoryId) {

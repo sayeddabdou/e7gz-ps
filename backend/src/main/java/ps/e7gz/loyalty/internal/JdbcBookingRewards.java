@@ -17,11 +17,28 @@ class JdbcBookingRewards implements BookingRewards {
 
     static final String RECONCILE = "SELECT loyalty.reconcile_booking(:booking)";
 
+    /** Admin runtime only (security baseline {@code admin_only}). */
+    static final String BEGIN_ADMIN =
+            "SELECT loyalty.begin_admin_command(ARRAY[CAST(:user AS uuid)], :admin, :correlation)";
+
     @Override
     public UUID reconcile(CommandContext command, UUID customerId, UUID bookingId) {
         Objects.requireNonNull(command, "command");
         command.jdbc().sql(JdbcBookingFeeRefunds.BEGIN)
                 .param("user", Objects.requireNonNull(customerId, "customerId"))
+                .param("correlation", CorrelationId.require())
+                .query().singleRow();
+        return command.jdbc().sql(RECONCILE)
+                .param("booking", Objects.requireNonNull(bookingId, "bookingId"))
+                .query(UUID.class).single();
+    }
+
+    @Override
+    public UUID reconcileCorrection(CommandContext command, UUID adminId, UUID customerId, UUID bookingId) {
+        Objects.requireNonNull(command, "command");
+        command.jdbc().sql(BEGIN_ADMIN)
+                .param("user", Objects.requireNonNull(customerId, "customerId"))
+                .param("admin", Objects.requireNonNull(adminId, "adminId"))
                 .param("correlation", CorrelationId.require())
                 .query().singleRow();
         return command.jdbc().sql(RECONCILE)

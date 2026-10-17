@@ -37,6 +37,7 @@ import ps.e7gz.support.IntegrationTest;
 import ps.e7gz.support.PostgresTestContainer;
 import ps.e7gz.support.boundary.DueJobs;
 import ps.e7gz.support.fixtures.Fixtures;
+import ps.e7gz.trust.api.TrustConsequenceUnavailableException;
 
 /**
  * E7-59 against the real database: each attendance action writes its evidence, history, audit and one integration event
@@ -252,8 +253,10 @@ class AttendanceIntegrationTest extends IntegrationTest {
      * third {@code BOOKING_NO_SHOW} brings the replayed counter to the threshold 3, so replay derives a Ban
      * Qualification. {@code trust.assert_user_integrity} (via {@code tr_trust_event_projection_current}) then requires
      * its exactly-once operational consequence - a Ban Instance consuming it, with its cancellation cascade - in the
-     * same transaction. That is the O14 reconciler of E7-71, not built yet, so today the database refuses the commit
-     * and the whole no-show rolls back: nothing partial is left. E7-71 replaces this test's expectation with the ban.
+     * same transaction. E7-70's reconciler finds the outstanding qualification and hands it to E7-71's Ban
+     * reconciliation, not built yet, so today the reconciler refuses it ({@code TrustConsequenceUnavailableException},
+     * before the database would refuse the commit) and the whole no-show rolls back: nothing partial is left. E7-71
+     * replaces this test's expectation with the ban.
      */
     @Test
     void theThirdConsecutiveNoShowNeedsE771sBanAndUntilThenRollsBackWhole() {
@@ -266,7 +269,8 @@ class AttendanceIntegrationTest extends IntegrationTest {
         assertThat(consecutiveNoShows(third)).isEqualTo(2);
 
         assertThatThrownBy(() -> record(AttendanceAction.NO_SHOW, third))
-                .rootCause().hasMessageContaining("has no exactly-once operational consequence");
+                .isInstanceOf(TrustConsequenceUnavailableException.class)
+                .hasMessageContaining("E7-71 Ban reconciliation");
 
         assertThat(status(third)).isEqualTo("ACTIVE");
         assertThat(activeReservations(third)).isOne();
