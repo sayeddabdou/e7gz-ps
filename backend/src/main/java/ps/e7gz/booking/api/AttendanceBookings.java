@@ -24,12 +24,41 @@ public interface AttendanceBookings {
     Optional<Booking> find(CommandContext command, UUID bookingId);
 
     /**
-     * ACTIVE -> NO_SHOW at {@code at} (FR-ATT-04, FR-ATT-05): terminal, with no Booking Reason Code and
-     * {@code terminal_at = at}; the planned interval ({@code start_at}, {@code end_at}) is never rewritten. Writes the
+     * {@code from} -> NO_SHOW at {@code at} (FR-ATT-04, FR-ATT-05): terminal, with no Booking Reason Code and
+     * {@code terminal_at = at}; the planned interval ({@code start_at}, {@code end_at}) is never rewritten. {@code from}
+     * is ACTIVE, or CONFIRMED once the caller has withdrawn a delayed start ({@link #withdrawDelayedStart}). Writes the
      * STATUS_TRANSITION history row by the venue account and withdraws the booking's BOOKING_COMPLETE job, which the
-     * terminal status made unnecessary. @return false when the booking is no longer ACTIVE (nothing written)
+     * terminal status made unnecessary. @return false when the booking is no longer {@code from} (nothing written)
      */
-    boolean markNoShow(CommandContext command, UUID bookingId, Instant at, UUID venueAccountId);
+    boolean markNoShow(CommandContext command, UUID bookingId, BookingStatus from, Instant at, UUID venueAccountId);
+
+    /**
+     * The scheduler race of a no-show (decisions of Amr Heiba, acting decision-maker, 17 Oct 2026; FR-BOK-26: a booking
+     * never stays CONFIRMED past startAt): an Online Booking still CONFIRMED inside the no-show window because its
+     * BOOKING_START (T4) has not been processed yet. Resolves that start as T4 would have at {@code startAt}, with the
+     * start-time rules of E7-60 (Spec v5 sections 31.2-31.6), on the caller's transaction:
+     * <ul>
+     *   <li>{@link DelayedStart#WOULD_START} - the start job, still waiting, is withdrawn ({@code SUPERSEDED}, never
+     *       fires); the caller may move CONFIRMED -> NO_SHOW;</li>
+     *   <li>{@link DelayedStart#CANCELLED} - the start would have cancelled: the start job is withdrawn and the booking is
+     *       CANCELLED under its start-time reason, dated {@code startAt}, with its reservation released, its full-refund
+     *       fee decision, {@code BookingCancelled} and, for {@code SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR}, the SEV_1 alert
+     *       - never a no-show, never a penalty;</li>
+     *   <li>{@link DelayedStart#NOT_DELAYED} - no start job is waiting (none, already run or withdrawn, or a worker holds
+     *       it {@code LEASED} right now), so CONFIRMED is not explained by a delayed start; nothing written;</li>
+     *   <li>{@link DelayedStart#UNDETERMINED} - the state at {@code startAt} does not determine one start-time outcome;
+     *       nothing written.</li>
+     * </ul>
+     */
+    DelayedStart resolveDelayedStart(CommandContext command, UUID bookingId);
+
+    /** What a delayed start resolved to; see {@link #resolveDelayedStart}. */
+    enum DelayedStart {
+        WOULD_START,
+        CANCELLED,
+        NOT_DELAYED,
+        UNDETERMINED
+    }
 
     /**
      * The next {@code BOOKING_EVENT} history row by the venue account: {@code CHECK_IN_RECORDED},

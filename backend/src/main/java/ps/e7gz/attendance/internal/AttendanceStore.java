@@ -64,6 +64,18 @@ class AttendanceStore {
              WHERE a.no_show_at IS NULL AND a.result IS NULL
             """;
 
+    /**
+     * E7-61: resolves the booking's result by its default (arch 07 section 7.3) at {@code :at}, on its record or on a
+     * new one when no action was ever taken; only an unresolved record changes, so a second resolver changes nothing.
+     */
+    static final String RESOLVE = """
+            INSERT INTO attendance.attendance_record AS a (id, booking_id, result, resolved_at)
+            VALUES (:id, :bookingId, :result, :at)
+            ON CONFLICT (booking_id) DO UPDATE
+               SET result = EXCLUDED.result, resolved_at = EXCLUDED.resolved_at
+             WHERE a.result IS NULL
+            """;
+
     Optional<Evidence> find(CommandContext command, UUID bookingId) {
         return command.jdbc().sql(FIND)
                 .param("id", Objects.requireNonNull(bookingId, "bookingId"))
@@ -93,6 +105,16 @@ class AttendanceStore {
                 .param("bookingId", Objects.requireNonNull(bookingId, "bookingId"))
                 .param("at", OffsetDateTime.ofInstant(Objects.requireNonNull(at, "at"), ZoneOffset.UTC))
                 .param("account", Objects.requireNonNull(venueAccountId, "venueAccountId"))
+                .update() == 1;
+    }
+
+    /** Stores {@code result} resolved at {@code at}. @return false when the record was already resolved */
+    boolean resolve(CommandContext command, UUID bookingId, AttendanceResult result, Instant at) {
+        return command.jdbc().sql(RESOLVE)
+                .param("id", UUID.randomUUID())
+                .param("bookingId", Objects.requireNonNull(bookingId, "bookingId"))
+                .param("result", Objects.requireNonNull(result, "result").name())
+                .param("at", OffsetDateTime.ofInstant(Objects.requireNonNull(at, "at"), ZoneOffset.UTC))
                 .update() == 1;
     }
 

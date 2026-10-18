@@ -31,21 +31,24 @@ class JdbcAttendanceBookings implements AttendanceBookings {
             """;
 
     /**
-     * ACTIVE -> NO_SHOW (FR-ATT-04): terminal with no Booking Reason Code and no fee treatment (NO_SHOW is outside the
-     * reason map); the database derives the empty commitment. {@code start_at} and {@code end_at} stay as booked.
+     * ACTIVE (or CONFIRMED behind a delayed start) -> NO_SHOW (FR-ATT-04): terminal with no Booking Reason Code and
+     * no fee treatment (NO_SHOW is outside the reason map); the database derives the empty commitment. {@code start_at}
+     * and {@code end_at} stay as booked.
      */
     static final String NO_SHOW = """
             UPDATE booking.booking
                SET status = 'NO_SHOW', terminal_at = :at, version = version + 1
-             WHERE id = :id AND status = 'ACTIVE' AND source = 'ONLINE'
+             WHERE id = :id AND status = :from AND source = 'ONLINE'
             """;
 
     private final VenueAnswerStore answers;
     private final ScheduledJobs jobs;
+    private final DelayedStartResolver delayedStart;
 
-    JdbcAttendanceBookings(VenueAnswerStore answers, ScheduledJobs jobs) {
+    JdbcAttendanceBookings(VenueAnswerStore answers, ScheduledJobs jobs, DelayedStartResolver delayedStart) {
         this.answers = answers;
         this.jobs = jobs;
+        this.delayedStart = delayedStart;
     }
 
     @Override
@@ -61,17 +64,26 @@ class JdbcAttendanceBookings implements AttendanceBookings {
     }
 
     @Override
-    public boolean markNoShow(CommandContext command, UUID bookingId, Instant at, UUID venueAccountId) {
+    public boolean markNoShow(CommandContext command, UUID bookingId, BookingStatus from, Instant at,
+                              UUID venueAccountId) {
         Objects.requireNonNull(venueAccountId, "venueAccountId");
+        if (from != BookingStatus.ACTIVE && from != BookingStatus.CONFIRMED) {
+            throw new IllegalArgumentException("A no-show leaves ACTIVE or CONFIRMED, not " + from);
+        }
         if (command.jdbc().sql(NO_SHOW).param("id", Objects.requireNonNull(bookingId, "bookingId"))
-                .param("at", utc(at)).update() != 1) {
+                .param("from", from.name()).param("at", utc(at)).update() != 1) {
             return false;
         }
-        answers.insertTransition(command, bookingId, at, BookingStatus.ACTIVE, BookingStatus.NO_SHOW, null,
+        answers.insertTransition(command, bookingId, at, from, BookingStatus.NO_SHOW, null,
                 ActorType.VENUE, venueAccountId, CorrelationId.require());
         // T5 has nothing left to complete; a job a worker holds LEASED is left to it - its fire re-reads the booking
         jobs.supersede(command, ManualBookingCommand.bookingCompleteKey(bookingId));
         return true;
+    }
+
+    @Override
+    public DelayedStart resolveDelayedStart(CommandContext command, UUID bookingId) {
+        return delayedStart.resolve(command, Objects.requireNonNull(bookingId, "bookingId"));
     }
 
     @Override

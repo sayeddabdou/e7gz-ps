@@ -145,6 +145,109 @@ public final class BookingFlows {
         }
     }
 
+    /**
+     * The delayed-start race (Amr Heiba, 17 Oct 2026): an Online Booking accepted through the real command, whose
+     * startAt lies {@code startedAgo} before the database clock, still CONFIRMED - its Accept's BOOKING_START job left
+     * PENDING, as if the start (T4, E7-60) had not been processed yet ({@link BookingStates#startOverdue}).
+     */
+    public Booking confirmedWithOverdueStart(Duration startedAgo) {
+        Booking booking = pending();
+        accept(booking);
+        Instant start = OnlineBookingWorld.dbNow().minus(startedAgo);
+        BookingStates.startOverdue(booking.bookingId(), start);
+        return new Booking(booking.bookingId(), booking.customerId(), booking.venueId(), booking.venueName(),
+                booking.venueAccountId(), booking.resourceId(), start, booking.venueResponseExpiresAt());
+    }
+
+    // ------------------------------------- start-time state at startAt (delayed-start no-show, Amr Heiba 17 Oct 2026)
+
+    /** An Owner Review of the booking's room entered at {@code enteredAt}, unresolved; the restriction set with it. */
+    public void ownerReviewSince(Booking booking, Instant enteredAt) {
+        VenueAnswerDb.withoutTriggers(jdbc -> {
+            jdbc.sql("""
+                            INSERT INTO operations.owner_review (id, resource_id, entered_at, entry_cause, correlation_id)
+                            VALUES (gen_random_uuid(), :room, :at, 'E7-59 test', gen_random_uuid())""")
+                    .param("room", booking.resourceId()).param("at", OffsetDateTime.ofInstant(enteredAt,
+                            java.time.ZoneOffset.UTC)).update();
+            jdbc.sql("UPDATE resource.resource SET operational_restriction = 'OWNER_REVIEW_REQUIRED' WHERE id = :room")
+                    .param("room", booking.resourceId()).update();
+        });
+    }
+
+    /**
+     * A Resource Emergency of the booking's room declared at {@code declaredAt} and ENDED at {@code endedAt} - so a
+     * decision taken now sees none unresolved, but one at startAt does.
+     */
+    public void resourceEmergencyEnded(Booking booking, Instant declaredAt, Instant endedAt) {
+        VenueAnswerDb.withoutTriggers(jdbc -> jdbc.sql("""
+                        INSERT INTO operations.emergency (id, scope, venue_id, resource_id, status, declared_at,
+                                                          expected_end_at, declared_period, reason, ended_at)
+                        VALUES (gen_random_uuid(), 'RESOURCE', :venue, :room, 'ENDED', :declared,
+                                CAST(:declared AS timestamptz) + interval '10 minutes',
+                                tstzrange(:declared, CAST(:declared AS timestamptz) + interval '10 minutes', '[)'),
+                                'E7-59 test', :ended)""")
+                .param("venue", booking.venueId()).param("room", booking.resourceId())
+                .param("declared", OffsetDateTime.ofInstant(declaredAt, java.time.ZoneOffset.UTC))
+                .param("ended", OffsetDateTime.ofInstant(endedAt, java.time.ZoneOffset.UTC)).update());
+    }
+
+    /**
+     * A Resource Emergency of the booking's room declared at {@code declaredAt}, still unresolved (ACTIVE), with the
+     * selling block it puts in force from then.
+     */
+    public void resourceEmergencySince(Booking booking, Instant declaredAt) {
+        VenueAnswerDb.withoutTriggers(jdbc -> jdbc.sql("""
+                        WITH e AS (
+                            INSERT INTO operations.emergency (id, scope, venue_id, resource_id, status, declared_at,
+                                                              expected_end_at, declared_period, reason)
+                            VALUES (gen_random_uuid(), 'RESOURCE', :venue, :room, 'ACTIVE', :declared,
+                                    CAST(:declared AS timestamptz) + interval '2 hours',
+                                    tstzrange(:declared, CAST(:declared AS timestamptz) + interval '2 hours', '[)'),
+                                    'E7-59 test')
+                            RETURNING id, declared_at)
+                        INSERT INTO resource.resource_selling_block (id, resource_id, cause, emergency_id, active,
+                                                                     started_at)
+                        SELECT gen_random_uuid(), :room, 'EMERGENCY', e.id, true, e.declared_at FROM e""")
+                .param("venue", booking.venueId()).param("room", booking.resourceId())
+                .param("declared", OffsetDateTime.ofInstant(declaredAt, java.time.ZoneOffset.UTC)).update());
+    }
+
+    /** The booking's room DISABLED behind the guards - the E7-60 integrity anomaly (FR-BOK-28). */
+    public void resourceDisabledBehindTheGuards(Booking booking) {
+        VenueAnswerDb.withoutTriggers(jdbc -> jdbc.sql("UPDATE resource.resource SET base_state = 'DISABLED' WHERE id = :room")
+                .param("room", booking.resourceId()).update());
+    }
+
+    /** A Venue Operational Selling Block with no Emergency behind it, started at {@code startedAt}. */
+    public void venueSellingBlockSince(Booking booking, Instant startedAt) {
+        VenueAnswerDb.withoutTriggers(jdbc -> jdbc.sql("""
+                        INSERT INTO venue.venue_selling_block (id, venue_id, cause, active, started_at)
+                        VALUES (gen_random_uuid(), :venue, 'E7-59 test block', true, :at)""")
+                .param("venue", booking.venueId())
+                .param("at", OffsetDateTime.ofInstant(startedAt, java.time.ZoneOffset.UTC)).update());
+    }
+
+    /** The booking's BOOKING_START held LEASED by a worker right now, as during its fire. */
+    public void startLeased(Booking booking) {
+        VenueAnswerDb.withoutTriggers(jdbc -> jdbc.sql("""
+                        UPDATE technical.scheduled_job
+                           SET status = 'LEASED', leased_at = now(), leased_until = now() + interval '1 minute',
+                               leased_by = 'E7-59 test worker'
+                         WHERE idempotency_key = :key AND status = 'PENDING'""")
+                .param("key", VenueAnswerDb.bookingStart(booking.bookingId())).update());
+    }
+
+    /** The idempotency key of the booking's BOOKING_START (T4) job. */
+    public static String bookingStartKey(UUID bookingId) {
+        return VenueAnswerDb.bookingStart(bookingId);
+    }
+
+    /** Withdraws the booking's BOOKING_START job, as an already processed start would have left it. */
+    public void withdrawStart(Booking booking) {
+        runner.run(TestCommands.under(scope(booking),
+                context -> jobs.supersede(context, VenueAnswerDb.bookingStart(booking.bookingId()))));
+    }
+
     private Booking started(Booking booking, Duration startedAgo) {
         accept(booking);
         runner.run(TestCommands.under(scope(booking),

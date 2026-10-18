@@ -121,20 +121,43 @@ final class BookingStates {
      */
     static void started(UUID bookingId, Instant startAt) {
         VenueAnswerDb.withoutTriggers(jdbc -> {
-            jdbc.sql("""
-                            UPDATE booking.booking
-                               SET end_at = :start + (end_at - start_at), start_at = :start, status = 'ACTIVE',
-                                   commitment_period = tstzrange(:start, :start + (end_at - start_at), '[)')
-                             WHERE id = :id AND status = 'CONFIRMED'""")
-                    .param("start", utc(startAt)).param("id", bookingId).update();
-            jdbc.sql("""
-                            UPDATE inventory.resource_reservation
-                               SET planned_end = :start + (planned_end - planned_start), planned_start = :start,
-                                   planned_range = tstzrange(:start, :start + (planned_end - planned_start), '[)')
-                             WHERE booking_id = :id AND reservation_type = 'BOOKING' AND active_flag""")
-                    .param("start", utc(startAt)).param("id", bookingId).update();
+            moveInterval(jdbc, bookingId, startAt, "ACTIVE");
             history(jdbc, bookingId, startAt, "CONFIRMED", "ACTIVE", null);
         });
+    }
+
+    /**
+     * The delayed-start race (Amr Heiba, 17 Oct 2026): a CONFIRMED Online Booking whose interval is moved to begin at
+     * {@code startAt}, in the past, and that stays CONFIRMED - as when its T4 (E7-60) has not been processed yet. The
+     * booking, its commitment and its BOOKING reservation move together; its BOOKING_START job is left as it is.
+     */
+    static void startOverdue(UUID bookingId, Instant startAt) {
+        VenueAnswerDb.withoutTriggers(jdbc -> {
+            moveInterval(jdbc, bookingId, startAt, "CONFIRMED");
+            // the room was reserved before the start, as an Accept made in time reserves it: a start-time cancellation
+            // releases it at startAt, never before it was taken (ck_reservation_release_chronology)
+            jdbc.sql("""
+                            UPDATE inventory.resource_reservation
+                               SET actual_reservation_start = LEAST(actual_reservation_start, CAST(:start AS timestamptz))
+                             WHERE booking_id = :id AND reservation_type = 'BOOKING' AND active_flag""")
+                    .param("start", utc(startAt)).param("id", bookingId).update();
+        });
+    }
+
+    private static void moveInterval(org.springframework.jdbc.core.simple.JdbcClient jdbc, UUID bookingId,
+                                     Instant startAt, String status) {
+        jdbc.sql("""
+                        UPDATE booking.booking
+                           SET end_at = :start + (end_at - start_at), start_at = :start, status = :status,
+                               commitment_period = tstzrange(:start, :start + (end_at - start_at), '[)')
+                         WHERE id = :id AND status = 'CONFIRMED'""")
+                .param("start", utc(startAt)).param("status", status).param("id", bookingId).update();
+        jdbc.sql("""
+                        UPDATE inventory.resource_reservation
+                           SET planned_end = :start + (planned_end - planned_start), planned_start = :start,
+                               planned_range = tstzrange(:start, :start + (planned_end - planned_start), '[)')
+                         WHERE booking_id = :id AND reservation_type = 'BOOKING' AND active_flag""")
+                .param("start", utc(startAt)).param("id", bookingId).update();
     }
 
     static Instant minutesFromNow(long minutes) {

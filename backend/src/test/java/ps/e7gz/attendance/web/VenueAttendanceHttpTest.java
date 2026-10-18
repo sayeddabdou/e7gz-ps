@@ -162,6 +162,52 @@ class VenueAttendanceHttpTest extends IntegrationTest {
                 .param("id", other.bookingId()).query(Long.class).single()).isZero();
     }
 
+    /**
+     * A delayed start that would have cancelled (Amr Heiba, 17 Oct 2026): the no-show is answered 409
+     * BOOKING_STATE_CHANGED - never a successful no-show - while the start-time cancellation commits; the exact replay
+     * answers the same stored 409 and cancels nothing twice.
+     */
+    @Test
+    void aNoShowOnACancellingDelayedStartIsAStored409AndItsReplayTheSame() throws Exception {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        flows.resourceDisabledBehindTheGuards(booking);
+        String key = key();
+
+        String first = perform(venue(booking), booking, "no-show", key).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("BOOKING_STATE_CHANGED"))
+                .andReturn().getResponse().getContentAsString();
+        String replay = perform(venue(booking), booking, "no-show", key).andExpect(status().isConflict())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(json.readTree(replay).get("error").get("code"))
+                .isEqualTo(json.readTree(first).get("error").get("code"));
+        assertThat(detail(booking).path("status").asText()).isEqualTo("CANCELLED");
+        assertThat(detail(booking).path("terminalReason").asText()).isEqualTo("SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR");
+        assertThat(detail(booking).path("attendanceResult").asText()).isEqualTo("NOT_APPLICABLE");
+        assertThat(events(booking, IntegrationEvents.BOOKING_CANCELLED)).isOne();
+        assertThat(events(booking, IntegrationEvents.NO_SHOW_RECORDED)).isZero();
+    }
+
+    /**
+     * A pure refusal (decision of Amr Heiba, 18 Oct 2026: an Emergency that began after startAt) answers 409 and stores
+     * nothing - not even an Idempotency-Key record - so the same key is evaluated afresh.
+     */
+    @Test
+    void aPureDelayedStartRefusalStoresNoIdempotencyRecord() throws Exception {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        flows.resourceEmergencySince(booking, booking.startAt().plus(Duration.ofMinutes(2)));
+        String key = key();
+
+        perform(venue(booking), booking, "no-show", key).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("BOOKING_STATE_CHANGED"));
+
+        assertThat(OWNER.sql("SELECT count(*) FROM technical.idempotency_record WHERE idempotency_key = :key")
+                .param("key", key).query(Long.class).single()).isZero();
+        assertThat(detail(booking).path("status").asText()).isEqualTo("CONFIRMED");
+        assertThat(events(booking, IntegrationEvents.BOOKING_CANCELLED)).isZero();
+        assertThat(events(booking, IntegrationEvents.NO_SHOW_RECORDED)).isZero();
+    }
+
     @Test
     void everyRouteRequiresTheIdempotencyKeyAVenueTokenAndItsOwnBooking() throws Exception {
         Booking booking = flows.active(Duration.ofMinutes(5));

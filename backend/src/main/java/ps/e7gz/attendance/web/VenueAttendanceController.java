@@ -79,6 +79,7 @@ public class VenueAttendanceController {
             @AuthenticationPrincipal AuthenticatedSubject venue) {
         return meta.data(attendances.checkIn(venue.id(), bookingId,
                 request(venue, CHECK_IN_ENDPOINT, idempotencyKey, bookingId), RESPONSE, VenueAttendance::of)
+                .throwIfRefused()
                 .body());
     }
 
@@ -99,6 +100,7 @@ public class VenueAttendanceController {
             @AuthenticationPrincipal AuthenticatedSubject venue) {
         return meta.data(attendances.markLatePresent(venue.id(), bookingId,
                 request(venue, LATE_PRESENT_ENDPOINT, idempotencyKey, bookingId), RESPONSE, VenueAttendance::of)
+                .throwIfRefused()
                 .body());
     }
 
@@ -110,7 +112,15 @@ public class VenueAttendanceController {
                     + "it is NO_SHOW_NOT_AVAILABLE. Terminal: the remaining interval is released at once (FR-ATT-05) "
                     + "and venue staff cannot undo it — only a Platform Admin can (FR-ATT-06, FR-ATT-11). A manual "
                     + "booking is NO_SHOW_NOT_AVAILABLE too (FR-MAN-04). A booking no longer in progress is "
-                    + "BOOKING_STATE_CHANGED. A booking of another venue is NOT_FOUND. Implemented by E7-59.")
+                    + "BOOKING_STATE_CHANGED. A booking of another venue is NOT_FOUND. Implemented by E7-59.\n\n"
+                    + "A CONFIRMED booking whose start has not been processed yet is judged as its start would have "
+                    + "been at startAt. If the start would succeed, the no-show is recorded as above. Otherwise the "
+                    + "answer is 409 BOOKING_STATE_CHANGED in one of two ways: (1) a pure refusal, with nothing "
+                    + "written and nothing stored under the Idempotency-Key, when no start is waiting, the start is "
+                    + "being processed, or the start cannot be resolved (a selling block alone, or an Emergency or "
+                    + "Owner Review that began after startAt); (2) a committed refusal when the start would have "
+                    + "cancelled the booking: it is cancelled under its start-time reason with a full refund and no "
+                    + "no-show, atomically, and the same 409 is stored, so a replay of the key answers it again.")
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     @ApiError(status = 409, codes = ApiErrorCode.BOOKING_STATE_CHANGED)
     @ApiError(status = 422, codes = {ApiErrorCode.NO_SHOW_NOT_AVAILABLE, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
@@ -120,6 +130,7 @@ public class VenueAttendanceController {
             @AuthenticationPrincipal AuthenticatedSubject venue) {
         return meta.data(attendances.markNoShow(venue.id(), bookingId,
                 request(venue, NO_SHOW_ENDPOINT, idempotencyKey, bookingId), RESPONSE, VenueAttendance::of)
+                .throwIfRefused()
                 .body());
     }
 

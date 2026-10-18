@@ -35,6 +35,7 @@ import ps.e7gz.concurrency.ConcurrentRace;
 import ps.e7gz.messaging.api.IntegrationEvents;
 import ps.e7gz.support.IntegrationTest;
 import ps.e7gz.support.PostgresTestContainer;
+import ps.e7gz.support.boundary.DueJobs;
 import ps.e7gz.support.fixtures.Fixtures;
 
 /**
@@ -196,7 +197,8 @@ class AttendanceIntegrationTest extends IntegrationTest {
                 .as("released at the no-show instant, its planned interval kept")
                 .containsExactly(false, at, booking.startAt(), end);
         assertThat(OWNER.sql("""
-                        SELECT from_status || '->' || to_status || ' ' || actor_type || ' ' || actor_id
+                        SELECT from_status || '->' || to_status || ' ' || actor_type || ' '
+                               || COALESCE(actor_id::text, 'null')
                           FROM booking.booking_history WHERE booking_id = :id AND entry_kind = 'STATUS_TRANSITION'
                          ORDER BY sequence DESC LIMIT 1""")
                 .param("id", booking.bookingId()).query(String.class).single())
@@ -276,6 +278,328 @@ class AttendanceIntegrationTest extends IntegrationTest {
         assertThat(consecutiveNoShows(third)).as("the projection is unchanged").isEqualTo(2);
         assertThat(OWNER.sql("SELECT count(*) FROM trust.ban_instance WHERE user_id = :id")
                 .param("id", third.customerId()).query(Long.class).single()).isZero();
+    }
+
+    // ------------------------- the delayed-start race (decision of Amr Heiba, acting decision-maker, 17 Oct 2026)
+
+    /**
+     * A CONFIRMED booking in its no-show window only because its start has not been processed: the no-show withdraws
+     * the waiting BOOKING_START and moves CONFIRMED -> NO_SHOW with everything an ACTIVE no-show writes - evidence,
+     * release at the no-show instant, history, audit, Trust outcome and one event.
+     */
+    @Test
+    void aNoShowBehindADelayedStartWithdrawsTheStartAndEndsTheBooking() {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        String start = BookingFlows.bookingStartKey(booking.bookingId());
+        assertThat(DueJobs.job(start).status()).isEqualTo("PENDING");
+
+        RecordedAttendance recorded = record(AttendanceAction.NO_SHOW, booking);
+
+        Instant at = recorded.noShowAt();
+        assertThat(recorded.status()).isEqualTo(BookingStatus.NO_SHOW);
+        assertThat(recorded.attendanceResult()).isEqualTo(AttendanceResult.ABSENT_NO_SHOW);
+        assertThat(DueJobs.job(start).status()).as("the late start can never fire").isEqualTo("SUPERSEDED");
+        assertThat(status(booking)).isEqualTo("NO_SHOW");
+        assertThat(lastTransition(booking)).isEqualTo("CONFIRMED->NO_SHOW VENUE " + booking.venueAccountId());
+        assertThat(activeReservations(booking)).isZero();
+        assertThat(OWNER.sql("""
+                        SELECT actual_reservation_release_at FROM inventory.resource_reservation
+                         WHERE booking_id = :id AND reservation_type = 'BOOKING'""")
+                .param("id", booking.bookingId()).query(OffsetDateTime.class).single().toInstant()).isEqualTo(at);
+        assertThat(venueEvents(booking)).containsExactly("NO_SHOW_RECORDED " + at + " " + booking.venueAccountId());
+        assertThat(audits(booking)).containsExactly("NO_SHOW_RECORDED VENUE " + booking.venueAccountId() + " " + at);
+        assertThat(trustEvents(booking)).isOne();
+        assertThat(consecutiveNoShows(booking)).isOne();
+        assertThat(eventTypes(booking)).containsOnlyOnce(IntegrationEvents.NO_SHOW_RECORDED);
+    }
+
+    /** The database refuses NO_SHOW -> ACTIVE outright, so even a start that slipped through could not reactivate it. */
+    @Test
+    void aStartCanNeverReactivateTheNoShow() {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        record(AttendanceAction.NO_SHOW, booking);
+
+        assertThatThrownBy(() -> OWNER.sql("UPDATE booking.booking SET status = 'ACTIVE' WHERE id = :id")
+                .param("id", booking.bookingId()).update())
+                .hasMessageContaining("Invalid Booking transition NO_SHOW -> ACTIVE");
+        assertThat(status(booking)).isEqualTo("NO_SHOW");
+    }
+
+    /** CONFIRMED with no start job waiting is not the race: BOOKING_STATE_CHANGED, nothing written. */
+    @Test
+    void aConfirmedBookingWhoseStartIsNoLongerWaitingIsBookingStateChanged() {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        flows.withdrawStart(booking);
+
+        assertRefused(AttendanceAction.NO_SHOW, booking, ApiErrorCode.BOOKING_STATE_CHANGED);
+
+        assertThat(status(booking)).isEqualTo("CONFIRMED");
+        assertThat(activeReservations(booking)).isOne();
+        assertThat(record(booking)).isEmpty();
+        assertThat(trustEvents(booking)).isZero();
+        assertThat(eventTypes(booking)).doesNotContain(IntegrationEvents.NO_SHOW_RECORDED);
+    }
+
+    /** Check-in and Mark Present - Late keep requiring ACTIVE, and a refusal leaves the start job waiting. */
+    @Test
+    void checkInAndLatePresentOnADelayedStartAreRefusedAndLeaveTheStartWaiting() {
+        Booking inCheckIn = flows.confirmedWithOverdueStart(Duration.ofMinutes(5));
+        Booking inLate = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+
+        assertRefused(AttendanceAction.CHECK_IN, inCheckIn, ApiErrorCode.BOOKING_STATE_CHANGED);
+        assertRefused(AttendanceAction.NO_SHOW, inCheckIn, ApiErrorCode.NO_SHOW_NOT_AVAILABLE);
+        assertRefused(AttendanceAction.LATE_PRESENT, inLate, ApiErrorCode.BOOKING_STATE_CHANGED);
+
+        for (Booking booking : List.of(inCheckIn, inLate)) {
+            assertThat(DueJobs.job(BookingFlows.bookingStartKey(booking.bookingId())).status()).isEqualTo("PENDING");
+            assertThat(status(booking)).isEqualTo("CONFIRMED");
+            assertThat(record(booking)).isEmpty();
+        }
+    }
+
+    // ---------------- a delayed start that would have cancelled (Amr Heiba 17 Oct 2026: never a no-show penalty)
+
+    /**
+     * FR-BOK-28 at a delayed start: the room DISABLED behind the guards - the start would have cancelled under
+     * SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR, so the no-show cancels it instead, dated startAt, with its full refund and
+     * SEV_1 alert, answers 409 BOOKING_STATE_CHANGED, and writes no no-show, no Trust outcome, no penalty.
+     */
+    @Test
+    void aDelayedStartOnADisabledRoomCancelsWithTheIntegrityErrorAndNoPenalty() {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        flows.resourceDisabledBehindTheGuards(booking);
+
+        assertRefused(AttendanceAction.NO_SHOW, booking, ApiErrorCode.BOOKING_STATE_CHANGED);
+
+        assertStartCancelled(booking, "SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR");
+        assertThat(OWNER.sql("""
+                        SELECT severity || ' ' || (payload ->> 'unexpectedState') || ' ' || (payload ->> 'startAt')
+                          FROM admin.admin_alert
+                         WHERE kind = 'SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR' AND subject_id = :id""")
+                .param("id", booking.bookingId()).query(String.class).list())
+                .containsExactly("SEV_1 DISABLED " + booking.startAt());
+    }
+
+    /**
+     * Decision of Amr Heiba (18 Oct 2026): a Resource Emergency that began after startAt and still blocks the booking
+     * is not a start-time cause and not a no-show - a pure 409 BOOKING_STATE_CHANGED with no write at all: no
+     * cancellation, refund or release, the start job left waiting; the interruption flow owns the problem.
+     */
+    @Test
+    void anEmergencyBeganAfterStartAtIsAPure409WithoutWrites() {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        flows.resourceEmergencySince(booking, booking.startAt().plus(Duration.ofMinutes(2)));
+
+        assertRefused(AttendanceAction.NO_SHOW, booking, ApiErrorCode.BOOKING_STATE_CHANGED);
+
+        assertNothingWritten(booking);
+    }
+
+    /** The same for an Owner Review entered after startAt and still in force (decision of Amr Heiba, 18 Oct 2026). */
+    @Test
+    void anOwnerReviewBeganAfterStartAtIsAPure409WithoutWrites() {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        flows.ownerReviewSince(booking, booking.startAt().plus(Duration.ofMinutes(2)));
+
+        assertRefused(AttendanceAction.NO_SHOW, booking, ApiErrorCode.BOOKING_STATE_CHANGED);
+
+        assertNothingWritten(booking);
+    }
+
+    /** An Emergency unresolved at startAt and still now: a start-time cause, so RESOURCE_EMERGENCY_OUTAGE by priority. */
+    @Test
+    void anEmergencyAlreadyUnresolvedAtStartAtCancelsByPriority() {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        flows.resourceEmergencySince(booking, booking.startAt().minus(Duration.ofMinutes(1)));
+        flows.resourceDisabledBehindTheGuards(booking);
+
+        assertRefused(AttendanceAction.NO_SHOW, booking, ApiErrorCode.BOOKING_STATE_CHANGED);
+
+        assertStartCancelled(booking, "RESOURCE_EMERGENCY_OUTAGE");
+    }
+
+    /** Owner Review in force at startAt: RESOURCE_OWNER_REVIEW_REQUIRED (priority 1), never a no-show. */
+    @Test
+    void aDelayedStartUnderOwnerReviewCancelsUnderItsReason() {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        flows.ownerReviewSince(booking, booking.startAt().minus(Duration.ofMinutes(1)));
+        flows.resourceDisabledBehindTheGuards(booking);
+
+        assertRefused(AttendanceAction.NO_SHOW, booking, ApiErrorCode.BOOKING_STATE_CHANGED);
+
+        assertStartCancelled(booking, "RESOURCE_OWNER_REVIEW_REQUIRED");
+        assertThat(OWNER.sql("SELECT count(*) FROM admin.admin_alert WHERE subject_id = :id")
+                .param("id", booking.bookingId()).query(Long.class).single())
+                .as("one reason by the frozen priority, so no integrity alert").isZero();
+    }
+
+    /**
+     * Judged as of startAt, never as of the late no-show: a Resource Emergency unresolved at startAt and ENDED since
+     * still cancels under RESOURCE_EMERGENCY_OUTAGE, as the on-time start would have.
+     */
+    @Test
+    void aDelayedStartIsJudgedAtStartAtNotWhenTheNoShowRuns() {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        flows.resourceEmergencyEnded(booking, booking.startAt().minus(Duration.ofMinutes(5)),
+                booking.startAt().plus(Duration.ofMinutes(2)));
+
+        assertRefused(AttendanceAction.NO_SHOW, booking, ApiErrorCode.BOOKING_STATE_CHANGED);
+
+        assertStartCancelled(booking, "RESOURCE_EMERGENCY_OUTAGE");
+    }
+
+    /**
+     * Spec v5 section 31.2 lists the selling blocks as start gates but section 31.3 gives them no reason: the start
+     * cannot be resolved, so the no-show is refused and nothing at all is written - the start job still waits.
+     */
+    @Test
+    void aDelayedStartBehindASellingBlockIsUndeterminedAndWritesNothing() {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        flows.venueSellingBlockSince(booking, booking.startAt().minus(Duration.ofMinutes(1)));
+
+        assertRefused(AttendanceAction.NO_SHOW, booking, ApiErrorCode.BOOKING_STATE_CHANGED);
+
+        assertNothingWritten(booking);
+    }
+
+    /** A start a worker holds LEASED right now is being processed: refused, nothing written, the lease untouched. */
+    @Test
+    void aStartBeingProcessedRefusesTheNoShowAndWritesNothing() {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        flows.startLeased(booking);
+
+        assertRefused(AttendanceAction.NO_SHOW, booking, ApiErrorCode.BOOKING_STATE_CHANGED);
+
+        assertThat(DueJobs.job(BookingFlows.bookingStartKey(booking.bookingId())).status()).isEqualTo("LEASED");
+        assertThat(status(booking)).isEqualTo("CONFIRMED");
+        assertThat(record(booking)).isEmpty();
+        assertThat(trustEvents(booking)).isZero();
+    }
+
+    /** One second before +15:00 the no-show window is closed: nothing is cancelled, even on a disabled room. */
+    @Test
+    void beforeFifteenMinutesADelayedStartIsNeitherCancelledNorNoShowed() {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(14));
+        flows.resourceDisabledBehindTheGuards(booking);
+
+        assertRefused(AttendanceAction.NO_SHOW, booking, ApiErrorCode.NO_SHOW_NOT_AVAILABLE);
+
+        assertNothingWritten(booking);
+    }
+
+    /** A defect found while cancelling (no reservation) rolls the whole command back: nothing cancelled, start waits. */
+    @Test
+    void aFailingStartTimeCancellationRollsBackWhole() {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        flows.resourceDisabledBehindTheGuards(booking);
+        withoutTriggers("""
+                UPDATE inventory.resource_reservation
+                   SET active_flag = false, actual_reservation_release_at = actual_reservation_start,
+                       release_reason = 'E7-59 test defect'
+                 WHERE booking_id = :id AND active_flag""", booking.bookingId());
+
+        assertThatThrownBy(() -> record(AttendanceAction.NO_SHOW, booking))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("integrity failure");
+
+        assertThat(status(booking)).isEqualTo("CONFIRMED");
+        assertThat(DueJobs.job(BookingFlows.bookingStartKey(booking.bookingId())).status()).isEqualTo("PENDING");
+        assertThat(record(booking)).isEmpty();
+        assertThat(eventTypes(booking)).doesNotContain(IntegrationEvents.BOOKING_CANCELLED);
+    }
+
+    /** Two no-shows racing on a delayed start that would cancel: one cancellation, both answered 409, no no-show. */
+    @Test
+    void concurrentNoShowsOnACancellingDelayedStartCancelOnce() throws Exception {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        flows.resourceDisabledBehindTheGuards(booking);
+
+        ConcurrentRace.Result<RecordedAttendance> race = race(booking, racer -> AttendanceAction.NO_SHOW);
+
+        assertThat(race.values()).isEmpty();
+        assertThat(race.failures()).hasSize(2).allSatisfy(failure -> assertThat(failure)
+                .isInstanceOfSatisfying(ApiException.class,
+                        e -> assertThat(e.code()).isEqualTo(ApiErrorCode.BOOKING_STATE_CHANGED)));
+        assertStartCancelled(booking, "SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR");
+    }
+
+    /** A cancelled booking is terminal: no late start can make it ACTIVE (tr_03_booking_transition_guard). */
+    @Test
+    void aStartCanNeverReactivateTheStartTimeCancellation() {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        flows.resourceDisabledBehindTheGuards(booking);
+        assertRefused(AttendanceAction.NO_SHOW, booking, ApiErrorCode.BOOKING_STATE_CHANGED);
+
+        assertThatThrownBy(() -> OWNER.sql("UPDATE booking.booking SET status = 'ACTIVE' WHERE id = :id")
+                .param("id", booking.bookingId()).update())
+                .hasMessageContaining("Terminal Booking state CANCELLED is immutable");
+        assertThat(status(booking)).isEqualTo("CANCELLED");
+    }
+
+    /**
+     * The start-time cancellation as the on-time start would have written it, and nothing of a no-show: CANCELLED under
+     * {@code reason} dated startAt, FULL_REFUND with its one fee decision, the reservation released at startAt, one
+     * SYSTEM transition and one BookingCancelled, the start withdrawn, attendance NOT_APPLICABLE; no no-show evidence,
+     * no attendance Booking Event or audit, no Trust outcome, no NoShowRecorded.
+     */
+    private static void assertStartCancelled(Booking booking, String reason) {
+        assertThat(OWNER.sql("""
+                        SELECT status, terminal_reason, fee_treatment, terminal_at FROM booking.booking WHERE id = :id""")
+                .param("id", booking.bookingId())
+                .query((rs, n) -> List.of(rs.getString(1), rs.getString(2), rs.getString(3),
+                        rs.getObject(4, OffsetDateTime.class).toInstant())).single())
+                .containsExactly("CANCELLED", reason, "FULL_REFUND", booking.startAt());
+        assertThat(OWNER.sql("SELECT treatment FROM loyalty.booking_fee_refund WHERE booking_id = :id")
+                .param("id", booking.bookingId()).query(String.class).list()).containsExactly("FULL_REFUND");
+        assertThat(OWNER.sql("""
+                        SELECT active_flag, actual_reservation_release_at FROM inventory.resource_reservation
+                         WHERE booking_id = :id AND reservation_type = 'BOOKING'""")
+                .param("id", booking.bookingId())
+                .query((rs, n) -> List.of(rs.getBoolean(1), rs.getObject(2, OffsetDateTime.class).toInstant()))
+                .single()).containsExactly(false, booking.startAt());
+        assertThat(lastTransition(booking)).isEqualTo("CONFIRMED->CANCELLED SYSTEM null");
+        assertThat(DueJobs.job(BookingFlows.bookingStartKey(booking.bookingId())).status()).isEqualTo("SUPERSEDED");
+        assertThat(record(booking)).containsEntry("result", "NOT_APPLICABLE").containsEntry("no_show_at", null);
+        assertThat(venueEvents(booking)).isEmpty();
+        assertThat(audits(booking)).isEmpty();
+        assertThat(trustEvents(booking)).isZero();
+        assertThat(OWNER.sql("SELECT count(*) FROM trust.trust_event WHERE booking_id = :id")
+                .param("id", booking.bookingId()).query(Long.class).single()).isZero();
+        assertThat(eventTypes(booking)).containsOnlyOnce(IntegrationEvents.BOOKING_CANCELLED)
+                .doesNotContain(IntegrationEvents.NO_SHOW_RECORDED);
+    }
+
+    /** A refused delayed-start no-show that wrote nothing: still CONFIRMED and reserved, its start job still waiting. */
+    private static void assertNothingWritten(Booking booking) {
+        assertThat(status(booking)).isEqualTo("CONFIRMED");
+        assertThat(activeReservations(booking)).isOne();
+        assertThat(DueJobs.job(BookingFlows.bookingStartKey(booking.bookingId())).status()).isEqualTo("PENDING");
+        assertThat(record(booking)).isEmpty();
+        assertThat(lastTransition(booking)).as("no new history row").isEqualTo("PENDING->CONFIRMED VENUE "
+                + booking.venueAccountId());
+        assertThat(venueEvents(booking)).isEmpty();
+        assertThat(audits(booking)).isEmpty();
+        assertThat(trustEvents(booking)).isZero();
+        assertThat(OWNER.sql("""
+                        SELECT (SELECT count(*) FROM loyalty.reward_application WHERE booking_id = :id)
+                             + (SELECT count(*) FROM loyalty.booking_fee_refund WHERE booking_id = :id)""")
+                .param("id", booking.bookingId()).query(Long.class).single()).as("no Loyalty write").isZero();
+        assertThat(eventTypes(booking)).doesNotContain(IntegrationEvents.BOOKING_CANCELLED,
+                IntegrationEvents.NO_SHOW_RECORDED);
+    }
+
+    /** Two no-shows racing on a delayed start: one wins; the start is withdrawn and the outcome written once. */
+    @Test
+    void concurrentNoShowsBehindADelayedStartWriteOnce() throws Exception {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+
+        ConcurrentRace.Result<RecordedAttendance> race = race(booking, racer -> AttendanceAction.NO_SHOW);
+
+        assertThat(race.values()).hasSize(1);
+        assertThat(race.failures()).singleElement().isInstanceOfSatisfying(ApiException.class,
+                e -> assertThat(e.code()).isEqualTo(ApiErrorCode.BOOKING_STATE_CHANGED));
+        assertThat(DueJobs.job(BookingFlows.bookingStartKey(booking.bookingId())).status()).isEqualTo("SUPERSEDED");
+        assertThat(trustEvents(booking)).isOne();
+        assertThat(eventTypes(booking)).containsOnlyOnce(IntegrationEvents.NO_SHOW_RECORDED);
     }
 
     // ----------------------------------------------------------------------------------- refusals by booking
@@ -424,6 +748,16 @@ class AttendanceIntegrationTest extends IntegrationTest {
                     return row;
                 })
                 .optional().orElse(Map.of());
+    }
+
+    /** "FROM->TO ACTOR_TYPE actorId" of the booking's latest status transition. */
+    static String lastTransition(Booking booking) {
+        return OWNER.sql("""
+                        SELECT from_status || '->' || to_status || ' ' || actor_type || ' '
+                               || COALESCE(actor_id::text, 'null')
+                          FROM booking.booking_history WHERE booking_id = :id AND entry_kind = 'STATUS_TRANSITION'
+                         ORDER BY sequence DESC LIMIT 1""")
+                .param("id", booking.bookingId()).query(String.class).single();
     }
 
     static String status(Booking booking) {

@@ -15,6 +15,7 @@ import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
+import ps.e7gz.messaging.api.CommandAnswer;
 import ps.e7gz.messaging.api.Idempotency;
 import ps.e7gz.messaging.api.IdempotentRequest;
 import ps.e7gz.messaging.api.IdempotentResult;
@@ -68,21 +69,35 @@ public class Attendances {
         return run(AttendanceAction.NO_SHOW, venueAccountId, bookingId, key, response, view);
     }
 
-    /** The same command without an Idempotency-Key record: package-private, for this package's tests. */
+    /**
+     * The same command without an Idempotency-Key record: package-private, for this package's tests. A committed
+     * refusal (a no-show whose delayed start cancelled the booking) is thrown after its commit.
+     */
     RecordedAttendance record(AttendanceAction action, UUID venueAccountId, UUID bookingId) {
-        return runner.run(command(action, venueAccountId, bookingId));
+        return switch (runner.run(command(action, venueAccountId, bookingId))) {
+            case CommandAnswer.Ok<RecordedAttendance> ok -> ok.value();
+            case CommandAnswer.Refused<RecordedAttendance> refused -> throw refused.refusal();
+        };
     }
 
+    /**
+     * Through {@link Idempotency#wrapAnswer}: a refusal that must still commit - the start-time cancellation behind a
+     * delayed-start no-show - is stored with its writes, so the first answer and every replay are the same 409.
+     */
     private <R> IdempotentResult<R> run(AttendanceAction action, UUID venueAccountId, UUID bookingId,
                                         IdempotentRequest key, StoredResponse<R> response,
                                         Function<RecordedAttendance, R> view) {
         Objects.requireNonNull(view, "view");
-        Command<RecordedAttendance> command = command(action, venueAccountId, bookingId);
-        return runner.run(idempotency.wrap(Objects.requireNonNull(key, "key"), response,
-                new Body<>(command.scope(), context -> view.apply(command.execute(context)))));
+        Command<CommandAnswer<RecordedAttendance>> command = command(action, venueAccountId, bookingId);
+        return runner.run(idempotency.wrapAnswer(Objects.requireNonNull(key, "key"), response,
+                new Body<>(command.scope(), context -> switch (command.execute(context)) {
+                    case CommandAnswer.Ok<RecordedAttendance> ok -> CommandAnswer.ok(view.apply(ok.value()));
+                    case CommandAnswer.Refused<RecordedAttendance> refused ->
+                            CommandAnswer.<R>refused(refused.refusal());
+                })));
     }
 
-    private Command<RecordedAttendance> command(AttendanceAction action, UUID venueAccountId, UUID bookingId) {
+    private Command<CommandAnswer<RecordedAttendance>> command(AttendanceAction action, UUID venueAccountId, UUID bookingId) {
         UUID venueId = accounts.venueOf(Objects.requireNonNull(venueAccountId, "venueAccountId"));
         Objects.requireNonNull(bookingId, "bookingId");
         Booking booking = runner.run(new Body<Optional<Booking>>(CommandScope.shared(LockSet.empty()),

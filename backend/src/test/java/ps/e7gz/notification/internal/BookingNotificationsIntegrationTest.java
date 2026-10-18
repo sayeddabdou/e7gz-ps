@@ -1,6 +1,7 @@
 package ps.e7gz.notification.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -679,6 +680,25 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
         drainTwiceAndRedeliver(booking, IntegrationEvents.LATE_PRESENT_RECORDED);
 
         assertThat(notifications(booking)).containsExactlyInAnyOrderElementsOf(before);
+    }
+
+    /**
+     * A no-show on a delayed start that would have cancelled (Amr Heiba, 17 Oct 2026): the start-time cancellation
+     * tells the customer and the venue once each, by the established BookingCancelled path - never NO_SHOW_RECORDED.
+     */
+    @Test
+    void aStartTimeCancellationBehindADelayedStartTellsEachSideOnce() {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        flows.resourceDisabledBehindTheGuards(booking);
+        assertThatThrownBy(() -> attendance.noShow(booking.venueAccountId(), booking.bookingId()))
+                .isInstanceOf(ps.e7gz.common.error.ApiException.class);
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_CANCELLED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.BOOKING_CANCELLED,
+                "CUSTOMER BOOKING_AUTO_CANCELLED " + booking.customerId(),
+                "VENUE VENUE_BOOKING_AUTO_CANCELLED " + booking.venueId());
+        assertThat(customerCodes(booking)).doesNotContain("NO_SHOW_RECORDED");
     }
 
     // ------------------------------------------------------------- E7-58 Late Confirm warning, FR-LCF-12

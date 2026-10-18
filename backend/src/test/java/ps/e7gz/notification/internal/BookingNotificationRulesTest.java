@@ -65,8 +65,9 @@ class BookingNotificationRulesTest extends IntegrationTest {
         assertThat(plan(IntegrationEvents.BOOKING_CANCELLED, Map.of("terminalReason", "VENUE_OPENING_HOURS_CHANGED")))
                 .isEqualTo(new Plan(List.of(new Send(Recipient.CUSTOMER, "VENUE_OPENING_HOURS_CHANGED")),
                         Optional.empty()));
+        // ... and the two other start-time reasons (Spec v5 section 31.3; delayed-start no-show, Amr Heiba 17 Oct 2026)
         for (String operational : List.of("VENUE_EMERGENCY_CLOSURE", "RESOURCE_EMERGENCY_OUTAGE",
-                "RESOURCE_OWNER_REVIEW_REQUIRED")) {
+                "RESOURCE_OWNER_REVIEW_REQUIRED", "VENUE_CLOSURE", "SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR")) {
             assertThat(codes(IntegrationEvents.BOOKING_CANCELLED, Map.of("terminalReason", operational)))
                     .as(operational).containsExactly("CUSTOMER BOOKING_AUTO_CANCELLED",
                             "VENUE VENUE_BOOKING_AUTO_CANCELLED");
