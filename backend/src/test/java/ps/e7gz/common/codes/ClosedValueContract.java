@@ -192,6 +192,7 @@ final class ClosedValueContract {
 
             one(RestrictionSource.class, "iam.venue_account_restriction_interval", "ck_restriction_source", "source"),
             branches(RewardSourceKind.class, "loyalty.reward_application", "ck_reward_application_source", "source_kind", 2),
+            branches(WalletTransactionCause.class, "loyalty.wallet_transaction", "ck_wallet_tx_launch_source", "cause", 1),
             one(ReviewModerationAction.class,"review.review_moderation_event", "ck_review_moderation_action", "action"),
             one(ReviewStatus.class, "review.review", "ck_review_status", "status"),
             one(ReviewStatus.class, "review.review_moderation_event", "ck_review_moderation_status_values",
