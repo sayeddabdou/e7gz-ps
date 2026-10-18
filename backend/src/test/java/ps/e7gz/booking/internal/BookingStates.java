@@ -127,7 +127,8 @@ final class BookingStates {
     }
 
     /**
-     * The delayed-start race (Amr Heiba, 17 Oct 2026): a CONFIRMED Online Booking whose interval is moved to begin at
+     * The delayed-start race (Amr Heiba, 17 Oct 2026): a CONFIRMED booking (Online, or Manual for E7-60, which keeps no
+     * commitment period) whose interval is moved to begin at
      * {@code startAt}, in the past, and that stays CONFIRMED - as when its T4 (E7-60) has not been processed yet. The
      * booking, its commitment and its BOOKING reservation move together; its BOOKING_START job is left as it is.
      */
@@ -149,7 +150,8 @@ final class BookingStates {
         jdbc.sql("""
                         UPDATE booking.booking
                            SET end_at = :start + (end_at - start_at), start_at = :start, status = :status,
-                               commitment_period = tstzrange(:start, :start + (end_at - start_at), '[)')
+                               commitment_period = CASE WHEN source = 'ONLINE'
+                                   THEN tstzrange(:start, :start + (end_at - start_at), '[)') END
                          WHERE id = :id AND status = 'CONFIRMED'""")
                 .param("start", utc(startAt)).param("status", status).param("id", bookingId).update();
         jdbc.sql("""

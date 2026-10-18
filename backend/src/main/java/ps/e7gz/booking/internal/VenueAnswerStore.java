@@ -52,6 +52,13 @@ class VenueAnswerStore {
              WHERE id = :id AND status = 'PENDING'
             """;
 
+    /** CONFIRMED -> ACTIVE at T4 (FR-BOK-24, E7-60): the reservation stays as it is, over the booked interval. */
+    static final String START = """
+            UPDATE booking.booking
+               SET status = 'ACTIVE', version = version + 1
+             WHERE id = :id AND status = 'CONFIRMED'
+            """;
+
     /** PENDING -> VENUE_RESPONSE_EXPIRED (FR-BOK-18): non-terminal, so no reason, no terminal_at (FR-BOK-12). */
     static final String EXPIRE = """
             UPDATE booking.booking
@@ -135,6 +142,11 @@ class VenueAnswerStore {
     /** @return false when the booking is no longer PENDING */
     boolean confirm(CommandContext command, UUID bookingId) {
         return command.jdbc().sql(CONFIRM).param("id", bookingId).update() == 1;
+    }
+
+    /** @return false when the booking is no longer CONFIRMED */
+    boolean start(CommandContext command, UUID bookingId) {
+        return command.jdbc().sql(START).param("id", bookingId).update() == 1;
     }
 
     /** @return false when the booking is no longer PENDING */

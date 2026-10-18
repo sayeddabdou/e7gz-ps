@@ -325,6 +325,56 @@ class AttendanceIntegrationTest extends IntegrationTest {
         assertThat(status(booking)).isEqualTo("NO_SHOW");
     }
 
+    /**
+     * E7-60 regression: once the delayed-start no-show is committed, the real T4 never runs - its job is SUPERSEDED, so
+     * the worker cannot fire it - and the booking stays NO_SHOW with no BookingStarted.
+     */
+    @Test
+    void theRealStartNeverRunsAfterACommittedNoShow() {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        record(AttendanceAction.NO_SHOW, booking);
+
+        assertThat(flows.fireStart(booking)).isFalse();
+        assertThat(flows.fireStartIfDue(booking)).isFalse();
+
+        assertThat(status(booking)).isEqualTo("NO_SHOW");
+        assertThat(DueJobs.job(BookingFlows.bookingStartKey(booking.bookingId())).status()).isEqualTo("SUPERSEDED");
+        assertThat(eventTypes(booking)).doesNotContain(IntegrationEvents.BOOKING_STARTED);
+        assertThat(trustEvents(booking)).isOne();
+    }
+
+    /**
+     * E7-60: T4 and the delayed-start no-show racing on one booking are serialised by the booking's locks and the job's
+     * lease. Whichever wins, the booking is never ACTIVE after a no-show, the start and the no-show are each written at
+     * most once, and a committed no-show is ABSENT_NO_SHOW with one Trust outcome.
+     */
+    @Test
+    void theStartRacingADelayedNoShowNeverReactivatesItAndWritesEachOnce() throws Exception {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        flows.makeStartDue(booking);
+
+        ConcurrentRace.Result<Object> race = ConcurrentRace.run(2, Duration.ofSeconds(30), (racer, start) -> {
+            start.await();
+            try (CorrelationId.Scope ignored = CorrelationId.open(CorrelationId.generate())) {
+                return racer == 0 ? flows.fireStartIfDue(booking)
+                        : attendances.record(AttendanceAction.NO_SHOW, booking.venueAccountId(), booking.bookingId());
+            }
+        });
+
+        assertThat(race.failures()).allSatisfy(failure -> assertThat(failure)
+                .isInstanceOfSatisfying(ApiException.class,
+                        e -> assertThat(e.code()).isEqualTo(ApiErrorCode.BOOKING_STATE_CHANGED)));
+        boolean noShowCommitted = race.values().stream().anyMatch(RecordedAttendance.class::isInstance);
+        assertThat(status(booking)).isEqualTo(noShowCommitted ? "NO_SHOW" : "ACTIVE");
+        assertThat(eventTypes(booking).stream().filter(IntegrationEvents.BOOKING_STARTED::equals)).hasSizeLessThan(2);
+        assertThat(eventTypes(booking).stream().filter(IntegrationEvents.NO_SHOW_RECORDED::equals))
+                .hasSize(noShowCommitted ? 1 : 0);
+        assertThat(trustEvents(booking)).isEqualTo(noShowCommitted ? 1 : 0);
+        if (noShowCommitted) {
+            assertThat(record(booking)).containsEntry("result", "ABSENT_NO_SHOW");
+        }
+    }
+
     /** CONFIRMED with no start job waiting is not the race: BOOKING_STATE_CHANGED, nothing written. */
     @Test
     void aConfirmedBookingWhoseStartIsNoLongerWaitingIsBookingStateChanged() {
