@@ -49,7 +49,8 @@ class Sprint4ContractTest {
             "get /api/v1/admin/points/settings",                                        // E7-68
             "put /api/v1/admin/points/settings",                                        // E7-68
             "get /api/v1/admin/fees",                                                   // E7-68
-            "put /api/v1/admin/fees");                                                  // E7-68
+            "put /api/v1/admin/fees",                                                   // E7-68
+            "get /api/v1/admin/global-rules");                                          // E7-71 (PO 20 Oct)
 
     /** Writes refused with ADMIN_ACTION_NOT_ALLOWED when the target's state no longer allows them (PO D5). */
     static final Set<String> STATE_DEPENDENT_WRITES = Set.of(
@@ -228,6 +229,16 @@ class Sprint4ContractTest {
         // FR-ADM-09: referral records show referrer, code, referred user, signup date, reward applied and status.
         assertThat(properties(schema("AdminReferral"))).contains("referrerUserId", "code", "referredUserId",
                 "signedUpAt", "rewardPointsApplied", "status");
+    }
+
+    @Test
+    void theGlobalRulesAreReadOnly() {
+        // arch 09 §5, NFR-37, A8: the no-show ladder is a fixed Product rule; PO decision 20 Oct 2026 (E7-65).
+        JsonNode path = contract.path("paths").path("/api/v1/admin/global-rules");
+        assertThat(path.fieldNames()).toIterable().containsExactly("get");
+        assertThat(properties(schema("AdminGlobalRules"))).containsExactly("noShowLadder");
+        assertThat(properties(schema("AdminNoShowLadderStep")))
+                .containsExactlyInAnyOrder("penaltyStage", "consecutiveNoShows", "banDuration", "recurring");
     }
 
     private Set<String> writes() {

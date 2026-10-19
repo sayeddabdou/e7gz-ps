@@ -6,7 +6,7 @@ The change is **additive only**: no existing path or schema changed; `ApiErrorCo
 
 Sources: arch 09 §1, §3.1, §3.4, §5 · arch 07 §5, §6, §7.4, §8 · arch 01 §14 A8 · FRS §2.10, §2.11, §4.11, §4.12, §4.14 · PCR-004 · ADR-015, ADR-028 · PO decisions of 17 Oct 2026 (below).
 
-## Included (29 operations)
+## Included (30 operations)
 
 | Surface | Endpoint | Controller | Implemented by |
 |---|---|---|---|
@@ -24,10 +24,11 @@ Sources: arch 09 §1, §3.1, §3.4, §5 · arch 07 §5, §6, §7.4, §8 · arch 
 | Admin | `GET /admin/referrals?status=&q=` · `POST /admin/referrals/{referralId}/invalidate` `{reason}` | `loyalty/web/AdminLoyaltyController` | E7-67 |
 | Admin | `GET PUT /admin/points/settings` `{attendedPoints?, referralPoints?, walletRefundsEnabled?, reason}` | `loyalty/web/AdminLoyaltyController` | E7-68 |
 | Admin | `GET PUT /admin/fees` `{bookingFee?, tournamentCreationFee?, reason}` | `config/web/AdminFeeController` | E7-68 |
+| Admin | `GET /admin/global-rules` — the no-show ladder, read-only (D7) | `trust/web/AdminGlobalRulesController` | E7-71 |
 
 New shared code enum: `WalletTransactionCause` (`BOOKING_FEE_REFUND`, the only value `ck_wallet_tx_launch_source` allows), registered in `ClosedValueContract`.
 
-Not in Sprint 4: `GET /admin/no-shows` and `GET /admin/global-rules` (Sprint 7, S7-P1 "remaining admin modules"); account deletion and anonymisation (Sprint 7); `POST /admin/wallet/adjust` **never** exists (FR-PTS-11, PCR-004).
+Not in Sprint 4: `GET /admin/no-shows` (Sprint 7, S7-P1 "remaining admin modules"); account deletion and anonymisation (Sprint 7); `POST /admin/wallet/adjust` **never** exists (FR-PTS-11, PCR-004).
 
 ## 1. PO decisions (17 Oct 2026)
 
@@ -39,6 +40,7 @@ Not in Sprint 4: `GET /admin/no-shows` and `GET /admin/global-rules` (Sprint 7, 
 | D4 | Admin trust and points actions need to find a user and see their standing; no task owns `GET /admin/users` | **List and detail in the Sprint 4 contract**; an implementing task is still to be added | `AdminUserSummary` (FR-ADM-04 columns), `AdminUserDetail` |
 | D5 | No `ApiErrorCode` covers an admin action refused by the target's state | **One general code `ADMIN_ACTION_NOT_ALLOWED` (409)** | On ban lift / shorten / correct, Verified Player suspend / revoke / restore, the four attendance routes and referral invalidation |
 | D6 | Idempotency-Key on the admin writes | **Required on every remediation and both configuration writes** | `IdempotencyScopeTest.MANDATORY`; `loyalty.configure` already takes a request id |
+| D7 | (20 Oct) E7-75 lists a read-only global-rules screen, but the route was left to Sprint 7 | **`GET /admin/global-rules` joins the Sprint 4 contract**, built by E7-71 (it owns the ladder constants) | `AdminGlobalRules {noShowLadder: [{penaltyStage, consecutiveNoShows, banDuration (ISO-8601 period), recurring}]}`; no write route (NFR-37, A8) |
 
 ## 2. Conventions (resolved from the documents)
 

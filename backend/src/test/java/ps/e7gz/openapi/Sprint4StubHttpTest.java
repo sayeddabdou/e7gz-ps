@@ -102,6 +102,7 @@ class Sprint4StubHttpTest extends IntegrationTest {
         notImplemented(write(put("/api/v1/admin/points/settings"),
                 "{\"attendedPoints\":250,\"reason\":\"Autumn promotion.\"}"), admin); // E7-68
         notImplemented(get("/api/v1/admin/fees"), admin);                           // E7-68
+        notImplemented(get("/api/v1/admin/global-rules"), admin);                   // E7-71 (PO 20 Oct)
         notImplemented(write(put("/api/v1/admin/fees"), "{\"bookingFee\":{\"amount\":\"5.00\",\"currency\":\"EGP\"},"
                 + "\"reason\":\"Fee switched on.\"}"), admin);                      // E7-68
     }

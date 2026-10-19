@@ -9,7 +9,7 @@
 **Updated:** 12 October 2026 — E7-58 decision: the neutral Late Confirm failure records `LATE_CONFIRM_FAILED_BOOKING_LIMIT` only for the 4-commitment limit; a ban or deactivated account records no booking event (`§4.1`).
 **Updated:** 15 October 2026 — E7-56 decisions: admin alert list and acknowledge routes (`§5`) and `ADMIN_ALERT_ALREADY_ACKNOWLEDGED` (`§1.5`).
 **Updated:** 16 October 2026 — E7-57: `verify-phone` takes `password` for a code from `otp/send` (`§3.1`).
-**Updated:** 17 October 2026 — Sprint 4 contract decisions (E7-65): `ADMIN_ACTION_NOT_ALLOWED` (`§1.5`); admin users, trust, ban, attendance, wallet, points, referral and points-settings routes (`§5`).
+**Updated:** 17 October 2026 — Sprint 4 contract decisions (E7-65): `ADMIN_ACTION_NOT_ALLOWED` (`§1.5`); admin users, trust, ban, attendance, wallet, points, referral and points-settings routes (`§5`); global rules joined on 20 October 2026 (`§5`).
 
 **Style.** REST + JSON over HTTPS, base `/api/v1`, OpenAPI 3.1 generated from code, typed TypeScript clients generated for all three surfaces (`ADR-012`).
 
@@ -442,7 +442,7 @@ Rules (`ADR-011`): the Owner Password is a PIN of exactly 4 digits (PCR-006). Bo
 | Wallet · Points · Referrals | `GET /admin/wallet` · `/points` · `GET /admin/users/{id}/wallet` · `/points` (one user's history) · `POST /points/adjust` `{userId, amount, reason}` · `GET /referrals` · `POST /referrals/{id}/invalidate` `{reason}` | `FR-ADM-09`, `FR-PTS-09`, `FR-PTS-11` |
 | Fees | `GET PUT /admin/fees` — global booking fee, tournament creation fee | `FR-ADM-10` |
 | Points settings | `GET PUT /admin/points/settings` — completed-booking points, referral points, wallet-refund switch, through `loyalty.configure` (Product Owner decision D3, 17 Oct 2026, E7-65) | `FR-PTS-01`, `FR-PTS-07`, `01 §14` A8 |
-| Global rules | `GET /admin/global-rules` — **read-only** for the no-show ladder | `FR-TRS-13`, `NFR-37` |
+| Global rules | `GET /admin/global-rules` — **read-only** for the no-show ladder; in the Sprint 4 contract (Product Owner decision D7, 20 Oct 2026, E7-65) | `FR-TRS-13`, `NFR-37` |
 | Notifications | `GET /admin/notifications` · `/alerts` | `FR-NTF-10` |
 | Admin alerts | `GET /admin/alerts?acknowledged=&kind=&severity=&cursor=&limit=` — open alerts by default, newest first, cursor paging · `POST /admin/alerts/{alertId}/acknowledge` `{reason?}` → 200 the alert; the same admin again returns it, another admin → 409 `ADMIN_ALERT_ALREADY_ACKNOWLEDGED` | `NFR-29`, `11 §5.4`, `12 §6` — Product Owner decision, 15 Oct 2026 (E7-56) |
 | Notification delivery recovery | `POST /admin/notification-deliveries/{deliveryId}/recover` `{reason}` → 204 — "try again" for one `DEAD_LETTER` delivery through `notification.recover_dead_letter` (audited); an outbox event in `DEAD_LETTER` stays final | `08 §4.3` — Product Owner decisions, 9 and 10 Oct 2026 (E7-41, E7-43) |

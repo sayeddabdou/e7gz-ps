@@ -495,6 +495,20 @@
         ],
         "type": "object"
       },
+      "AdminGlobalRules": {
+        "properties": {
+          "noShowLadder": {
+            "items": {
+              "$ref": "#/components/schemas/AdminNoShowLadderStep"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "noShowLadder"
+        ],
+        "type": "object"
+      },
       "AdminLoginRequest": {
         "properties": {
           "email": {
@@ -514,6 +528,39 @@
         "required": [
           "email",
           "password"
+        ],
+        "type": "object"
+      },
+      "AdminNoShowLadderStep": {
+        "properties": {
+          "banDuration": {
+            "description": "The ban length, an ISO-8601 period (P7D, P1M, P2M).",
+            "example": "P7D",
+            "type": "string"
+          },
+          "consecutiveNoShows": {
+            "description": "Consecutive eligible no-shows that start the ban (the stage's threshold).",
+            "example": 3,
+            "format": "int32",
+            "type": "integer"
+          },
+          "penaltyStage": {
+            "description": "The penalty stage this rung applies at.",
+            "example": 0,
+            "format": "int32",
+            "type": "integer"
+          },
+          "recurring": {
+            "description": "True on the last rung: it repeats for every later stage.",
+            "example": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "banDuration",
+          "consecutiveNoShows",
+          "penaltyStage",
+          "recurring"
         ],
         "type": "object"
       },
@@ -3645,6 +3692,21 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/AdminFees"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "DataResponseAdminGlobalRules": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AdminGlobalRules"
           },
           "meta": {
             "$ref": "#/components/schemas/ResponseMeta"
@@ -11807,6 +11869,197 @@
         "summary": "Change one or both platform fees (FR-ADM-10, FR-ADM-11)",
         "tags": [
           "admin-fees"
+        ]
+      }
+    },
+    "/api/v1/admin/global-rules": {
+      "get": {
+        "description": "One row per penalty stage, in order: at that stage, consecutiveNoShows eligible no-shows in a row start a ban of banDuration and advance the stage (FR-TRS-14). The last row is recurring: from that stage on, every consecutiveNoShows give the same ban. Implemented by E7-71.",
+        "operationId": "adminGetGlobalRules",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseAdminGlobalRules"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "The no-show ladder, read-only (FR-TRS-13)",
+        "tags": [
+          "admin-global-rules"
         ]
       }
     },
