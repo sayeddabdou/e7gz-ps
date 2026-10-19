@@ -129,6 +129,7 @@ Trust events and replay, bans, Verified Player, points, wallet, referrals, confi
 | S4-E3 | E7-71 | Engine | Bans and the ban cascade (O14) | Temporary bans after repeated no-shows, and their effects. | S4-E2 |
 | S4-E4 | E7-72 | Engine | Verified Player | The Verified Player badge: earning, losing, restoring it. | S4-E2 |
 | S4-E5 | E7-73 | Engine | Tournament entity (early, for Sprint 5) | Basic tournament records early, so venue emergencies can handle them. | S1-E1 |
+| S4-E6 | E7-118 | Engine | Unanswered booking at start time (T6, FR-BOK-23) | A booking the venue never answered is cancelled at its start time with the right reason. | S3-E3, S3-P1 |
 
 ### Sprint 5 — Running the venue (6 – 17 Dec 2026)
 
@@ -2097,6 +2098,9 @@ Carry-forward from the Sprint 3 review (PO decisions 12 Oct 2026, do these too):
 - Events (arch 08 §3.2): publish CheckInRecorded, LatePresentRecorded and NoShowRecorded in each action's command transaction, with the BookingCreated fields {bookingId, customerId, venueId, resourceId, startAt, endAt}; never BookingNoShowRecorded (PO decision 12 Oct 2026: one fact, one event). Add the constants to messaging.api.IntegrationEvents and map each in VenueStreamSignals as {type BOOKING, reason CHANGED} (PO decision 10 Oct 2026, E7-44 review: each producer task adds its own events), so other open Dashboards refresh.
 - One notification path (PO decision 12 Oct 2026): booking, Late Confirm and attendance notifications are created only by E7-55's notification consumer from integration events - never by calling Notifications.notify in this task. Map your events there (CHECK_IN_RECORDED, NO_SHOW_RECORDED and any other attendance code of Spec v5 §52.2 they trigger) with EN copy and one exactly-once test per code. E7-55 runs first in Sprint 3: merge main once it is merged.
 
+Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do these too):
+- Accepted as built (PR #81): the delayed-start no-show is kept but changed by R1, delivered in E7-60's PR #82 (check-in, Mark Present - Late and no-show all start a late-start booking first, as T4 would). PR #81 and #82 merge together, #81 first. The third consecutive no-show needs E7-71's ban: the pinned test stays until E7-71 replaces it, and E7-71 must be merged before E7-101.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2137,6 +2141,11 @@ Carry-forward from the Sprint 3 review (PO decisions 12 Oct 2026, do these too):
 PO decision 15 Oct 2026 (from E7-56, do this too):
 - Raise the SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR admin alert through E7-56's typed alert in admin.api (SEV_1, the full payload of arch 12 section 6.2), in the same command as the cancellation. Merge main once E7-56 is merged.
 
+Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do these too):
+- R1 (review of PR #82): a late start resolves the same way for check-in, Mark Present - Late and no-show. On a CONFIRMED booking whose BOOKING_START is still waiting, inside the action's window: if the start (StartTimeResolution, judged at startAt) would start, start it first as T4 does (CONFIRMED -> ACTIVE, SYSTEM history dated startAt, BookingStarted, BOOKING_COMPLETE at endAt, the start job withdrawn), then record the action in the same command - a no-show then goes ACTIVE -> NO_SHOW and the BOOKING_COMPLETE it scheduled is superseded; if it would cancel, cancel under its start-time reason with the committed 409 BOOKING_STATE_CHANGED stored under the Idempotency-Key; otherwise the pure 409, nothing written. Reuse StartTimeResolution and the start transition, never a copy; update the venueCheckIn, venueMarkLatePresent and venueMarkNoShow descriptions and regenerate openapi.json; replace E7-59's checkInAndLatePresentOnADelayedStartAreRefusedAndLeaveTheStartWaiting. Tests: each action behind a late start for each outcome, a race with the real T4 starts once, key replay.
+- Merge: PR #81 (E7-59) and #82 merge together, #81 first. Bring #82 up to date by merging main into it (no rebase, no force-push), check its diff and rerun CI.
+- Accepted as built: VENUE_ACCOUNT_DISABLED is not a start reason for a CONFIRMED booking (FR-BOK-27); an orphaned selling block at startAt writes nothing and raises one SEV_1 (an accepted exception to FR-BOK-26: no product flow creates it, the data is fixed by hand); a blocker that began after startAt is left to E7-82/E7-84; customers get the generic BOOKING_AUTO_CANCELLED for VENUE_CLOSURE and SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2172,6 +2181,11 @@ Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
 Carry-forward from the Sprint 3 review (PO decisions 12 Oct 2026, do these too):
 - Events (arch 08 §3.2): publish BookingCompleted and AttendanceResolved in the completion transaction (BookingCreated fields, plus attendanceResult on AttendanceResolved). Add the constants to IntegrationEvents and map BookingCompleted in VenueStreamSignals as {type BOOKING, reason CHANGED} (PO decision 10 Oct 2026, E7-44 review).
 - One notification path (PO decision 12 Oct 2026): booking, Late Confirm and attendance notifications are created only by E7-55's notification consumer from integration events - never by calling Notifications.notify in this task. Map ATTENDANCE_UNCONFIRMED_COMPLETION there (FR-NTF-05: it says no attendance reward was applied), with copy and an exactly-once test; points notifications are Sprint 4 (E7-66). E7-55 runs first in Sprint 3: merge main once it is merged.
+
+Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do these too):
+- The 10th attended completion: until E7-72 exists, trust.assert_user_integrity refuses a qualified user with no initial VERIFIED transition, so a customer's 10th attended completion fails T5 until the job is FAILED and the booking stays ACTIVE. E7-61 may still merge (PO decision 19 Oct 2026): pin today's behaviour in a test that E7-72 replaces. E7-72 must be merged before E7-101; FAILED BOOKING_COMPLETE jobs left on dev databases are fixed by hand (re-seed or re-arm; PO decision 20 Oct 2026).
+- One writer of booking Trust outcomes: generalise E7-59's trust.api.NoShowOutcomes into trust.api.BookingOutcomes; E7-69, E7-70 and E7-72 reuse it.
+- After R1 lands in E7-60 (PR #82), merge main: a no-show behind a late start goes through ACTIVE, so aNoShowBeforeADelayedT4LeavesNoStartAndNoCompletion changes.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2352,6 +2366,9 @@ Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
 PO decision 15 Oct 2026 (E7-53 review, do this too):
 - Add a 'Cancel walk-in' action to the booking detail of a MANUAL booking that is CONFIRMED or ACTIVE (FR-MAN-08, PCR-007): POST /venue/bookings/{bookingId}/cancel-manual (E7-48; no Owner PIN; Idempotency-Key required, kept on retry), with a confirmation step and the 409 BOOKING_STATE_CHANGED message. No task built it (E7-53 did not have it in scope). EN and AR.
 
+Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do these too):
+- Check-in, Mark Present - Late and No-show can answer 409 BOOKING_STATE_CHANGED after the booking was cancelled at its start (a late start judged at startAt, E7-59/E7-60): reload the booking and show its new state; never show it as a no-show.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2477,6 +2494,13 @@ Do:
 Done when (write these as tests first where possible):
 - Every terminal reason maps to a fee treatment (test fails on a new unmapped reason).
 
+Carry-forward from E7-65 (Sprint 4 contract, PO decisions 17 Oct 2026, do these too):
+- Fill the stubs of the Sprint 4 contract (E7-65, packages/api-client/SPRINT-4-CONTRACT.md) and keep their shapes: loyalty/web CustomerLoyaltyController GET /customer/points and GET /customer/wallet (applied amounts only, the balance with every page); AdminLoyaltyController GET /admin/wallet, GET /admin/users/{userId}/wallet, GET /admin/points, GET /admin/users/{userId}/points (requested, applied and unrecovered amounts) and POST /admin/points/adjust {userId, amount, reason} (a non-zero amount; a deduction applies MIN(balance, requested) and records the shortfall, FR-PTS-03, FR-PTS-04). Every admin write requires the Idempotency-Key and a reason (D6). Replace this task's lines in backend/src/test/java/ps/e7gz/openapi/Sprint4StubHttpTest.java with your own tests.
+- D4: also build GET /admin/users?q=&cursor=&limit= and GET /admin/users/{userId} (identity/web AdminUserController, FR-ADM-04): no other task owns them. Read standing and Verified Player through small read-only ports in trust.api (Engine reviews them), and points and wallet from loyalty.
+
+Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do these too):
+- Reuse loyalty.api.BookingRewards (added by E7-59) for every booking outcome's Loyalty reconciliation (loyalty.reconcile_booking); don't add a second entry point.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2504,6 +2528,9 @@ Carry-forward from E7-13 (do these too):
 - Reward or invalidate the PENDING referral inside the verify-phone transaction (identity VerifyPhoneCommand): loyalty.assert_referral refuses the commit otherwise ("OTP success must reconcile referral reward/invalidity before commit").
 - The referral code format (8 characters, no look-alike letters; identity ReferralCodes) was chosen in E7-13: confirm it with the PO.
 
+Carry-forward from E7-65 (Sprint 4 contract, PO decisions 17 Oct 2026, do these too):
+- Fill the stubs of the Sprint 4 contract (E7-65, packages/api-client/SPRINT-4-CONTRACT.md) and keep their shapes: GET /customer/referrals (my code and my referrals; the friend's identity is not shown), GET /admin/referrals?status=&q= and POST /admin/referrals/{referralId}/invalidate {reason} -> AdminReferralInvalidation (recorded as ADMIN_FRAUD; a REWARDED referral also gets the compensating transaction under the zero floor, FR-PTS-09; an INVALID referral -> 409 ADMIN_ACTION_NOT_ALLOWED, D5). Idempotency-Key and reason required (D6). Replace this task's lines in backend/src/test/java/ps/e7gz/openapi/Sprint4StubHttpTest.java with your own tests.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2528,6 +2555,9 @@ Do:
 Done when (write these as tests first where possible):
 - Changing the booking fee affects only bookings created after the change.
 
+Carry-forward from E7-65 (Sprint 4 contract, PO decisions 17 Oct 2026, do these too):
+- Fill the stubs of the Sprint 4 contract (E7-65, packages/api-client/SPRINT-4-CONTRACT.md): GET/PUT /admin/fees (config/web AdminFeeController, config.change_configuration) and the new GET/PUT /admin/points/settings (D3; loyalty/web AdminLoyaltyController, loyalty.configure) for attendedPoints, referralPoints and walletRefundsEnabled. Each value with its effectiveFrom; a change takes effect now, for later events only (FR-ADM-11). Omitted fields keep their value; a value equal to the current one changes nothing (skip it: change_configuration refuses an unchanged value); none given -> 400 VALIDATION_FAILED. The Idempotency-Key is required on both PUTs (D6). Replace this task's lines in backend/src/test/java/ps/e7gz/openapi/Sprint4StubHttpTest.java with your own tests.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2551,6 +2581,9 @@ Do:
 Done when (write these as tests first where possible):
 - Seeded replay reproduces history; reversing a Monday no-show on Friday changes the Monday position.
 
+Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do these too):
+- One writer of booking Trust outcomes: reuse trust.api.BookingOutcomes (E7-61's generalisation of E7-59's NoShowOutcomes); don't add a second writer.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2572,6 +2605,12 @@ Do:
 
 Done when (write these as tests first where possible):
 - Three chained corrections → exactly one effective outcome; double replay creates nothing twice.
+
+Carry-forward from E7-65 (Sprint 4 contract, PO decisions 17 Oct 2026, do these too):
+- Fill the four admin attendance stubs of the Sprint 4 contract (E7-65, packages/api-client/SPRINT-4-CONTRACT.md) (D1; attendance/web AdminAttendanceController): reverse-check-in, reverse-late-present, reverse-no-show {reason} and correct {correctedOutcome, reason} (NOT_APPLICABLE -> 400 on correctedOutcome), each returning AdminAttendance. A state that does not allow the action (no evidence, a manual booking, the wrong booking state) -> 409 ADMIN_ACTION_NOT_ALLOWED (D5). Idempotency-Key and reason required (D6). Replace this task's lines in backend/src/test/java/ps/e7gz/openapi/Sprint4StubHttpTest.java with your own tests.
+
+Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do these too):
+- Build on E7-59's attendance evidence (attendance.attendance_record; reversed evidence is absent from VenueBooking.attendance) and on trust.api.BookingOutcomes.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2595,6 +2634,15 @@ Do:
 Done when (write these as tests first where possible):
 - Second qualification during an active ban → one instance, advanced stage, BAN_EXTENDED.
 
+Carry-forward from E7-65 (Sprint 4 contract, PO decisions 17 Oct 2026, do these too):
+- Fill the stubs of the Sprint 4 contract (E7-65, packages/api-client/SPRINT-4-CONTRACT.md): GET /customer/account-standing (consecutiveNoShows, penaltyStage, currentThreshold, currentBan; E7-72 fills verifiedPlayer), POST /admin/users/{userId}/trust-adjustment {counterAfter, penaltyStageAfter, reason} (the ADMIN_TRUST_ADJUSTMENT v1 absolute payload; counterAfter at or above the stage's threshold -> 400 on counterAfter) and POST /admin/users/{userId}/bans/{banId}/lift {reason}, /shorten {endsAt, reason} and /correct {reason}. D2: /correct is kept; the database accepts CORRECTED only when corrected Trust history no longer supports the ban (trust.assert_ban_lifecycle_audit) - decide how the route meets that and ask the PO if unclear. A ban no longer ACTIVE, or a correction the history does not support -> 409 ADMIN_ACTION_NOT_ALLOWED (D5). Idempotency-Key and reason required (D6). Replace this task's lines in backend/src/test/java/ps/e7gz/openapi/Sprint4StubHttpTest.java with your own tests.
+
+Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do these too):
+- Replace E7-59's pinned test theThirdConsecutiveNoShowNeedsE771sBanAndUntilThenRollsBackWhole with the real ban. E7-71 must be merged before E7-101: until then a third consecutive no-show is a 500 for the venue.
+- A ban against a late-start booking (Spec v5 §48.6 does not cover it): a booking still CONFIRMED after its startAt because T4 is late is treated as started - it continues and is not cancelled with USER_BANNED (the database's cascade check only requires CONFIRMED bookings whose startAt is in the future). Test that the late T4 then still starts that booking (the ban guard does not refuse it).
+- ADMIN_USER_BAN_ACTIVATED (§52.6) goes only to the admin alert inbox: a typed alert in admin.api.NewAdminAlert raised through AdminAlerts (E7-56), no per-admin notification. No migration: the alert kind is open text (ck_admin_alert_values). admin.api is Platform lane: list it in the PR for Sayed's review.
+- Merge rule: whichever of E7-71 and E7-72 merges second first merges main in and goes green on CI.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2616,6 +2664,14 @@ Do:
 
 Done when (write these as tests first where possible):
 - Revoke by correction then re-qualify → VERIFIED with two transition IDs and no admin action.
+
+Carry-forward from E7-65 (Sprint 4 contract, PO decisions 17 Oct 2026, do these too):
+- Fill the stubs of the Sprint 4 contract (E7-65, packages/api-client/SPRINT-4-CONTRACT.md): the verifiedPlayer part of GET /customer/account-standing (qualification, completedBookings, requiredBookings, status), GET /admin/verified-players?status= and POST /admin/verified-players/{userId}/suspend and /revoke (only from VERIFIED) and /restore (from SUSPENDED or REVOKED: VERIFIED if qualified now, else NOT_VERIFIED), each {reason}; any other status -> 409 ADMIN_ACTION_NOT_ALLOWED (D5). Idempotency-Key and reason required (D6). Replace this task's lines in backend/src/test/java/ps/e7gz/openapi/Sprint4StubHttpTest.java with your own tests.
+
+Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do these too):
+- The initial VERIFIED transition unblocks E7-61's 10th attended completion (trust.assert_user_integrity): replace E7-61's pinned test with it. E7-72 must be merged before E7-101.
+- ADMIN_VERIFIED_PLAYER_REVOKED (§52.6) goes only to the admin alert inbox, as in E7-71: a typed alert in admin.api.NewAdminAlert, no migration, listed in the PR for Sayed's review.
+- Merge rule: whichever of E7-71 and E7-72 merges second first merges main in and goes green on CI.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2639,6 +2695,36 @@ Do:
 
 Done when (write these as tests first where possible):
 - A test creates a tournament with holds via the aggregate.
+
+Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
+Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
+```
+
+### S4-E6 (E7-118) — Unanswered booking at start time (T6, FR-BOK-23)
+
+**What this task does:** A booking the venue never answered (still VENUE_RESPONSE_EXPIRED) is cancelled at its start time with the right reason.
+
+Lane: Engine · Depends on: S3-E3, S3-P1
+
+```text
+Read CLAUDE.md first. You are implementing task S4-E6 — "Unanswered booking at start time (T6, FR-BOK-23)" (Engine lane) of the E7GZ PS build plan.
+
+Read only these docs for this task:
+- FRS FR-BOK-23
+- arch 08 §1 (T6), §2.2
+- Spec v5 §24.3
+
+Do:
+1. Schedule T6 (VENUE_RESPONSE_EXPIRED resolution) at booking.start_at when a booking becomes VENUE_RESPONSE_EXPIRED (E7-47's T1 expiry); the job supersedes itself when the booking has left that state (Late Confirm, reject after expiry, customer cancel).
+2. At startAt, a booking still VENUE_RESPONSE_EXPIRED becomes CANCELLED with exactly one reason by FR-BOK-23's priority, judged at startAt (arch 08 §2.2): RESOURCE_OWNER_REVIEW_REQUIRED > RESOURCE_EMERGENCY_OUTAGE > VENUE_EMERGENCY_CLOSURE > VENUE_ACCOUNT_DISABLED > VENUE_DID_NOT_RESPOND_IN_TIME (the last only when no overriding cause exists); its full refund classification and BookingCancelled, once.
+
+Done when (write these as tests first where possible):
+- A booking still VENUE_RESPONSE_EXPIRED at startAt is CANCELLED with the right reason; one second before startAt nothing happens; a job fired late gives the on-time outcome.
+
+PO decisions 19 and 20 Oct 2026 (E7-59/E7-60 review, do these too):
+- D1, D3: a Venue Closure, an Opening Hours change, or a room DISABLED or ARCHIVED at that startAt is not a reason: the frozen list wins, so it is VENUE_DID_NOT_RESPOND_IN_TIME (no migration).
+- D2: the customer gets one notification, the generic BOOKING_AUTO_CANCELLED (no specific code exists), through E7-55's consumer, even though they were told at expiry that the venue didn't respond; one exactly-once test.
+- The boundary test is already written and switched off: backend/src/test/java/ps/e7gz/support/boundary/pending/BookingStartBoundaryTest.java (T6 only, after E7-60). Move it next to this task's code, replace fail(...) using the boundary pack ps.e7gz.support.boundary, and remove @Disabled. Reuse E7-60's start-time reads (operations.api.OperationalStateAt) for the causes; don't copy them.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2678,6 +2764,9 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 - Customer app is English at launch, all text in the i18n resource files (FRS §3.1).
 - In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.
 
+Carry-forward from E7-65 (Sprint 4 contract, PO decisions 17 Oct 2026, do these too):
+- Build against the Sprint 4 contract (E7-65, packages/api-client/SPRINT-4-CONTRACT.md): the standing has exactly one currentBan or null, and its remaining time is currentBan.endsAt against meta.serverTime; points show applied amounts; referrals show my code and my referrals' status, not who signed up; the wallet is read-only and shows 0.00 clearly.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2713,6 +2802,9 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 - Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.
 - Platform Admin is English only (FRS §3.3).
 - In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.
+
+Carry-forward from E7-65 (Sprint 4 contract, PO decisions 17 Oct 2026, do these too):
+- Build against the Sprint 4 contract (E7-65, packages/api-client/SPRINT-4-CONTRACT.md): every admin write asks for a reason (required, 1-500 characters) and sends an Idempotency-Key; 409 ADMIN_ACTION_NOT_ALLOWED means "refresh and look again"; fees and points settings show effectiveFrom; the user page reads GET /admin/users/{userId}; the attendance correction asks for the chosen outcome; there is no wallet adjustment.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2880,6 +2972,9 @@ Carry-forward from the E7-30 review (do these too):
 Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
 - Publish MaintenanceCreated, MaintenanceEdited, MaintenanceDeleted and ClosureCreated in the same command transaction as each change (arch 08 section 3.2; IntegrationEvents.INVENTORY_AFFECTING already lists them and the Nearest Availability consumer takes them, but nothing writes them yet). Add the constants to IntegrationEvents; the cancellations publish BookingCancelled, which the venue live channel already signals. Test: each event refreshes the venue's Nearest Availability rows without waiting for the one-minute pass.
 
+Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do these too):
+- Keep a Venue Closure from overlapping a CONFIRMED booking: E7-60's start check (closurePreventsService) cancels for any overlapping closure, even one created after startAt.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2905,6 +3000,9 @@ Done when (write these as tests first where possible):
 
 Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
 - Publish EmergencyDeclared, EmergencyExtended, EmergencyEnded and EmergencyConverted in the same command transaction as each change (arch 08 section 3.2; IntegrationEvents.INVENTORY_AFFECTING already lists them and the Nearest Availability consumer takes them, but nothing writes them yet). Add the constants to IntegrationEvents. Test: each event refreshes the venue's Nearest Availability rows without waiting for the one-minute pass.
+
+Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do these too):
+- When an Emergency is declared, a booking still CONFIRMED after its startAt because T4 was late must be handled: its valid start at startAt, then the interruption at the Emergency's own time (Spec v5 §31.7). Today E7-60's T4 refuses such a start and writes nothing (Undetermined).
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2960,6 +3058,9 @@ Do:
 
 Done when (write these as tests first where possible):
 - END EMERGENCY on an over-threshold resource leaves it unsellable under owner review; J6, J7, J11 pass.
+
+Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do these too):
+- When an Owner Review starts, a booking still CONFIRMED after its startAt because T4 was late must be handled: its valid start at startAt, then the interruption at the review's own time (Spec v5 §31.7). Today E7-60's T4 refuses such a start and writes nothing (Undetermined).
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -3423,6 +3524,9 @@ Done when (write these as tests first where possible):
 Carry-forward from the Sprint 0 review (do these too):
 - Log redaction (NFR-21, arch 10 section 6, Sprint 0 review S-10): JSON logs with a field redaction allowlist, plus the required unit test that no field named like a credential (password, token, otp, secret, authorization, ...) survives serialization; phone numbers masked to the last 3 digits.
 - Correlation ID from the internet (Sprint 0 review S-13): today any client's X-Correlation-Id is reused for audit and outbox rows, so an attacker can mix their records into another flow's trail. Generate the ID server-side for every public request and log the client's value as a separate field (or accept it only from the trusted edge).
+
+Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do these too):
+- An admin "restart a FAILED job" action using ScheduledJobs.rearm (technical.job_rearm), with a mandatory reason and an audit row, so a FAILED BOOKING_START or BOOKING_COMPLETE can be recovered once its data is fixed (PO decision 19 Oct 2026).
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.

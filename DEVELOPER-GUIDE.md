@@ -237,6 +237,7 @@ e7gz-ps/
 | E7-71 | Amr | **Bans and the ban cascade (O14)** | Temporary bans after repeated no-shows, and their effects. | E7-70 | `…/trust/ (ban)` |
 | E7-72 | Amr | **Verified Player** | The Verified Player badge: earning, losing, restoring it. | E7-70 | `…/trust/ (verified player)` |
 | E7-73 | Amr | **Tournament entity (early, for Sprint 5)** | Basic tournament records early, so venue emergencies can handle them. | E7-29 | `…/tournament/` |
+| E7-118 | Amr | **Unanswered booking at start time (T6, FR-BOK-23)** | A booking the venue never answered is cancelled at its start time with the right reason. | E7-60, E7-55 | `…/booking/ (T6 unanswered at start)` |
 
 #### Sprint 5 — Running the venue · 6 – 17 Dec 2026
 
