@@ -2636,6 +2636,7 @@ Done when (write these as tests first where possible):
 
 Carry-forward from E7-65 (Sprint 4 contract, PO decisions 17 Oct 2026, do these too):
 - Fill the stubs of the Sprint 4 contract (E7-65, packages/api-client/SPRINT-4-CONTRACT.md): GET /customer/account-standing (consecutiveNoShows, penaltyStage, currentThreshold, currentBan; E7-72 fills verifiedPlayer), POST /admin/users/{userId}/trust-adjustment {counterAfter, penaltyStageAfter, reason} (the ADMIN_TRUST_ADJUSTMENT v1 absolute payload; counterAfter at or above the stage's threshold -> 400 on counterAfter) and POST /admin/users/{userId}/bans/{banId}/lift {reason}, /shorten {endsAt, reason} and /correct {reason}. D2: /correct is kept; the database accepts CORRECTED only when corrected Trust history no longer supports the ban (trust.assert_ban_lifecycle_audit) - decide how the route meets that and ask the PO if unclear. A ban no longer ACTIVE, or a correction the history does not support -> 409 ADMIN_ACTION_NOT_ALLOWED (D5). Idempotency-Key and reason required (D6). Replace this task's lines in backend/src/test/java/ps/e7gz/openapi/Sprint4StubHttpTest.java with your own tests.
+- D7 (PO decision 20 Oct 2026): also fill GET /admin/global-rules (trust/web AdminGlobalRulesController, AdminGlobalRules): the no-show ladder from the same constants the ban uses (FR-TRS-13: stage 0 - 3 no-shows - P7D, stage 1 - 2 - P1M, stage 2 - 2 - P2M, stage 3 recurring - 3 - P2M), read-only, never configuration (NFR-37, A8). Replace its line in backend/src/test/java/ps/e7gz/openapi/Sprint4StubHttpTest.java with your own test.
 
 Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do these too):
 - Replace E7-59's pinned test theThirdConsecutiveNoShowNeedsE771sBanAndUntilThenRollsBackWhole with the real ban. E7-71 must be merged before E7-101: until then a third consecutive no-show is a 500 for the venue.
@@ -2805,6 +2806,7 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 
 Carry-forward from E7-65 (Sprint 4 contract, PO decisions 17 Oct 2026, do these too):
 - Build against the Sprint 4 contract (E7-65, packages/api-client/SPRINT-4-CONTRACT.md): every admin write asks for a reason (required, 1-500 characters) and sends an Idempotency-Key; 409 ADMIN_ACTION_NOT_ALLOWED means "refresh and look again"; fees and points settings show effectiveFrom; the user page reads GET /admin/users/{userId}; the attendance correction asks for the chosen outcome; there is no wallet adjustment.
+- D7 (PO decision 20 Oct 2026): the read-only global rules view reads GET /admin/global-rules (the no-show ladder: penaltyStage, consecutiveNoShows, banDuration as an ISO-8601 period, recurring); no edit controls.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
