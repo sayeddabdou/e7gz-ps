@@ -62,6 +62,22 @@ public class VenueAttendanceController {
         this.meta = meta;
     }
 
+    /**
+     * The delayed-start rule shared by the three actions (PO decision 19 Oct 2026, R1; E7-60): the venue may record
+     * attendance even when the start (T4) is late, and never penalises a customer the start would have cancelled.
+     */
+    static final String DELAYED_START = "\n\n"
+            + "A CONFIRMED booking whose start has not been processed yet is judged as its start would have been at "
+            + "startAt, the same way for check-in, Mark Present — Late and no-show. If the start would succeed, the "
+            + "booking is started first exactly as the start would have started it - ACTIVE from startAt - and the "
+            + "action is then recorded as above, in the same request. Otherwise the answer is 409 "
+            + "BOOKING_STATE_CHANGED in one of two ways: (1) a pure refusal, with nothing written and nothing stored "
+            + "under the Idempotency-Key, when no start is waiting, the start is being processed, or the start cannot "
+            + "be resolved (a selling block alone, or an Emergency or Owner Review that began after startAt); (2) a "
+            + "committed refusal when the start would have cancelled the booking: it is cancelled under its "
+            + "start-time reason with a full refund and no attendance recorded, atomically, and the same 409 is "
+            + "stored, so a replay of the key answers it again.";
+
     @PostMapping("/check-in")
     @Operation(operationId = "venueCheckIn",
             summary = "Check the customer in while startAt <= now < startAt + 15 min (FR-ATT-01, FR-ATT-02)",
@@ -69,7 +85,8 @@ public class VenueAttendanceController {
                     + "startAt + 15 min — it is CHECK_IN_WINDOW_CLOSED, and Mark Present — Late becomes the action "
                     + "(FR-ATT-02). A manual booking is CHECK_IN_WINDOW_CLOSED too (FR-MAN-04). A booking no longer in "
                     + "progress (cancelled, completed, no-show) is BOOKING_STATE_CHANGED. A booking of another venue is "
-                    + "NOT_FOUND. Implemented by E7-59.")
+                    + "NOT_FOUND. Implemented by E7-59."
+                    + DELAYED_START)
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     @ApiError(status = 409, codes = ApiErrorCode.BOOKING_STATE_CHANGED)
     @ApiError(status = 422, codes = {ApiErrorCode.CHECK_IN_WINDOW_CLOSED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
@@ -90,7 +107,8 @@ public class VenueAttendanceController {
                     + "is LATE_PRESENT_NOT_AVAILABLE. It blocks a later no-show (FR-ATT-04) and by itself grants no "
                     + "points, no Verified Player progress and no counter reset. A manual booking is "
                     + "LATE_PRESENT_NOT_AVAILABLE too (FR-MAN-04). A booking no longer in progress is "
-                    + "BOOKING_STATE_CHANGED. A booking of another venue is NOT_FOUND. Implemented by E7-59.")
+                    + "BOOKING_STATE_CHANGED. A booking of another venue is NOT_FOUND. Implemented by E7-59."
+                    + DELAYED_START)
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     @ApiError(status = 409, codes = ApiErrorCode.BOOKING_STATE_CHANGED)
     @ApiError(status = 422, codes = {ApiErrorCode.LATE_PRESENT_NOT_AVAILABLE, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
@@ -112,15 +130,8 @@ public class VenueAttendanceController {
                     + "it is NO_SHOW_NOT_AVAILABLE. Terminal: the remaining interval is released at once (FR-ATT-05) "
                     + "and venue staff cannot undo it — only a Platform Admin can (FR-ATT-06, FR-ATT-11). A manual "
                     + "booking is NO_SHOW_NOT_AVAILABLE too (FR-MAN-04). A booking no longer in progress is "
-                    + "BOOKING_STATE_CHANGED. A booking of another venue is NOT_FOUND. Implemented by E7-59.\n\n"
-                    + "A CONFIRMED booking whose start has not been processed yet is judged as its start would have "
-                    + "been at startAt. If the start would succeed, the no-show is recorded as above. Otherwise the "
-                    + "answer is 409 BOOKING_STATE_CHANGED in one of two ways: (1) a pure refusal, with nothing "
-                    + "written and nothing stored under the Idempotency-Key, when no start is waiting, the start is "
-                    + "being processed, or the start cannot be resolved (a selling block alone, or an Emergency or "
-                    + "Owner Review that began after startAt); (2) a committed refusal when the start would have "
-                    + "cancelled the booking: it is cancelled under its start-time reason with a full refund and no "
-                    + "no-show, atomically, and the same 409 is stored, so a replay of the key answers it again.")
+                    + "BOOKING_STATE_CHANGED. A booking of another venue is NOT_FOUND. Implemented by E7-59."
+                    + DELAYED_START)
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     @ApiError(status = 409, codes = ApiErrorCode.BOOKING_STATE_CHANGED)
     @ApiError(status = 422, codes = {ApiErrorCode.NO_SHOW_NOT_AVAILABLE, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})

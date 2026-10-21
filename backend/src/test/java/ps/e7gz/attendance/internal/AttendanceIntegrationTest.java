@@ -280,15 +280,17 @@ class AttendanceIntegrationTest extends IntegrationTest {
                 .param("id", third.customerId()).query(Long.class).single()).isZero();
     }
 
-    // ------------------------- the delayed-start race (decision of Amr Heiba, acting decision-maker, 17 Oct 2026)
+    // ---------- the delayed-start race (Amr Heiba, 17 Oct 2026; PO decision 19 Oct 2026, R1: all three actions)
 
     /**
-     * A CONFIRMED booking in its no-show window only because its start has not been processed: the no-show withdraws
-     * the waiting BOOKING_START and moves CONFIRMED -> NO_SHOW with everything an ACTIVE no-show writes - evidence,
-     * release at the no-show instant, history, audit, Trust outcome and one event.
+     * A CONFIRMED booking in its no-show window only because its start has not been processed: the no-show first
+     * starts it exactly as T4 would at startAt (R1) - its waiting BOOKING_START withdrawn, CONFIRMED -> ACTIVE by SYSTEM
+     * dated startAt, BookingStarted, BOOKING_COMPLETE at endAt - and then moves ACTIVE -> NO_SHOW with everything an
+     * ACTIVE no-show writes: evidence, release at the no-show instant, history, audit, Trust outcome and one event; the
+     * BOOKING_COMPLETE it scheduled is superseded.
      */
     @Test
-    void aNoShowBehindADelayedStartWithdrawsTheStartAndEndsTheBooking() {
+    void aNoShowBehindADelayedStartStartsTheBookingThenEndsIt() {
         Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
         String start = BookingFlows.bookingStartKey(booking.bookingId());
         assertThat(DueJobs.job(start).status()).isEqualTo("PENDING");
@@ -299,8 +301,11 @@ class AttendanceIntegrationTest extends IntegrationTest {
         assertThat(recorded.status()).isEqualTo(BookingStatus.NO_SHOW);
         assertThat(recorded.attendanceResult()).isEqualTo(AttendanceResult.ABSENT_NO_SHOW);
         assertThat(DueJobs.job(start).status()).as("the late start can never fire").isEqualTo("SUPERSEDED");
+        assertThat(DueJobs.job(BookingFlows.bookingCompleteKey(booking.bookingId())).status())
+                .as("T5 has nothing left to complete").isEqualTo("SUPERSEDED");
         assertThat(status(booking)).isEqualTo("NO_SHOW");
-        assertThat(lastTransition(booking)).isEqualTo("CONFIRMED->NO_SHOW VENUE " + booking.venueAccountId());
+        assertStartedAtStartAt(booking);
+        assertThat(lastTransition(booking)).isEqualTo("ACTIVE->NO_SHOW VENUE " + booking.venueAccountId());
         assertThat(activeReservations(booking)).isZero();
         assertThat(OWNER.sql("""
                         SELECT actual_reservation_release_at FROM inventory.resource_reservation
@@ -310,7 +315,134 @@ class AttendanceIntegrationTest extends IntegrationTest {
         assertThat(audits(booking)).containsExactly("NO_SHOW_RECORDED VENUE " + booking.venueAccountId() + " " + at);
         assertThat(trustEvents(booking)).isOne();
         assertThat(consecutiveNoShows(booking)).isOne();
-        assertThat(eventTypes(booking)).containsOnlyOnce(IntegrationEvents.NO_SHOW_RECORDED);
+        assertThat(eventTypes(booking)).containsSubsequence(IntegrationEvents.BOOKING_STARTED,
+                        IntegrationEvents.NO_SHOW_RECORDED)
+                .containsOnlyOnce(IntegrationEvents.BOOKING_STARTED, IntegrationEvents.NO_SHOW_RECORDED);
+    }
+
+    /**
+     * R1 (PO decision 19 Oct 2026): check-in inside its window and Mark Present - Late inside its own, on a booking
+     * whose start has not been processed, first start it exactly as T4 would at startAt - never 409 - and then record
+     * the evidence on the ACTIVE booking in the same command, with its Booking Event, audit and one event each.
+     */
+    @Test
+    void checkInAndLatePresentBehindADelayedStartStartTheBookingThenRecordTheEvidence() {
+        Booking inCheckIn = flows.confirmedWithOverdueStart(Duration.ofMinutes(5));
+        Booking inLate = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+
+        RecordedAttendance checkedIn = record(AttendanceAction.CHECK_IN, inCheckIn);
+        RecordedAttendance late = record(AttendanceAction.LATE_PRESENT, inLate);
+
+        assertThat(checkedIn.status()).isEqualTo(BookingStatus.ACTIVE);
+        assertThat(checkedIn.checkedInAt()).isNotNull();
+        assertThat(late.status()).isEqualTo(BookingStatus.ACTIVE);
+        assertThat(late.latePresentAt()).isNotNull();
+        for (Booking booking : List.of(inCheckIn, inLate)) {
+            assertThat(status(booking)).isEqualTo("ACTIVE");
+            assertStartedAtStartAt(booking);
+            assertThat(lastTransition(booking)).as("the evidence moves no status")
+                    .isEqualTo("CONFIRMED->ACTIVE SYSTEM null");
+            assertThat(DueJobs.job(BookingFlows.bookingStartKey(booking.bookingId())).status()).isEqualTo("SUPERSEDED");
+            assertThat(activeReservations(booking)).as("the room stays the booking's").isOne();
+            assertThat(trustEvents(booking)).isZero();
+        }
+        assertThat(eventTypes(inCheckIn)).containsSubsequence(IntegrationEvents.BOOKING_STARTED,
+                IntegrationEvents.CHECK_IN_RECORDED).containsOnlyOnce(IntegrationEvents.BOOKING_STARTED);
+        assertThat(eventTypes(inLate)).containsSubsequence(IntegrationEvents.BOOKING_STARTED,
+                IntegrationEvents.LATE_PRESENT_RECORDED).containsOnlyOnce(IntegrationEvents.BOOKING_STARTED);
+        assertThat(venueEvents(inCheckIn)).singleElement().asString().startsWith("CHECK_IN_RECORDED ");
+        assertThat(venueEvents(inLate)).singleElement().asString().startsWith("LATE_PRESENT_RECORDED ");
+        assertRefused(AttendanceAction.NO_SHOW, inLate, ApiErrorCode.NO_SHOW_NOT_AVAILABLE);
+    }
+
+    /** R1: a check-in or Late Present behind a start that would cancel is the same committed 409 as the no-show. */
+    @Test
+    void checkInAndLatePresentBehindACancellingDelayedStartCancelWithoutAttendance() {
+        Booking inCheckIn = flows.confirmedWithOverdueStart(Duration.ofMinutes(5));
+        Booking inLate = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        flows.resourceDisabledBehindTheGuards(inCheckIn);
+        flows.resourceDisabledBehindTheGuards(inLate);
+
+        assertRefused(AttendanceAction.CHECK_IN, inCheckIn, ApiErrorCode.BOOKING_STATE_CHANGED);
+        assertRefused(AttendanceAction.LATE_PRESENT, inLate, ApiErrorCode.BOOKING_STATE_CHANGED);
+
+        assertStartCancelled(inCheckIn, "SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR");
+        assertStartCancelled(inLate, "SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR");
+        assertThat(eventTypes(inCheckIn)).doesNotContain(IntegrationEvents.BOOKING_STARTED,
+                IntegrationEvents.CHECK_IN_RECORDED);
+        assertThat(eventTypes(inLate)).doesNotContain(IntegrationEvents.BOOKING_STARTED,
+                IntegrationEvents.LATE_PRESENT_RECORDED);
+    }
+
+    /** R1: a check-in or Late Present whose start is not waiting or cannot be resolved is the pure 409, no write. */
+    @Test
+    void checkInAndLatePresentBehindAnUnresolvableDelayedStartArePure409s() {
+        Booking withdrawn = flows.confirmedWithOverdueStart(Duration.ofMinutes(5));
+        flows.withdrawStart(withdrawn);
+        Booking blocked = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        flows.venueSellingBlockSince(blocked, blocked.startAt().minus(Duration.ofMinutes(1)));
+        Booking leased = flows.confirmedWithOverdueStart(Duration.ofMinutes(5));
+        flows.startLeased(leased);
+
+        assertRefused(AttendanceAction.CHECK_IN, withdrawn, ApiErrorCode.BOOKING_STATE_CHANGED);
+        assertRefused(AttendanceAction.LATE_PRESENT, blocked, ApiErrorCode.BOOKING_STATE_CHANGED);
+        assertRefused(AttendanceAction.CHECK_IN, leased, ApiErrorCode.BOOKING_STATE_CHANGED);
+
+        assertNothingWritten(blocked);
+        for (Booking booking : List.of(withdrawn, leased)) {
+            assertThat(status(booking)).isEqualTo("CONFIRMED");
+            assertThat(record(booking)).isEmpty();
+            assertThat(eventTypes(booking)).doesNotContain(IntegrationEvents.BOOKING_STARTED,
+                    IntegrationEvents.CHECK_IN_RECORDED);
+        }
+        assertThat(DueJobs.job(BookingFlows.bookingStartKey(leased.bookingId())).status()).isEqualTo("LEASED");
+    }
+
+    /**
+     * R1: a check-in racing the real T4 on one booking - serialised by the booking's locks and the job's lease. Whoever
+     * wins, the booking is started exactly once, as of startAt, and a committed check-in is recorded once on ACTIVE.
+     */
+    @Test
+    void aCheckInRacingTheRealStartStartsTheBookingOnce() throws Exception {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(5));
+        flows.makeStartDue(booking);
+
+        ConcurrentRace.Result<Object> race = ConcurrentRace.run(2, Duration.ofSeconds(30), (racer, start) -> {
+            start.await();
+            try (CorrelationId.Scope ignored = CorrelationId.open(CorrelationId.generate())) {
+                return racer == 0 ? flows.fireStartIfDue(booking)
+                        : attendances.record(AttendanceAction.CHECK_IN, booking.venueAccountId(), booking.bookingId());
+            }
+        });
+
+        assertThat(race.failures()).allSatisfy(failure -> assertThat(failure)
+                .isInstanceOfSatisfying(ApiException.class,
+                        e -> assertThat(e.code()).isEqualTo(ApiErrorCode.BOOKING_STATE_CHANGED)));
+        boolean checkedIn = race.values().stream().anyMatch(RecordedAttendance.class::isInstance);
+        assertThat(status(booking)).isEqualTo("ACTIVE");
+        assertStartedAtStartAt(booking);
+        assertThat(eventTypes(booking).stream().filter(IntegrationEvents.CHECK_IN_RECORDED::equals))
+                .hasSize(checkedIn ? 1 : 0);
+        assertThat(record(booking).get("check_in_at") != null).isEqualTo(checkedIn);
+    }
+
+    /**
+     * The start as T4 writes it, once: one CONFIRMED -> ACTIVE transition by SYSTEM dated the stored startAt, one
+     * BookingStarted and one BOOKING_COMPLETE job, at endAt.
+     */
+    private static void assertStartedAtStartAt(Booking booking) {
+        assertThat(OWNER.sql("""
+                        SELECT occurred_at, actor_type FROM booking.booking_history
+                         WHERE booking_id = :id AND entry_kind = 'STATUS_TRANSITION' AND to_status = 'ACTIVE'""")
+                .param("id", booking.bookingId())
+                .query((rs, n) -> List.of(rs.getObject(1, OffsetDateTime.class).toInstant(), rs.getString(2)))
+                .list()).containsExactly(List.of(booking.startAt(), "SYSTEM"));
+        assertThat(eventTypes(booking).stream().filter(IntegrationEvents.BOOKING_STARTED::equals)).hasSize(1);
+        assertThat(OWNER.sql("""
+                        SELECT j.due_at = b.end_at FROM technical.scheduled_job j, booking.booking b
+                         WHERE j.idempotency_key = :key AND b.id = :id""")
+                .param("key", BookingFlows.bookingCompleteKey(booking.bookingId())).param("id", booking.bookingId())
+                .query(Boolean.class).list()).as("one BOOKING_COMPLETE, at endAt").containsExactly(true);
     }
 
     /** The database refuses NO_SHOW -> ACTIVE outright, so even a start that slipped through could not reactivate it. */
@@ -327,7 +459,7 @@ class AttendanceIntegrationTest extends IntegrationTest {
 
     /**
      * E7-60 regression: once the delayed-start no-show is committed, the real T4 never runs - its job is SUPERSEDED, so
-     * the worker cannot fire it - and the booking stays NO_SHOW with no BookingStarted.
+     * the worker cannot fire it - and the booking stays NO_SHOW, started once (by the no-show, R1).
      */
     @Test
     void theRealStartNeverRunsAfterACommittedNoShow() {
@@ -339,14 +471,15 @@ class AttendanceIntegrationTest extends IntegrationTest {
 
         assertThat(status(booking)).isEqualTo("NO_SHOW");
         assertThat(DueJobs.job(BookingFlows.bookingStartKey(booking.bookingId())).status()).isEqualTo("SUPERSEDED");
-        assertThat(eventTypes(booking)).doesNotContain(IntegrationEvents.BOOKING_STARTED);
+        assertThat(eventTypes(booking)).containsOnlyOnce(IntegrationEvents.BOOKING_STARTED);
         assertThat(trustEvents(booking)).isOne();
     }
 
     /**
      * E7-60: T4 and the delayed-start no-show racing on one booking are serialised by the booking's locks and the job's
-     * lease. Whichever wins, the booking is never ACTIVE after a no-show, the start and the no-show are each written at
-     * most once, and a committed no-show is ABSENT_NO_SHOW with one Trust outcome.
+     * lease. Whichever wins, the booking is started exactly once (by T4, or by the no-show itself, R1) and never ACTIVE
+     * after a no-show, the no-show is written at most once, and a committed no-show is ABSENT_NO_SHOW with one Trust
+     * outcome.
      */
     @Test
     void theStartRacingADelayedNoShowNeverReactivatesItAndWritesEachOnce() throws Exception {
@@ -366,7 +499,7 @@ class AttendanceIntegrationTest extends IntegrationTest {
                         e -> assertThat(e.code()).isEqualTo(ApiErrorCode.BOOKING_STATE_CHANGED)));
         boolean noShowCommitted = race.values().stream().anyMatch(RecordedAttendance.class::isInstance);
         assertThat(status(booking)).isEqualTo(noShowCommitted ? "NO_SHOW" : "ACTIVE");
-        assertThat(eventTypes(booking).stream().filter(IntegrationEvents.BOOKING_STARTED::equals)).hasSizeLessThan(2);
+        assertThat(eventTypes(booking).stream().filter(IntegrationEvents.BOOKING_STARTED::equals)).hasSize(1);
         assertThat(eventTypes(booking).stream().filter(IntegrationEvents.NO_SHOW_RECORDED::equals))
                 .hasSize(noShowCommitted ? 1 : 0);
         assertThat(trustEvents(booking)).isEqualTo(noShowCommitted ? 1 : 0);
@@ -388,23 +521,6 @@ class AttendanceIntegrationTest extends IntegrationTest {
         assertThat(record(booking)).isEmpty();
         assertThat(trustEvents(booking)).isZero();
         assertThat(eventTypes(booking)).doesNotContain(IntegrationEvents.NO_SHOW_RECORDED);
-    }
-
-    /** Check-in and Mark Present - Late keep requiring ACTIVE, and a refusal leaves the start job waiting. */
-    @Test
-    void checkInAndLatePresentOnADelayedStartAreRefusedAndLeaveTheStartWaiting() {
-        Booking inCheckIn = flows.confirmedWithOverdueStart(Duration.ofMinutes(5));
-        Booking inLate = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
-
-        assertRefused(AttendanceAction.CHECK_IN, inCheckIn, ApiErrorCode.BOOKING_STATE_CHANGED);
-        assertRefused(AttendanceAction.NO_SHOW, inCheckIn, ApiErrorCode.NO_SHOW_NOT_AVAILABLE);
-        assertRefused(AttendanceAction.LATE_PRESENT, inLate, ApiErrorCode.BOOKING_STATE_CHANGED);
-
-        for (Booking booking : List.of(inCheckIn, inLate)) {
-            assertThat(DueJobs.job(BookingFlows.bookingStartKey(booking.bookingId())).status()).isEqualTo("PENDING");
-            assertThat(status(booking)).isEqualTo("CONFIRMED");
-            assertThat(record(booking)).isEmpty();
-        }
     }
 
     // ---------------- a delayed start that would have cancelled (Amr Heiba 17 Oct 2026: never a no-show penalty)

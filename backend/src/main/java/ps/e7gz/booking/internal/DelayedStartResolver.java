@@ -15,10 +15,11 @@ import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.scheduling.api.ScheduledJobs;
 
 /**
- * The delayed start behind a venue's no-show (decisions of Amr Heiba, acting decision-maker, 17 Oct 2026): a CONFIRMED
- * Online Booking past its {@code startAt} whose BOOKING_START (T4) is still waiting is resolved here as T4 would have
- * resolved it at {@code startAt} - by {@link StartTimeResolution}, the start-time rules E7-60 reuses, not a second
- * version of them. Runs inside the no-show's command, under the booking's Customer, Venue and Resource locks; see
+ * The delayed start behind a venue's attendance action (decisions of Amr Heiba, 17 Oct 2026; PO decision 19 Oct 2026,
+ * R1): a CONFIRMED Online Booking past its {@code startAt} whose BOOKING_START (T4) is still waiting is resolved here
+ * exactly as T4 would have resolved it at {@code startAt} - by {@link StartTimeResolution}, and when it starts by
+ * {@link BookingStarts#start}, T4's own transition, never a second version of either. Runs inside the check-in's, Late
+ * Present's or no-show's command, under the booking's Customer, Venue and Resource locks; see
  * {@link AttendanceBookings#resolveDelayedStart} for the four answers.
  *
  * <p>The start-time cancellation is {@link StartTimeCancellation}, the same one E7-60's BOOKING_START handler writes:
@@ -33,13 +34,15 @@ class DelayedStartResolver {
     private final VenueAnswerStore store;
     private final StartTimeResolution resolution;
     private final StartTimeCancellation cancellation;
+    private final BookingStarts starts;
     private final ScheduledJobs jobs;
 
     DelayedStartResolver(VenueAnswerStore store, StartTimeResolution resolution, StartTimeCancellation cancellation,
-                         ScheduledJobs jobs) {
+                         BookingStarts starts, ScheduledJobs jobs) {
         this.store = store;
         this.resolution = resolution;
         this.cancellation = cancellation;
+        this.starts = starts;
         this.jobs = jobs;
     }
 
@@ -63,7 +66,10 @@ class DelayedStartResolver {
             return AttendanceBookings.DelayedStart.NOT_DELAYED;
         }
         return switch (outcome) {
-            case Outcome.Start start -> AttendanceBookings.DelayedStart.WOULD_START;
+            case Outcome.Start start -> {
+                starts.start(context, booking);
+                yield AttendanceBookings.DelayedStart.STARTED;
+            }
             case Outcome.Cancel cancel -> {
                 cancellation.cancel(context, booking, cancel);
                 yield AttendanceBookings.DelayedStart.CANCELLED;

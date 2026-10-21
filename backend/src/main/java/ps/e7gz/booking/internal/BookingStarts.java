@@ -132,7 +132,12 @@ class BookingStarts {
                 + undetermined.why());
     }
 
-    private void start(CommandContext context, Facts booking) {
+    /**
+     * The start itself, CONFIRMED -> ACTIVE as of {@code startAt}, once the resolution said start: the one transition
+     * T4 writes and a venue action behind a delayed start writes before its evidence (PO decision 19 Oct 2026, R1).
+     * The caller has withdrawn or settled the start job.
+     */
+    void start(CommandContext context, Facts booking) {
         ownReservation(context, booking);
         if (!store.start(context, booking.bookingId())) {
             // re-read under the locks above: unreachable unless the guard moved it; roll back and let the job retry

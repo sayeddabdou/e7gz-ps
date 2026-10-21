@@ -298,6 +298,11 @@ public final class BookingFlows {
         return VenueAnswerDb.bookingStart(bookingId);
     }
 
+    /** The idempotency key of the booking's BOOKING_COMPLETE (T5) job. */
+    public static String bookingCompleteKey(UUID bookingId) {
+        return ManualBookingCommand.bookingCompleteKey(bookingId);
+    }
+
     /** Withdraws the booking's BOOKING_START job, as an already processed start would have left it. */
     public void withdrawStart(Booking booking) {
         runner.run(TestCommands.under(scope(booking),

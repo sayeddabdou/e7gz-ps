@@ -31,7 +31,7 @@ class JdbcAttendanceBookings implements AttendanceBookings {
             """;
 
     /**
-     * ACTIVE (or CONFIRMED behind a delayed start) -> NO_SHOW (FR-ATT-04): terminal with no Booking Reason Code and
+     * ACTIVE -> NO_SHOW (FR-ATT-04): terminal with no Booking Reason Code and
      * no fee treatment (NO_SHOW is outside the reason map); the database derives the empty commitment. {@code start_at}
      * and {@code end_at} stay as booked.
      */
@@ -67,8 +67,9 @@ class JdbcAttendanceBookings implements AttendanceBookings {
     public boolean markNoShow(CommandContext command, UUID bookingId, BookingStatus from, Instant at,
                               UUID venueAccountId) {
         Objects.requireNonNull(venueAccountId, "venueAccountId");
-        if (from != BookingStatus.ACTIVE && from != BookingStatus.CONFIRMED) {
-            throw new IllegalArgumentException("A no-show leaves ACTIVE or CONFIRMED, not " + from);
+        if (from != BookingStatus.ACTIVE) {
+            throw new IllegalArgumentException("A no-show leaves ACTIVE - a delayed start is started first - not "
+                    + from);
         }
         if (command.jdbc().sql(NO_SHOW).param("id", Objects.requireNonNull(bookingId, "bookingId"))
                 .param("from", from.name()).param("at", utc(at)).update() != 1) {
