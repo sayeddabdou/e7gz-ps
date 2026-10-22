@@ -23,8 +23,10 @@ import ps.e7gz.messaging.api.CommandAnswer;
 import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.scheduling.api.JobOutcome;
 import ps.e7gz.scheduling.api.ScheduledJob;
+import ps.e7gz.scheduling.api.ScheduledJobs;
 import ps.e7gz.support.boundary.Deadlines;
 import ps.e7gz.support.boundary.TestCommands;
+import ps.e7gz.support.fixtures.Fixtures;
 
 /**
  * Test support for other modules (E7-55): real Online Bookings driven through this package's own commands - create,
@@ -53,6 +55,7 @@ public final class BookingFlows {
     private final LateConfirmDb lateConfirms;
     private final ManualBookings manualBookings;
     private final Outbox outbox;
+    private final ScheduledJobs jobs;
 
     private BookingFlows(ApplicationContext context) {
         this.creation = context.getBean(OnlineBookingCreation.class);
@@ -65,6 +68,7 @@ public final class BookingFlows {
         this.lateConfirms = new LateConfirmDb(runner, creation, store, answers);
         this.manualBookings = context.getBean(ManualBookings.class);
         this.outbox = context.getBean(Outbox.class);
+        this.jobs = context.getBean(ScheduledJobs.class);
     }
 
     public static BookingFlows of(ApplicationContext context) {
@@ -106,6 +110,187 @@ public final class BookingFlows {
                 ManualBookingRequest.of(world.room.id(), PlayMode.SINGLE, world.start(), 60, null, null));
         return new Booking(created.bookingId(), null, world.venue.id(), world.venue.name(), world.account.id(),
                 world.room.id(), created.startAt(), null);
+    }
+
+    // ---------------------------------------------------------------------------- E7-59 attendance (O13)
+
+    /**
+     * An ACTIVE Online Booking, 60 minutes long, that started {@code startedAgo} before the database clock: created and
+     * accepted through the real commands, then started as T4 would start it ({@link BookingStates#started}; the start
+     * is E7-60's). Its reservation covers exactly the booked interval.
+     */
+    public Booking active(Duration startedAgo) {
+        return started(pending(), startedAgo);
+    }
+
+    /**
+     * One customer at one venue, for a series of their bookings (E7-59: consecutive no-shows). Each
+     * {@link Customer#nextActive} is a new ACTIVE Online Booking of the same customer and room, made as {@link #active}
+     * makes one; the previous one must no longer hold a commitment (a no-show ends it).
+     */
+    public Customer customer() {
+        return new Customer(OnlineBookingWorld.create());
+    }
+
+    public final class Customer {
+
+        private final OnlineBookingWorld world;
+
+        private Customer(OnlineBookingWorld world) {
+            this.world = world;
+        }
+
+        public Booking nextActive(Duration startedAgo) {
+            return started(pending(world, world.start()), startedAgo);
+        }
+    }
+
+    /**
+     * The delayed-start race (Amr Heiba, 17 Oct 2026): an Online Booking accepted through the real command, whose
+     * startAt lies {@code startedAgo} before the database clock, still CONFIRMED - its Accept's BOOKING_START job left
+     * PENDING, as if the start (T4, E7-60) had not been processed yet ({@link BookingStates#startOverdue}).
+     */
+    public Booking confirmedWithOverdueStart(Duration startedAgo) {
+        Booking booking = pending();
+        accept(booking);
+        Instant start = OnlineBookingWorld.dbNow().minus(startedAgo);
+        BookingStates.startOverdue(booking.bookingId(), start);
+        return new Booking(booking.bookingId(), booking.customerId(), booking.venueId(), booking.venueName(),
+                booking.venueAccountId(), booking.resourceId(), start, booking.venueResponseExpiresAt());
+    }
+
+    // ------------------------------------- start-time state at startAt (delayed-start no-show, Amr Heiba 17 Oct 2026)
+
+    /** An Owner Review of the booking's room entered at {@code enteredAt}, unresolved; the restriction set with it. */
+    public void ownerReviewSince(Booking booking, Instant enteredAt) {
+        VenueAnswerDb.withoutTriggers(jdbc -> {
+            jdbc.sql("""
+                            INSERT INTO operations.owner_review (id, resource_id, entered_at, entry_cause, correlation_id)
+                            VALUES (gen_random_uuid(), :room, :at, 'E7-59 test', gen_random_uuid())""")
+                    .param("room", booking.resourceId()).param("at", OffsetDateTime.ofInstant(enteredAt,
+                            java.time.ZoneOffset.UTC)).update();
+            jdbc.sql("UPDATE resource.resource SET operational_restriction = 'OWNER_REVIEW_REQUIRED' WHERE id = :room")
+                    .param("room", booking.resourceId()).update();
+        });
+    }
+
+    /**
+     * A Resource Emergency of the booking's room declared at {@code declaredAt} and ENDED at {@code endedAt} - so a
+     * decision taken now sees none unresolved, but one at startAt does.
+     */
+    public void resourceEmergencyEnded(Booking booking, Instant declaredAt, Instant endedAt) {
+        VenueAnswerDb.withoutTriggers(jdbc -> jdbc.sql("""
+                        INSERT INTO operations.emergency (id, scope, venue_id, resource_id, status, declared_at,
+                                                          expected_end_at, declared_period, reason, ended_at)
+                        VALUES (gen_random_uuid(), 'RESOURCE', :venue, :room, 'ENDED', :declared,
+                                CAST(:declared AS timestamptz) + interval '10 minutes',
+                                tstzrange(:declared, CAST(:declared AS timestamptz) + interval '10 minutes', '[)'),
+                                'E7-59 test', :ended)""")
+                .param("venue", booking.venueId()).param("room", booking.resourceId())
+                .param("declared", OffsetDateTime.ofInstant(declaredAt, java.time.ZoneOffset.UTC))
+                .param("ended", OffsetDateTime.ofInstant(endedAt, java.time.ZoneOffset.UTC)).update());
+    }
+
+    /**
+     * A Resource Emergency of the booking's room declared at {@code declaredAt}, still unresolved (ACTIVE), with the
+     * selling block it puts in force from then.
+     */
+    public void resourceEmergencySince(Booking booking, Instant declaredAt) {
+        VenueAnswerDb.withoutTriggers(jdbc -> jdbc.sql("""
+                        WITH e AS (
+                            INSERT INTO operations.emergency (id, scope, venue_id, resource_id, status, declared_at,
+                                                              expected_end_at, declared_period, reason)
+                            VALUES (gen_random_uuid(), 'RESOURCE', :venue, :room, 'ACTIVE', :declared,
+                                    CAST(:declared AS timestamptz) + interval '2 hours',
+                                    tstzrange(:declared, CAST(:declared AS timestamptz) + interval '2 hours', '[)'),
+                                    'E7-59 test')
+                            RETURNING id, declared_at)
+                        INSERT INTO resource.resource_selling_block (id, resource_id, cause, emergency_id, active,
+                                                                     started_at)
+                        SELECT gen_random_uuid(), :room, 'EMERGENCY', e.id, true, e.declared_at FROM e""")
+                .param("venue", booking.venueId()).param("room", booking.resourceId())
+                .param("declared", OffsetDateTime.ofInstant(declaredAt, java.time.ZoneOffset.UTC)).update());
+    }
+
+    /** The booking's room DISABLED behind the guards - the E7-60 integrity anomaly (FR-BOK-28). */
+    public void resourceDisabledBehindTheGuards(Booking booking) {
+        VenueAnswerDb.withoutTriggers(jdbc -> jdbc.sql("UPDATE resource.resource SET base_state = 'DISABLED' WHERE id = :room")
+                .param("room", booking.resourceId()).update());
+    }
+
+    /** A Venue Operational Selling Block with no Emergency behind it, started at {@code startedAt}. */
+    public void venueSellingBlockSince(Booking booking, Instant startedAt) {
+        VenueAnswerDb.withoutTriggers(jdbc -> jdbc.sql("""
+                        INSERT INTO venue.venue_selling_block (id, venue_id, cause, active, started_at)
+                        VALUES (gen_random_uuid(), :venue, 'E7-59 test block', true, :at)""")
+                .param("venue", booking.venueId())
+                .param("at", OffsetDateTime.ofInstant(startedAt, java.time.ZoneOffset.UTC)).update());
+    }
+
+    /** The booking's BOOKING_START held LEASED by a worker right now, as during its fire. */
+    public void startLeased(Booking booking) {
+        VenueAnswerDb.withoutTriggers(jdbc -> jdbc.sql("""
+                        UPDATE technical.scheduled_job
+                           SET status = 'LEASED', leased_at = now(), leased_until = now() + interval '1 minute',
+                               leased_by = 'E7-59 test worker'
+                         WHERE idempotency_key = :key AND status = 'PENDING'""")
+                .param("key", VenueAnswerDb.bookingStart(booking.bookingId())).update());
+    }
+
+    /** The idempotency key of the booking's BOOKING_START (T4) job. */
+    public static String bookingStartKey(UUID bookingId) {
+        return VenueAnswerDb.bookingStart(bookingId);
+    }
+
+    /** Withdraws the booking's BOOKING_START job, as an already processed start would have left it. */
+    public void withdrawStart(Booking booking) {
+        runner.run(TestCommands.under(scope(booking),
+                context -> jobs.supersede(context, VenueAnswerDb.bookingStart(booking.bookingId()))));
+    }
+
+    private Booking started(Booking booking, Duration startedAgo) {
+        accept(booking);
+        runner.run(TestCommands.under(scope(booking),
+                context -> jobs.supersede(context, VenueAnswerDb.bookingStart(booking.bookingId()))));
+        Instant start = OnlineBookingWorld.dbNow().minus(startedAgo);
+        BookingStates.started(booking.bookingId(), start);
+        return new Booking(booking.bookingId(), booking.customerId(), booking.venueId(), booking.venueName(),
+                booking.venueAccountId(), booking.resourceId(), start, booking.venueResponseExpiresAt());
+    }
+
+    /**
+     * Two ACTIVE Online Bookings of ONE venue, of two customers on two rooms, both started {@code startedAgo} before the
+     * database clock (as {@link #active}).
+     */
+    public List<Booking> twoActiveAtOneVenue(Duration startedAgo) {
+        OnlineBookingWorld world = OnlineBookingWorld.create();
+        List<Booking> bookings = List.of(pending(world, world.start()),
+                pendingOf(world, world.anotherCustomer(), world.anotherRoom(room -> room), world.start()));
+        return bookings.stream().map(booking -> started(booking, startedAgo)).toList();
+    }
+
+    private Booking pendingOf(OnlineBookingWorld world, UUID customerId, Fixtures.Resource room, Instant start) {
+        CreatedBooking created = creation.create(world.request(customerId, room, start, 60));
+        return new Booking(created.bookingId(), created.customerId(), world.venue.id(), world.venue.name(),
+                world.account.id(), room.id(), created.startAt(), created.venueResponseExpiresAt());
+    }
+
+    /** A walk-in Manual Booking, created ACTIVE at the command instant through the real command (E7-48). */
+    public Booking walkIn() {
+        OnlineBookingWorld world = OnlineBookingWorld.create();
+        VenueBookingRow created = manualBookings.create(world.account.id(),
+                ManualBookingRequest.of(world.room.id(), PlayMode.SINGLE, null, 60, null, null));
+        return new Booking(created.bookingId(), null, world.venue.id(), world.venue.name(), world.account.id(),
+                world.room.id(), created.startAt(), null);
+    }
+
+    /**
+     * A walk-in of {@code minutes} on the booking's room, starting now, through the real command: the room must be free
+     * now under the normal rules (FR-ATT-05: the resource may be sold again manually). @return its Booking ID
+     */
+    public UUID walkInOnRoomOf(Booking booking, int minutes) {
+        return manualBookings.create(booking.venueAccountId(),
+                ManualBookingRequest.of(booking.resourceId(), PlayMode.SINGLE, null, minutes, null, null)).bookingId();
     }
 
     public void accept(Booking booking) {

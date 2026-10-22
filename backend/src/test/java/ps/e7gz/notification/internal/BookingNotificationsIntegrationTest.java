@@ -1,6 +1,7 @@
 package ps.e7gz.notification.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -26,6 +27,7 @@ import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ApplicationContext;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import ps.e7gz.attendance.internal.AttendanceFlows;
 import ps.e7gz.booking.internal.BookingFlows;
 import ps.e7gz.booking.internal.BookingFlows.Booking;
 import ps.e7gz.common.command.CommandRunner;
@@ -88,6 +90,7 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
 
     JdbcClient db;
     BookingFlows flows;
+    AttendanceFlows attendance;
     BookingNotificationConsumer consumer;
     VenuePendingRequestExpiringHandler expiring;
     BookingStartsSoonHandler startsSoon;
@@ -97,6 +100,7 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
     void setUp() {
         db = JdbcClient.create(appDataSource);
         flows = BookingFlows.of(context);
+        attendance = AttendanceFlows.of(context);
         consumer = new BookingNotificationConsumer(runner, notifier, notifiedBookings, jobs);
         expiring = new VenuePendingRequestExpiringHandler(runner, notifiedBookings, notifier);
         startsSoon = new BookingStartsSoonHandler(runner, notifiedBookings, notifier);
@@ -634,6 +638,67 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
                 "CUSTOMER LATE_CONFIRMATION_RECEIVED " + booking.customerId(),
                 "CUSTOMER CUSTOMER_CONFIRMATION_EXPIRED " + booking.customerId(),
                 "VENUE VENUE_CUSTOMER_CONFIRMATION_EXPIRED " + booking.venueId()));
+    }
+
+    // ---------------------------------------------------------------------- E7-59 attendance, once each
+
+    /** §52.2 "Check-in Recorded": the customer only, from the one CheckInRecorded. */
+    @Test
+    void aCheckInTellsTheCustomerOnce() {
+        Booking booking = flows.active(Duration.ofMinutes(5));
+        attendance.checkIn(booking.venueAccountId(), booking.bookingId());
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.CHECK_IN_RECORDED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.CHECK_IN_RECORDED,
+                "CUSTOMER CHECK_IN_RECORDED " + booking.customerId());
+        assertThat(venueCodes(booking)).doesNotContain("CHECK_IN_RECORDED");
+    }
+
+    /** §52.2 "No-show Recorded": the customer only, from the one NoShowRecorded; never a "cancelled" code. */
+    @Test
+    void aNoShowTellsTheCustomerOnce() {
+        Booking booking = flows.active(Duration.ofMinutes(20));
+        attendance.noShow(booking.venueAccountId(), booking.bookingId());
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.NO_SHOW_RECORDED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.NO_SHOW_RECORDED,
+                "CUSTOMER NO_SHOW_RECORDED " + booking.customerId());
+        assertThat(customerCodes(booking)).noneMatch(code -> code.contains("CANCELLED"));
+        assertThat(outboxEvents(booking, "BookingNoShowRecorded")).isEmpty();
+    }
+
+    /** Mark Present - Late has no §52.2 notification of its own: its event creates nothing. */
+    @Test
+    void aLatePresentTellsNobody() {
+        Booking booking = flows.active(Duration.ofMinutes(20));
+        drain();
+        List<String> before = notifications(booking);
+        attendance.latePresent(booking.venueAccountId(), booking.bookingId());
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.LATE_PRESENT_RECORDED);
+
+        assertThat(notifications(booking)).containsExactlyInAnyOrderElementsOf(before);
+    }
+
+    /**
+     * A no-show on a delayed start that would have cancelled (Amr Heiba, 17 Oct 2026): the start-time cancellation
+     * tells the customer and the venue once each, by the established BookingCancelled path - never NO_SHOW_RECORDED.
+     */
+    @Test
+    void aStartTimeCancellationBehindADelayedStartTellsEachSideOnce() {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        flows.resourceDisabledBehindTheGuards(booking);
+        assertThatThrownBy(() -> attendance.noShow(booking.venueAccountId(), booking.bookingId()))
+                .isInstanceOf(ps.e7gz.common.error.ApiException.class);
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_CANCELLED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.BOOKING_CANCELLED,
+                "CUSTOMER BOOKING_AUTO_CANCELLED " + booking.customerId(),
+                "VENUE VENUE_BOOKING_AUTO_CANCELLED " + booking.venueId());
+        assertThat(customerCodes(booking)).doesNotContain("NO_SHOW_RECORDED");
     }
 
     // ------------------------------------------------------------- E7-58 Late Confirm warning, FR-LCF-12

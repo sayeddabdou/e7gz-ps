@@ -6,32 +6,61 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import ps.e7gz.attendance.internal.Attendances;
+import ps.e7gz.attendance.internal.RecordedAttendance;
 import ps.e7gz.common.codes.AttendanceResult;
 import ps.e7gz.common.codes.BookingStatus;
 import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
+import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.messaging.api.Idempotency;
+import ps.e7gz.messaging.api.IdempotentRequest;
+import ps.e7gz.messaging.api.ResultAggregate;
+import ps.e7gz.messaging.api.StoredResponse;
 
 /**
- * Venue staff record attendance (arch 09 §4.1, arch 07 §7.1, FRS §4.6). Stubs of the Sprint 3 contract (E7-54) until
- * E7-59. None needs the Owner Password (FR-ATT-01, FR-ATT-03, FR-ATT-04); each is in ADR-015's scope, so the
- * Idempotency-Key is required. Every action is audited with the venue account, the instant and the Booking ID.
- * The windows are half-open and given to the Dashboard as instants on the booking ({@code VenueBooking.attendance}).
- * A manual booking has no attendance actions (FR-MAN-04): each answers its own 422 code.
+ * Venue staff record attendance (arch 09 §4.1, arch 07 §7.1, FRS §4.6; E7-59, contract E7-54). None needs the Owner
+ * Password (FR-ATT-01, FR-ATT-03, FR-ATT-04); each is in ADR-015's scope, so the Idempotency-Key is required. Every
+ * action is audited with the venue account, the instant and the Booking ID. The windows are half-open and given to the
+ * Dashboard as instants on the booking ({@code VenueBooking.attendance}). A manual booking has no attendance actions
+ * (FR-MAN-04): each answers its own 422 code.
  */
 @RestController
 @RequestMapping("/api/v1/venue/bookings/{bookingId}")
 @Tag(name = "venue-attendance")
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class VenueAttendanceController {
+
+    /** {@code technical.idempotency_record.endpoint} of each action (arch 08 section 6). */
+    static final String CHECK_IN_ENDPOINT = "POST /api/v1/venue/bookings/{bookingId}/check-in";
+    static final String LATE_PRESENT_ENDPOINT = "POST /api/v1/venue/bookings/{bookingId}/late-present";
+    static final String NO_SHOW_ENDPOINT = "POST /api/v1/venue/bookings/{bookingId}/no-show";
+    static final String BOOKING_AGGREGATE = "BOOKING";
+    static final String BOOKING_ID = "bookingId";
+
+    private static final StoredResponse<VenueAttendance> RESPONSE = StoredResponse.of(VenueAttendance.class, 200,
+            (VenueAttendance recorded) -> new ResultAggregate(BOOKING_AGGREGATE, recorded.bookingId()));
+
+    private final Attendances attendances;
+    private final Idempotency idempotency;
+    private final ResponseMetaFactory meta;
+
+    VenueAttendanceController(Attendances attendances, Idempotency idempotency, ResponseMetaFactory meta) {
+        this.attendances = attendances;
+        this.idempotency = idempotency;
+        this.meta = meta;
+    }
 
     @PostMapping("/check-in")
     @Operation(operationId = "venueCheckIn",
@@ -46,8 +75,12 @@ public class VenueAttendanceController {
     @ApiError(status = 422, codes = {ApiErrorCode.CHECK_IN_WINDOW_CLOSED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
     public DataResponse<VenueAttendance> checkIn(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
-            @PathVariable UUID bookingId) {
-        throw NotImplementedYet.stub();
+            @PathVariable UUID bookingId,
+            @AuthenticationPrincipal AuthenticatedSubject venue) {
+        return meta.data(attendances.checkIn(venue.id(), bookingId,
+                request(venue, CHECK_IN_ENDPOINT, idempotencyKey, bookingId), RESPONSE, VenueAttendance::of)
+                .throwIfRefused()
+                .body());
     }
 
     @PostMapping("/late-present")
@@ -63,8 +96,12 @@ public class VenueAttendanceController {
     @ApiError(status = 422, codes = {ApiErrorCode.LATE_PRESENT_NOT_AVAILABLE, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
     public DataResponse<VenueAttendance> markLatePresent(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
-            @PathVariable UUID bookingId) {
-        throw NotImplementedYet.stub();
+            @PathVariable UUID bookingId,
+            @AuthenticationPrincipal AuthenticatedSubject venue) {
+        return meta.data(attendances.markLatePresent(venue.id(), bookingId,
+                request(venue, LATE_PRESENT_ENDPOINT, idempotencyKey, bookingId), RESPONSE, VenueAttendance::of)
+                .throwIfRefused()
+                .body());
     }
 
     @PostMapping("/no-show")
@@ -75,14 +112,26 @@ public class VenueAttendanceController {
                     + "it is NO_SHOW_NOT_AVAILABLE. Terminal: the remaining interval is released at once (FR-ATT-05) "
                     + "and venue staff cannot undo it — only a Platform Admin can (FR-ATT-06, FR-ATT-11). A manual "
                     + "booking is NO_SHOW_NOT_AVAILABLE too (FR-MAN-04). A booking no longer in progress is "
-                    + "BOOKING_STATE_CHANGED. A booking of another venue is NOT_FOUND. Implemented by E7-59.")
+                    + "BOOKING_STATE_CHANGED. A booking of another venue is NOT_FOUND. Implemented by E7-59.\n\n"
+                    + "A CONFIRMED booking whose start has not been processed yet is judged as its start would have "
+                    + "been at startAt. If the start would succeed, the no-show is recorded as above. Otherwise the "
+                    + "answer is 409 BOOKING_STATE_CHANGED in one of two ways: (1) a pure refusal, with nothing "
+                    + "written and nothing stored under the Idempotency-Key, when no start is waiting, the start is "
+                    + "being processed, or the start cannot be resolved (a selling block alone, or an Emergency or "
+                    + "Owner Review that began after startAt); (2) a committed refusal when the start would have "
+                    + "cancelled the booking: it is cancelled under its start-time reason with a full refund and no "
+                    + "no-show, atomically, and the same 409 is stored, so a replay of the key answers it again.")
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     @ApiError(status = 409, codes = ApiErrorCode.BOOKING_STATE_CHANGED)
     @ApiError(status = 422, codes = {ApiErrorCode.NO_SHOW_NOT_AVAILABLE, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
     public DataResponse<VenueAttendance> markNoShow(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
-            @PathVariable UUID bookingId) {
-        throw NotImplementedYet.stub();
+            @PathVariable UUID bookingId,
+            @AuthenticationPrincipal AuthenticatedSubject venue) {
+        return meta.data(attendances.markNoShow(venue.id(), bookingId,
+                request(venue, NO_SHOW_ENDPOINT, idempotencyKey, bookingId), RESPONSE, VenueAttendance::of)
+                .throwIfRefused()
+                .body());
     }
 
     /** The booking's attendance after the action: the evidence recorded, each an instant (FR-ATT-07). */
@@ -99,5 +148,15 @@ public class VenueAttendanceController {
             Instant latePresentAt,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true, example = "2026-10-12T18:20:00Z")
             Instant noShowAt) {
+
+        static VenueAttendance of(RecordedAttendance recorded) {
+            return new VenueAttendance(recorded.bookingId(), recorded.status(), recorded.attendanceResult(),
+                    recorded.checkedInAt(), recorded.latePresentAt(), recorded.noShowAt());
+        }
+    }
+
+    /** The key is scoped to the venue account, the endpoint and the booking: the same key on another booking is reused. */
+    private IdempotentRequest request(AuthenticatedSubject venue, String endpoint, UUID key, UUID bookingId) {
+        return idempotency.request(venue, endpoint, key, Map.of(BOOKING_ID, bookingId), null);
     }
 }
