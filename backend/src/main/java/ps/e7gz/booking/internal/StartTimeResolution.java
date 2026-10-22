@@ -38,9 +38,10 @@ import ps.e7gz.resource.api.ResourceStates;
  * Then the gates of section 31.2 through the one canonical predicate (arch 01 section 15 rule 1), on the booked
  * interval with the selling blocks read at startAt. The booking's own reservation always fails check 8, so check 8
  * failing means every gate passed: the booking starts. Any earlier check failing is {@link Outcome.Undetermined} - never
- * guessed into a reason, never started: a selling block has no start-time reason in section 31.3 (open question for the
- * Product Owner / E7-60), and with no cause at startAt any other failing check is a state that arose since (a later
- * emergency, owner review or base-state change), which the start-time table does not decide.
+ * guessed into a reason, never started: a selling block here is an orphaned block, corrupted state
+ * ({@link Outcome.Undetermined#isOrphanedBlock}, E7-60), and with no cause at startAt any other failing check is a
+ * state that arose since (a later emergency, owner review or base-state change), which the start-time table does not
+ * decide.
  */
 @Component
 class StartTimeResolution {
@@ -79,7 +80,8 @@ class StartTimeResolution {
         Optional<AvailabilityCheck> failing = availability.isFree(context, booking.resourceId(),
                 new AvailabilityPeriod(booking.startAt(), booking.endAt()), at).failingCheck();
         if (failing.isPresent() && failing.get() != AvailabilityCheck.BLOCKING_RESERVATION) {
-            return new Outcome.Undetermined("start gate " + failing.get() + " failing without a start-time cause");
+            return new Outcome.Undetermined("start gate " + failing.get() + " failing without a start-time cause",
+                    failing.get());
         }
         // an empty answer means the booking's own reservation is missing: the caller's ledger read finds that defect
         return new Outcome.Start();
@@ -105,8 +107,31 @@ class StartTimeResolution {
             }
         }
 
-        /** The state does not determine one start-time outcome; the caller changes nothing. */
-        record Undetermined(String why) implements Outcome {
+        /**
+         * The state does not determine one start-time outcome; the caller changes nothing.
+         *
+         * @param failingCheck the predicate's first failing check (E7-60: a selling block here, read at startAt after
+         *                     both emergency causes were ruled out, is an orphaned block - see {@link #isOrphanedBlock})
+         */
+        record Undetermined(String why, AvailabilityCheck failingCheck) implements Outcome {
+
+            public Undetermined {
+                Objects.requireNonNull(failingCheck, "failingCheck");
+            }
+
+            /**
+             * A Venue or Resource Operational Selling Block in force at startAt with no Emergency unresolved at startAt:
+             * corrupted state, never a Product state. A block exists only for an unresolved Emergency (Spec v5 sections
+             * 38.2 and 42.1, FR-OPS-15, FR-OPS-19), and the database keeps an Emergency's block in lockstep with it
+             * ({@code guard_emergency_selling_block} sets its start to {@code declared_at};
+             * {@code assert_emergency_block_consistency} closes it at the Emergency's {@code ended_at}), read here over
+             * the same half-open window as the Emergency checks above. So only a block with no Emergency behind it
+             * ({@code emergency_id} NULL), which no Product flow writes, can fail here.
+             */
+            boolean isOrphanedBlock() {
+                return failingCheck == AvailabilityCheck.VENUE_SELLING_BLOCK
+                        || failingCheck == AvailabilityCheck.RESOURCE_SELLING_BLOCK;
+            }
         }
     }
 }

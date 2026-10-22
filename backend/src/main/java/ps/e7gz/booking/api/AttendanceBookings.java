@@ -26,20 +26,24 @@ public interface AttendanceBookings {
     /**
      * {@code from} -> NO_SHOW at {@code at} (FR-ATT-04, FR-ATT-05): terminal, with no Booking Reason Code and
      * {@code terminal_at = at}; the planned interval ({@code start_at}, {@code end_at}) is never rewritten. {@code from}
-     * is ACTIVE, or CONFIRMED once the caller has withdrawn a delayed start ({@link #withdrawDelayedStart}). Writes the
-     * STATUS_TRANSITION history row by the venue account and withdraws the booking's BOOKING_COMPLETE job, which the
-     * terminal status made unnecessary. @return false when the booking is no longer {@code from} (nothing written)
+     * is ACTIVE: a booking behind a delayed start is started first ({@link #resolveDelayedStart}; PO decision 19 Oct
+     * 2026, R1). Writes the STATUS_TRANSITION history row by the venue account and withdraws the booking's
+     * BOOKING_COMPLETE job, which the terminal status made unnecessary.
+     * @return false when the booking is no longer {@code from} (nothing written)
      */
     boolean markNoShow(CommandContext command, UUID bookingId, BookingStatus from, Instant at, UUID venueAccountId);
 
     /**
-     * The scheduler race of a no-show (decisions of Amr Heiba, acting decision-maker, 17 Oct 2026; FR-BOK-26: a booking
-     * never stays CONFIRMED past startAt): an Online Booking still CONFIRMED inside the no-show window because its
-     * BOOKING_START (T4) has not been processed yet. Resolves that start as T4 would have at {@code startAt}, with the
-     * start-time rules of E7-60 (Spec v5 sections 31.2-31.6), on the caller's transaction:
+     * The scheduler race of a venue's attendance action (decisions of Amr Heiba, 17 Oct 2026; PO decision 19 Oct 2026,
+     * R1; FR-BOK-26: a booking never stays CONFIRMED past startAt): an Online Booking still CONFIRMED inside the
+     * action's window because its BOOKING_START (T4) has not been processed yet. Resolves that start exactly as T4 would
+     * have at {@code startAt}, with the start-time rules and the start transition of E7-60 (Spec v5 sections
+     * 31.2-31.6), on the caller's transaction:
      * <ul>
-     *   <li>{@link DelayedStart#WOULD_START} - the start job, still waiting, is withdrawn ({@code SUPERSEDED}, never
-     *       fires); the caller may move CONFIRMED -> NO_SHOW;</li>
+     *   <li>{@link DelayedStart#STARTED} - the start job, still waiting, is withdrawn ({@code SUPERSEDED}, never fires)
+     *       and the booking is started as T4 starts it: CONFIRMED -> ACTIVE with the SYSTEM history row dated
+     *       {@code startAt}, {@code BookingStarted} and BOOKING_COMPLETE at {@code endAt}; the caller then records its
+     *       action as on any ACTIVE booking;</li>
      *   <li>{@link DelayedStart#CANCELLED} - the start would have cancelled: the start job is withdrawn and the booking is
      *       CANCELLED under its start-time reason, dated {@code startAt}, with its reservation released, its full-refund
      *       fee decision, {@code BookingCancelled} and, for {@code SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR}, the SEV_1 alert
@@ -54,7 +58,7 @@ public interface AttendanceBookings {
 
     /** What a delayed start resolved to; see {@link #resolveDelayedStart}. */
     enum DelayedStart {
-        WOULD_START,
+        STARTED,
         CANCELLED,
         NOT_DELAYED,
         UNDETERMINED

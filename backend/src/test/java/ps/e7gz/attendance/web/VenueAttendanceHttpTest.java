@@ -163,6 +163,28 @@ class VenueAttendanceHttpTest extends IntegrationTest {
     }
 
     /**
+     * R1 (PO decision 19 Oct 2026): a check-in on a booking whose start has not been processed starts it as T4 would
+     * and records the check-in - 200, ACTIVE; the exact replay answers the same body and starts nothing twice.
+     */
+    @Test
+    void aCheckInBehindADelayedStartStartsTheBookingAndItsReplayAnswersTheSame() throws Exception {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(5));
+        String key = key();
+
+        String first = perform(venue(booking), booking, "check-in", key).andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("ACTIVE"))
+                .andReturn().getResponse().getContentAsString();
+        String replay = perform(venue(booking), booking, "check-in", key).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(json.readTree(replay).get("data")).isEqualTo(json.readTree(first).get("data"));
+        assertThat(json.readTree(first).at("/data/checkedInAt").isNull()).isFalse();
+        assertThat(detail(booking).path("status").asText()).isEqualTo("ACTIVE");
+        assertThat(events(booking, IntegrationEvents.BOOKING_STARTED)).isOne();
+        assertThat(events(booking, IntegrationEvents.CHECK_IN_RECORDED)).isOne();
+    }
+
+    /**
      * A delayed start that would have cancelled (Amr Heiba, 17 Oct 2026): the no-show is answered 409
      * BOOKING_STATE_CHANGED - never a successful no-show - while the start-time cancellation commits; the exact replay
      * answers the same stored 409 and cancels nothing twice.

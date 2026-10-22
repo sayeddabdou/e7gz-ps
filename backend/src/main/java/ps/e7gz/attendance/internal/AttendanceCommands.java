@@ -43,9 +43,9 @@ import ps.e7gz.trust.api.NoShowOutcomes;
  * <p>Order of the refusals: another venue's booking is NOT_FOUND; a Manual Booking is the action's own 422
  * (FR-MAN-04); a booking no longer in progress (terminal) is 409 BOOKING_STATE_CHANGED; outside the action's half-open
  * window, the action's 422 (FR-ATT-02: also before startAt and at exactly +15:00); a booking not ACTIVE inside the
- * window (its start not yet processed) is BOOKING_STATE_CHANGED - except a no-show behind a delayed start
- * ({@link #delayedStartWithdrawn}); blocking evidence is the action's 422 (FR-ATT-03,
- * FR-ATT-04). Every refusal is thrown, so nothing is written and nothing is stored under the Idempotency-Key. No Owner
+ * window is first resolved as its delayed start (below), and is BOOKING_STATE_CHANGED when that start is not waiting
+ * or cannot be resolved; blocking evidence is the action's 422 (FR-ATT-03, FR-ATT-04). Every refusal is thrown, so
+ * nothing is written and nothing is stored under the Idempotency-Key. No Owner
  * Password (FR-ATT-01, FR-ATT-03, FR-ATT-04).
  */
 @Component
@@ -101,18 +101,19 @@ class AttendanceCommands {
             throw new ApiException(action.refusal());                                           // FR-ATT-02..04
         }
         BookingStatus from = booking.status();
-        // The delayed-start race (decisions of Amr Heiba, acting decision-maker, 17 Oct 2026): only a no-show - check-in
-        // and Mark Present - Late still need ACTIVE - on a CONFIRMED booking inside its no-show window is first
-        // resolved as its delayed start would have been at startAt, with E7-60's start-time rules: it would start (its
-        // waiting start job withdrawn; CONFIRMED -> NO_SHOW goes on as from ACTIVE, and the database refuses
-        // NO_SHOW -> ACTIVE anyway), it would cancel (startCancelled), or no start job is waiting (already run,
-        // withdrawn, missing, leased right now) or the start cannot be resolved - refused, nothing written
+        // The delayed-start race (Amr Heiba, 17 Oct 2026; PO decision 19 Oct 2026, R1): check-in, Mark Present - Late
+        // and no-show behave alike. A CONFIRMED booking inside the action's window, its start not processed yet, is
+        // first resolved exactly as T4 would have resolved it at startAt: it starts (T4's own transition - CONFIRMED ->
+        // ACTIVE dated startAt, BookingStarted, BOOKING_COMPLETE at endAt, the start job withdrawn) and the action is
+        // then recorded as on any ACTIVE booking; it would cancel (startCancelled: a committed 409, never a penalty);
+        // or no start job is waiting (already run, withdrawn, missing, leased right now) or the start cannot be
+        // resolved - refused, nothing written
         if (from != BookingStatus.ACTIVE) {
-            if (action != AttendanceAction.NO_SHOW || from != BookingStatus.CONFIRMED) {
+            if (from != BookingStatus.CONFIRMED) {
                 throw new ApiException(ApiErrorCode.BOOKING_STATE_CHANGED);
             }
             switch (bookings.resolveDelayedStart(context, bookingId)) {
-                case WOULD_START -> { }
+                case STARTED -> from = BookingStatus.ACTIVE;
                 case CANCELLED -> {
                     return startCancelled(context, bookingId, now);
                 }
@@ -164,7 +165,7 @@ class AttendanceCommands {
     }
 
     /**
-     * FR-ATT-04, FR-ATT-05: ACTIVE (or CONFIRMED behind a delayed start) -> NO_SHOW and the remaining interval released
+     * FR-ATT-04, FR-ATT-05: ACTIVE -> NO_SHOW (a delayed start already started) and the remaining interval released
      * at once - the reservation's release instant is the no-show instant, its planned interval and the booking's
      * {@code endAt} are never rewritten, so the room is sellable again from now under the normal rules. The
      * {@code BOOKING_NO_SHOW} Trust outcome is written in the same transaction (arch 07 section 2), with its Loyalty

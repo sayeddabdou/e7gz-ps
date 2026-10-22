@@ -25,6 +25,7 @@ import ps.e7gz.scheduling.api.JobOutcome;
 import ps.e7gz.scheduling.api.ScheduledJob;
 import ps.e7gz.scheduling.api.ScheduledJobs;
 import ps.e7gz.support.boundary.Deadlines;
+import ps.e7gz.support.boundary.DueJobs;
 import ps.e7gz.support.boundary.TestCommands;
 import ps.e7gz.support.fixtures.Fixtures;
 
@@ -56,8 +57,11 @@ public final class BookingFlows {
     private final ManualBookings manualBookings;
     private final Outbox outbox;
     private final ScheduledJobs jobs;
+    private final ApplicationContext context;
+    private DueJobs starts;
 
     private BookingFlows(ApplicationContext context) {
+        this.context = context;
         this.creation = context.getBean(OnlineBookingCreation.class);
         this.responses = context.getBean(VenueResponses.class);
         this.answers = context.getBean(VenueAnswers.class);
@@ -69,6 +73,14 @@ public final class BookingFlows {
         this.manualBookings = context.getBean(ManualBookings.class);
         this.outbox = context.getBean(Outbox.class);
         this.jobs = context.getBean(ScheduledJobs.class);
+    }
+
+    /** The worker profile is off in tests: E7-60's T4 handler built by hand, as the deadline worker runs it. */
+    private synchronized DueJobs starts() {
+        if (starts == null) {
+            starts = DueJobs.of(context, new BookingStartHandler(runner, store, context.getBean(BookingStarts.class)));
+        }
+        return starts;
     }
 
     public static BookingFlows of(ApplicationContext context) {
@@ -159,6 +171,50 @@ public final class BookingFlows {
                 booking.venueAccountId(), booking.resourceId(), start, booking.venueResponseExpiresAt());
     }
 
+    /** As {@link #confirmedWithOverdueStart}, for a future Manual Booking created CONFIRMED (E7-48): no customer. */
+    public Booking manualConfirmedWithOverdueStart(Duration startedAgo) {
+        Booking booking = manualConfirmed();
+        Instant start = OnlineBookingWorld.dbNow().minus(startedAgo);
+        BookingStates.startOverdue(booking.bookingId(), start);
+        return new Booking(booking.bookingId(), null, booking.venueId(), booking.venueName(),
+                booking.venueAccountId(), booking.resourceId(), start, null);
+    }
+
+    // ---------------------------------------------------------------------------- E7-60 start (O11, T4)
+
+    /**
+     * Fires the booking's BOOKING_START (T4) once through the real deadline worker and E7-60's handler: the job, still
+     * PENDING, is made due now (its stored startAt already passed, {@link #confirmedWithOverdueStart}). Returns whether
+     * the worker settled it (DONE, SUPERSEDED or backed off); false when it was not PENDING or a worker holds it.
+     */
+    public boolean fireStart(Booking booking) {
+        String key = VenueAnswerDb.bookingStart(booking.bookingId());
+        boolean due = runner.run(TestCommands.under(scope(booking), context -> {
+            int pending = context.jdbc().sql("""
+                            SELECT count(*) FROM technical.scheduled_job WHERE idempotency_key = :key
+                               AND status = 'PENDING'""")
+                    .param("key", key).query(Integer.class).single();
+            if (pending == 1) {
+                starts().makeDue(context, key, context.commandNow());
+            }
+            return pending == 1;
+        }));
+        return due && starts().fire(key);
+    }
+
+    /** Fires T4 without making it due first: for a race whose other side may withdraw it in between. */
+    public boolean fireStartIfDue(Booking booking) {
+        return starts().fire(VenueAnswerDb.bookingStart(booking.bookingId()));
+    }
+
+    /** Makes the booking's PENDING BOOKING_START due now, for {@link #fireStartIfDue}. */
+    public void makeStartDue(Booking booking) {
+        runner.run(TestCommands.under(scope(booking), context -> {
+            starts().makeDue(context, VenueAnswerDb.bookingStart(booking.bookingId()), context.commandNow());
+            return null;
+        }));
+    }
+
     // ------------------------------------- start-time state at startAt (delayed-start no-show, Amr Heiba 17 Oct 2026)
 
     /** An Owner Review of the booking's room entered at {@code enteredAt}, unresolved; the restriction set with it. */
@@ -240,6 +296,11 @@ public final class BookingFlows {
     /** The idempotency key of the booking's BOOKING_START (T4) job. */
     public static String bookingStartKey(UUID bookingId) {
         return VenueAnswerDb.bookingStart(bookingId);
+    }
+
+    /** The idempotency key of the booking's BOOKING_COMPLETE (T5) job. */
+    public static String bookingCompleteKey(UUID bookingId) {
+        return ManualBookingCommand.bookingCompleteKey(bookingId);
     }
 
     /** Withdraws the booking's BOOKING_START job, as an already processed start would have left it. */

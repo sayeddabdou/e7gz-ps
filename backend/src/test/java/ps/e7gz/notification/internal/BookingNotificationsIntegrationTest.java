@@ -701,6 +701,52 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
         assertThat(customerCodes(booking)).doesNotContain("NO_SHOW_RECORDED");
     }
 
+    // ------------------------------------------------------------- E7-60 start (T4)
+
+    /**
+     * E7-60: a start-time cancellation by T4 tells the customer and the venue once each (Spec v5 section 31.3: the
+     * customer is notified; PO decision 12 Oct 2026: VENUE_BOOKING_AUTO_CANCELLED), even when redelivered.
+     */
+    @Test
+    void aStartTimeCancellationByTheStartTellsEachSideOnce() {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofSeconds(5));
+        flows.resourceDisabledBehindTheGuards(booking);
+        assertThat(flows.fireStart(booking)).isTrue();
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_CANCELLED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.BOOKING_CANCELLED,
+                "CUSTOMER BOOKING_AUTO_CANCELLED " + booking.customerId(),
+                "VENUE VENUE_BOOKING_AUTO_CANCELLED " + booking.venueId());
+    }
+
+    /** A Manual Booking cancelled at its start: there is no customer, so the venue alone is told, once. */
+    @Test
+    void aManualStartTimeCancellationTellsOnlyTheVenueOnce() {
+        Booking booking = flows.manualConfirmedWithOverdueStart(Duration.ofSeconds(5));
+        flows.resourceDisabledBehindTheGuards(booking);
+        assertThat(flows.fireStart(booking)).isTrue();
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_CANCELLED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.BOOKING_CANCELLED,
+                "VENUE VENUE_BOOKING_AUTO_CANCELLED " + booking.venueId());
+        assertThat(notifications(booking)).containsExactly("VENUE VENUE_BOOKING_AUTO_CANCELLED " + booking.venueId());
+    }
+
+    /** PO decision 13 Oct 2026: BookingStarted notifies nobody. */
+    @Test
+    void aStartTellsNobody() {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofSeconds(5));
+        drain();
+        List<String> before = notifications(booking);
+        assertThat(flows.fireStart(booking)).isTrue();
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_STARTED);
+
+        assertThat(notifications(booking)).isEqualTo(before);
+    }
+
     // ------------------------------------------------------------- E7-58 Late Confirm warning, FR-LCF-12
 
     @Test

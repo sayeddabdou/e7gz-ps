@@ -157,88 +157,96 @@ class CheckInBoundaryTest {
         verify(rewards).reconcile(any(), eq(CUSTOMER), eq(BOOKING));
     }
 
-    // ---------------------------------------- the delayed-start race (Amr Heiba, acting decision-maker, 17 Oct 2026)
+    // ------------- the delayed-start race (Amr Heiba, 17 Oct 2026; PO decision 19 Oct 2026, R1: all three actions)
 
     /**
-     * A delayed start that would have succeeded: Booking withdraws the waiting start, then CONFIRMED -> NO_SHOW with the
-     * same release, Trust outcome and reward reconciliation as from ACTIVE.
+     * A delayed start that would have succeeded, behind each of the three actions: Booking starts it first (T4's own
+     * transition), then the action is recorded as on any ACTIVE booking - a no-show from ACTIVE, with its release, Trust
+     * outcome and reward reconciliation.
      */
-    @Test
-    void aNoShowBehindADelayedStartThatWouldSucceedIsRecorded() {
-        confirmed(DelayedStart.WOULD_START);
-        Instant now = LATE_OPENS;
+    @ParameterizedTest
+    @EnumSource(AttendanceAction.class)
+    void eachActionBehindADelayedStartThatStartsIsRecordedAsOnAnActiveBooking(AttendanceAction action) {
+        confirmed(DelayedStart.STARTED);
+        Instant now = windowOpens(action);
 
-        RecordedAttendance recorded = recorded(now, AttendanceAction.NO_SHOW);
+        RecordedAttendance recorded = recorded(now, action);
 
-        assertThat(recorded.status()).isEqualTo(BookingStatus.NO_SHOW);
         verify(bookings).resolveDelayedStart(any(), eq(BOOKING));
-        verify(bookings).markNoShow(any(), eq(BOOKING), eq(BookingStatus.CONFIRMED), eq(now), eq(ACCOUNT));
-        verify(ledger).release(any(), any(), eq(now), eq("NO_SHOW"));
-        verify(trust).recordNoShow(any(), eq(CUSTOMER), eq(BOOKING), eq(START));
-        verify(rewards).reconcile(any(), eq(CUSTOMER), eq(BOOKING));
+        verify(store).record(any(), eq(action), eq(BOOKING), eq(now), eq(ACCOUNT));
+        if (action == AttendanceAction.NO_SHOW) {
+            assertThat(recorded.status()).isEqualTo(BookingStatus.NO_SHOW);
+            verify(bookings).markNoShow(any(), eq(BOOKING), eq(BookingStatus.ACTIVE), eq(now), eq(ACCOUNT));
+            verify(ledger).release(any(), any(), eq(now), eq("NO_SHOW"));
+            verify(trust).recordNoShow(any(), eq(CUSTOMER), eq(BOOKING), eq(START));
+            verify(rewards).reconcile(any(), eq(CUSTOMER), eq(BOOKING));
+        } else {
+            assertThat(recorded.status()).isEqualTo(BookingStatus.ACTIVE);
+            verify(bookings, never()).markNoShow(any(), any(), any(), any(), any());
+        }
+        verify(bookings).recordVenueEvent(any(), eq(BOOKING), eq(now), eq(action.bookingEvent()), eq(ACCOUNT));
     }
 
     /**
-     * A delayed start that would have cancelled: a committed 409 BOOKING_STATE_CHANGED, the attendance default
-     * NOT_APPLICABLE, and no no-show evidence, transition, Trust outcome, reward or event.
+     * A delayed start that would have cancelled, behind each action: a committed 409 BOOKING_STATE_CHANGED, the
+     * attendance default NOT_APPLICABLE, and no evidence, transition, Trust outcome, reward or event.
      */
-    @Test
-    void aNoShowBehindADelayedStartThatWouldCancelIsACommittedRefusalWithoutPenalty() {
+    @ParameterizedTest
+    @EnumSource(AttendanceAction.class)
+    void eachActionBehindADelayedStartThatWouldCancelIsACommittedRefusalWithoutPenalty(AttendanceAction action) {
         confirmed(DelayedStart.CANCELLED);
         when(store.resolve(any(), any(), any(), any())).thenReturn(true);
+        Instant now = windowOpens(action);
 
-        CommandAnswer<RecordedAttendance> answer = commands.record(at(LATE_OPENS), AttendanceAction.NO_SHOW, BOOKING,
-                VENUE, ACCOUNT);
+        CommandAnswer<RecordedAttendance> answer = commands.record(at(now), action, BOOKING, VENUE, ACCOUNT);
 
         assertThat(answer).isInstanceOfSatisfying(CommandAnswer.Refused.class, refused ->
                 assertThat(refused.refusal().code()).isEqualTo(ApiErrorCode.BOOKING_STATE_CHANGED));
-        verify(store).resolve(any(), eq(BOOKING), eq(AttendanceResult.NOT_APPLICABLE), eq(LATE_OPENS));
+        verify(store).resolve(any(), eq(BOOKING), eq(AttendanceResult.NOT_APPLICABLE), eq(now));
         assertNoNoShowWritten();
         verify(outbox, never()).publish(any(), any());
     }
 
-    /** No start job waiting, or a start that cannot be resolved: BOOKING_STATE_CHANGED, nothing written. */
+    /** No start job waiting, or a start that cannot be resolved: BOOKING_STATE_CHANGED, nothing written - each action. */
     @ParameterizedTest
     @EnumSource(value = DelayedStart.class, names = {"NOT_DELAYED", "UNDETERMINED"})
     void aConfirmedBookingWhoseStartIsNotWaitingOrNotResolvableIsBookingStateChanged(DelayedStart answer) {
         confirmed(answer);
 
-        assertRefused(LATE_OPENS, AttendanceAction.NO_SHOW, ApiErrorCode.BOOKING_STATE_CHANGED);
+        for (AttendanceAction action : AttendanceAction.values()) {
+            assertRefused(windowOpens(action), action, ApiErrorCode.BOOKING_STATE_CHANGED);
+        }
         assertNoNoShowWritten();
         verify(store, never()).resolve(any(), any(), any(), any());
     }
 
-    /** Check-in and Mark Present - Late still need ACTIVE: their delayed start is never resolved. */
-    @Test
-    void checkInAndLatePresentOnAConfirmedBookingAreBookingStateChanged() {
-        confirmed(DelayedStart.WOULD_START);
-
-        assertRefused(START, AttendanceAction.CHECK_IN, ApiErrorCode.BOOKING_STATE_CHANGED);
-        assertRefused(LATE_OPENS, AttendanceAction.LATE_PRESENT, ApiErrorCode.BOOKING_STATE_CHANGED);
-        verify(bookings, never()).resolveDelayedStart(any(), any());
-        verify(store, never()).record(any(), any(), any(), any(), any());
-    }
-
     /**
-     * The no-show window opens at exactly startAt + 15:00 for a delayed start too: one second before, the window's own
-     * code and the start is not even resolved - nothing cancelled, nothing recorded; at and after, it is resolved.
+     * Each action's own window decides first for a delayed start too: one second before it, the window's own code and
+     * the start is not even resolved - nothing started, cancelled or recorded; at and after, it is resolved.
      */
     @ParameterizedTest
     @EnumSource(Boundary.class)
-    void aDelayedStartIsResolvedOnlyFromFifteenMinutes(Boundary side) {
+    void aDelayedStartIsResolvedOnlyInsideTheActionsWindow(Boundary side) {
         confirmed(DelayedStart.CANCELLED);
         when(store.resolve(any(), any(), any(), any())).thenReturn(true);
         Instant now = side.now(LATE_OPENS);
 
         if (side.beforeDeadline()) {
             assertRefused(now, AttendanceAction.NO_SHOW, ApiErrorCode.NO_SHOW_NOT_AVAILABLE);
+            assertRefused(now, AttendanceAction.LATE_PRESENT, ApiErrorCode.LATE_PRESENT_NOT_AVAILABLE);
             verify(bookings, never()).resolveDelayedStart(any(), any());
         } else {
+            assertRefused(now, AttendanceAction.CHECK_IN, ApiErrorCode.CHECK_IN_WINDOW_CLOSED);
             assertThat(commands.record(at(now), AttendanceAction.NO_SHOW, BOOKING, VENUE, ACCOUNT))
                     .isInstanceOf(CommandAnswer.Refused.class);
             verify(bookings).resolveDelayedStart(any(), eq(BOOKING));
         }
         assertNoNoShowWritten();
+    }
+
+    /** The first instant of the action's window: startAt for check-in, startAt + 15:00 for the other two. */
+    private static Instant windowOpens(AttendanceAction action) {
+        return action == AttendanceAction.CHECK_IN ? START : LATE_OPENS;
     }
 
     private void assertNoNoShowWritten() {
