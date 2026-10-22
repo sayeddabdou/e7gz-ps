@@ -46,10 +46,7 @@ class Sprint3StubHttpTest extends IntegrationTest {
     }
 
     @Test
-    void attendanceCancelConfirmedAndOverviewAreStubs() throws Exception {
-        notImplemented(idempotent(post(VENUE_BOOKING + "/check-in")), venue);               // E7-59
-        notImplemented(idempotent(post(VENUE_BOOKING + "/late-present")), venue);           // E7-59
-        notImplemented(idempotent(post(VENUE_BOOKING + "/no-show")), venue);                // E7-59
+    void cancelConfirmedAndOverviewAreStubs() throws Exception {
         notImplemented(json(idempotent(post(VENUE_BOOKING + "/cancel-confirmed")), "{\"ownerPassword\":\"1234\"}"),
                 venue);                                                                      // E7-114
         notImplemented(get("/api/v1/venue/overview"), venue);                               // E7-115

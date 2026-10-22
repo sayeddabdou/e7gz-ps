@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.Objects;
 import java.util.UUID;
 import ps.e7gz.common.codes.Activity;
+import ps.e7gz.common.codes.AttendanceResult;
 import ps.e7gz.common.codes.BookingSource;
 import ps.e7gz.common.codes.BookingStatus;
 import ps.e7gz.common.codes.BookingTerminalReason;
@@ -23,6 +24,9 @@ import ps.e7gz.common.money.Money;
  * @param lateConfirmPaused      an emergency pauses that deadline now (FR-OPS-41); never its cause
  * @param customerUsername       ONLINE only
  * @param walkInName             MANUAL only, as the venue typed it (FR-DIS-09)
+ * @param attendanceResult       the stored Attendance Result (FR-ATT-07), null until resolved (E7-59)
+ * @param checkedInAt            each attendance evidence instant is null when it was not recorded or a Platform Admin
+ *                               reversed it (E7-59; Sprint 3 contract)
  */
 public record VenueBookingRow(UUID bookingId, UUID venueId, BookingSource source, BookingStatus status,
                               BookingTerminalReason terminalReason, String rejectReasonText, UUID resourceId,
@@ -31,7 +35,8 @@ public record VenueBookingRow(UUID bookingId, UUID venueId, BookingSource source
                               Money venuePriceTotal, Instant venueResponseExpiresAt, boolean venueResponsePaused,
                               Instant lateConfirmExpiresAt, boolean lateConfirmPaused, String customerUsername,
                               String customerPhone, String walkInName, String walkInPhone,
-                              Instant createdAt) {
+                              AttendanceResult attendanceResult, Instant checkedInAt, Instant latePresentAt,
+                              Instant noShowAt, Instant createdAt) {
 
     public VenueBookingRow {
         Objects.requireNonNull(bookingId, "bookingId");

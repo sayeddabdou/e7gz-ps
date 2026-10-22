@@ -94,6 +94,13 @@ final class BookingNotificationRules {
             plan(customer("BOOKING_AUTO_CANCELLED"), venue("VENUE_BOOKING_AUTO_CANCELLED")),
             BookingTerminalReason.RESOURCE_OWNER_REVIEW_REQUIRED,
             plan(customer("BOOKING_AUTO_CANCELLED"), venue("VENUE_BOOKING_AUTO_CANCELLED")),
+            // The other two start-time reasons (Spec v5 section 31.3: every start-time failure notifies the customer),
+            // produced today by a delayed-start no-show (E7-59, Amr Heiba 17 Oct 2026) and later by E7-60's start: the
+            // same generic pair as the three operational reasons above
+            BookingTerminalReason.VENUE_CLOSURE,
+            plan(customer("BOOKING_AUTO_CANCELLED"), venue("VENUE_BOOKING_AUTO_CANCELLED")),
+            BookingTerminalReason.SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR,
+            plan(customer("BOOKING_AUTO_CANCELLED"), venue("VENUE_BOOKING_AUTO_CANCELLED")),
             // E7-48: the venue cancelled its own Manual Booking; there is no customer to tell
             BookingTerminalReason.VENUE_CANCELLED_MANUAL_BOOKING, Plan.NONE,
             // E7-113 (O5, FR-VEN-23 step 9, FR-VEN-28): §52.2 "Venue Opening Hours Changed", one per cancelled booking.
@@ -135,7 +142,13 @@ final class BookingNotificationRules {
             Map.entry(IntegrationEvents.LATE_CONFIRM_DECLINED, event -> plan(venue("VENUE_LATE_CONFIRM_DECLINED"))),
             // T2: §52.2 and §52.5 "Customer Confirmation Expired", one for each side
             Map.entry(IntegrationEvents.LATE_CONFIRM_TIMED_OUT, event -> plan(customer("CUSTOMER_CONFIRMATION_EXPIRED"),
-                    venue("VENUE_CUSTOMER_CONFIRMATION_EXPIRED"))));
+                    venue("VENUE_CUSTOMER_CONFIRMATION_EXPIRED"))),
+            // E7-59 attendance (O13). §52.2 "Check-in Recorded" and "No-show Recorded", the customer only: the venue
+            // recorded them itself. Mark Present - Late has no §52.2 notification of its own; its customer-facing
+            // outcome is "Attendance-Unconfirmed Completion" at completion (E7-61)
+            Map.entry(IntegrationEvents.CHECK_IN_RECORDED, event -> plan(customer("CHECK_IN_RECORDED"))),
+            Map.entry(IntegrationEvents.LATE_PRESENT_RECORDED, event -> Plan.NONE),
+            Map.entry(IntegrationEvents.NO_SHOW_RECORDED, event -> plan(customer("NO_SHOW_RECORDED"))));
     // No rule for a conflicting Late Confirm Accept: it is the synchronous 409 LATE_CONFIRM_CUSTOMER_CONFLICT and no
     // event, so LATE_CONFIRM_SCHEDULE_CONFLICT is never produced (F1, PCR-008)
 

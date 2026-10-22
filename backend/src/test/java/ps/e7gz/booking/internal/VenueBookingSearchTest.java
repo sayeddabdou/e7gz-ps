@@ -17,6 +17,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import ps.e7gz.booking.api.AttendanceEvidence;
 import ps.e7gz.booking.api.LateConfirmWindows;
 import ps.e7gz.common.command.Command;
 import ps.e7gz.common.command.CommandRunner;
@@ -38,7 +39,7 @@ class VenueBookingSearchTest {
     private final CustomerContacts customers = mock(CustomerContacts.class);
     private final VenueAccountVenues accounts = mock(VenueAccountVenues.class);
     private final VenueBookings bookings = new VenueBookings(runner, store, customers, accounts,
-            mock(BookingHistoryStore.class), mock(LateConfirmWindows.class));
+            mock(BookingHistoryStore.class), mock(LateConfirmWindows.class), mock(AttendanceEvidence.class));
 
     @BeforeEach
     void wiring() {

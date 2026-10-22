@@ -30,6 +30,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import ps.e7gz.booking.api.AttendanceEvidence;
 import ps.e7gz.booking.internal.BookingHistoryEntry;
 import ps.e7gz.booking.internal.ManualBookingRequest;
 import ps.e7gz.booking.internal.ManualBookings;
@@ -435,15 +436,17 @@ public class VenueBookingController {
 
         /**
          * The venue's view of a booking row. {@code customer.phone} is already decided by the retention rule (absent
-         * when hidden). {@code attendanceResult} stays null here: no booking E7-47 answers with has started, and a
-         * manual booking gets no attendance record at creation or cancellation - its NOT_APPLICABLE result is E7-61's
-         * (FR-ATT-07, FR-MAN-06; PO decision 10 Oct 2026, E7-48, D9; the bookings list and detail are E7-49's).
+         * when hidden). {@code attendanceResult} is the stored result of the booking's attendance record, null until
+         * one resolves it (FR-ATT-07; a no-show resolves ABSENT_NO_SHOW, E7-59; completion and a manual booking's
+         * NOT_APPLICABLE are E7-61's - FR-MAN-06; PO decision 10 Oct 2026, E7-48, D9).
          * {@code lateConfirmExpiresAt} / {@code lateConfirmPaused} (E7-58): the open Late Confirmation's stored deadline
          * and whether an emergency pauses it, while AWAITING_CUSTOMER_CONFIRMATION only - never the pause's cause.
-         * {@code attendance} is E7-59's (Sprint 3 contract, E7-54): no booking these routes answer with has started.
+         * {@code attendance} (E7-59, Sprint 3 contract): an ONLINE booking's windows, from its stored start and end,
+         * and its evidence; null for a MANUAL booking, which has no attendance actions (FR-MAN-04).
          */
         public static VenueBooking of(VenueBookingRow row) {
-            VenueBookingCustomer customer = row.source() == BookingSource.ONLINE
+            boolean online = row.source() == BookingSource.ONLINE;
+            VenueBookingCustomer customer = online
                     ? new VenueBookingCustomer(row.customerUsername(), row.customerPhone()) : null;
             VenueBookingWalkIn walkIn = row.source() == BookingSource.MANUAL
                     ? new VenueBookingWalkIn(row.walkInName(), row.walkInPhone()) : null;
@@ -452,7 +455,8 @@ public class VenueBookingController {
                             row.activity(), row.consoleType(), row.playMode()),
                     row.startAt(), row.endAt(), row.businessDate(), row.nominalBookedMinutes(),
                     MoneyView.of(row.venuePriceTotal()), row.venueResponseExpiresAt(), row.venueResponsePaused(),
-                    row.lateConfirmExpiresAt(), row.lateConfirmPaused(), customer, walkIn, null, null, row.createdAt());
+                    row.lateConfirmExpiresAt(), row.lateConfirmPaused(), customer, walkIn, row.attendanceResult(),
+                    online ? VenueBookingAttendance.of(row) : null, row.createdAt());
         }
 
         /** The same booking with the customer phone absent (arch 10 §5.1): only a member left out, nothing changed. */
@@ -482,6 +486,14 @@ public class VenueBookingController {
             Instant latePresentAt,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true, example = "2026-10-12T18:20:00Z")
             Instant noShowAt) {
+
+        /** The windows from the stored start and end (arch 07 §7.1), and the evidence still standing. */
+        static VenueBookingAttendance of(VenueBookingRow row) {
+            Instant lateOpensAt = row.startAt().plus(AttendanceEvidence.CHECK_IN_WINDOW);
+            return new VenueBookingAttendance(new VenueBookingTimeWindow(row.startAt(), lateOpensAt),
+                    new VenueBookingTimeWindow(lateOpensAt, row.endAt()), row.checkedInAt(), row.latePresentAt(),
+                    row.noShowAt());
+        }
     }
 
     /** A half-open window: open from {@code opensAt}, closed from {@code closesAt}. */

@@ -18,6 +18,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import ps.e7gz.booking.api.AttendanceEvidence;
 import ps.e7gz.booking.api.LateConfirmWindows;
 import ps.e7gz.booking.internal.VenueAnswerStore.ViewRow;
 import ps.e7gz.common.codes.Activity;
@@ -46,7 +47,7 @@ class VenueBookingLateConfirmProjectionTest {
     private final VenueAccountVenues accounts = mock(VenueAccountVenues.class);
     private final LateConfirmWindows lateConfirms = mock(LateConfirmWindows.class);
     private final VenueBookings bookings = new VenueBookings(runner, store, customers, accounts,
-            mock(BookingHistoryStore.class), lateConfirms);
+            mock(BookingHistoryStore.class), lateConfirms, mock(AttendanceEvidence.class));
 
     @BeforeEach
     void wiring() {
