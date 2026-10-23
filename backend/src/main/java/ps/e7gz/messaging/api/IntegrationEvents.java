@@ -154,6 +154,23 @@ public final class IntegrationEvents {
     public static final String NO_SHOW_RECORDED = "NoShowRecorded";
 
     /**
+     * {@code {bookingId, customerId, venueId, resourceId, startAt, endAt}}, aggregate {@code BOOKING}: T5 completed the
+     * booking - ACTIVE -> COMPLETED as of its stored {@code endAt}, the reservation released (arch 08 section 3.2, arch 07
+     * section 7.3; E7-61, PO decision 12 Oct 2026). A Manual Booking's carries {@code customerId} null and
+     * {@code source: MANUAL} (as E7-48's D6 events). Written in the completion transaction with
+     * {@link #ATTENDANCE_RESOLVED}.
+     */
+    public static final String BOOKING_COMPLETED = "BookingCompleted";
+
+    /**
+     * {@code {bookingId, customerId, venueId, resourceId, startAt, endAt, attendanceResult}}, aggregate {@code BOOKING}:
+     * the booking's Attendance Result was resolved by its default at completion (FR-ATT-07, FR-ATT-08; E7-61) - ATTENDED
+     * or ATTENDANCE_UNCONFIRMED for an Online Booking, NOT_APPLICABLE for a Manual Booking, whose event carries
+     * {@code customerId} null and {@code source: MANUAL}.
+     */
+    public static final String ATTENDANCE_RESOLVED = "AttendanceResolved";
+
+    /**
      * {@code {venueId, resourceId}}, aggregate {@code RESOURCE}: the venue disabled a room (FR-VEN-03; E7-26, published
      * since E7-56, PO decision 12 Oct 2026). Its four siblings below carry the same payload.
      */

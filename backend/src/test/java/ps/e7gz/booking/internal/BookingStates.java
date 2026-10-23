@@ -145,6 +145,48 @@ final class BookingStates {
         });
     }
 
+    /**
+     * E7-61: an ACTIVE booking (Online or Manual) moved back in time by {@code by}, whole - its interval and commitment,
+     * its active BOOKING reservation (planned interval and actual start), the evidence of its attendance record and its
+     * history rows together - so a booking whose evidence the real commands recorded now lies past its {@code endAt},
+     * as when its T5 comes due. Every instant keeps its distance to the others: the evidence stays inside its window,
+     * the reservation was taken before the end it is released at ({@code ck_reservation_release_chronology}). Its jobs
+     * and audit rows are left as they are.
+     */
+    static void shiftBack(UUID bookingId, Duration by) {
+        double seconds = by.toNanos() / 1e9;
+        VenueAnswerDb.withoutTriggers(jdbc -> {
+            jdbc.sql("""
+                            UPDATE booking.booking
+                               SET start_at = start_at - make_interval(secs => :by),
+                                   end_at = end_at - make_interval(secs => :by),
+                                   commitment_period = CASE WHEN commitment_period IS NOT NULL THEN tstzrange(
+                                       start_at - make_interval(secs => :by), end_at - make_interval(secs => :by),
+                                       '[)') END
+                             WHERE id = :id AND status = 'ACTIVE'""")
+                    .param("by", seconds).param("id", bookingId).update();
+            jdbc.sql("""
+                            UPDATE inventory.resource_reservation
+                               SET planned_start = planned_start - make_interval(secs => :by),
+                                   planned_end = planned_end - make_interval(secs => :by),
+                                   planned_range = tstzrange(planned_start - make_interval(secs => :by),
+                                                             planned_end - make_interval(secs => :by), '[)'),
+                                   actual_reservation_start = actual_reservation_start - make_interval(secs => :by)
+                             WHERE booking_id = :id AND reservation_type = 'BOOKING' AND active_flag""")
+                    .param("by", seconds).param("id", bookingId).update();
+            jdbc.sql("""
+                            UPDATE attendance.attendance_record
+                               SET check_in_at = check_in_at - make_interval(secs => :by),
+                                   late_present_at = late_present_at - make_interval(secs => :by)
+                             WHERE booking_id = :id""")
+                    .param("by", seconds).param("id", bookingId).update();
+            jdbc.sql("""
+                            UPDATE booking.booking_history SET occurred_at = occurred_at - make_interval(secs => :by)
+                             WHERE booking_id = :id""")
+                    .param("by", seconds).param("id", bookingId).update();
+        });
+    }
+
     private static void moveInterval(org.springframework.jdbc.core.simple.JdbcClient jdbc, UUID bookingId,
                                      Instant startAt, String status) {
         jdbc.sql("""

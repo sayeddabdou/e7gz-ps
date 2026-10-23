@@ -221,6 +221,31 @@ class VenueLiveChannelTest extends IntegrationTest {
         onB.close();
     }
 
+    /**
+     * E7-61 (PO decision 10 Oct 2026, E7-44 review): T5's BookingCompleted is {@code BOOKING CHANGED}; the
+     * AttendanceResolved written with it has no signal of its own, so a completion makes one refetch.
+     */
+    @Test
+    void theCompletionIsAChangeSignalAndItsAttendanceResolvedIsNot() throws Exception {
+        Fixtures.VenueAccount venue = aVenueAccount().create();
+        SseLines onB = open(portB(), venue.id(), hubB());
+
+        assertThat(new VenueStreamSignals(appDataSource, json).eventTypes())
+                .contains(IntegrationEvents.BOOKING_COMPLETED)
+                .doesNotContain(IntegrationEvents.ATTENDANCE_RESOLVED);
+        bookingEvent(IntegrationEvents.ATTENDANCE_RESOLVED, venue.venueId(), UUID.randomUUID());
+        UUID booking = UUID.randomUUID();
+        bookingEvent(IntegrationEvents.BOOKING_COMPLETED, venue.venueId(), booking);
+        deliver();
+
+        // the AttendanceResolved written first produced nothing: the next signal is the completion's
+        JsonNode signal = nextSignal(onB);
+        assertThat(signal.path("type").asText()).isEqualTo("BOOKING");
+        assertThat(signal.path("id").asText()).isEqualTo(booking.toString());
+        assertThat(signal.path("reason").asText()).isEqualTo("CHANGED");
+        onB.close();
+    }
+
     @Test
     void aVenueNeverHearsAnotherVenuesSignals() throws Exception {
         Fixtures.VenueAccount mine = aVenueAccount().create();

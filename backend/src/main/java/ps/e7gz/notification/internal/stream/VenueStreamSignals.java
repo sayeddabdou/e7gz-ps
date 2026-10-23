@@ -33,6 +33,7 @@ import ps.e7gz.notification.internal.stream.VenueStreamChannel.Type;
  *       the customer's warning only.</li>
  *   <li>{@code CheckInRecorded}, {@code LatePresentRecorded}, {@code NoShowRecorded} (E7-59) - {@code BOOKING
  *       CHANGED}.</li>
+ *   <li>{@code BookingCompleted} (E7-61) - {@code BOOKING CHANGED}. Not {@code AttendanceResolved}, written with it.</li>
  *   <li>{@code VenueAccountDisabled} - every open stream of the account closes at once (FR-VEN-08).</li>
  * </ul>
  * The other booking and tournament events (a new tournament request, check-in, ...) add a row to
@@ -65,7 +66,10 @@ public class VenueStreamSignals implements OutboxConsumer {
             // the venue (PO decision 12 Oct 2026)
             Map.entry(IntegrationEvents.CHECK_IN_RECORDED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId")),
             Map.entry(IntegrationEvents.LATE_PRESENT_RECORDED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId")),
-            Map.entry(IntegrationEvents.NO_SHOW_RECORDED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId")));
+            Map.entry(IntegrationEvents.NO_SHOW_RECORDED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId")),
+            // E7-61: T5 completed the booking (PO decision 10 Oct 2026, E7-44 review). AttendanceResolved, written in
+            // the same transaction, has no signal of its own: one refetch per completion
+            Map.entry(IntegrationEvents.BOOKING_COMPLETED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId")));
 
     private final JdbcClient jdbc;
     private final ObjectMapper json;
