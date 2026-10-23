@@ -13,7 +13,7 @@
 | `E7GZ-PS-security-baseline-v1.1.27.sql` | Roles `e7gz_app_runtime` / `e7gz_admin_runtime` and all grants; idempotent; re-run after every migration |
 | `test_behaviour_v127.sh` | 86 behaviour checks of the database rules |
 | `test_tournament_v127.sh` | 22 isolated checks of Tournament approval and Ban-boundary rules |
-| `test_privileges_v127.sh` | 21 checks that the runtime roles can do exactly what they should |
+| `test_privileges_v127.sh` | 23 checks that the runtime roles can do exactly what they should |
 
 ## Build a database
 
@@ -256,6 +256,20 @@ Amr's engineering decision for E7-113, 17 Oct 2026 (not yet a Product Owner deci
 Unchanged on purpose: every other table, column, constraint, trigger and grant; booking reads by `operating_session_id`; `tournament.assert_tournament_aggregate` (reads its tournament's session by id); the guard identifier mapping (`ex_session_no_overlap` keeps its name). Upgrade seeds: `upgrade-seed/V202610131300.sql` (sessions and a referenced booking as they exist before the migration) and `upgrade-seed/V202610171400.sql` (a superseded session beside its day's current one, with a booking on each). Platform-lane table (Venue) with Engine-lane booking guards: needs both owners' review.
 
 - Tests: `MigrationSafetyTest` (the migration on the seeded database; both seeds); the `.dbm`/migration identity check in `MigrationFilesTest`; `SessionPlanTest`; `OpeningHoursChangeIntegrationTest` (a closed day and a shortened day after an hours change: the historical row and its bookings stay, the current session is created, Online intake inside the new hours succeeds and outside it is refused, availability readers agree, a Manual walk-in in the old window has no snapshot and is not cancelled by a later unrelated hours change); `OperatingSessionSupersessionDbTest` (the database guards: supersession once, only on referenced rows, superseded history never snapshotted, current-only uniqueness and overlap).
+
+### v1.1.38 — the Booking Fee receipt is deferred until the payment gateway (E7-66, 23 Oct 2026)
+
+**Product Owner decision, 23 Oct 2026 (Sayed):** solve the mismatch and deactivate `loyalty.record_fee_receipt` until payment collection ships (ADR-018). Grants only, in `E7GZ-PS-security-baseline-v1.1.27.sql` and its Flyway copy `R__security_baseline.sql`, as v1.1.29: the `.dbm` holds no grants, and the baseline re-applies after every migration. No versioned migration.
+
+**Why.** The function's own comment says it is "granted ONLY to the authenticated settlement adapter role", but no such role exists and the baseline granted it to both runtime roles like any other producer. A receipt is what turns a refund decision into Wallet money (`loyalty.settle_refund` credits only a collected fee), so whoever can record one can create Wallet credit. Nothing calls it at launch: the Booking Fee is EGP 0, the `PaymentProvider` port has no implementation and no caller, and the function itself refuses while `loyalty.wallet_refunds_enabled` is false.
+
+| Function | `e7gz_app_runtime` before | after | `e7gz_admin_runtime` before | after |
+|---|---|---|---|---|
+| `loyalty.record_fee_receipt(uuid, numeric, text, text, timestamptz)` | EXECUTE | none | EXECUTE | none |
+
+The baseline gains a `deferred` list, handled like `internal` (EXECUTE revoked from PUBLIC and from both runtime roles). When payments ship, that task creates the payment gateway's settlement-adapter role, grants it this function, and removes it from `deferred`. Body, signature, owner and every other grant unchanged; `record_refund` and `settle_refund` stay callable by both runtime roles (`settle_refund` credits nothing without a receipt).
+
+- Tests: two new checks in `test_privileges_v127.sh`; `FeeReceiptPrivilegesTest` (neither runtime role may execute it, the other fee producers still may); `BookingFeeNonZeroIntegrationTest` records the receipt on the owner connection, as the future adapter role will; the copy check in `MigrationFilesTest`.
 
 ## Product Owner decisions (26 Sep 2026)
 

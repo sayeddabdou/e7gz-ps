@@ -3,12 +3,14 @@ package ps.e7gz.booking.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
+import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
@@ -19,6 +21,7 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import ps.e7gz.common.codes.BookingTerminalReason;
 import ps.e7gz.common.codes.FeeTreatment;
 import ps.e7gz.common.codes.PlayMode;
@@ -37,6 +40,7 @@ import ps.e7gz.loyalty.api.FeeQuery;
 import ps.e7gz.loyalty.internal.LoyaltyLedgers;
 import ps.e7gz.scheduling.api.ScheduledJobs;
 import ps.e7gz.support.IntegrationTest;
+import ps.e7gz.support.PostgresTestContainer;
 import ps.e7gz.support.fixtures.Fixtures;
 
 /**
@@ -158,27 +162,15 @@ class BookingFeeNonZeroIntegrationTest extends IntegrationTest {
 
     @Test
     void aCollectedFeeIsRefundedIntoTheWalletWhenTheWalletSwitchIsOn() {
-        // FR-PTS-10, PCR-004: the wallet is credited only by Booking Fee refunds. The receipt comes from a settlement
-        // adapter that does not exist at launch (ADR-018), so the test records it the way that adapter will.
+        // FR-PTS-10, PCR-004: the wallet is credited only by Booking Fee refunds, and only of a collected fee
         UUID admin = Fixtures.anAdmin().create().id();
-        Planted booking = plant(BookingTerminalReason.VENUE_REJECTED, Duration.ofMinutes(5));
-        BigDecimal before = walletBalance(booking.customerId());
         walletSwitch(admin, true);
         try {
-            UUID refund = runner.run(new Shared<>(booking.customerId(), context -> {
-                context.jdbc().sql("SELECT loyalty.begin_command(ARRAY[CAST(:user AS uuid)], :correlation)")
-                        .param("user", booking.customerId()).param("correlation", CorrelationId.require())
-                        .query().singleRow();
-                context.jdbc().sql("""
-                                SELECT loyalty.record_fee_receipt(:booking, CAST(:amount AS numeric), 'TEST_ADAPTER',
-                                                                  :reference, :providerAt)""")
-                        .param("booking", booking.bookingId()).param("amount", FEE)
-                        .param("reference", "nfr38-" + booking.bookingId())
-                        .param("providerAt", utc(booking.createdAt().plus(Duration.ofMinutes(1))))
-                        .query().singleRow();
-                return refunds.recordDecision(context, booking.customerId(), booking.bookingId(),
-                        booking.terminalHistoryId());
-            }));
+            Planted booking = plant(BookingTerminalReason.VENUE_REJECTED, Duration.ofMinutes(5),
+                    BookingFeeNonZeroIntegrationTest::recordReceiptAsTheSettlementAdapter);
+            BigDecimal before = walletBalance(booking.customerId());
+
+            UUID refund = decide(booking);
 
             assertThat(refund(refund).amount()).isEqualByComparingTo(FEE);
             assertThat(VenueAnswerDb.OWNER.sql("""
@@ -225,11 +217,18 @@ class BookingFeeNonZeroIntegrationTest extends IntegrationTest {
     record Refund(String treatment, String terminalReason, BigDecimal feeSnapshot, BigDecimal amount) {
     }
 
+    private Planted plant(BookingTerminalReason reason, Duration after) {
+        return plant(reason, after, pending -> {
+        });
+    }
+
     /**
      * A new Customer's PENDING booking from the real creation command, created an hour ago with a {@value #FEE} fee,
      * then ended for {@code reason} at {@code createdAt + after} - before its start, which is an hour from now.
+     * {@code whilePending} runs on the PENDING booking (its terminal history id still null): a fee is collected while
+     * the booking is live, and the database refuses to commit an ended booking without its fee decision.
      */
-    private Planted plant(BookingTerminalReason reason, Duration after) {
+    private Planted plant(BookingTerminalReason reason, Duration after, Consumer<Planted> whilePending) {
         UUID customer = world.anotherCustomer();
         CreatedBooking created = creation.create(world.request(customer, world.room, world.start(), 60));
         Instant createdAt = VenueAnswerDb.dbNow().minus(Duration.ofHours(1)).truncatedTo(ChronoUnit.SECONDS);
@@ -249,6 +248,7 @@ class BookingFeeNonZeroIntegrationTest extends IntegrationTest {
                              WHERE booking_id = :id AND sequence = 1""")
                     .param("created", utc(createdAt)).param("id", created.bookingId()).update();
         });
+        whilePending.accept(new Planted(created.bookingId(), customer, createdAt, null));
         String status = reason == BookingTerminalReason.VENUE_REJECTED
                 || reason == BookingTerminalReason.REJECTED_AFTER_EXPIRY ? "REJECTED" : "CANCELLED";
         BookingStates.plant(created.bookingId(), BookingStates.Plant.of(status).reason(reason.name())
@@ -257,6 +257,37 @@ class BookingFeeNonZeroIntegrationTest extends IntegrationTest {
                         SELECT id FROM booking.booking_history WHERE booking_id = :id ORDER BY sequence DESC LIMIT 1""")
                 .param("id", created.bookingId()).query(UUID.class).single();
         return new Planted(created.bookingId(), customer, createdAt, history);
+    }
+
+    /**
+     * The collection proof the payment gateway's settlement adapter will record (ADR-018). No runtime role may record
+     * one until payments ship (v1.1.38, PO decision 23 Oct 2026), so the test does it as the owner, in a Loyalty
+     * command of its own while the booking is live - before the refund decision, which then settles it into the
+     * wallet.
+     */
+    private static void recordReceiptAsTheSettlementAdapter(Planted booking) {
+        SingleConnectionDataSource owner = new SingleConnectionDataSource(
+                PostgresTestContainer.jdbcUrl(PostgresTestContainer.DATABASE), PostgresTestContainer.MIGRATOR,
+                PostgresTestContainer.MIGRATOR, true);
+        owner.setAutoCommit(false);
+        try {
+            JdbcClient jdbc = JdbcClient.create(owner);
+            jdbc.sql("SELECT loyalty.begin_command(ARRAY[CAST(:user AS uuid)], :correlation)")
+                    .param("user", booking.customerId()).param("correlation", CorrelationId.require())
+                    .query().singleRow();
+            jdbc.sql("""
+                            SELECT loyalty.record_fee_receipt(:booking, CAST(:amount AS numeric), 'TEST_ADAPTER',
+                                                              :reference, :providerAt)""")
+                    .param("booking", booking.bookingId()).param("amount", FEE)
+                    .param("reference", "nfr38-" + booking.bookingId())
+                    .param("providerAt", utc(booking.createdAt().plus(Duration.ofMinutes(1))))
+                    .query().singleRow();
+            owner.getConnection().commit();
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        } finally {
+            owner.destroy();
+        }
     }
 
     /** The production decision of every non-admin path: {@code loyalty.record_refund} through the Loyalty API. */

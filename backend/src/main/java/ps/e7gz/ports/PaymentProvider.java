@@ -7,6 +7,8 @@ import ps.e7gz.common.money.Money;
  * DEFERRED (ADR-018, arch 03 section 18): the payment provider port for a future non-zero Booking Fee. It has no
  * implementation and no caller at launch: payment collection and settlement are out of scope (FR-PTS-13, PRD section
  * 3.4). Enabling a fee is then a configuration change plus one adapter, with no schema or logic redesign (NFR-38).
+ * That adapter records each collected fee with {@code loyalty.record_fee_receipt}, under its own settlement-adapter
+ * database role: until then no runtime role may call it (security baseline v1.1.38, PO decision 23 Oct 2026).
  *
  * <p>Nothing under {@code ps.e7gz.booking}, {@code ps.e7gz.loyalty} or {@code ps.e7gz.tournament} may import it
  * ({@code PaymentProviderBoundaryTest}): the booking path never depends on a payment integration.
