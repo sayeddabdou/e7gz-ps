@@ -3,7 +3,7 @@ import type { components } from "@e7gz/api-client";
 import { webTokens } from "@e7gz/tokens/web";
 import { apiErrorOf, type ApiClient } from "../../api";
 import { useMessages } from "../../i18n";
-import { createIdempotencyKey } from "../requests/LiveRequestsProvider";
+import { createIdempotencyKey } from "../operations";
 import { bookingErrorMessage } from "./errorMessages";
 
 type VenueResource = components["schemas"]["VenueResource"];

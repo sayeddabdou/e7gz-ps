@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ApiClient } from "../../api";
 import type { components } from "@e7gz/api-client";
 import { messages, MessagesContext } from "../../i18n";
-import { createIdempotencyKey, LiveRequestsProvider, useLiveRequests } from "./LiveRequestsProvider";
+import { createIdempotencyKey } from "../operations";
+import { LiveRequestsProvider, useLiveRequests } from "./LiveRequestsProvider";
 
 function Harness() {
   const model = useLiveRequests();

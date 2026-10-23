@@ -10,23 +10,13 @@ import {
   storeVenuePushSubscriptionId,
 } from "./pushSubscription";
 import type { PendingRequestsViewModel } from "./PendingRequestsScreen";
+import { createIdempotencyKey } from "../operations";
 
 type Booking = components["schemas"]["VenueBooking"];
 type PushState = NonNullable<PendingRequestsViewModel["pushState"]>;
 type SoundState = NonNullable<PendingRequestsViewModel["soundState"]>;
 
 const LiveRequestsContext = createContext<PendingRequestsViewModel | undefined>(undefined);
-
-export function createIdempotencyKey(): string {
-  const secureCrypto = globalThis.crypto;
-  if (secureCrypto?.randomUUID) return secureCrypto.randomUUID();
-  if (!secureCrypto?.getRandomValues) throw new Error("secure-random-unavailable");
-  const bytes = secureCrypto.getRandomValues(new Uint8Array(16));
-  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
-  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
-  const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0"));
-  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
-}
 
 export function LiveRequestsProvider({
   api,
@@ -59,6 +49,7 @@ export function LiveRequestsProvider({
   const [pushState, setPushState] = useState<PushState>(() => (
     "Notification" in window && "serviceWorker" in navigator && "PushManager" in window ? "disabled" : "unsupported"
   ));
+  const [bookingChangeVersion, setBookingChangeVersion] = useState(0);
 
   const errorMessage = useCallback((value: unknown) => {
     const code = apiErrorOf(value).code;
@@ -136,6 +127,7 @@ export function LiveRequestsProvider({
           await readVenueStream(response, (signal: VenueStreamSignal) => {
             alertQueue.current.receive(signal);
             if (signal.type === "BOOKING") {
+              setBookingChangeVersion((value) => value + 1);
               void refresh();
               return;
             }
@@ -234,9 +226,9 @@ export function LiveRequestsProvider({
   }, [api]);
 
   const value = useMemo<PendingRequestsViewModel>(() => ({
-    bookings, clockOffsetMs, loading, error, actionError, pendingAction, streamState,
+    bookings, clockOffsetMs, loading, error, actionError, pendingAction, streamState, bookingChangeVersion,
     accept, reject, refresh: () => { void refresh(); }, soundState, pushState, enableSound, enablePush,
-  }), [accept, actionError, bookings, clockOffsetMs, enablePush, enableSound, error, loading, pendingAction, pushState, refresh, reject, soundState, streamState]);
+  }), [accept, actionError, bookingChangeVersion, bookings, clockOffsetMs, enablePush, enableSound, error, loading, pendingAction, pushState, refresh, reject, soundState, streamState]);
 
   return <LiveRequestsContext.Provider value={value}>{children}</LiveRequestsContext.Provider>;
 }

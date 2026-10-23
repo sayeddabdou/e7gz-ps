@@ -6,8 +6,9 @@ import type { ConfigResult } from "../config";
 import { AvailabilitySchedule } from "../features/schedule";
 import { PricingEditor, ResourceList, SettingsPage } from "../features/setup";
 import { createVenueSessionApi, VenueLoginScreen, type VenueSessionApi } from "../features/auth";
-import { LiveRequestsProvider, PendingRequestsScreen, useLiveRequests } from "../features/requests";
+import { LiveRequestsProvider, MissedRequestsScreen, PendingRequestsScreen, useLiveRequests } from "../features/requests";
 import { revokeVenuePush } from "../features/requests/pushSubscription";
+import { NotificationsScreen } from "../features/notifications";
 import { BookingDetailScreen, BookingHistoryScreen, TodayBookingsScreen } from "../features/today";
 import { ManualBookingScreen } from "../features/walk-in";
 import { directionOf, messages, MessagesContext, type Language, type Messages } from "../i18n";
@@ -19,6 +20,7 @@ const routes = [
   { path: "/", label: "overview", icon: "⌂" },
   { path: "/pending-requests", label: "pendingRequests", icon: "◷" },
   { path: "/missed-requests", label: "missedRequests", icon: "!" },
+  { path: "/notifications", label: "notifications", icon: "◉" },
   { path: "/bookings", label: "bookings", icon: "▣" },
   { path: "/manual-booking", label: "manualBooking", icon: "+" },
   { path: "/rooms", label: "rooms", icon: "□" },
@@ -154,6 +156,16 @@ function PendingRequestsRoute() {
   return <PendingRequestsScreen model={useLiveRequests()} />;
 }
 
+function MissedRequestsRoute({ api }: { api: ReturnType<typeof createDashboardApiClient> }) {
+  const { bookingChangeVersion } = useLiveRequests();
+  return <MissedRequestsScreen api={api} bookingChangeVersion={bookingChangeVersion} />;
+}
+
+function NotificationsRoute({ api }: { api: ReturnType<typeof createDashboardApiClient> }) {
+  const navigate = useNavigate();
+  return <NotificationsScreen api={api} onOpenBooking={(bookingId) => navigate(`/bookings/${bookingId}`)} />;
+}
+
 function TodayBookingsRoute({ api }: { api: ReturnType<typeof createDashboardApiClient> }) {
   const navigate = useNavigate();
   return <TodayBookingsScreen api={api} onOpenBooking={(bookingId) => navigate(`/bookings/${bookingId}`)} />;
@@ -284,6 +296,10 @@ function ProtectedShell({
                 element={
                   route.path === "/pending-requests" ? (
                     <PendingRequestsRoute />
+                  ) : route.path === "/missed-requests" ? (
+                    <MissedRequestsRoute api={api} />
+                  ) : route.path === "/notifications" ? (
+                    <NotificationsRoute api={api} />
                   ) : route.path === "/bookings" ? (
                     <TodayBookingsRoute api={api} />
                   ) : route.path === "/manual-booking" ? (

@@ -32,6 +32,7 @@ const booking: Booking = {
 function model(overrides: Partial<PendingRequestsViewModel> = {}): PendingRequestsViewModel {
   return {
     bookings: [booking],
+    bookingChangeVersion: 0,
     clockOffsetMs: Date.parse("2026-10-12T15:00:00Z") - Date.now(),
     error: undefined,
     loading: false,
