@@ -2501,6 +2501,16 @@ Carry-forward from E7-65 (Sprint 4 contract, PO decisions 17 Oct 2026, do these 
 Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do these too):
 - Reuse loyalty.api.BookingRewards (added by E7-59) for every booking outcome's Loyalty reconciliation (loyalty.reconcile_booking); don't add a second entry point.
 
+PO decisions 23 Oct 2026 — E7-66 kickoff (do these too):
+- Fee treatment: FeeQuery.feeTreatmentFor(BookingTerminalReason) is an exhaustive switch with no default branch and returns common.codes.FeeTreatment (FULL_REFUND, CUSTOMER_POLICY, NOT_APPLICABLE: the database's names, not "FULL"). The database already decides every refund (booking.expected_fee_treatment, used by loyalty.record_refund), so a test checks that the switch and the database function give the same treatment for every BookingTerminalReason.
+- Points notifications are this task's (E7-59's carry-forward left them to Sprint 4): POINTS_EARNED (In-App + Push) when attended-completion points are posted, and ADMIN_ACCOUNT_CHANGE (In-App + Email) when an admin adjusts points (FR-NTF-11). Both come from the LOYALTY_POINTS_LEDGER_COMMITTED outbox event through the one notification path (E7-55's consumer), never Notifications.notify. Referral points stay with E7-67.
+- Booking fee receipt: payment collection is deferred (ADR-018), so loyalty.record_fee_receipt has no production caller. Use it only in the NFR-38 test: with a non-zero fee and the wallet-refund switch on, every terminal reason resolves to exactly one treatment with the right refund, and a refund lands in the wallet. Add the PaymentProvider port (arch 03 §18, ps.e7gz.ports) with no implementation and no caller, and the ArchUnit test that nothing under ps.e7gz.booking, ps.e7gz.loyalty or ps.e7gz.tournament imports it.
+
+Delivery (PO decision 23 Oct 2026): this task ships as two PRs, merged in order:
+- PR 1 (branch E7-66-loyalty-ledgers): fee treatment, the PaymentProvider port and the NFR-38 tests; GET /customer/points and GET /customer/wallet; GET /admin/wallet, GET /admin/users/{userId}/wallet, GET /admin/points, GET /admin/users/{userId}/points and POST /admin/points/adjust; the points notifications.
+- PR 2 (branch E7-66-admin-users): GET /admin/users and GET /admin/users/{userId} (D4) with the trust.api read ports, which Amr reviews.
+- Each PR passes ./gradlew check on its own and is reviewed separately.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
