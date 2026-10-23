@@ -9,7 +9,7 @@ import { authErrorMessage } from "./errorMessages";
 
 type Step = "login" | "register" | "otp";
 
-export function AuthFlow({ api, tokenStore, onAuthenticated }: { api: CustomerAuthApi; tokenStore: TokenStore; onAuthenticated(): void }) {
+export function AuthFlow({ api, tokenStore, onAuthenticated, onForgotPassword }: { api: CustomerAuthApi; tokenStore: TokenStore; onAuthenticated(): void; onForgotPassword?(): void }) {
   const [step, setStep] = useState<Step>("login");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -105,9 +105,16 @@ export function AuthFlow({ api, tokenStore, onAuthenticated }: { api: CustomerAu
             <Text style={styles.linkText}>{remaining > 0 ? t.auth.otp.resendCountdown.replace("{seconds}", String(remaining)) : t.auth.otp.resend}</Text>
           </Pressable>
         ) : (
-          <Pressable accessibilityRole="button" onPress={() => { setError(undefined); setStep(step === "login" ? "register" : "login"); }} style={styles.linkButton}>
-            <Text style={styles.linkText}>{step === "login" ? t.auth.login.createAccount : t.auth.register.haveAccount}</Text>
-          </Pressable>
+          <>
+            {step === "login" && onForgotPassword ? (
+              <Pressable accessibilityRole="button" onPress={onForgotPassword} style={styles.linkButton}>
+                <Text style={styles.linkText}>{t.profile.passwordReset.forgot}</Text>
+              </Pressable>
+            ) : null}
+            <Pressable accessibilityRole="button" onPress={() => { setError(undefined); setStep(step === "login" ? "register" : "login"); }} style={styles.linkButton}>
+              <Text style={styles.linkText}>{step === "login" ? t.auth.login.createAccount : t.auth.register.haveAccount}</Text>
+            </Pressable>
+          </>
         )}
       </ScrollView>
     </KeyboardAvoidingView>

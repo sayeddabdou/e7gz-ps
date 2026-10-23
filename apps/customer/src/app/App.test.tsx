@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-
 import { App } from "./App";
 import type { TokenStore } from "../auth/tokenStore";
 import type { PushRegistration, PushSetupState } from "../features/notifications/pushRegistration";
+import type { CustomerProfileApi } from "../features/profile";
 
 const config = { ok: true as const, config: { apiBaseUrl: "http://127.0.0.1:4010" } };
 const meta = { correlationId: "c-1", serverTime: "2026-10-12T17:04:11Z" };
@@ -10,21 +11,47 @@ const tokenStore: TokenStore = {
   write: jest.fn().mockResolvedValue(undefined),
   clear: jest.fn().mockResolvedValue(undefined),
 };
+const profile = {
+  userId: "3f6c1d2e-8a4b-4c5d-9e6f-7a8b9c0d1e2f",
+  fullName: "Omar Hassan",
+  username: "omar_h",
+  phone: "+201001234567",
+  phoneVerified: true,
+  email: "omar@example.com",
+  emailVerified: false,
+  usernameChangeAvailableAt: null,
+  joinedAt: "2026-10-01T09:30:00Z",
+};
+const profileApi = {
+  getProfile: jest.fn().mockResolvedValue({ ok: true, value: profile, serverTime: meta.serverTime }),
+} as unknown as CustomerProfileApi;
 
 beforeEach(() => {
-  jest.spyOn(globalThis, "fetch").mockResolvedValue(
-    new Response(JSON.stringify({ data: [], meta }), {
+  jest.spyOn(globalThis, "fetch").mockImplementation(async (request) => {
+    const url = request instanceof Request ? request.url : String(request);
+    const data = url.endsWith("/api/v1/customer/profile") ? {
+      userId: "3f6c1d2e-8a4b-4c5d-9e6f-7a8b9c0d1e2f",
+      fullName: "Omar Hassan",
+      username: "omar_h",
+      phone: "+201001234567",
+      phoneVerified: true,
+      email: "omar@example.com",
+      emailVerified: false,
+      usernameChangeAvailableAt: null,
+      joinedAt: "2026-10-01T09:30:00Z",
+    } : [];
+    return new Response(JSON.stringify({ data, meta }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
-    }),
-  );
+    });
+  });
 });
 
 afterEach(() => jest.restoreAllMocks());
 
 describe("Customer app shell", () => {
   it("shows the four prototype tabs", async () => {
-    render(<App config={config} tokenStore={tokenStore} />);
+    render(<App config={config} tokenStore={tokenStore} profileApi={profileApi} />);
 
     await waitFor(() => expect(screen.getByText("Home")).toBeTruthy());
     expect(screen.getByText("Tournaments")).toBeTruthy();
@@ -38,7 +65,7 @@ describe("Customer app shell", () => {
   }, 10_000);
 
   it("navigates between empty feature screens", async () => {
-    render(<App config={config} tokenStore={tokenStore} />);
+    render(<App config={config} tokenStore={tokenStore} profileApi={profileApi} />);
 
     await waitFor(() => expect(screen.getByText("Home")).toBeTruthy());
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
@@ -58,6 +85,7 @@ describe("Customer app shell", () => {
 
     fireEvent.press(screen.getByText("Profile"));
     expect(screen.getByRole("header", { name: "Profile" })).toBeTruthy();
+    expect(await screen.findByText("Omar Hassan")).toBeTruthy();
   });
 
   it("logs out even when push-device revocation fails offline", async () => {
@@ -72,11 +100,13 @@ describe("Customer app shell", () => {
         config={config}
         tokenStore={tokenStore}
         authApi={{ logout, refresh: jest.fn() } as never}
+        profileApi={profileApi}
         pushRegistrationOverride={pushRegistration}
       />,
     );
 
     fireEvent.press(await screen.findByText("Profile"));
+    expect(await screen.findByText("Omar Hassan")).toBeTruthy();
     fireEvent.press(screen.getByText("Log out"));
 
     await waitFor(() => expect(logout).toHaveBeenCalledTimes(1));
