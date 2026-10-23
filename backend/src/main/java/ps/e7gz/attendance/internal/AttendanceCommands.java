@@ -29,7 +29,7 @@ import ps.e7gz.inventory.ledger.api.ReservationOwner;
 import ps.e7gz.loyalty.api.BookingRewards;
 import ps.e7gz.messaging.api.CommandAnswer;
 import ps.e7gz.messaging.api.Outbox;
-import ps.e7gz.trust.api.NoShowOutcomes;
+import ps.e7gz.trust.api.BookingOutcomes;
 
 /**
  * O13 - Check-in, Mark Present - Late and no-show (arch 07 section 7.1, FRS section 4.6; E7-59). Each method is a
@@ -60,14 +60,14 @@ class AttendanceCommands {
     private final AttendanceBookings bookings;
     private final AttendanceStore store;
     private final ReservationLedger ledger;
-    private final NoShowOutcomes trust;
+    private final BookingOutcomes trust;
     private final BookingRewards rewards;
     private final AuditWriter audit;
     private final Outbox outbox;
     private final AdminAlerts alerts;
 
     AttendanceCommands(AttendanceBookings bookings, AttendanceStore store, ReservationLedger ledger,
-                       NoShowOutcomes trust, BookingRewards rewards, AuditWriter audit, Outbox outbox,
+                       BookingOutcomes trust, BookingRewards rewards, AuditWriter audit, Outbox outbox,
                        AdminAlerts alerts) {
         this.bookings = bookings;
         this.store = store;

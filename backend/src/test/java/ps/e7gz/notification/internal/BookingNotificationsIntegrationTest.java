@@ -682,6 +682,58 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
         assertThat(notifications(booking)).containsExactlyInAnyOrderElementsOf(before);
     }
 
+    // ---------------------------------------------------------------------- E7-61 completion (T5), once each
+
+    /**
+     * §52.2 "Attendance-Unconfirmed Completion" (FR-NTF-05): a Late-Present booking completes ATTENDANCE_UNCONFIRMED and
+     * the customer is told once, by its one AttendanceResolved - even when redelivered; BookingCompleted adds nothing.
+     */
+    @Test
+    void anUnconfirmedCompletionTellsTheCustomerOnce() {
+        Booking booking = flows.active(Duration.ofMinutes(20));
+        attendance.latePresent(booking.venueAccountId(), booking.bookingId());
+        booking = flows.pastItsEnd(booking, Duration.ofMinutes(10));
+        assertThat(flows.fireCompletion(booking)).isTrue();
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.ATTENDANCE_RESOLVED);
+        consumer.handle(outboxEvent(booking, IntegrationEvents.BOOKING_COMPLETED));
+
+        assertMadeOnceBy(booking, IntegrationEvents.ATTENDANCE_RESOLVED,
+                "CUSTOMER ATTENDANCE_UNCONFIRMED_COMPLETION " + booking.customerId());
+        assertThat(venueCodes(booking)).doesNotContain("ATTENDANCE_UNCONFIRMED_COMPLETION");
+    }
+
+    /** An ATTENDED completion has no notification here: its points notification is E7-66's (Sprint 4). */
+    @Test
+    void anAttendedCompletionTellsNobody() {
+        Booking booking = flows.active(Duration.ofMinutes(5));
+        attendance.checkIn(booking.venueAccountId(), booking.bookingId());
+        drain();
+        List<String> before = notifications(booking);
+        booking = flows.pastItsEnd(booking, Duration.ofMinutes(10));
+        assertThat(flows.fireCompletion(booking)).isTrue();
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.ATTENDANCE_RESOLVED);
+        consumer.handle(outboxEvent(booking, IntegrationEvents.BOOKING_COMPLETED));
+
+        assertThat(notifications(booking)).containsExactlyInAnyOrderElementsOf(before);
+    }
+
+    /** A walk-in's completion (NOT_APPLICABLE, no customer) tells nobody. */
+    @Test
+    void aManualCompletionTellsNobody() {
+        Booking booking = flows.walkIn();
+        drain();
+        List<String> before = notifications(booking);
+        booking = flows.pastItsEnd(booking, Duration.ofMinutes(10));
+        assertThat(flows.fireCompletion(booking)).isTrue();
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.ATTENDANCE_RESOLVED);
+        consumer.handle(outboxEvent(booking, IntegrationEvents.BOOKING_COMPLETED));
+
+        assertThat(notifications(booking)).containsExactlyInAnyOrderElementsOf(before);
+    }
+
     /**
      * A no-show on a delayed start that would have cancelled (Amr Heiba, 17 Oct 2026): the start-time cancellation
      * tells the customer and the venue once each, by the established BookingCancelled path - never NO_SHOW_RECORDED.

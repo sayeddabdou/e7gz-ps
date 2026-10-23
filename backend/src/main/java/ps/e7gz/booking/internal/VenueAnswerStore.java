@@ -59,6 +59,17 @@ class VenueAnswerStore {
              WHERE id = :id AND status = 'CONFIRMED'
             """;
 
+    /**
+     * ACTIVE -> COMPLETED at T5 (E7-61, arch 07 section 7.3): terminal with no Booking Reason Code and no fee treatment
+     * (COMPLETED is outside the reason map), {@code terminal_at = :at}, the stored {@code end_at}; the planned interval
+     * is never rewritten.
+     */
+    static final String COMPLETE = """
+            UPDATE booking.booking
+               SET status = 'COMPLETED', terminal_at = :at, version = version + 1
+             WHERE id = :id AND status = 'ACTIVE'
+            """;
+
     /** PENDING -> VENUE_RESPONSE_EXPIRED (FR-BOK-18): non-terminal, so no reason, no terminal_at (FR-BOK-12). */
     static final String EXPIRE = """
             UPDATE booking.booking
@@ -147,6 +158,11 @@ class VenueAnswerStore {
     /** @return false when the booking is no longer CONFIRMED */
     boolean start(CommandContext command, UUID bookingId) {
         return command.jdbc().sql(START).param("id", bookingId).update() == 1;
+    }
+
+    /** @return false when the booking is no longer ACTIVE */
+    boolean complete(CommandContext command, UUID bookingId, Instant at) {
+        return command.jdbc().sql(COMPLETE).param("id", bookingId).param("at", utc(at)).update() == 1;
     }
 
     /** @return false when the booking is no longer PENDING */

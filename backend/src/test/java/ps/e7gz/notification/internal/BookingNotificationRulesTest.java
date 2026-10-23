@@ -108,11 +108,56 @@ class BookingNotificationRulesTest extends IntegrationTest {
     }
 
     /**
-     * The six booking rules of E7-55, the five Late Confirm ones (E7-58) and the three attendance ones (E7-59):
-     * fourteen, and nothing else.
+     * E7-61, Spec v5 section 52.2 and FR-NTF-05: "Attendance-Unconfirmed Completion" to the customer only, from the
+     * AttendanceResolved of an ATTENDANCE_UNCONFIRMED completion; an ATTENDED or a Manual Booking's completion sends
+     * nothing (the points notification is E7-66's), BookingCompleted never does, and an AttendanceResolved without its
+     * result is a producer defect.
      */
     @Test
-    void fourteenEventsHaveARule() {
+    void theCompletionEventsMapToTheUnconfirmedCustomerCodeOnly() {
+        assertThat(plan(IntegrationEvents.ATTENDANCE_RESOLVED, Map.of("attendanceResult", "ATTENDANCE_UNCONFIRMED")))
+                .isEqualTo(new Plan(List.of(new Send(Recipient.CUSTOMER, "ATTENDANCE_UNCONFIRMED_COMPLETION")),
+                        Optional.empty()));
+        assertThat(plan(IntegrationEvents.ATTENDANCE_RESOLVED, Map.of("attendanceResult", "ATTENDED")).isEmpty())
+                .isTrue();
+        assertThat(plan(IntegrationEvents.ATTENDANCE_RESOLVED,
+                Map.of("attendanceResult", "NOT_APPLICABLE", "source", "MANUAL")).isEmpty()).isTrue();
+        assertThat(plan(IntegrationEvents.BOOKING_COMPLETED, Map.of()).isEmpty()).isTrue();
+        assertThat(plan(IntegrationEvents.BOOKING_COMPLETED, Map.of("source", "MANUAL")).isEmpty()).isTrue();
+        assertThatThrownBy(() -> plan(IntegrationEvents.ATTENDANCE_RESOLVED, Map.of()))
+                .isInstanceOf(PermanentDeliveryFailure.class);
+    }
+
+    /**
+     * E7-61's AttendanceResolved contract: a completion resolves ATTENDED or ATTENDANCE_UNCONFIRMED for an Online
+     * Booking and NOT_APPLICABLE for a Manual one (arch 07 section 7.3 rules 1, 2 and 5), and an Online event carries no
+     * {@code source}. Any other result, result/source pair or source is a producer defect - never a silent Plan.NONE.
+     */
+    @Test
+    void anAttendanceResolvedOutsideTheCompletionContractIsAProducerDefect() {
+        List<Map<String, Object>> malformed = List.of(
+                Map.of("attendanceResult", "NOT_APPLICABLE"),
+                Map.of("attendanceResult", "ABSENT_NO_SHOW"),
+                Map.of("attendanceResult", "ATTENDED_INTERRUPTED"),
+                Map.of("attendanceResult", "NOPE"),
+                Map.of("attendanceResult", "ATTENDED", "source", "MANUAL"),
+                Map.of("attendanceResult", "ATTENDANCE_UNCONFIRMED", "source", "MANUAL"),
+                Map.of("attendanceResult", "ABSENT_NO_SHOW", "source", "MANUAL"),
+                Map.of("attendanceResult", "ATTENDANCE_UNCONFIRMED", "source", "ONLINE"),
+                Map.of("attendanceResult", "NOT_APPLICABLE", "source", "WALK_IN"),
+                Map.of("attendanceResult", 1));
+        for (Map<String, Object> payload : malformed) {
+            assertThatThrownBy(() -> plan(IntegrationEvents.ATTENDANCE_RESOLVED, payload)).as(payload.toString())
+                    .isInstanceOf(PermanentDeliveryFailure.class);
+        }
+    }
+
+    /**
+     * The six booking rules of E7-55, the five Late Confirm ones (E7-58), the three attendance ones (E7-59) and the two
+     * completion ones (E7-61): sixteen, and nothing else.
+     */
+    @Test
+    void sixteenEventsHaveARule() {
         assertThat(BookingNotificationRules.eventTypes()).containsExactlyInAnyOrder(
                 IntegrationEvents.BOOKING_CREATED, IntegrationEvents.BOOKING_CONFIRMED,
                 IntegrationEvents.BOOKING_REJECTED, IntegrationEvents.VENUE_RESPONSE_EXPIRED,
@@ -120,7 +165,8 @@ class BookingNotificationRulesTest extends IntegrationTest {
                 IntegrationEvents.LATE_CONFIRM_INITIATED, IntegrationEvents.LATE_CONFIRM_WARNING_DUE,
                 IntegrationEvents.LATE_CONFIRM_ACCEPTED, IntegrationEvents.LATE_CONFIRM_DECLINED,
                 IntegrationEvents.LATE_CONFIRM_TIMED_OUT, IntegrationEvents.CHECK_IN_RECORDED,
-                IntegrationEvents.LATE_PRESENT_RECORDED, IntegrationEvents.NO_SHOW_RECORDED);
+                IntegrationEvents.LATE_PRESENT_RECORDED, IntegrationEvents.NO_SHOW_RECORDED,
+                IntegrationEvents.BOOKING_COMPLETED, IntegrationEvents.ATTENDANCE_RESOLVED);
     }
 
     /**
@@ -143,7 +189,7 @@ class BookingNotificationRulesTest extends IntegrationTest {
         Properties english = new NotificationTemplates().all().get(Language.EN);
         for (String code : List.of("LATE_CONFIRMATION_RECEIVED", "LATE_CONFIRMATION_EXPIRING",
                 "CUSTOMER_CONFIRMATION_EXPIRED", "VENUE_OPENING_HOURS_CHANGED", "CHECK_IN_RECORDED",
-                "NO_SHOW_RECORDED")) {
+                "NO_SHOW_RECORDED", "ATTENDANCE_UNCONFIRMED_COMPLETION")) {
             String body = english.getProperty(code + ".push.body");
             assertThat(app).as(code).contains(code + ": \"" + body + "\"");
         }
@@ -265,6 +311,10 @@ class BookingNotificationRulesTest extends IntegrationTest {
         if (type.equals(IntegrationEvents.BOOKING_REJECTED)) {
             return Stream.of(BookingTerminalReason.VENUE_REJECTED, BookingTerminalReason.REJECTED_AFTER_EXPIRY)
                     .map(reason -> Map.<String, Object>of("terminalReason", reason.name())).toList();
+        }
+        if (type.equals(IntegrationEvents.ATTENDANCE_RESOLVED)) {
+            return List.of(Map.of("attendanceResult", "ATTENDED"), Map.of("attendanceResult", "ATTENDANCE_UNCONFIRMED"),
+                    Map.of("attendanceResult", "NOT_APPLICABLE", "source", "MANUAL"));
         }
         return List.of(Map.of(), Map.of("source", "MANUAL"));
     }

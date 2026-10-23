@@ -39,7 +39,7 @@ import ps.e7gz.messaging.api.CommandAnswer;
 import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.support.boundary.Boundary;
 import ps.e7gz.support.boundary.BoundaryAssertions;
-import ps.e7gz.trust.api.NoShowOutcomes;
+import ps.e7gz.trust.api.BookingOutcomes;
 
 /**
  * The check-in window closes 15 minutes after the start (roadmap Phase 3 exit; FRS 4.6, arch 07 section 7). A booking's
@@ -62,7 +62,7 @@ class CheckInBoundaryTest {
     private final AttendanceBookings bookings = mock(AttendanceBookings.class);
     private final AttendanceStore store = mock(AttendanceStore.class);
     private final ReservationLedger ledger = mock(ReservationLedger.class);
-    private final NoShowOutcomes trust = mock(NoShowOutcomes.class);
+    private final BookingOutcomes trust = mock(BookingOutcomes.class);
     private final BookingRewards rewards = mock(BookingRewards.class);
     private final Outbox outbox = mock(Outbox.class);
     private final AttendanceCommands commands = new AttendanceCommands(bookings, store, ledger, trust, rewards,

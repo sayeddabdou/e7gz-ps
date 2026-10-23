@@ -8,8 +8,9 @@ import ps.e7gz.common.command.CommandContext;
  * refuses to commit a {@code BOOKING_*} Trust outcome without its {@code loyalty.reward_application} row in the same
  * transaction ({@code loyalty.assert_booking}: "Canonical Booking outcome/correction requires final Loyalty
  * reconciliation in the same transaction"). The row is producer-only (ADR-026): it is written only by
- * {@code loyalty.reconcile_booking}, which derives the entitlement from the outcome - zero for
- * {@code BOOKING_NO_SHOW}, so no points move. Added for E7-59 (the no-show's {@code BOOKING_NO_SHOW}).
+ * {@code loyalty.reconcile_booking}, which derives the entitlement from the outcome - the attended reward for
+ * {@code BOOKING_ATTENDED}, zero for {@code BOOKING_NO_SHOW} and {@code BOOKING_ATTENDANCE_UNCONFIRMED}, so no points
+ * move. Added for E7-59 (the no-show's {@code BOOKING_NO_SHOW}); used by E7-61's completion.
  */
 public interface BookingRewards {
 

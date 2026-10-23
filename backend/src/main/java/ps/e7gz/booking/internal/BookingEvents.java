@@ -44,6 +44,16 @@ final class BookingEvents {
         return event(IntegrationEvents.BOOKING_STARTED, booking, base(booking));
     }
 
+    /** {@code BookingCompleted}: ACTIVE -> COMPLETED at T5 (E7-61); a Manual Booking's is {@link #manualCompleted}. */
+    static NewOutboxEvent completed(Facts booking) {
+        return event(IntegrationEvents.BOOKING_COMPLETED, booking, base(booking));
+    }
+
+    /** {@code BookingCompleted} for a Manual Booking, with {@code source} MANUAL (E7-61, as E7-48's D6 events). */
+    static NewOutboxEvent manualCompleted(Facts booking) {
+        return event(IntegrationEvents.BOOKING_COMPLETED, booking, manual(booking));
+    }
+
     /** {@code BookingCancelled} with its one {@code terminalReason} (FR-BOK-16's operational cause in E7-47). */
     static NewOutboxEvent cancelled(Facts booking, BookingTerminalReason reason) {
         Map<String, Object> payload = base(booking);

@@ -22,6 +22,7 @@ import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.messaging.api.CommandAnswer;
 import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.scheduling.api.JobOutcome;
+import ps.e7gz.scheduling.api.NewJob;
 import ps.e7gz.scheduling.api.ScheduledJob;
 import ps.e7gz.scheduling.api.ScheduledJobs;
 import ps.e7gz.support.boundary.Deadlines;
@@ -59,6 +60,7 @@ public final class BookingFlows {
     private final ScheduledJobs jobs;
     private final ApplicationContext context;
     private DueJobs starts;
+    private DueJobs completions;
 
     private BookingFlows(ApplicationContext context) {
         this.context = context;
@@ -81,6 +83,15 @@ public final class BookingFlows {
             starts = DueJobs.of(context, new BookingStartHandler(runner, store, context.getBean(BookingStarts.class)));
         }
         return starts;
+    }
+
+    /** As {@link #starts()}, for E7-61's T5 handler. */
+    private synchronized DueJobs completions() {
+        if (completions == null) {
+            completions = DueJobs.of(context, new BookingCompleteHandler(runner, store,
+                    context.getBean(BookingCompletions.class)));
+        }
+        return completions;
     }
 
     public static BookingFlows of(ApplicationContext context) {
@@ -212,6 +223,80 @@ public final class BookingFlows {
         runner.run(TestCommands.under(scope(booking), context -> {
             starts().makeDue(context, VenueAnswerDb.bookingStart(booking.bookingId()), context.commandNow());
             return null;
+        }));
+    }
+
+    // ---------------------------------------------------------------------------- E7-61 completion (O12, T5)
+
+    /**
+     * The ACTIVE booking moved back whole so its stored endAt lies {@code endedAgo} (whole seconds) before the database
+     * clock ({@link BookingStates#shiftBack}): evidence the real attendance commands recorded stays inside its window.
+     * Returns the booking with its new startAt.
+     */
+    public Booking pastItsEnd(Booking booking, Duration endedAgo) {
+        Duration by = Duration.ofSeconds(Duration.between(OnlineBookingWorld.dbNow(), endAt(booking.bookingId()))
+                .plus(endedAgo).toSeconds());
+        BookingStates.shiftBack(booking.bookingId(), by);
+        Instant start = OnlineBookingWorld.OWNER.sql("SELECT start_at FROM booking.booking WHERE id = :id")
+                .param("id", booking.bookingId()).query(OffsetDateTime.class).single().toInstant();
+        return new Booking(booking.bookingId(), booking.customerId(), booking.venueId(), booking.venueName(),
+                booking.venueAccountId(), booking.resourceId(), start, booking.venueResponseExpiresAt());
+    }
+
+    /**
+     * As {@link #pastItsEnd}, to an exact stored endAt - microseconds, the database's precision - before or after the
+     * database clock, for the boundary tests. Returns the booking with its new startAt.
+     */
+    public Booking endingAt(Booking booking, Instant end) {
+        Instant target = end.truncatedTo(ChronoUnit.MICROS);
+        BookingStates.shiftBack(booking.bookingId(), Duration.between(target, endAt(booking.bookingId())));
+        assertThat(endAt(booking.bookingId())).as("the stored endAt").isEqualTo(target);
+        Instant start = OnlineBookingWorld.OWNER.sql("SELECT start_at FROM booking.booking WHERE id = :id")
+                .param("id", booking.bookingId()).query(OffsetDateTime.class).single().toInstant();
+        return new Booking(booking.bookingId(), booking.customerId(), booking.venueId(), booking.venueName(),
+                booking.venueAccountId(), booking.resourceId(), start, booking.venueResponseExpiresAt());
+    }
+
+    /** The booking's stored {@code end_at}. */
+    public static Instant endAt(UUID bookingId) {
+        return OnlineBookingWorld.OWNER.sql("SELECT end_at FROM booking.booking WHERE id = :id")
+                .param("id", bookingId).query(OffsetDateTime.class).single().toInstant();
+    }
+
+    /**
+     * Fires the booking's BOOKING_COMPLETE (T5) once through the real deadline worker and E7-61's handler. A booking
+     * started by {@link BookingStates#started} has no T5 (only a real start schedules one), so it is scheduled first at
+     * the stored endAt, as the start schedules it; while PENDING, it is made due now. Returns whether the worker settled
+     * it (DONE, SUPERSEDED, rescheduled or backed off); false when it was not PENDING or a worker holds it.
+     */
+    public boolean fireCompletion(Booking booking) {
+        return makeCompletionDue(booking) && completions().fire(bookingCompleteKey(booking.bookingId()));
+    }
+
+    /** Fires T5 without making it due first ({@link #makeCompletionDue}): for a boundary or a race. */
+    public boolean fireCompletionIfDue(Booking booking) {
+        return completions().fire(bookingCompleteKey(booking.bookingId()));
+    }
+
+    /**
+     * The scheduling half of {@link #fireCompletion}:the booking's T5, scheduled at the stored endAt when it has none,
+     * made due now while PENDING - for a test that fires it itself (a race, a gated worker). Returns whether it is
+     * PENDING and due.
+     */
+    public boolean makeCompletionDue(Booking booking) {
+        String key = bookingCompleteKey(booking.bookingId());
+        return runner.run(TestCommands.under(scope(booking), context -> {
+            jobs.schedule(context, NewJob.of(ManualBookingCommand.BOOKING_COMPLETE,
+                    CreateOnlineBookingCommand.BOOKING_SUBJECT, booking.bookingId(),
+                    store.facts(context, booking.bookingId()).orElseThrow().endAt()));
+            int pending = context.jdbc().sql("""
+                            SELECT count(*) FROM technical.scheduled_job WHERE idempotency_key = :key
+                               AND status = 'PENDING'""")
+                    .param("key", key).query(Integer.class).single();
+            if (pending == 1) {
+                completions().makeDue(context, key, context.commandNow());
+            }
+            return pending == 1;
         }));
     }
 

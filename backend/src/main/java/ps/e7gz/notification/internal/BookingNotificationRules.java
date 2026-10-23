@@ -1,11 +1,13 @@
 package ps.e7gz.notification.internal;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import ps.e7gz.common.codes.AttendanceResult;
 import ps.e7gz.common.codes.BookingTerminalReason;
 import ps.e7gz.messaging.api.IntegrationEvents;
 import ps.e7gz.messaging.api.OutboxEvent;
@@ -148,7 +150,13 @@ final class BookingNotificationRules {
             // outcome is "Attendance-Unconfirmed Completion" at completion (E7-61)
             Map.entry(IntegrationEvents.CHECK_IN_RECORDED, event -> plan(customer("CHECK_IN_RECORDED"))),
             Map.entry(IntegrationEvents.LATE_PRESENT_RECORDED, event -> Plan.NONE),
-            Map.entry(IntegrationEvents.NO_SHOW_RECORDED, event -> plan(customer("NO_SHOW_RECORDED"))));
+            Map.entry(IntegrationEvents.NO_SHOW_RECORDED, event -> plan(customer("NO_SHOW_RECORDED"))),
+            // E7-61 completion (O12). BookingCompleted has no §52.2 code of its own; an attended completion's points
+            // notification (POINTS_EARNED) is E7-66's, Sprint 4
+            Map.entry(IntegrationEvents.BOOKING_COMPLETED, event -> Plan.NONE),
+            // §52.2 "Attendance-Unconfirmed Completion" (FR-NTF-05: it says no attendance reward was applied), the
+            // customer only, from the result the completion resolved (attendanceResolved below)
+            Map.entry(IntegrationEvents.ATTENDANCE_RESOLVED, BookingNotificationRules::attendanceResolved));
     // No rule for a conflicting Late Confirm Accept: it is the synchronous 409 LATE_CONFIRM_CUSTOMER_CONFLICT and no
     // event, so LATE_CONFIRM_SCHEDULE_CONFLICT is never produced (F1, PCR-008)
 
@@ -177,6 +185,34 @@ final class BookingNotificationRules {
             return Plan.NONE;
         }
         return CANCELLED.getOrDefault(reason, Plan.NONE);
+    }
+
+    /**
+     * {@code AttendanceResolved} (E7-61) by the result and source its one producer, T5, writes: an Online Booking's
+     * ATTENDANCE_UNCONFIRMED tells the customer; its ATTENDED (the points notification is E7-66's) and a Manual
+     * Booking's NOT_APPLICABLE send nothing. Any other combination - a result a completion never resolves, a Manual
+     * Booking with Product attendance, an unknown {@code source} - is a producer defect, never silently dropped. A
+     * result resolved by a later producer (the ACTIVE interruptions) is added here by its own task.
+     */
+    private static Plan attendanceResolved(OutboxEvent event) {
+        String result = event.text("attendanceResult");
+        JsonNode source = event.payload().path("source");
+        boolean manual = !source.isMissingNode() && !source.isNull();
+        if (manual && !"MANUAL".equals(source.asText(null))) {
+            throw new PermanentDeliveryFailure(event.eventType() + " " + event.id() + " has an unknown source "
+                    + source);
+        }
+        if (manual && result.equals(AttendanceResult.NOT_APPLICABLE.name())) {
+            return Plan.NONE;
+        }
+        if (!manual && result.equals(AttendanceResult.ATTENDED.name())) {
+            return Plan.NONE;
+        }
+        if (!manual && result.equals(AttendanceResult.ATTENDANCE_UNCONFIRMED.name())) {
+            return plan(customer("ATTENDANCE_UNCONFIRMED_COMPLETION"));
+        }
+        throw new PermanentDeliveryFailure(event.eventType() + " " + event.id() + " has an unexpected attendanceResult "
+                + result + " for " + (manual ? "a Manual" : "an Online") + " Booking");
     }
 
     /** A Manual Booking's events carry {@code source: MANUAL} and no customer (E7-48, D6). */
