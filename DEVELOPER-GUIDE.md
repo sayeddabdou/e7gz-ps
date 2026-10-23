@@ -79,7 +79,8 @@ e7gz-ps/
 │       │   ├── audit/           │
 │       │   ├── admin/           │
 │       │   ├── scheduling/      │ (technical)
-│       │   └── messaging/       ┘ (technical)
+│       │   ├── messaging/       ┘ (technical)
+│       │   └── ports/           PaymentProvider only: DEFERRED, no implementation, no caller (ADR-018, E7-66)
 │       ├── main/resources/
 │       │   ├── application.yml  application-api.yml  application-worker.yml
 │       │   └── db/migration/    V1__baseline.sql + R__security_baseline.sql (E7-10)
@@ -122,7 +123,7 @@ e7gz-ps/
 
 | Folder | Owner (must review changes) |
 |---|---|
-| `backend/…/common/, identity/, geography/, venue/, resource/, pricing/, scheduling/, messaging/, notification/, loyalty/, config/, admin/, audit/*` | Sayed |
+| `backend/…/common/, identity/, geography/, venue/, resource/, pricing/, scheduling/, messaging/, notification/, loyalty/, config/, admin/, audit/, ports/*` | Sayed |
 | `backend/…/inventory/, booking/, attendance/, trust/, tournament/, operations/, review/` | Amr |
 | `apps/, packages/tokens/` | Abdallah |
 | `packages/api-client/openapi.json (generated), backend/…/*/web/ stubs` | Sayed (author) + Abdallah (consumer) |

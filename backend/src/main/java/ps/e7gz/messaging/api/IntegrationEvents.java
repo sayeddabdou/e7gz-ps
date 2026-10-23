@@ -178,6 +178,14 @@ public final class IntegrationEvents {
     public static final String ROOM_OVERRIDE_CHANGED = "RoomOverrideChanged";
 
     /**
+     * Aggregate {@code LOYALTY}, the points transaction: one points ledger row was posted (written by the database
+     * producer {@code loyalty.post_points}, never by Java; ADR-026). Payload {@code {transactionId, cause, bookingId,
+     * referralId, requestedAmount, appliedAmount, unrecoveredAmount, balanceBefore, balanceAfter, recipientUserId,
+     * occurredAt, ...}}. Consumed since E7-66 for the customer's points notifications (PO decision 23 Oct 2026).
+     */
+    public static final String LOYALTY_POINTS_LEDGER_COMMITTED = "LOYALTY_POINTS_LEDGER_COMMITTED";
+
+    /**
      * Every event that can change a venue's availability and so refreshes its Nearest Availability rows (arch 05
      * section 5.3, arch 08 section 7): reservation hold or release, Resource state, selling blocks (maintenance,
      * closures, emergencies), opening hours and prices. Each carries the {@code venueId} it touches;
