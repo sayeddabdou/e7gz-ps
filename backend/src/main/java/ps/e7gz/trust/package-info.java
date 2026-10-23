@@ -22,6 +22,7 @@
  *   <li>E7-70 Reconciler and attendance corrections</li>
  *   <li>E7-71 Bans and the ban cascade (O14)</li>
  *   <li>E7-72 Verified Player</li>
+ *   <li>E7-66 read-only api ports AccountStandings and VerifiedPlayers, for the admin user pages (PO decision D4)</li>
  *   <li>web/ stubs: E7-22, E7-39, E7-54, E7-65, E7-77, E7-88, E7-98 (Sx-P0 contract stubs)</li>
  * </ul>
  */
