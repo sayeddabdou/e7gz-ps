@@ -1,6 +1,7 @@
 package ps.e7gz.booking.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.sql.SQLException;
@@ -208,6 +209,26 @@ class BookingFeeNonZeroIntegrationTest extends IntegrationTest {
         assertThat(walletBalance(booking.customerId())).isEqualByComparingTo(before);
     }
 
+    @Test
+    void anAttendanceCorrectionIsNotARefundTrigger() {
+        // FR-PTS-18: the refund follows the failure to deliver the booked service, not a reclassification
+        Planted booking = pending();
+        VenueAnswerDb.withoutTriggers(jdbc -> jdbc.sql("""
+                        INSERT INTO booking.booking_history (id, booking_id, sequence, occurred_at, entry_kind,
+                                                             event_type, actor_type, correlation_id)
+                        SELECT gen_random_uuid(), :id, max(h.sequence) + 1, clock_timestamp(), 'BOOKING_EVENT',
+                               'ATTENDANCE_CORRECTED', 'ADMIN', gen_random_uuid()
+                          FROM booking.booking_history h WHERE h.booking_id = :id""")
+                .param("id", booking.bookingId()).update());
+        Planted corrected = new Planted(booking.bookingId(), booking.customerId(), booking.createdAt(),
+                lastHistory(booking.bookingId()));
+
+        assertThatThrownBy(() -> decide(corrected))
+                .rootCause().hasMessageContaining("Attendance reclassification is not a refund trigger");
+        assertThat(VenueAnswerDb.OWNER.sql("SELECT count(*) FROM loyalty.booking_fee_refund WHERE booking_id = :id")
+                .param("id", booking.bookingId()).query(Integer.class).single()).isZero();
+    }
+
     // ------------------------------------------------------------------------------------------------------ helpers
 
     /** An Online Booking with a {@value #FEE} fee, ended for {@code reason} {@code after} its creation. */
@@ -229,6 +250,18 @@ class BookingFeeNonZeroIntegrationTest extends IntegrationTest {
      * the booking is live, and the database refuses to commit an ended booking without its fee decision.
      */
     private Planted plant(BookingTerminalReason reason, Duration after, Consumer<Planted> whilePending) {
+        Planted pending = pending();
+        whilePending.accept(pending);
+        String status = reason == BookingTerminalReason.VENUE_REJECTED
+                || reason == BookingTerminalReason.REJECTED_AFTER_EXPIRY ? "REJECTED" : "CANCELLED";
+        BookingStates.plant(pending.bookingId(), BookingStates.Plant.of(status).reason(reason.name())
+                .terminalAt(pending.createdAt().plus(after)));
+        return new Planted(pending.bookingId(), pending.customerId(), pending.createdAt(),
+                lastHistory(pending.bookingId()));
+    }
+
+    /** A new Customer's PENDING booking, created an hour ago with a {@value #FEE} fee; no terminal history yet. */
+    private Planted pending() {
         UUID customer = world.anotherCustomer();
         CreatedBooking created = creation.create(world.request(customer, world.room, world.start(), 60));
         Instant createdAt = VenueAnswerDb.dbNow().minus(Duration.ofHours(1)).truncatedTo(ChronoUnit.SECONDS);
@@ -248,15 +281,13 @@ class BookingFeeNonZeroIntegrationTest extends IntegrationTest {
                              WHERE booking_id = :id AND sequence = 1""")
                     .param("created", utc(createdAt)).param("id", created.bookingId()).update();
         });
-        whilePending.accept(new Planted(created.bookingId(), customer, createdAt, null));
-        String status = reason == BookingTerminalReason.VENUE_REJECTED
-                || reason == BookingTerminalReason.REJECTED_AFTER_EXPIRY ? "REJECTED" : "CANCELLED";
-        BookingStates.plant(created.bookingId(), BookingStates.Plant.of(status).reason(reason.name())
-                .terminalAt(createdAt.plus(after)));
-        UUID history = VenueAnswerDb.OWNER.sql("""
+        return new Planted(created.bookingId(), customer, createdAt, null);
+    }
+
+    private static UUID lastHistory(UUID bookingId) {
+        return VenueAnswerDb.OWNER.sql("""
                         SELECT id FROM booking.booking_history WHERE booking_id = :id ORDER BY sequence DESC LIMIT 1""")
-                .param("id", created.bookingId()).query(UUID.class).single();
-        return new Planted(created.bookingId(), customer, createdAt, history);
+                .param("id", bookingId).query(UUID.class).single();
     }
 
     /**
