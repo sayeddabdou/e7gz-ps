@@ -5,7 +5,6 @@ import java.sql.SQLException;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -31,18 +30,8 @@ class JdbcAccountHolders implements AccountHolders {
             u.id, u.full_name, u.username, CASE WHEN u.anonymised_at IS NULL THEN u.phone_e164 END AS phone,
             u.anonymised_at IS NOT NULL AS deleted""";
 
-    /**
-     * The search of the Sprint 4 contract (E7-65 section 2, "Lists"): a substring of the name, username or email - with
-     * {@code strpos}, so {@code %} and {@code _} in {@code q} are plain characters - or the exact E.164 phone.
-     */
-    static final String SEARCH = """
-            SELECT u.id
-              FROM iam.user_account u
-             WHERE strpos(lower(u.full_name), :q) > 0
-                OR strpos(lower(u.username), :q) > 0
-                OR strpos(lower(u.email), :q) > 0
-                OR u.phone_e164 = CAST(:phone AS text)
-            """;
+    /** {@link CustomerSearch}, the one search of every admin list. */
+    static final String SEARCH = "SELECT u.id FROM iam.user_account u WHERE " + CustomerSearch.MATCHES;
 
     private final JdbcClient jdbc;
 
@@ -76,15 +65,12 @@ class JdbcAccountHolders implements AccountHolders {
 
     @Override
     public Set<UUID> search(String q) {
-        if (q == null || q.isBlank()) {
-            return Set.of();
-        }
-        String text = q.strip();
-        return new LinkedHashSet<>(jdbc.sql(SEARCH)
-                .param("q", text.toLowerCase(Locale.ROOT))
-                .param("phone", PhoneNumbers.toE164(text).orElse(null))
-                .query(UUID.class)
-                .list());
+        return CustomerSearch.of(q)
+                .map(terms -> (Set<UUID>) new LinkedHashSet<>(jdbc.sql(SEARCH)
+                        .param("q", terms.text()).param("phone", terms.phone())
+                        .query(UUID.class)
+                        .list()))
+                .orElse(Set.of());
     }
 
     private static Holder holder(ResultSet rs) throws SQLException {

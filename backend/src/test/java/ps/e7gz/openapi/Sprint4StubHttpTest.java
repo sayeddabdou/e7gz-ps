@@ -61,9 +61,7 @@ class Sprint4StubHttpTest extends IntegrationTest {
     }
 
     @Test
-    void adminUsersTrustAndVerifiedPlayerRoutesAreStubs() throws Exception {
-        notImplemented(get("/api/v1/admin/users"), admin);                          // E7-66 (PO D4)
-        notImplemented(get(USER), admin);                                           // E7-66 (PO D4)
+    void adminTrustAndVerifiedPlayerRoutesAreStubs() throws Exception {
         notImplemented(write(post(USER + "/trust-adjustment"),
                 "{\"counterAfter\":0,\"penaltyStageAfter\":0,\"reason\":\"Wrong no-show.\"}"), admin); // E7-71
         notImplemented(write(post(BAN + "/lift"), REASON), admin);                  // E7-71
