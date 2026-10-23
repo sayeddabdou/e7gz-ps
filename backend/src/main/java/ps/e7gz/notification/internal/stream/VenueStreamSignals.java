@@ -31,6 +31,8 @@ import ps.e7gz.notification.internal.stream.VenueStreamChannel.Type;
  *   <li>{@code LateConfirmInitiated}, {@code LateConfirmAccepted}, {@code LateConfirmDeclined},
  *       {@code LateConfirmTimedOut} (E7-58, D2) - {@code BOOKING CHANGED}. Not {@code LateConfirmWarningDue}: it is
  *       the customer's warning only.</li>
+ *   <li>{@code CheckInRecorded}, {@code LatePresentRecorded}, {@code NoShowRecorded} (E7-59) - {@code BOOKING
+ *       CHANGED}.</li>
  *   <li>{@code VenueAccountDisabled} - every open stream of the account closes at once (FR-VEN-08).</li>
  * </ul>
  * The other booking and tournament events (a new tournament request, check-in, ...) add a row to
@@ -44,21 +46,26 @@ public class VenueStreamSignals implements OutboxConsumer {
     private record Mapping(Type type, Reason reason, String idField) {
     }
 
-    private static final Map<String, Mapping> SIGNALS = Map.of(
-            IntegrationEvents.BOOKING_CREATED, new Mapping(Type.BOOKING, Reason.CREATED, "bookingId"),
+    private static final Map<String, Mapping> SIGNALS = Map.ofEntries(
+            Map.entry(IntegrationEvents.BOOKING_CREATED, new Mapping(Type.BOOKING, Reason.CREATED, "bookingId")),
             // E7-47's answers and expiry: the Pending and Missed lists change (E7-44/E7-47 review, 10 Oct 2026)
-            IntegrationEvents.BOOKING_CONFIRMED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId"),
-            IntegrationEvents.BOOKING_REJECTED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId"),
-            IntegrationEvents.VENUE_RESPONSE_EXPIRED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId"),
-            IntegrationEvents.BOOKING_CANCELLED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId"),
+            Map.entry(IntegrationEvents.BOOKING_CONFIRMED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId")),
+            Map.entry(IntegrationEvents.BOOKING_REJECTED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId")),
+            Map.entry(IntegrationEvents.VENUE_RESPONSE_EXPIRED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId")),
+            Map.entry(IntegrationEvents.BOOKING_CANCELLED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId")),
             // E7-48: a walk-in created ACTIVE; never the CREATED alert, the venue made it (PO decision 10 Oct 2026, E7-48, D6)
-            IntegrationEvents.BOOKING_STARTED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId"),
+            Map.entry(IntegrationEvents.BOOKING_STARTED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId")),
             // E7-58: a Late Confirmation sent, accepted, declined or timed out changes the booking and the Missed list
             // (PO decision D2 12 Oct 2026); LateConfirmWarningDue is the customer's only and has no venue signal
-            IntegrationEvents.LATE_CONFIRM_INITIATED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId"),
-            IntegrationEvents.LATE_CONFIRM_ACCEPTED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId"),
-            IntegrationEvents.LATE_CONFIRM_DECLINED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId"),
-            IntegrationEvents.LATE_CONFIRM_TIMED_OUT, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId"));
+            Map.entry(IntegrationEvents.LATE_CONFIRM_INITIATED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId")),
+            Map.entry(IntegrationEvents.LATE_CONFIRM_ACCEPTED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId")),
+            Map.entry(IntegrationEvents.LATE_CONFIRM_DECLINED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId")),
+            Map.entry(IntegrationEvents.LATE_CONFIRM_TIMED_OUT, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId")),
+            // E7-59: check-in, Mark Present - Late and no-show change the booking for every other open Dashboard of
+            // the venue (PO decision 12 Oct 2026)
+            Map.entry(IntegrationEvents.CHECK_IN_RECORDED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId")),
+            Map.entry(IntegrationEvents.LATE_PRESENT_RECORDED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId")),
+            Map.entry(IntegrationEvents.NO_SHOW_RECORDED, new Mapping(Type.BOOKING, Reason.CHANGED, "bookingId")));
 
     private final JdbcClient jdbc;
     private final ObjectMapper json;

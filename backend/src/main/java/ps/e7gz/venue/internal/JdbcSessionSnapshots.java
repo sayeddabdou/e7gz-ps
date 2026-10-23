@@ -16,14 +16,18 @@ import ps.e7gz.venue.api.SessionSnapshots;
 @Component
 class JdbcSessionSnapshots implements SessionSnapshots {
 
-    /** {@code session_period} is written {@code '[)'}: the start is inside, the end is not. */
+    /**
+     * {@code session_period} is written {@code '[)'}: the start is inside, the end is not. Current sessions only
+     * ({@link OperatingSessionStore#EFFECTIVE}): a new booking or Late Confirmation never fits superseded history, and
+     * a Manual walk-in outside every current session is out of hours (FR-MAN-03).
+     */
     static final String CONTAINING = """
             SELECT s.id, s.operating_day, lower(s.session_period) AS start_at, upper(s.session_period) AS end_at,
                    s.local_start, s.local_end, s.timezone
               FROM venue.operating_session s
              WHERE s.venue_id = :venueId
                AND s.session_period @> CAST(:at AS timestamptz)
-            """;
+               AND """ + OperatingSessionStore.EFFECTIVE;
 
     @Override
     public Optional<Session> containing(CommandContext command, UUID venueId, Instant at) {

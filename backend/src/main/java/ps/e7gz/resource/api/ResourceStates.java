@@ -24,6 +24,13 @@ public interface ResourceStates {
      */
     boolean resourceBlocked(CommandContext command, UUID resourceId, Instant at);
 
+    /**
+     * The Resource's base state as it stood at {@code at}, from its append-only state-change chain - for a start-time
+     * decision taken late, which must judge the state at {@code startAt} (Spec v5 section 31.4, FR-BOK-28; E7-59
+     * delayed-start race, for E7-60). Empty when the Resource does not exist.
+     */
+    Optional<ResourceBaseState> baseStateAt(CommandContext command, UUID resourceId, Instant at);
+
     /** Base state and restriction are separate: both must allow selling ({@code FR-AVL-06}, {@code FR-VEN-13}). */
     record ResourceState(UUID resourceId, UUID venueId, ResourceBaseState baseState,
                          OperationalRestriction restriction) {

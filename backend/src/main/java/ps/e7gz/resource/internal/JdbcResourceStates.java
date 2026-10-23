@@ -32,6 +32,33 @@ class JdbcResourceStates implements ResourceStates {
                    AND (b.active OR b.ended_at > :at))
             """;
 
+    /**
+     * The base state at {@code :at}: the {@code from_base_state} of the first base-state change after it in the
+     * append-only, contiguous chain ({@code resource.resource_state_change}), otherwise the current base state.
+     */
+    static final String BASE_STATE_AT = """
+            SELECT COALESCE((
+                SELECT c.from_base_state
+                  FROM resource.resource_state_change c
+                 WHERE c.resource_id = r.id
+                   AND c.changed_at > :at
+                   AND c.from_base_state IS NOT NULL AND c.to_base_state IS NOT NULL
+                   AND c.from_base_state <> c.to_base_state
+                 ORDER BY c.changed_at, c.id
+                 LIMIT 1), r.base_state)
+              FROM resource.resource r
+             WHERE r.id = :resourceId
+            """;
+
+    @Override
+    public Optional<ResourceBaseState> baseStateAt(CommandContext command, UUID resourceId, Instant at) {
+        Objects.requireNonNull(command, "command");
+        return command.jdbc().sql(BASE_STATE_AT)
+                .param("resourceId", Objects.requireNonNull(resourceId, "resourceId"))
+                .param("at", OffsetDateTime.ofInstant(Objects.requireNonNull(at, "at"), ZoneOffset.UTC))
+                .query(String.class).optional().map(ResourceBaseState::valueOf);
+    }
+
     @Override
     public Optional<ResourceState> find(CommandContext command, UUID resourceId) {
         Objects.requireNonNull(command, "command");

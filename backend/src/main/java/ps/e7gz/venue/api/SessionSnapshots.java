@@ -12,14 +12,15 @@ import ps.e7gz.common.command.CommandContext;
  * Read-only: one materialized Operating Session ({@code venue.operating_session}, ADR-009) with every column a Booking
  * snapshots (id, operating day, Venue-local start and end, timezone; {@code tr_20_booking_snapshot_integrity}). Added
  * for online booking creation (E7-46, FR-BOK-05 / FR-BOK-11 condition 15). {@link OperatingSessions} answers which
- * session contains an instant; this read adds what must be copied onto the Booking. {@code ex_session_no_overlap} makes
- * the answer unique.
+ * session contains an instant; this read adds what must be copied onto the Booking. Current sessions only (v1.1.37);
+ * {@code ex_session_no_overlap} makes the answer unique among them.
  */
 public interface SessionSnapshots {
 
     /**
-     * The Venue's session whose {@code session_period} {@code [start, end)} contains {@code at}; empty when none does.
-     * Reads on the command's own transaction.
+     * The Venue's current session whose {@code session_period} {@code [start, end)} contains {@code at}; empty when
+     * none does. Superseded history (v1.1.37) is never returned: a new booking never snapshots it
+     * ({@code booking.validate_booking_insert_snapshot}). Reads on the command's own transaction.
      */
     Optional<Session> containing(CommandContext command, UUID venueId, Instant at);
 

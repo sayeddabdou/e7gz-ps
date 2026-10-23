@@ -23,29 +23,42 @@ import ps.e7gz.venue.api.OperatingSessions;
 @Component
 class JdbcOperatingSessions implements OperatingSessions {
 
-    /** {@code session_period} is written {@code '[)'}: the start is inside, the end is not. */
+    /**
+     * {@code session_period} is written {@code '[)'}: the start is inside, the end is not. Current sessions only
+     * (v1.1.37): superseded history may overlap the current session of its day.
+     */
     static final String OPERATING_DAY_AT = """
             SELECT s.operating_day
               FROM venue.operating_session s
              WHERE s.venue_id = :venueId
                AND s.session_period @> CAST(:at AS timestamptz)
-            """;
+               AND """ + OperatingSessionStore.EFFECTIVE;
 
-    /** {@code upper(session_period)} is the first instant outside the session. */
+    /**
+     * {@code upper(session_period)} is the first instant outside the session. Only sessions the current hours still
+     * offer ({@link OperatingSessionStore#EFFECTIVE}): it answers "open now", intake and availability.
+     */
     static final String ENDING_AFTER = """
             SELECT s.operating_day, lower(s.session_period) AS start_at, upper(s.session_period) AS end_at
               FROM venue.operating_session s
              WHERE s.venue_id = :venueId
                AND upper(s.session_period) > CAST(:after AS timestamptz)
+               AND """ + OperatingSessionStore.EFFECTIVE + """
+
              ORDER BY lower(s.session_period)
             """;
 
-    /** E7-112: the sessions of a few operating days, keyed by the canonical day, not by calendar overlap. */
+    /**
+     * E7-112: the current sessions of a few operating days, keyed by the canonical day, not by calendar overlap (at most
+     * one a day, {@code uq_operating_session_day}).
+     */
     static final String ON_OPERATING_DAYS = """
             SELECT s.operating_day, lower(s.session_period) AS start_at, upper(s.session_period) AS end_at
               FROM venue.operating_session s
              WHERE s.venue_id = :venueId
                AND s.operating_day BETWEEN :first AND :last
+               AND """ + OperatingSessionStore.EFFECTIVE + """
+
              ORDER BY lower(s.session_period)
             """;
 

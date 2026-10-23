@@ -333,6 +333,51 @@ class LateConfirmCommands {
         return new LateConfirmAnswer(bookingId, BookingStatus.CANCELLED, DECLINED);
     }
 
+    // ------------------------------------------------------------------------------------------------------ Closure
+
+    /**
+     * E7-113 ({@link ps.e7gz.booking.api.LateConfirmClosures}): the Late Confirmation side of an operational
+     * cancellation of an AWAITING booking - an opening-hours change stops the timer at once and releases the hold
+     * (FR-VEN-28). Re-reads the booking, its open attempt and its hold under the caller's locks and checks they agree,
+     * as Decline and T2 do; then, all at {@code at}: a paused window's pause ends (FR-OPS-37, FR-OPS-41: added to the
+     * cumulative Late Confirm pause and its open row closed), the hold is released with {@code reason}, the attempt is
+     * closed without a Customer response (the database keeps that a separate fact from closure:
+     * {@code ck_late_confirmation_open_closed_shape}) and T2/T3 are superseded - a LEASED job is left to its worker,
+     * which re-reads the booking and supersedes itself.
+     *
+     * <p>No deadline check: whether the booking is cancelled is the caller's decision. No transition, history, Booking
+     * Fee decision or event here - the caller writes them in the same transaction, and {@code
+     * tr_late_confirmation_integrity} refuses the commit unless the booking ends CANCELLED under a Product-defined
+     * reason. A missing booking, any other state, a missing or mismatched attempt or hold is an integrity failure.
+     */
+    void closeForCancellation(CommandContext context, UUID bookingId, BookingTerminalReason reason, Instant at) {
+        Objects.requireNonNull(bookingId, "bookingId");
+        Objects.requireNonNull(reason, "reason");
+        Objects.requireNonNull(at, "at");
+        Booking booking = bookings.find(context, bookingId)
+                .orElseThrow(() -> integrityFailure(bookingId, "no such booking to close a Late Confirmation of"));
+        if (booking.source() != BookingSource.ONLINE
+                || booking.status() != BookingStatus.AWAITING_CUSTOMER_CONFIRMATION) {
+            throw integrityFailure(bookingId, booking.source() + " " + booking.status()
+                    + " booking has no Late Confirmation to close");
+        }
+        Open attempt = openAttempt(context, booking);
+        ActiveReservation hold = ownHold(context, booking, attempt);
+
+        if (booking.lateConfirmPaused()) {
+            Duration accumulated = bookings.endLateConfirmPause(context, bookingId, at)
+                    .orElseThrow(() -> integrityFailure(bookingId, "the paused Late Confirm window did not end"));
+            pauses.closeOpenLateConfirm(context, bookingId, at, accumulated);
+        }
+        if (!ledger.release(context, hold.id(), at, reason.name())) {
+            throw integrityFailure(bookingId, "the Late Confirm hold was not active to release");
+        }
+        if (!store.closeWithoutResponse(context, attempt.id(), at)) {
+            throw integrityFailure(bookingId, "the open Late Confirmation was not open to close");
+        }
+        supersedeJobs(context, bookingId);
+    }
+
     // ------------------------------------------------------------------------------------------------------ T2
 
     /**

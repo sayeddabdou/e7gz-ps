@@ -75,7 +75,7 @@ public final class SeedApplication {
         seed.put("e7gz.security.jwt.secret", randomKey(64));
         // Likewise the OTP payload key (E7-41): the seed sends no OTP.
         seed.put("e7gz.identity.otp-payload-key", randomKey(32));
-        // And the idempotency fingerprint key (E7-42): the seed makes no idempotent write.
+        // And the idempotency fingerprint key (E7-42); the seed's hours commits carry their own key (E7-113).
         seed.put("e7gz.idempotency.fingerprint-key", randomKey(32));
         seed.put("e7gz.object-store.create-bucket", "false");
         // Several venues are onboarded at once; let them queue for the Argon2id gate instead of being refused.

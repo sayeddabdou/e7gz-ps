@@ -132,6 +132,28 @@ public final class IntegrationEvents {
     public static final String LATE_CONFIRM_WARNING_DUE = "LateConfirmWarningDue";
 
     /**
+     * {@code {bookingId, customerId, venueId, resourceId, startAt, endAt, recordedAt}}, aggregate {@code BOOKING}: the
+     * venue checked the customer in at {@code recordedAt}, inside {@code [startAt, startAt + 15 min)} (arch 07 section
+     * 7.1, arch 08 section 3.2; FR-ATT-01, FR-ATT-02; E7-59, PO decision 12 Oct 2026). The booking stays ACTIVE.
+     */
+    public static final String CHECK_IN_RECORDED = "CheckInRecorded";
+
+    /**
+     * {@code {bookingId, customerId, venueId, resourceId, startAt, endAt, recordedAt}}, aggregate {@code BOOKING}: the
+     * venue marked the customer Present - Late inside {@code [startAt + 15 min, endAt)} (FR-ATT-03; E7-59). The booking
+     * stays ACTIVE; no points, no Verified Player progress, no counter reset.
+     */
+    public static final String LATE_PRESENT_RECORDED = "LatePresentRecorded";
+
+    /**
+     * {@code {bookingId, customerId, venueId, resourceId, startAt, endAt, recordedAt}}, aggregate {@code BOOKING}: the
+     * venue recorded a no-show inside {@code [startAt + 15 min, endAt)} - ACTIVE -> NO_SHOW, Attendance Result
+     * ABSENT_NO_SHOW, the reservation released at {@code recordedAt} (FR-ATT-04, FR-ATT-05; E7-59). The one event of
+     * this fact: there is no {@code BookingNoShowRecorded} (PO decision 12 Oct 2026).
+     */
+    public static final String NO_SHOW_RECORDED = "NoShowRecorded";
+
+    /**
      * {@code {venueId, resourceId}}, aggregate {@code RESOURCE}: the venue disabled a room (FR-VEN-03; E7-26, published
      * since E7-56, PO decision 12 Oct 2026). Its four siblings below carry the same payload.
      */

@@ -192,6 +192,21 @@ class MigrationSafetyTest {
         assertThat(count("SELECT count(*) FROM technical.scheduled_job"
                 + " WHERE correlation_id = '5afe0000-0000-4000-8000-000000000107'"))
                 .as("jobs that kept their creating command's correlation ID").isEqualTo(2L);
+        // v1.1.37 (E7-113): sessions written before superseded_at stayed current; the seeded day keeps its superseded
+        // history beside its current session, each with its own booking, and the walk-in in the old window has none.
+        assertThat(count("""
+                SELECT count(*) FROM venue.operating_session
+                 WHERE id IN ('5afe0000-0000-4000-8000-000000000203', '5afe0000-0000-4000-8000-000000000205')
+                   AND superseded_at IS NULL"""))
+                .as("current sessions").isEqualTo(2L);
+        assertThat(count("""
+                SELECT count(*) FROM booking.booking b JOIN venue.operating_session s ON s.id = b.operating_session_id
+                 WHERE b.id = '5afe0000-0000-4000-8000-000000000204' AND s.superseded_at IS NOT NULL"""))
+                .as("the booking of the superseded session still references it").isEqualTo(1L);
+        assertThat(count("""
+                SELECT count(*) FROM booking.booking
+                 WHERE id = '5afe0000-0000-4000-8000-000000000207' AND operating_session_id IS NULL"""))
+                .as("the walk-in in the old window only is out of hours").isEqualTo(1L);
     }
 
     private static long count(String sql) throws SQLException {

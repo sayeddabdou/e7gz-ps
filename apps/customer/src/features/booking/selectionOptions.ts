@@ -8,7 +8,7 @@ export type DateOption = {
   weekday: string;
 };
 
-export const allHalfHourTimes = Array.from({ length: 48 }, (_, index) => minutesToTime(index * 30));
+export const allQuarterHourTimes = Array.from({ length: 96 }, (_, index) => minutesToTime(index * 15));
 // FR-BOK-01: online duration is 60–360 minutes in 30-minute increments.
 export const durationOptions = Array.from({ length: 11 }, (_, index) => 60 + index * 30);
 

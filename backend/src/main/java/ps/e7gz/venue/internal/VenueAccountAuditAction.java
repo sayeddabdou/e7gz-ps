@@ -19,6 +19,14 @@ enum VenueAccountAuditAction implements AuditAction {
      * checked). The row carries owner_password_outcome = FAILURE.
      */
     OWNER_PASSWORD_REFUSED(AuditPayloadAllowlist.of("protectedAction", "lockedOut")),
+    /**
+     * A protected action's Owner Password was accepted (FR-VEN-05, arch 10 §8.1), audited on its own row because the
+     * action itself has none - the opening-hours change cancelling protected bookings (E7-113; no audit row for the
+     * hours change itself, PO decision 3 Oct 2026). {@code protectedAction} is the matrix id; the row carries
+     * owner_password_outcome = SUCCESS and is written in the action's transaction, so it exists only if the action
+     * committed.
+     */
+    OWNER_PASSWORD_ACCEPTED(AuditPayloadAllowlist.of("protectedAction")),
     /** The Platform Admin disabled Dashboard access (FR-ADM-03, FR-VEN-08); the admin's reason is required. */
     VENUE_ACCOUNT_DISABLED(AuditPayloadAllowlist.of("venueId", "previousStatus", "newStatus"), true),
     /** The Platform Admin re-enabled Dashboard access (FR-ADM-03); the admin's reason is required. */

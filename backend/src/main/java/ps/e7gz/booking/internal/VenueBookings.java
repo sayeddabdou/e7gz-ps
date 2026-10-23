@@ -7,6 +7,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
 import org.springframework.stereotype.Component;
+import ps.e7gz.booking.api.AttendanceEvidence;
 import ps.e7gz.booking.api.LateConfirmWindows;
 import ps.e7gz.booking.internal.VenueAnswerStore.ViewRow;
 import ps.e7gz.common.codes.BookingSource;
@@ -31,21 +32,28 @@ import ps.e7gz.venue.api.VenueAccountVenues;
 @Component
 public class VenueBookings {
 
+    /** A booking without an attendance record: no action yet (E7-59). */
+    private static final AttendanceEvidence.Recorded NO_ATTENDANCE = new AttendanceEvidence.Recorded(null, null, null,
+            null);
+
     private final CommandRunner runner;
     private final VenueAnswerStore store;
     private final CustomerContacts customers;
     private final VenueAccountVenues accounts;
     private final BookingHistoryStore histories;
     private final LateConfirmWindows lateConfirms;
+    private final AttendanceEvidence attendance;
 
     VenueBookings(CommandRunner runner, VenueAnswerStore store, CustomerContacts customers,
-                  VenueAccountVenues accounts, BookingHistoryStore histories, LateConfirmWindows lateConfirms) {
+                  VenueAccountVenues accounts, BookingHistoryStore histories, LateConfirmWindows lateConfirms,
+                  AttendanceEvidence attendance) {
         this.runner = runner;
         this.store = store;
         this.customers = customers;
         this.accounts = accounts;
         this.histories = histories;
         this.lateConfirms = lateConfirms;
+        this.attendance = attendance;
     }
 
     /** A page of the venue's bookings; {@code nextCursor} is null on the last page. */
@@ -130,16 +138,21 @@ public class VenueBookings {
 
     /**
      * The venue's view of {@code rows}. The open Late Confirmation deadlines of the AWAITING ones come from the Late
-     * Confirmation module in one read for the whole list ({@link LateConfirmWindows}, E7-58), never one per row.
+     * Confirmation module in one read for the whole list ({@link LateConfirmWindows}, E7-58), never one per row; the
+     * attendance records likewise from the Attendance module ({@link AttendanceEvidence}, E7-59).
      */
     private List<VenueBookingRow> rows(CommandContext context, List<ViewRow> rows) {
         Map<UUID, Instant> deadlines = lateConfirms.openDeadlines(context, rows.stream()
                 .filter(row -> row.status() == BookingStatus.AWAITING_CUSTOMER_CONFIRMATION)
                 .map(ViewRow::bookingId).toList());
-        return rows.stream().map(row -> row(context, row, deadlines.get(row.bookingId()))).toList();
+        Map<UUID, AttendanceEvidence.Recorded> recorded = attendance.of(context,
+                rows.stream().map(ViewRow::bookingId).toList());
+        return rows.stream().map(row -> row(context, row, deadlines.get(row.bookingId()),
+                recorded.getOrDefault(row.bookingId(), NO_ATTENDANCE))).toList();
     }
 
-    private VenueBookingRow row(CommandContext context, ViewRow row, Instant lateConfirmExpiresAt) {
+    private VenueBookingRow row(CommandContext context, ViewRow row, Instant lateConfirmExpiresAt,
+                                AttendanceEvidence.Recorded recorded) {
         boolean awaiting = row.status() == BookingStatus.AWAITING_CUSTOMER_CONFIRMATION;
         String username = null;
         String phone = null;
@@ -154,7 +167,8 @@ public class VenueBookings {
                 row.playMode(), row.startAt(), row.endAt(), row.businessDate(), row.nominalBookedMinutes(),
                 row.venuePriceTotal(), row.status() == BookingStatus.PENDING ? row.venueResponseExpiresAt() : null,
                 row.venueResponsePaused(), awaiting ? lateConfirmExpiresAt : null, awaiting && row.lateConfirmPaused(),
-                username, phone, row.walkInName(), row.walkInPhone(), row.createdAt());
+                username, phone, row.walkInName(), row.walkInPhone(), recorded.result(), recorded.checkedInAt(),
+                recorded.latePresentAt(), recorded.noShowAt(), row.createdAt());
     }
 
     /** A read-only command: one snapshot and the database's instant, no locks. */

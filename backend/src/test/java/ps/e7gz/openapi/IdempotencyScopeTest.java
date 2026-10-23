@@ -36,7 +36,24 @@ class IdempotencyScopeTest {
             "post /api/v1/venue/bookings/{bookingId}/cancel-confirmed",         // venue cancels CONFIRMED, E7-114
             "post /api/v1/venue/bookings/{bookingId}/check-in",                 // check-in, E7-59
             "post /api/v1/venue/bookings/{bookingId}/late-present",             // Mark Present - Late, E7-59
-            "post /api/v1/venue/bookings/{bookingId}/no-show");                 // no-show, E7-59
+            "post /api/v1/venue/bookings/{bookingId}/no-show",                  // no-show, E7-59
+            "post /api/v1/venue/opening-hours/commit",                          // hours change cancels, E7-113
+            // Sprint 4 admin remediation and configuration (PO decision D6, 17 Oct 2026, E7-65).
+            "post /api/v1/admin/users/{userId}/trust-adjustment",               // trust adjustment, E7-71
+            "post /api/v1/admin/users/{userId}/bans/{banId}/lift",              // ban lift, E7-71
+            "post /api/v1/admin/users/{userId}/bans/{banId}/shorten",           // ban shorten, E7-71
+            "post /api/v1/admin/users/{userId}/bans/{banId}/correct",           // ban correct, E7-71
+            "post /api/v1/admin/verified-players/{userId}/suspend",             // VP suspend, E7-72
+            "post /api/v1/admin/verified-players/{userId}/revoke",              // VP revoke, E7-72
+            "post /api/v1/admin/verified-players/{userId}/restore",             // VP restore, E7-72
+            "post /api/v1/admin/bookings/{bookingId}/attendance/reverse-check-in",      // E7-70
+            "post /api/v1/admin/bookings/{bookingId}/attendance/reverse-late-present",  // E7-70
+            "post /api/v1/admin/bookings/{bookingId}/attendance/reverse-no-show",       // E7-70
+            "post /api/v1/admin/bookings/{bookingId}/attendance/correct",               // E7-70
+            "post /api/v1/admin/points/adjust",                                 // points adjustment, E7-66
+            "post /api/v1/admin/referrals/{referralId}/invalidate",             // referral invalidation, E7-67
+            "put /api/v1/admin/points/settings",                                // points configuration, E7-68
+            "put /api/v1/admin/fees");                                          // fee configuration, E7-68
 
     /** Writes outside ADR-015's scope, so the header is accepted but optional. */
     static final Map<String, List<String>> OPTIONAL = Map.of(
@@ -72,7 +89,7 @@ class IdempotencyScopeTest {
                     "delete /api/v1/venue/resources/{resourceId}/price-override", "post /api/v1/venue/images",
                     "put /api/v1/venue/images/order", "post /api/v1/venue/images/{imageId}/confirm",
                     "post /api/v1/venue/images/{imageId}/remove", "post /api/v1/venue/opening-hours/preview",
-                    "post /api/v1/venue/opening-hours/commit", "post /api/v1/venue/owner-password",
+                    "post /api/v1/venue/owner-password",
                     "patch /api/v1/venue/settings"),
             "admin notification \"try again\" (E7-43: re-sends a message, no commitment, money or points; a second "
                     + "press answers NOTIFICATION_DELIVERY_NOT_DEAD_LETTER)", List.of(

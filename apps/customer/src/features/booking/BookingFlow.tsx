@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { components } from "@e7gz/api-client";
 import { nativeLogicalSpacing, nativeTokens } from "@e7gz/tokens/native";
@@ -6,8 +6,9 @@ import { errorCodeOf, type ApiClient } from "../../api";
 import { en as t } from "../../i18n/en";
 import { formatMoney } from "../discovery/format";
 import { discoveryErrorMessage } from "../discovery/errorMessages";
+import { bookingEventText, bookingStatusText } from "../my-bookings/bookingText";
 import { bookingErrorMessage } from "./errorMessages";
-import { allHalfHourTimes, buildDateOptions, durationOptions, formatTwelveHourTime, minutesToTime } from "./selectionOptions";
+import { allQuarterHourTimes, buildDateOptions, durationOptions, formatTwelveHourTime, minutesToTime } from "./selectionOptions";
 import { cairoLocalToInstant, countdownSeconds, countdownSecondsAt, formatCountdown, serverClockOffset } from "./time";
 
 type Activity = components["schemas"]["Activity"];
@@ -24,16 +25,24 @@ export function BookingFlow({
   initialActivity,
   initialResourceId,
   onBack,
+  onOpenMyBookings,
+  onOpenProfile,
   idempotencyKeyFactory = createIdempotencyKey,
-  referenceDate = new Date(),
+  initialServerTime,
+  initialPhoneVerified,
+  pendingPollIntervalMs = 5_000,
 }: {
   api: ApiClient;
   initialDetails: Details;
   initialActivity: Activity;
   initialResourceId?: string | undefined;
   onBack(): void;
+  onOpenMyBookings?(): void;
+  onOpenProfile?(): void;
   idempotencyKeyFactory?: () => string;
-  referenceDate?: Date;
+  initialServerTime: string;
+  initialPhoneVerified?: boolean;
+  pendingPollIntervalMs?: number;
 }) {
   const [details, setDetails] = useState(initialDetails);
   const [activity, setActivity] = useState(initialActivity);
@@ -41,7 +50,10 @@ export function BookingFlow({
   const [playMode, setPlayMode] = useState<PlayMode>("SINGLE");
   const [date, setDate] = useState("");
   const [start, setStart] = useState<StartOption>();
-  const [dateOptions] = useState(() => buildDateOptions(referenceDate));
+  const [dateOptions] = useState(() => buildDateOptions(new Date(initialServerTime)));
+  const [currentServerTime, setCurrentServerTime] = useState(() => Date.parse(initialServerTime));
+  const [phoneVerified, setPhoneVerified] = useState<boolean | undefined>(initialPhoneVerified);
+  const [profileError, setProfileError] = useState<string>();
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [quote, setQuote] = useState<Quote>();
   const [quoteLoading, setQuoteLoading] = useState(false);
@@ -58,6 +70,26 @@ export function BookingFlow({
   const submittingRef = useRef(false);
   const quoteGenerationRef = useRef(0);
   const detailsGenerationRef = useRef(0);
+
+  useEffect(() => {
+    const offset = serverClockOffset(initialServerTime, Date.now());
+    const update = () => setCurrentServerTime(Date.now() + offset);
+    const interval = setInterval(update, 30_000);
+    return () => clearInterval(interval);
+  }, [initialServerTime]);
+
+  const loadProfile = useCallback(async () => {
+    setProfileError(undefined);
+    try {
+      const { data, error } = await api.GET("/api/v1/customer/profile");
+      if (data) setPhoneVerified(data.data.phoneVerified);
+      else setProfileError(bookingErrorMessage(errorCodeOf(error)));
+    } catch {
+      setProfileError(t.booking.errors.network);
+    }
+  }, [api]);
+
+  useEffect(() => { if (initialPhoneVerified === undefined) void Promise.resolve().then(loadProfile); }, [initialPhoneVerified, loadProfile]);
 
   const resetAttempt = () => {
     setQuote(undefined);
@@ -162,9 +194,9 @@ export function BookingFlow({
     submittingRef.current = true;
     setSubmitting(true);
     setSubmitError(undefined);
-    const idempotencyKey = attemptKeyRef.current ?? idempotencyKeyFactory();
-    attemptKeyRef.current = idempotencyKey;
     try {
+      const idempotencyKey = attemptKeyRef.current ?? idempotencyKeyFactory();
+      attemptKeyRef.current = idempotencyKey;
       const { data, error } = await api.POST("/api/v1/customer/bookings", {
         params: { header: { "Idempotency-Key": idempotencyKey } },
         body: requestRef.current,
@@ -179,7 +211,7 @@ export function BookingFlow({
     }
   };
 
-  if (pending) return <PendingBooking booking={pending.booking} serverTime={pending.serverTime} />;
+  if (pending) return <PendingBooking api={api} booking={pending.booking} onOpenMyBookings={onOpenMyBookings} pollIntervalMs={pendingPollIntervalMs} serverTime={pending.serverTime} />;
 
   if (quote) {
     return (
@@ -204,18 +236,27 @@ export function BookingFlow({
         </View>
         <Text style={styles.notice}>{t.booking.quoteNotice}</Text>
         {submitError ? <View accessibilityRole="alert" style={styles.errorBox}><Text style={styles.error}>{submitError}</Text></View> : null}
-        <Pressable accessibilityRole="button" accessibilityState={{ disabled: submitting }} disabled={submitting} onPress={() => void submit()} style={[styles.primaryButton, submitting && styles.disabledButton]}>
+        {!details.bookingEnabled ? <Text accessibilityRole="alert" style={styles.notice}>{t.booking.bookingDisabled}</Text> : null}
+        {details.bookingEnabled && !isOnlineIntakeOpen(currentServerTime, details.openingHours, details.openNow) ? <Text accessibilityRole="alert" style={styles.notice}>{t.booking.intakeClosedNotice}</Text> : null}
+        <Pressable accessibilityRole="button" accessibilityState={{ disabled: submitting || !details.bookingEnabled }} disabled={submitting || !details.bookingEnabled} onPress={() => void submit()} style={[styles.primaryButton, (submitting || !details.bookingEnabled) && styles.disabledButton]}>
           {submitting ? <ActivityIndicator color={nativeTokens.color.text.inverse} /> : <Text style={styles.primaryButtonText}>{submitError ? t.booking.retryBooking : t.booking.confirm}</Text>}
         </Pressable>
       </ScrollView>
     );
   }
 
-  const canQuote = Boolean(selectedResource && date && start && !detailsLoading);
   const venueSession = venueSessionForDate(date, details.openingHours);
-  const timeOptions: StartOption[] = venueSession?.closed
+  const rawTimeOptions: StartOption[] = venueSession?.closed
     ? []
-    : venueSession?.times ?? allHalfHourTimes.map((timeValue) => ({ date, key: `${date}:${timeValue}`, time: timeValue }));
+    : venueSession?.times ?? allQuarterHourTimes.map((timeValue) => ({ date, key: `${date}:${timeValue}`, time: timeValue }));
+  const timeOptions = rawTimeOptions.filter((option) => {
+    const startAt = cairoLocalToInstant(option.date, option.time);
+    if (!startAt || Date.parse(startAt) < currentServerTime + 15 * 60_000) return false;
+    return !venueSession || venueSession.closed || !venueSession.endsAt
+      ? true
+      : Date.parse(startAt) + durationMinutes * 60_000 <= Date.parse(venueSession.endsAt);
+  });
+  const canQuote = Boolean(selectedResource && date && start && phoneVerified && !detailsLoading && timeOptions.some((option) => option.key === start.key));
   return (
     <ScrollView contentContainerStyle={styles.page}>
       <View style={styles.header}>
@@ -279,8 +320,11 @@ export function BookingFlow({
       {dateError ? <Text nativeID="booking-date-error" style={styles.fieldError}>{dateError}</Text> : null}
 
       <Text style={styles.label}>{t.booking.startTime}</Text>
-      {venueSession && !venueSession.closed ? <Text style={styles.sessionHours}>{t.booking.openingWindow(formatTwelveHourTime(venueSession.opensAt), formatTwelveHourTime(venueSession.closesAt))}</Text> : null}
-      {date && venueSession?.closed ? <Text style={styles.hint}>{t.booking.closedOnDate}</Text> : date ? (
+      {phoneVerified === undefined && !profileError ? <View accessibilityRole="progressbar" style={styles.inlineLoading}><ActivityIndicator /><Text>{t.booking.checkingVerification}</Text></View> : null}
+      {profileError ? <View accessibilityRole="alert" style={styles.errorBox}><Text style={styles.error}>{profileError}</Text><Pressable onPress={() => void loadProfile()}><Text style={styles.link}>{t.retry}</Text></Pressable></View> : null}
+      {phoneVerified === false ? <View style={styles.noticeBox}><Text accessibilityRole="alert" style={styles.noticeText}>{t.booking.phoneVerificationNeeded}</Text><Pressable accessibilityRole="button" onPress={onOpenProfile}><Text style={styles.link}>{t.booking.openProfile}</Text></Pressable></View> : null}
+      {phoneVerified && venueSession && !venueSession.closed ? <Text style={styles.sessionHours}>{t.booking.openingWindow(formatTwelveHourTime(venueSession.opensAt), formatTwelveHourTime(venueSession.closesAt))}</Text> : null}
+      {phoneVerified && date && venueSession?.closed ? <Text style={styles.hint}>{t.booking.closedOnDate}</Text> : phoneVerified && date ? (
         <View accessibilityLabel={t.booking.startTime} style={styles.timeGrid}>
           {timeOptions.map((option) => (
             <Pressable
@@ -294,7 +338,7 @@ export function BookingFlow({
             </Pressable>
           ))}
         </View>
-      ) : <Text style={styles.hint}>{t.booking.chooseDateFirst}</Text>}
+      ) : phoneVerified ? <Text style={styles.hint}>{t.booking.chooseDateFirst}</Text> : null}
       {timeError ? <Text nativeID="booking-time-error" style={styles.fieldError}>{timeError}</Text> : null}
 
       <Text style={styles.label}>{t.booking.duration}</Text>
@@ -311,7 +355,9 @@ export function BookingFlow({
   );
 }
 
-function PendingBooking({ booking, serverTime }: { booking: Booking; serverTime: string }) {
+function PendingBooking({ api, booking: initialBooking, serverTime: initialServerTime, onOpenMyBookings, pollIntervalMs }: { api: ApiClient; booking: Booking; serverTime: string; onOpenMyBookings?(): void; pollIntervalMs: number }) {
+  const [booking, setBooking] = useState(initialBooking);
+  const [serverTime, setServerTime] = useState(initialServerTime);
   const serverOffset = useRef(0);
   const [remaining, setRemaining] = useState(() => booking.venueResponseExpiresAt ? countdownSeconds(booking.venueResponseExpiresAt, serverTime) : 0);
   useEffect(() => {
@@ -323,22 +369,52 @@ function PendingBooking({ booking, serverTime }: { booking: Booking; serverTime:
     const interval = setInterval(update, 1000);
     return () => clearInterval(interval);
   }, [booking.venueResponseExpiresAt, booking.venueResponsePaused, serverTime]);
+  useEffect(() => {
+    if (booking.status !== "PENDING") return undefined;
+    let active = true;
+    const refresh = async () => {
+      try {
+        const { data } = await api.GET("/api/v1/customer/bookings/{bookingId}", {
+          params: { path: { bookingId: booking.bookingId } },
+        });
+        if (active && data) {
+          setBooking(data.data);
+          setServerTime(data.meta.serverTime);
+        }
+      } catch {
+        // The visible countdown remains useful; the next poll or push can recover.
+      }
+    };
+    const interval = setInterval(() => void refresh(), pollIntervalMs);
+    return () => { active = false; clearInterval(interval); };
+  }, [api, booking.bookingId, booking.status, pollIntervalMs]);
   return (
     <ScrollView contentContainerStyle={styles.pendingPage}>
       <View style={styles.pendingMark}><ActivityIndicator color={nativeTokens.color.feedback.warning} size="large" /></View>
-      <Text accessibilityRole="header" style={styles.title}>{t.booking.pendingTitle}</Text>
-      <Text style={styles.muted}>{t.booking.pendingBody}</Text>
-      {booking.venueResponsePaused
+      <Text accessibilityRole="header" style={styles.title}>{booking.status === "PENDING" ? t.booking.pendingTitle : t.booking.statusUpdated}</Text>
+      <Text style={styles.muted}>{booking.status === "PENDING" ? t.booking.pendingBody : t.booking.statusUpdatedBody}</Text>
+      {booking.status === "PENDING" && (booking.venueResponsePaused
         ? <Text style={styles.timerNotice}>{t.booking.countdownPaused}</Text>
         : remaining > 0
           ? <><Text style={styles.timer}>{formatCountdown(remaining)}</Text><Text style={styles.hint}>{t.booking.countdownLabel}</Text></>
-          : <Text style={styles.timerNotice}>{t.booking.countdownExpired}</Text>}
+          : <Text style={styles.timerNotice}>{t.booking.countdownExpired}</Text>)}
       <View style={styles.summaryCard}>
         <Text style={styles.venue}>{booking.venue.name}</Text>
         <Text style={styles.muted}>{[booking.resource.name, booking.resource.consoleType].filter(Boolean).join(" · ")}</Text>
         <SummaryRow label={t.booking.total} value={formatMoney(booking.totalAmount) ?? ""} />
         {booking.venue.phone ? <SummaryRow label={t.booking.venuePhone} value={booking.venue.phone} /> : null}
       </View>
+      {booking.history.length ? (
+        <View style={styles.summaryCard}>
+          <Text style={styles.venue}>{t.booking.statusTimeline}</Text>
+          {booking.history.map((entry, index) => (
+            <Text key={`${entry.at}-${index}`} style={styles.muted}>
+              {`${formatPendingDateTime(entry.at)} · ${entry.toStatus ? bookingStatusText(entry.toStatus) : entry.eventType ? bookingEventText(entry.eventType) : t.myBookings.bookingUpdate}`}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+      <Pressable accessibilityRole="button" onPress={onOpenMyBookings} style={styles.primaryButton}><Text style={styles.primaryButtonText}>{t.booking.viewMyBookings}</Text></Pressable>
     </ScrollView>
   );
 }
@@ -364,8 +440,8 @@ function DateChoice({ accessibilityLabel, day, month, selected, weekday, onPress
 function createIdempotencyKey(): string {
   if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
   const bytes = new Uint8Array(16);
-  if (typeof globalThis.crypto?.getRandomValues === "function") globalThis.crypto.getRandomValues(bytes);
-  else for (let index = 0; index < bytes.length; index += 1) bytes[index] = Math.floor(Math.random() * 256);
+  if (typeof globalThis.crypto?.getRandomValues !== "function") throw new Error("Secure randomness is unavailable");
+  globalThis.crypto.getRandomValues(bytes);
   bytes[6] = (bytes[6]! & 0x0f) | 0x40;
   bytes[8] = (bytes[8]! & 0x3f) | 0x80;
   const hex = [...bytes].map((value) => value.toString(16).padStart(2, "0")).join("");
@@ -385,13 +461,37 @@ function venueSessionForDate(date: string, openingHours: Details["openingHours"]
   const startMinutes = timeToMinutes(opensAt);
   let endMinutes = timeToMinutes(closesAt);
   if (endMinutes <= startMinutes) endMinutes += 24 * 60;
+  const closeDate = addCalendarDays(date, Math.floor(endMinutes / (24 * 60)));
+  const endsAt = cairoLocalToInstant(closeDate, minutesToTime(endMinutes));
   const times: StartOption[] = [];
-  for (let value = Math.ceil(startMinutes / 30) * 30; value < endMinutes; value += 30) {
+  for (let value = Math.ceil(startMinutes / 15) * 15; value < endMinutes; value += 15) {
     const time = minutesToTime(value);
     const optionDate = addCalendarDays(date, Math.floor(value / (24 * 60)));
     times.push({ date: optionDate, key: `${optionDate}:${time}`, time });
   }
-  return { closed: false as const, closesAt, opensAt, times };
+  return { closed: false as const, closesAt, endsAt, opensAt, times };
+}
+
+function isOnlineIntakeOpen(currentServerTime: number, openingHours: Details["openingHours"], openNow: boolean): boolean {
+  if (!openNow) return false;
+  if (openingHours.length === 0) return openNow;
+  const parts = new Intl.DateTimeFormat("en-CA", { day: "2-digit", month: "2-digit", timeZone: "Africa/Cairo", year: "numeric" })
+    .formatToParts(new Date(currentServerTime))
+    .reduce<Record<string, string>>((result, part) => ({ ...result, [part.type]: part.value }), {});
+  const cairoDate = `${parts.year}-${parts.month}-${parts.day}`;
+  for (const date of [cairoDate, addCalendarDays(cairoDate, -1)]) {
+    const selectedDate = new Date(`${date}T00:00:00.000Z`);
+    const weekday = (selectedDate.getUTCDay() + 6) % 7;
+    const day = openingHours.find((value) => value.weekday === weekday);
+    if (!day || day.closed || !day.opensAtLocal || !day.closesAtLocal) continue;
+    const opens = day.opensAtLocal.slice(0, 5);
+    const closes = day.closesAtLocal.slice(0, 5);
+    const overnight = timeToMinutes(closes) <= timeToMinutes(opens);
+    const opensAt = cairoLocalToInstant(date, opens);
+    const closesAt = cairoLocalToInstant(overnight ? addCalendarDays(date, 1) : date, closes);
+    if (opensAt && closesAt && currentServerTime >= Date.parse(opensAt) && currentServerTime < Date.parse(closesAt) - 10 * 60_000) return true;
+  }
+  return false;
 }
 
 function addCalendarDays(date: string, days: number) {
@@ -408,6 +508,10 @@ function timeToMinutes(value: string) {
 function formatBookingDate(value: string) {
   return new Intl.DateTimeFormat("en", { day: "numeric", month: "short", timeZone: "UTC", weekday: "short", year: "numeric" })
     .format(new Date(`${value}T00:00:00.000Z`));
+}
+
+function formatPendingDateTime(value: string) {
+  return new Intl.DateTimeFormat("en-EG", { day: "numeric", hour: "numeric", hour12: true, minute: "2-digit", month: "short", timeZone: "Africa/Cairo" }).format(new Date(value));
 }
 
 function isCalendarDate(value: string) {
@@ -467,6 +571,8 @@ const styles = StyleSheet.create({
   errorBox: { backgroundColor: nativeTokens.color.feedback.dangerSurface, borderRadius: nativeTokens.radius["4xl"], gap: nativeTokens.spacing.md, padding: nativeTokens.spacing["3xl"] },
   error: { color: nativeTokens.color.feedback.danger },
   notice: { backgroundColor: nativeTokens.color.surface.info, borderRadius: nativeTokens.radius["2xl"], color: nativeTokens.color.text.muted, padding: nativeTokens.spacing["2xl"] },
+  noticeBox: { backgroundColor: nativeTokens.color.surface.info, borderRadius: nativeTokens.radius["2xl"], gap: nativeTokens.spacing.md, padding: nativeTokens.spacing["2xl"] },
+  noticeText: { color: nativeTokens.color.text.customer },
   summaryRow: { alignItems: "center", borderBottomColor: nativeTokens.color.border.subtle, borderBottomWidth: nativeTokens.spacing.hairline, flexDirection: "row", justifyContent: "space-between", paddingVertical: nativeTokens.spacing.xl, width: "100%" },
   summaryValue: { color: nativeTokens.color.text.customer, fontWeight: nativeTokens.typography.fontWeight.semibold },
   summaryStrong: { color: nativeTokens.color.text.customer, fontWeight: nativeTokens.typography.fontWeight.bold },

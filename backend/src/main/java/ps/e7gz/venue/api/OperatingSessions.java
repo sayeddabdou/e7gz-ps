@@ -12,7 +12,8 @@ import ps.e7gz.common.command.CommandContext;
  * Read-only: which materialized Operating Session ({@code venue.operating_session}, ADR-009) of a Venue contains an
  * instant, for the business date (arch 04 section 4.3, {@code FR-AVL-14}), and which sessions are still to come, for
  * Nearest Availability. The materialized rows are the authority; the
- * weekly opening-hours template is never consulted. {@code ex_session_no_overlap} makes the answer unique.
+ * weekly opening-hours template is never consulted. Only current sessions are read - superseded history (v1.1.37)
+ * never is - and {@code ex_session_no_overlap} makes the answer unique among them.
  */
 public interface OperatingSessions {
 
@@ -35,7 +36,7 @@ public interface OperatingSessions {
     /**
      * The Venue's materialized sessions whose {@code operating_day} is in {@code [first, last]}, in start order, for the
      * Dashboard schedule's business day (E7-112, arch 04 section 4.3). {@code uq_operating_session_day} makes it at most
-     * one per day. One statement on the app connection, outside any command.
+     * one current session per day. One statement on the app connection, outside any command.
      */
     List<SessionPeriod> onOperatingDays(UUID venueId, LocalDate first, LocalDate last);
 

@@ -12,11 +12,13 @@ import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import ps.e7gz.common.codes.OpeningDayMode;
@@ -26,13 +28,16 @@ import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.messaging.api.Idempotency;
+import ps.e7gz.messaging.api.IdempotentResult;
+import ps.e7gz.messaging.api.StoredResponse;
 import ps.e7gz.venue.internal.OpeningHoursService;
 
 /**
  * Venue Dashboard — opening hours (arch 09 §4.2, arch 03 §5, FR-VEN-17, FR-VEN-23…FR-VEN-27). A change is two calls
  * bound by a {@code previewToken}; the commit aborts with a refreshed preview when the affected set changed (FR-VEN-26).
- * Implemented by E7-25. Until Booking cancellation exists, a commit that would cancel a Booking answers 501 and changes
- * nothing (PO decision 3 Oct 2026); the preview already shows the complete affected set.
+ * Implemented by E7-25; the commit cancels the affected bookings since E7-113 (FR-VEN-24, FR-VEN-28), so it requires the
+ * {@code Idempotency-Key} (ADR-015: it cancels commitments and moves Booking Fee refunds).
  */
 @RestController
 @RequestMapping("/api/v1/venue/opening-hours")
@@ -40,12 +45,16 @@ import ps.e7gz.venue.internal.OpeningHoursService;
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class VenueOpeningHoursController {
 
+    static final String COMMIT_ENDPOINT = "POST /api/v1/venue/opening-hours/commit";
+
     private final OpeningHoursService hours;
     private final ResponseMetaFactory meta;
+    private final Idempotency idempotency;
 
-    public VenueOpeningHoursController(OpeningHoursService hours, ResponseMetaFactory meta) {
+    public VenueOpeningHoursController(OpeningHoursService hours, ResponseMetaFactory meta, Idempotency idempotency) {
         this.hours = hours;
         this.meta = meta;
+        this.idempotency = idempotency;
     }
 
     @GetMapping
@@ -70,14 +79,29 @@ public class VenueOpeningHoursController {
     @PostMapping("/commit")
     @Operation(operationId = "venueCommitOpeningHours",
             summary = "Steps 6–9: commit all-or-nothing; Owner Password only when protected bookings are cancelled "
-                    + "(FR-VEN-23, FR-VEN-25, FR-VEN-26)")
+                    + "(FR-VEN-23, FR-VEN-25, FR-VEN-26)",
+            description = "Saves the hours and cancels every affected booking (CANCELLED / VENUE_OPENING_HOURS_CHANGED, "
+                    + "FR-VEN-24, FR-VEN-28) in one transaction: the affected set is recomputed under the venue, room "
+                    + "and customer locks, and a set different from the preview's is "
+                    + "AFFECTED_SET_CHANGED_REFRESH_PREVIEW with nothing changed. The Owner Password (body, never a "
+                    + "header) is needed only when a CONFIRMED online or an AWAITING booking is cancelled: absent is "
+                    + "OWNER_PASSWORD_REQUIRED, wrong is OWNER_PASSWORD_INVALID (audited, FR-VEN-05). Each affected "
+                    + "online booking gets a full Booking Fee refund decision; the customer is notified from "
+                    + "BookingCancelled. A venue account disabled meanwhile is FORBIDDEN. Implemented by E7-25 and "
+                    + "E7-113.")
+    @ApiError(status = 403, codes = ApiErrorCode.FORBIDDEN)
     @ApiError(status = 409, codes = ApiErrorCode.AFFECTED_SET_CHANGED_REFRESH_PREVIEW)
-    @ApiError(status = 422, codes = ApiErrorCode.TOURNAMENT_CONFLICT_BLOCKS_SAVE)
+    @ApiError(status = 422, codes = {ApiErrorCode.TOURNAMENT_CONFLICT_BLOCKS_SAVE, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
     @ApiError(status = 423, codes = {ApiErrorCode.OWNER_PASSWORD_REQUIRED, ApiErrorCode.OWNER_PASSWORD_INVALID})
-    public DataResponse<VenueOpeningHoursView> commit(@AuthenticationPrincipal AuthenticatedSubject venue,
+    @ApiError(status = 429, codes = ApiErrorCode.RATE_LIMITED)
+    public DataResponse<VenueOpeningHoursView> commit(@RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+                                                      @AuthenticationPrincipal AuthenticatedSubject venue,
                                                       @Valid @RequestBody VenueOpeningHoursCommitRequest request) {
-        return meta.data(VenueOpeningHoursView.of(
-                hours.commit(venue.id(), request.proposal().toProposal(), request.previewToken())));
+        IdempotentResult<VenueOpeningHoursView> result = hours.commit(venue.id(), request.proposal().toProposal(),
+                request.previewToken(), request.ownerPassword(),
+                idempotency.request(venue, COMMIT_ENDPOINT, idempotencyKey, Map.of(), request),
+                StoredResponse.of(VenueOpeningHoursView.class, 200), VenueOpeningHoursView::of);
+        return meta.data(result.body());
     }
 
     /** {@code venue.venue_opening_template} + {@code venue_opening_day}; times are venue local time. */

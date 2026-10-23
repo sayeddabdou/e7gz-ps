@@ -198,6 +198,29 @@ class VenueLiveChannelTest extends IntegrationTest {
         onB.close();
     }
 
+    /**
+     * E7-59 (PO decision 12 Oct 2026): a check-in, Mark Present - Late or no-show tells every open Dashboard of the
+     * venue to refetch the booking - {@code BOOKING CHANGED}, never the CREATED alert.
+     */
+    @Test
+    void theAttendanceEventsAreChangeSignals() throws Exception {
+        Fixtures.VenueAccount venue = aVenueAccount().create();
+        SseLines onB = open(portB(), venue.id(), hubB());
+
+        for (String type : List.of(IntegrationEvents.CHECK_IN_RECORDED, IntegrationEvents.LATE_PRESENT_RECORDED,
+                IntegrationEvents.NO_SHOW_RECORDED)) {
+            UUID booking = UUID.randomUUID();
+            bookingEvent(type, venue.venueId(), booking);
+            deliver();
+
+            JsonNode signal = nextSignal(onB);
+            assertThat(signal.path("type").asText()).as(type).isEqualTo("BOOKING");
+            assertThat(signal.path("id").asText()).as(type).isEqualTo(booking.toString());
+            assertThat(signal.path("reason").asText()).as(type).isEqualTo("CHANGED");
+        }
+        onB.close();
+    }
+
     @Test
     void aVenueNeverHearsAnotherVenuesSignals() throws Exception {
         Fixtures.VenueAccount mine = aVenueAccount().create();

@@ -1,6 +1,7 @@
 package ps.e7gz.notification.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -26,9 +27,12 @@ import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ApplicationContext;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import ps.e7gz.attendance.internal.AttendanceFlows;
 import ps.e7gz.booking.internal.BookingFlows;
 import ps.e7gz.booking.internal.BookingFlows.Booking;
 import ps.e7gz.common.command.CommandRunner;
+import ps.e7gz.common.command.CommandScope;
+import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.messaging.api.IntegrationEvents;
 import ps.e7gz.messaging.api.OutboxConsumer;
@@ -46,6 +50,7 @@ import ps.e7gz.scheduling.api.ScheduledJobs;
 import ps.e7gz.support.IntegrationTest;
 import ps.e7gz.support.boundary.DueJobs;
 import ps.e7gz.support.boundary.TestCommands;
+import ps.e7gz.venue.api.HoursChangeBookings;
 
 /**
  * E7-55 against the real database: each booking event creates its notifications exactly once (the task's "done when"),
@@ -80,8 +85,12 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
     @Autowired
     ObjectMapper json;
 
+    @Autowired
+    HoursChangeBookings hoursChangeBookings;
+
     JdbcClient db;
     BookingFlows flows;
+    AttendanceFlows attendance;
     BookingNotificationConsumer consumer;
     VenuePendingRequestExpiringHandler expiring;
     BookingStartsSoonHandler startsSoon;
@@ -91,6 +100,7 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
     void setUp() {
         db = JdbcClient.create(appDataSource);
         flows = BookingFlows.of(context);
+        attendance = AttendanceFlows.of(context);
         consumer = new BookingNotificationConsumer(runner, notifier, notifiedBookings, jobs);
         expiring = new VenuePendingRequestExpiringHandler(runner, notifiedBookings, notifier);
         startsSoon = new BookingStartsSoonHandler(runner, notifiedBookings, notifier);
@@ -213,6 +223,189 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
         assertThat(customerCodes(booking)).containsExactlyInAnyOrder("BOOKING_CREATED", "BOOKING_AUTO_CANCELLED");
         assertThat(venueCodes(booking)).containsExactlyInAnyOrder("VENUE_NEW_BOOKING_REQUEST",
                 "VENUE_BOOKING_AUTO_CANCELLED");
+    }
+
+    // ---------------------------------------------------------------- E7-113 opening-hours change (O5), Phase 1
+
+    /**
+     * FR-VEN-23 step 9: the hours change's BookingCancelled tells the customer once - VENUE_OPENING_HOURS_CHANGED,
+     * made by that one stored event even when it is handled twice and redelivered - and tells the venue nothing.
+     */
+    @Test
+    void anOnlineBookingCancelledByAnHoursChangeTellsOnlyTheCustomerOnce() {
+        Booking booking = flows.pending();
+        flows.publishCancelledByHoursChange(booking);
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_CANCELLED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.BOOKING_CANCELLED,
+                "CUSTOMER VENUE_OPENING_HOURS_CHANGED " + booking.customerId());
+        assertThat(notifications(booking)).containsExactlyInAnyOrder(
+                "CUSTOMER BOOKING_CREATED " + booking.customerId(),
+                "VENUE VENUE_NEW_BOOKING_REQUEST " + booking.venueId(),
+                "CUSTOMER VENUE_OPENING_HOURS_CHANGED " + booking.customerId());
+        assertThat(venueCodes(booking)).as("no venue notification for its own change")
+                .containsExactly("VENUE_NEW_BOOKING_REQUEST");
+        assertThat(venueName(booking, "VENUE_OPENING_HOURS_CHANGED")).isEqualTo(booking.venueName());
+    }
+
+    /**
+     * A Manual Booking cancelled by an hours change notifies nobody: no customer, and the venue made the change. The
+     * stored event's own plan is checked too: the notifier would skip the missing customer anyway, so only the plan
+     * shows the rule itself refuses it.
+     */
+    @Test
+    void aManualBookingCancelledByAnHoursChangeNotifiesNobody() {
+        Booking booking = flows.manualConfirmed();
+        flows.publishCancelledByHoursChange(booking);
+        OutboxEvent cancelled = outboxEvent(booking, IntegrationEvents.BOOKING_CANCELLED);
+        assertThat(cancelled.text("terminalReason")).isEqualTo("VENUE_OPENING_HOURS_CHANGED");
+        assertThat(cancelled.payload().path("source").asText()).isEqualTo("MANUAL");
+
+        assertThat(BookingNotificationRules.planFor(cancelled)).isEqualTo(BookingNotificationRules.Plan.NONE);
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_CANCELLED);
+
+        assertThat(notifications(booking)).isEmpty();
+    }
+
+    /** One notification per cancelled booking, not per customer: two bookings of one customer make two. */
+    @Test
+    void twoBookingsOfOneCustomerCancelledByAnHoursChangeMakeTwoBookingNotifications() {
+        List<Booking> bookings = flows.twoPendingOfOneCustomer();
+        Booking first = bookings.get(0);
+        Booking second = bookings.get(1);
+        assertThat(second.customerId()).isEqualTo(first.customerId());
+        flows.publishCancelledByHoursChange(first);
+        flows.publishCancelledByHoursChange(second);
+
+        drain();
+
+        for (Booking booking : bookings) {
+            assertThat(customerCodes(booking)).as("booking %s", booking.bookingId())
+                    .containsOnlyOnce("VENUE_OPENING_HOURS_CHANGED");
+            assertMadeOnceBy(booking, IntegrationEvents.BOOKING_CANCELLED,
+                    "CUSTOMER VENUE_OPENING_HOURS_CHANGED " + booking.customerId());
+        }
+        assertThat(notificationId(first, "VENUE_OPENING_HOURS_CHANGED"))
+                .isNotEqualTo(notificationId(second, "VENUE_OPENING_HOURS_CHANGED"));
+        assertThat(db.sql("""
+                        SELECT count(*) FROM notification.notification
+                         WHERE code = 'VENUE_OPENING_HOURS_CHANGED' AND recipient_id = :customer""")
+                .param("customer", first.customerId()).query(Long.class).single()).isEqualTo(2L);
+    }
+
+    /**
+     * E7-113 Phase 3B, end to end: the REAL hours-change cancellation ({@link HoursChangeBookings#cancel}, committed
+     * under the caller's locks) writes the BookingCancelled events this one consumer turns into notifications - no
+     * synthetic event. Two Online Bookings of one customer, cancelled in one call, make two notifications, one per
+     * booking; a Manual Booking cancelled the same way makes none; redelivery makes nothing new.
+     */
+    @Test
+    void theRealHoursChangeCancellationTellsTheCustomerOncePerOnlineBookingAndNobodyForAManualOne() {
+        List<Booking> online = flows.twoPendingOfOneCustomer();
+        Booking first = online.get(0);
+        Booking second = online.get(1);
+        assertThat(second.customerId()).isEqualTo(first.customerId());
+        assertThat(second.venueId()).isEqualTo(first.venueId());
+        Booking manual = flows.manualConfirmed();
+        assertThat(db.sql("SELECT operating_session_id IS NOT NULL FROM booking.booking WHERE id = :id")
+                .param("id", manual.bookingId()).query(Boolean.class).single())
+                .as("a Manual Booking made inside published hours").isTrue();
+
+        cancelByHoursChange(first.venueId(), first.venueAccountId(), online);
+        cancelByHoursChange(manual.venueId(), manual.venueAccountId(), List.of(manual));
+
+        // committed, read on another connection: the bookings and the one event each cancellation wrote
+        for (Booking booking : List.of(first, second, manual)) {
+            assertThat(db.sql("SELECT status || ' ' || terminal_reason FROM booking.booking WHERE id = :id")
+                    .param("id", booking.bookingId()).query(String.class).single())
+                    .as("booking %s", booking.bookingId()).isEqualTo("CANCELLED VENUE_OPENING_HOURS_CHANGED");
+            OutboxEvent cancelled = outboxEvent(booking, IntegrationEvents.BOOKING_CANCELLED);
+            assertThat(cancelled.text("terminalReason")).isEqualTo("VENUE_OPENING_HOURS_CHANGED");
+        }
+        assertThat(outboxEvent(first, IntegrationEvents.BOOKING_CANCELLED).payload().has("source")).isFalse();
+        OutboxEvent manualCancelled = outboxEvent(manual, IntegrationEvents.BOOKING_CANCELLED);
+        assertThat(manualCancelled.payload().path("source").asText()).isEqualTo("MANUAL");
+        assertThat(manualCancelled.payload().path("customerId").isNull()).isTrue();
+        assertThat(bookingEventTypes(first)).containsExactly(IntegrationEvents.BOOKING_CREATED,
+                IntegrationEvents.BOOKING_CANCELLED);
+        assertThat(bookingEventTypes(second)).containsExactly(IntegrationEvents.BOOKING_CREATED,
+                IntegrationEvents.BOOKING_CANCELLED);
+        assertThat(bookingEventTypes(manual)).containsExactly(IntegrationEvents.BOOKING_CONFIRMED,
+                IntegrationEvents.BOOKING_CANCELLED);
+        assertThat(db.sql("SELECT count(*) FROM technical.outbox_event WHERE event_type ILIKE '%OpeningHours%'")
+                .query(Long.class).single()).as("no event for the hours change itself").isZero();
+
+        // every stored event handled twice by the real consumer, then each cancellation redelivered once more
+        drainTwiceAndRedeliver(first, IntegrationEvents.BOOKING_CANCELLED);
+        consumer.handle(outboxEvent(second, IntegrationEvents.BOOKING_CANCELLED));
+        consumer.handle(outboxEvent(manual, IntegrationEvents.BOOKING_CANCELLED));
+
+        for (Booking booking : online) {
+            assertMadeOnceBy(booking, IntegrationEvents.BOOKING_CANCELLED,
+                    "CUSTOMER VENUE_OPENING_HOURS_CHANGED " + booking.customerId());
+            assertThat(customerCodes(booking)).as("booking %s", booking.bookingId())
+                    .containsExactlyInAnyOrder("BOOKING_CREATED", "VENUE_OPENING_HOURS_CHANGED");
+            assertThat(venueCodes(booking)).as("no venue notification for its own change")
+                    .containsExactly("VENUE_NEW_BOOKING_REQUEST");
+        }
+        assertThat(notificationId(first, "VENUE_OPENING_HOURS_CHANGED"))
+                .isNotEqualTo(notificationId(second, "VENUE_OPENING_HOURS_CHANGED"));
+        assertThat(db.sql("""
+                        SELECT booking_id FROM notification.notification
+                         WHERE code = 'VENUE_OPENING_HOURS_CHANGED' AND recipient_type = 'CUSTOMER'
+                           AND recipient_id = :customer""")
+                .param("customer", first.customerId()).query(UUID.class).list())
+                .as("one per booking, for the one customer")
+                .containsExactlyInAnyOrder(first.bookingId(), second.bookingId());
+        assertThat(notifications(manual)).as("no customer, and the venue made the change").isEmpty();
+    }
+
+    /**
+     * E7-113 Phase 3C, end to end (FR-VEN-28): the REAL hours-change cancellation of an AWAITING booking closes its Late
+     * Confirmation in the same command and writes one BookingCancelled - no Late Confirm event - so this one consumer
+     * tells the customer once, VENUE_OPENING_HOURS_CHANGED, and nothing about the Late Confirmation; redelivery makes
+     * nothing new.
+     */
+    @Test
+    void theRealHoursChangeCancellationOfAnAwaitingBookingTellsTheCustomerOnceAndNothingAboutTheLateConfirm() {
+        Booking booking = flows.lateConfirmed();
+        List<String> eventsBefore = bookingEventTypes(booking);
+        assertThat(eventsBefore).contains(IntegrationEvents.LATE_CONFIRM_INITIATED);
+
+        cancelByHoursChange(booking.venueId(), booking.venueAccountId(), List.of(booking));
+
+        // committed, read on another connection: the booking, its closed attempt and the one event it gained
+        assertThat(db.sql("SELECT status || ' ' || terminal_reason FROM booking.booking WHERE id = :id")
+                .param("id", booking.bookingId()).query(String.class).single())
+                .isEqualTo("CANCELLED VENUE_OPENING_HOURS_CHANGED");
+        assertThat(db.sql("""
+                        SELECT closed_at IS NOT NULL AND customer_response IS NULL
+                          FROM booking.late_confirmation WHERE booking_id = :id""")
+                .param("id", booking.bookingId()).query(Boolean.class).single())
+                .as("the attempt closed without a Customer response").isTrue();
+        List<String> eventsAfter = bookingEventTypes(booking);
+        assertThat(eventsAfter.subList(0, eventsBefore.size())).isEqualTo(eventsBefore);
+        assertThat(eventsAfter.subList(eventsBefore.size(), eventsAfter.size()))
+                .containsExactly(IntegrationEvents.BOOKING_CANCELLED);
+        assertThat(outboxEvent(booking, IntegrationEvents.BOOKING_CANCELLED).text("terminalReason"))
+                .isEqualTo("VENUE_OPENING_HOURS_CHANGED");
+        assertThat(db.sql("SELECT count(*) FROM technical.outbox_event WHERE event_type ILIKE '%OpeningHours%'")
+                .query(Long.class).single()).as("no event for the hours change itself").isZero();
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_CANCELLED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.BOOKING_CANCELLED,
+                "CUSTOMER VENUE_OPENING_HOURS_CHANGED " + booking.customerId());
+        assertThat(notifications(booking)).containsExactlyInAnyOrderElementsOf(beforeLateConfirm(booking,
+                "CUSTOMER LATE_CONFIRMATION_RECEIVED " + booking.customerId(),
+                "CUSTOMER VENUE_OPENING_HOURS_CHANGED " + booking.customerId()));
+        assertThat(customerCodes(booking)).as("no Late Confirm outcome is told")
+                .doesNotContain("CUSTOMER_CONFIRMATION_EXPIRED", "LATE_CONFIRMATION_EXPIRING");
+        assertThat(venueCodes(booking)).as("no venue notification for its own change")
+                .doesNotContain("VENUE_LATE_CONFIRM_DECLINED", "VENUE_CUSTOMER_CONFIRMATION_EXPIRED",
+                        "VENUE_LATE_CONFIRM_ACCEPTED");
     }
 
     /** PO decision 13 Oct 2026: the venue name the event recorded wins over the name when the notification is made. */
@@ -447,6 +640,113 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
                 "VENUE VENUE_CUSTOMER_CONFIRMATION_EXPIRED " + booking.venueId()));
     }
 
+    // ---------------------------------------------------------------------- E7-59 attendance, once each
+
+    /** §52.2 "Check-in Recorded": the customer only, from the one CheckInRecorded. */
+    @Test
+    void aCheckInTellsTheCustomerOnce() {
+        Booking booking = flows.active(Duration.ofMinutes(5));
+        attendance.checkIn(booking.venueAccountId(), booking.bookingId());
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.CHECK_IN_RECORDED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.CHECK_IN_RECORDED,
+                "CUSTOMER CHECK_IN_RECORDED " + booking.customerId());
+        assertThat(venueCodes(booking)).doesNotContain("CHECK_IN_RECORDED");
+    }
+
+    /** §52.2 "No-show Recorded": the customer only, from the one NoShowRecorded; never a "cancelled" code. */
+    @Test
+    void aNoShowTellsTheCustomerOnce() {
+        Booking booking = flows.active(Duration.ofMinutes(20));
+        attendance.noShow(booking.venueAccountId(), booking.bookingId());
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.NO_SHOW_RECORDED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.NO_SHOW_RECORDED,
+                "CUSTOMER NO_SHOW_RECORDED " + booking.customerId());
+        assertThat(customerCodes(booking)).noneMatch(code -> code.contains("CANCELLED"));
+        assertThat(outboxEvents(booking, "BookingNoShowRecorded")).isEmpty();
+    }
+
+    /** Mark Present - Late has no §52.2 notification of its own: its event creates nothing. */
+    @Test
+    void aLatePresentTellsNobody() {
+        Booking booking = flows.active(Duration.ofMinutes(20));
+        drain();
+        List<String> before = notifications(booking);
+        attendance.latePresent(booking.venueAccountId(), booking.bookingId());
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.LATE_PRESENT_RECORDED);
+
+        assertThat(notifications(booking)).containsExactlyInAnyOrderElementsOf(before);
+    }
+
+    /**
+     * A no-show on a delayed start that would have cancelled (Amr Heiba, 17 Oct 2026): the start-time cancellation
+     * tells the customer and the venue once each, by the established BookingCancelled path - never NO_SHOW_RECORDED.
+     */
+    @Test
+    void aStartTimeCancellationBehindADelayedStartTellsEachSideOnce() {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofMinutes(20));
+        flows.resourceDisabledBehindTheGuards(booking);
+        assertThatThrownBy(() -> attendance.noShow(booking.venueAccountId(), booking.bookingId()))
+                .isInstanceOf(ps.e7gz.common.error.ApiException.class);
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_CANCELLED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.BOOKING_CANCELLED,
+                "CUSTOMER BOOKING_AUTO_CANCELLED " + booking.customerId(),
+                "VENUE VENUE_BOOKING_AUTO_CANCELLED " + booking.venueId());
+        assertThat(customerCodes(booking)).doesNotContain("NO_SHOW_RECORDED");
+    }
+
+    // ------------------------------------------------------------- E7-60 start (T4)
+
+    /**
+     * E7-60: a start-time cancellation by T4 tells the customer and the venue once each (Spec v5 section 31.3: the
+     * customer is notified; PO decision 12 Oct 2026: VENUE_BOOKING_AUTO_CANCELLED), even when redelivered.
+     */
+    @Test
+    void aStartTimeCancellationByTheStartTellsEachSideOnce() {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofSeconds(5));
+        flows.resourceDisabledBehindTheGuards(booking);
+        assertThat(flows.fireStart(booking)).isTrue();
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_CANCELLED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.BOOKING_CANCELLED,
+                "CUSTOMER BOOKING_AUTO_CANCELLED " + booking.customerId(),
+                "VENUE VENUE_BOOKING_AUTO_CANCELLED " + booking.venueId());
+    }
+
+    /** A Manual Booking cancelled at its start: there is no customer, so the venue alone is told, once. */
+    @Test
+    void aManualStartTimeCancellationTellsOnlyTheVenueOnce() {
+        Booking booking = flows.manualConfirmedWithOverdueStart(Duration.ofSeconds(5));
+        flows.resourceDisabledBehindTheGuards(booking);
+        assertThat(flows.fireStart(booking)).isTrue();
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_CANCELLED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.BOOKING_CANCELLED,
+                "VENUE VENUE_BOOKING_AUTO_CANCELLED " + booking.venueId());
+        assertThat(notifications(booking)).containsExactly("VENUE VENUE_BOOKING_AUTO_CANCELLED " + booking.venueId());
+    }
+
+    /** PO decision 13 Oct 2026: BookingStarted notifies nobody. */
+    @Test
+    void aStartTellsNobody() {
+        Booking booking = flows.confirmedWithOverdueStart(Duration.ofSeconds(5));
+        drain();
+        List<String> before = notifications(booking);
+        assertThat(flows.fireStart(booking)).isTrue();
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_STARTED);
+
+        assertThat(notifications(booking)).isEqualTo(before);
+    }
+
     // ------------------------------------------------------------- E7-58 Late Confirm warning, FR-LCF-12
 
     @Test
@@ -624,6 +924,31 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
         flows.customerCancels(booking);
         assertThat(db.sql("SELECT status FROM booking.booking WHERE id = :id").param("id", booking.bookingId())
                 .query(String.class).single()).isEqualTo("CANCELLED");
+    }
+
+    /**
+     * E7-113: the bookings of one venue cancelled by an hours change through the real Booking port, in one committed
+     * command under the locks its caller must hold - the venue, the bookings' Resources and their Customers.
+     */
+    private void cancelByHoursChange(UUID venueId, UUID venueAccountId, List<Booking> bookings) {
+        LockSet.Builder locks = LockSet.builder().venues(venueId);
+        for (Booking booking : bookings) {
+            locks.resources(booking.resourceId());
+            if (booking.customerId() != null) {
+                locks.users(booking.customerId());
+            }
+        }
+        runner.run(TestCommands.under(CommandScope.shared(locks.build()), command -> {
+            hoursChangeBookings.cancel(command, venueId, venueAccountId,
+                    bookings.stream().map(Booking::bookingId).toList());
+            return null;
+        }));
+    }
+
+    /** The types of the booking's own events (aggregate = the booking), oldest first. */
+    private List<String> bookingEventTypes(Booking booking) {
+        return db.sql("SELECT event_type FROM technical.outbox_event WHERE aggregate_id = :id ORDER BY id")
+                .param("id", booking.bookingId()).query(String.class).list();
     }
 
     private static OutboxConsumer twice(OutboxConsumer consumer) {
