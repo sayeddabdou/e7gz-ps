@@ -111,6 +111,13 @@ public enum ApiErrorCode {
      * decision D9, 10 Oct 2026 (E7-47).
      */
     CUSTOMER_NOT_ELIGIBLE(422),
+    /**
+     * A Platform Admin trust, Verified Player, attendance or referral action the target's current state no longer
+     * allows (e.g. lifting a ban that is no longer ACTIVE, suspending someone who is not VERIFIED, invalidating a
+     * referral that is already INVALID, reversing evidence that does not exist): refresh and look again. One general
+     * code for all of them. PO decision D5, 17 Oct 2026 (E7-65).
+     */
+    ADMIN_ACTION_NOT_ALLOWED(409),
 
     // General codes (arch 09 §1.4; Product Owner decision 29 Sep 2026, E7-12).
     /** A malformed or invalid request: unreadable body, bad parameter, failed bean validation. */

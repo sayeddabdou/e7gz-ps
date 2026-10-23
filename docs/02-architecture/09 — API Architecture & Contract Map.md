@@ -9,6 +9,7 @@
 **Updated:** 12 October 2026 — E7-58 decision: the neutral Late Confirm failure records `LATE_CONFIRM_FAILED_BOOKING_LIMIT` only for the 4-commitment limit; a ban or deactivated account records no booking event (`§4.1`).
 **Updated:** 15 October 2026 — E7-56 decisions: admin alert list and acknowledge routes (`§5`) and `ADMIN_ALERT_ALREADY_ACKNOWLEDGED` (`§1.5`).
 **Updated:** 16 October 2026 — E7-57: `verify-phone` takes `password` for a code from `otp/send` (`§3.1`).
+**Updated:** 17 October 2026 — Sprint 4 contract decisions (E7-65): `ADMIN_ACTION_NOT_ALLOWED` (`§1.5`); admin users, trust, ban, attendance, wallet, points, referral and points-settings routes (`§5`); global rules joined on 20 October 2026 (`§5`).
 
 **Style.** REST + JSON over HTTPS, base `/api/v1`, OpenAPI 3.1 generated from code, typed TypeScript clients generated for all three surfaces (`ADR-012`).
 
@@ -136,6 +137,7 @@ Representative members, each traced:
 | `NOTIFICATION_DELIVERY_NOT_DEAD_LETTER` | **409** | admin "try again" on a delivery that is not `DEAD_LETTER` (already sent, or still being retried by the system): there is nothing to retry. Product Owner decision, 10 Oct 2026 (E7-43) |
 | `ADMIN_ALERT_ALREADY_ACKNOWLEDGED` | **409** | an admin acknowledges an alert another admin already acknowledged (one acknowledgement per alert, `admin.acknowledge_alert`); the same admin acknowledging again returns the alert. Product Owner decision, 15 Oct 2026 (E7-56) |
 | `CUSTOMER_NOT_ELIGIBLE` | 422 | `FR-BOK-14` — the venue's Accept fails the always-on customer check (banned, deleted or restricted); the booking stays PENDING, nothing is cancelled. Neutral: the venue is never told why. Product Owner decision D9, 10 Oct 2026 (E7-47) |
+| `ADMIN_ACTION_NOT_ALLOWED` | **409** | a Platform Admin trust, Verified Player, attendance or referral action the target's current state no longer allows (a ban no longer `ACTIVE`, a Verified Player status that does not allow the transition, a referral already `INVALID`, evidence that does not exist, a ban still supported by trust history): refresh and look again. One general code for all of them. Product Owner decision D5, 17 Oct 2026 (E7-65) |
 
 **General codes** — Product Owner decision, 29 Sep 2026 (E7-12). Used only where no more specific code above applies:
 
@@ -428,18 +430,19 @@ Rules (`ADR-011`): the Owner Password is a PIN of exactly 4 digits (PCR-006). Bo
 | Venue photos | `GET POST /admin/venues/{id}/images` · `POST /admin/venues/{id}/images/{imageId}/confirm` · `PUT /admin/venues/{id}/images/order` `{imageIds}` · `POST /admin/venues/{id}/images/{imageId}/remove` — same two-step upload as §4.2, no Owner Password | `FR-ADM-02`, PCR-005 — Product Owner decision, 2 Oct 2026 |
 | Venue accounts | `POST /admin/venues/{id}/venue-account` `{loginIdentifier, password, initialOwnerPassword, languagePreference?}` · `POST /admin/venue-accounts/{id}/disable` · `/enable` · `/reset-login-password` · `/reset-owner-password` | `FR-ADM-02`, `FR-ADM-03`, `FR-VEN-01` |
 | Activities | `GET /admin/activities` — **view only**: the three activities and how many venues offer each; a venue's activities are set on the venue | `FR-ADM-01` — Product Owner decision, 2 Oct 2026 |
-| Users | `GET /admin/users` · `/{id}` · `GET /account-deletion-requests` · `POST /{id}/anonymise` — anonymisation can complete a linked Customer request and executes O19, including Tournament `ACCOUNT_DELETED` precedence | `FR-ADM-04`, `FR-ACC-10`, `FR-TRN-26` |
+| Users | `GET /admin/users?q=&cursor=&limit=` · `/{id}` — in the Sprint 4 contract (Product Owner decision D4, 17 Oct 2026, E7-65) · `GET /account-deletion-requests` · `POST /{id}/anonymise` — anonymisation can complete a linked Customer request and executes O19, including Tournament `ACCOUNT_DELETED` precedence | `FR-ADM-04`, `FR-ACC-10`, `FR-TRN-26` |
 | Verified Players | `GET /admin/verified-players` · `POST /{userId}/suspend` · `/revoke` · `/restore` | `FR-ADM-05`, `FR-ACC-15` |
 | Reviews moderation | `GET /admin/reviews` · `POST /{id}/approve` · `/hide` · `/restore` · `/remove` · `GET /admin/review-reports` · `POST /admin/review-reports/{id}/resolve` | `FR-REV-08`, `FR-REV-11` |
 | Global bookings | `GET /admin/bookings?…` · `/{id}` — **full lifecycle history** | `FR-ADM-06` |
 | Booking remediation | `POST /admin/bookings/{id}/cancel` · `/terminate-active` · `/correct` | `FRS §2.10` |
-| Attendance remediation | `POST /admin/bookings/{id}/attendance/reverse-check-in` · `/reverse-late-present` · `/reverse-no-show` · `/correct` | `FR-ATT-11`, `FR-ATT-13` |
+| Attendance remediation | `POST /admin/bookings/{id}/attendance/reverse-check-in` · `/reverse-late-present` · `/reverse-no-show` `{reason}` · `/correct` `{correctedOutcome, reason}` — in the Sprint 4 contract (Product Owner decision D1, 17 Oct 2026, E7-65) | `FR-ATT-11`, `FR-ATT-13` |
 | No-show records | `GET /admin/no-shows` | `FR-ADM-07` |
-| Trust | `POST /admin/users/{id}/trust-adjustment` · `/bans/{banId}/lift` · `/shorten` · `/correct` | `FR-TRS-27` |
+| Trust | `POST /admin/users/{id}/trust-adjustment` `{counterAfter, penaltyStageAfter, reason}` · `POST /admin/users/{id}/bans/{banId}/lift` `{reason}` · `/shorten` `{endsAt, reason}` · `/correct` `{reason}` — ban routes sit under the user; `/correct` kept (Product Owner decision D2, 17 Oct 2026, E7-65) | `FR-TRS-27` |
 | Tournaments | `GET /admin/tournaments` · `POST /{id}/cancel` | `FR-ADM-08` |
-| Wallet · Points · Referrals | `GET /admin/wallet` · `/points` · `POST /points/adjust` · `GET /referrals` · `POST /referrals/{id}/invalidate` | `FR-ADM-09`, `FR-PTS-09`, `FR-PTS-11` |
+| Wallet · Points · Referrals | `GET /admin/wallet` · `/points` · `GET /admin/users/{id}/wallet` · `/points` (one user's history) · `POST /points/adjust` `{userId, amount, reason}` · `GET /referrals` · `POST /referrals/{id}/invalidate` `{reason}` | `FR-ADM-09`, `FR-PTS-09`, `FR-PTS-11` |
 | Fees | `GET PUT /admin/fees` — global booking fee, tournament creation fee | `FR-ADM-10` |
-| Global rules | `GET /admin/global-rules` — **read-only** for the no-show ladder | `FR-TRS-13`, `NFR-37` |
+| Points settings | `GET PUT /admin/points/settings` — completed-booking points, referral points, wallet-refund switch, through `loyalty.configure` (Product Owner decision D3, 17 Oct 2026, E7-65) | `FR-PTS-01`, `FR-PTS-07`, `01 §14` A8 |
+| Global rules | `GET /admin/global-rules` — **read-only** for the no-show ladder; in the Sprint 4 contract (Product Owner decision D7, 20 Oct 2026, E7-65) | `FR-TRS-13`, `NFR-37` |
 | Notifications | `GET /admin/notifications` · `/alerts` | `FR-NTF-10` |
 | Admin alerts | `GET /admin/alerts?acknowledged=&kind=&severity=&cursor=&limit=` — open alerts by default, newest first, cursor paging · `POST /admin/alerts/{alertId}/acknowledge` `{reason?}` → 200 the alert; the same admin again returns it, another admin → 409 `ADMIN_ALERT_ALREADY_ACKNOWLEDGED` | `NFR-29`, `11 §5.4`, `12 §6` — Product Owner decision, 15 Oct 2026 (E7-56) |
 | Notification delivery recovery | `POST /admin/notification-deliveries/{deliveryId}/recover` `{reason}` → 204 — "try again" for one `DEAD_LETTER` delivery through `notification.recover_dead_letter` (audited); an outbox event in `DEAD_LETTER` stays final | `08 §4.3` — Product Owner decisions, 9 and 10 Oct 2026 (E7-41, E7-43) |
@@ -451,6 +454,7 @@ Rules (`ADR-011`): the Owner Password is a PIN of exactly 4 digits (PCR-006). Bo
 - **There is no admin booking-creation endpoint.** All customer booking creation uses the same online predicate; support may assist but cannot bypass validation (`FR-TRS-26`, `Out-of-Scope §5`).
 - **`POST /admin/wallet/adjust` does not exist** at launch (`FR-PTS-11`). Points adjustment does, because points are active.
 - Every remediation command requires a **mandatory reason** and writes an audit record with admin identity and timestamp (`FR-AUD-06`).
+- Every Sprint 4 admin remediation and configuration write (trust, bans, Verified Player, attendance, points, referrals, fees, points settings) requires the `Idempotency-Key` (Product Owner decision D6, 17 Oct 2026, E7-65).
 - Every material change to a ban, no-show, attendance result, points, booking status or referral reward emits a **customer notification** (`FR-NTF-11`).
 - Attendance correction requires the **chosen outcome** — there is no generic "undo" (`FR-ATT-13`).
 - The admin booking detail exposes Booking ID, user, venue, activity, resource, **console**, **play mode**, date, time, duration, venue price, **historical booking fee**, total, source, status and the **full lifecycle history** (`FR-ADM-06`, `FR-AUD-10`).
