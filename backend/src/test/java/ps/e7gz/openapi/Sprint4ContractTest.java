@@ -25,8 +25,8 @@ class Sprint4ContractTest {
             "get /api/v1/customer/points",                                              // E7-66
             "get /api/v1/customer/referrals",                                           // E7-67
             "get /api/v1/customer/wallet",                                              // E7-66
-            "get /api/v1/admin/users",                                                  // no task yet (PO D4)
-            "get /api/v1/admin/users/{userId}",                                         // no task yet (PO D4)
+            "get /api/v1/admin/users",                                                  // E7-66 (PO D4)
+            "get /api/v1/admin/users/{userId}",                                         // E7-66 (PO D4)
             "post /api/v1/admin/users/{userId}/trust-adjustment",                       // E7-71
             "post /api/v1/admin/users/{userId}/bans/{banId}/lift",                      // E7-71
             "post /api/v1/admin/users/{userId}/bans/{banId}/shorten",                   // E7-71

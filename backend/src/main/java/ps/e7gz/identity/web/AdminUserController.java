@@ -27,9 +27,9 @@ import ps.e7gz.common.web.PageView;
 
 /**
  * Platform Admin user management (arch 09 §5 "Users", FR-ADM-04): find a customer and see their standing before a trust
- * or points action. In the Sprint 4 contract by PO decision D4 (17 Oct 2026); no task implements it yet. The detail
- * reads standing, Verified Player, points and wallet through those modules' api packages. Anonymisation and deletion
- * requests are Sprint 7's.
+ * or points action. In the Sprint 4 contract by PO decision D4 (17 Oct 2026); implemented by E7-66 (PO decision 19 Oct
+ * 2026). The detail reads standing, Verified Player, points and wallet through those modules' api packages.
+ * Anonymisation and deletion requests are Sprint 7's.
  */
 @RestController
 @RequestMapping("/api/v1/admin/users")
