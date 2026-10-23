@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { components } from "@e7gz/api-client";
 import { apiErrorOf, type ApiClient } from "../../api";
 import { useMessages } from "../../i18n";
-import { createIdempotencyKey } from "../requests/LiveRequestsProvider";
+import { createIdempotencyKey } from "../operations";
 import { setupErrorMessage } from "./errorMessages";
 import { OwnerPasswordDialog } from "./OwnerPasswordDialog";
 import { setupStyles as styles } from "./styles";

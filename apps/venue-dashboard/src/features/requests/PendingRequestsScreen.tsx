@@ -13,6 +13,7 @@ export interface PendingRequestsViewModel {
   actionError?: string;
   pendingAction?: string;
   streamState: "connected" | "connecting" | "reconnecting" | "stopped";
+  bookingChangeVersion: number;
   accept: (bookingId: string) => void;
   reject: (bookingId: string, reason: string) => void;
   refresh: () => void;
@@ -98,6 +99,7 @@ function RequestCard({ booking, model }: { booking: Booking; model: PendingReque
       <div>
         <h3 style={styles.title}>{booking.resource.name}</h3>
         <p style={styles.muted}>{booking.customer?.username ?? t.customerHidden} · {messages.activity[booking.resource.activity]}</p>
+        {booking.customer?.phone ? <p style={styles.muted}>{booking.customer.phone}</p> : null}
       </div>
       <span aria-label={t.timeRemaining} style={styles.countdown}>{countdown === "paused" ? t.paused : countdown}</span>
     </div>

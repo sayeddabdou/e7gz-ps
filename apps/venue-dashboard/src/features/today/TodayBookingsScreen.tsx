@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { components } from "@e7gz/api-client";
 import { webTokens } from "@e7gz/tokens/web";
 import { apiErrorOf, type ApiClient } from "../../api";
 import { useMessages } from "../../i18n";
 import { bookingErrorMessage } from "../walk-in/errorMessages";
+import { createIdempotencyKey, isInsideWindow, serverClockOffset, useServerNow } from "../operations";
 
 type Booking = components["schemas"]["VenueBooking"];
 type BookingDetail = components["schemas"]["VenueBookingDetail"];
@@ -30,6 +31,10 @@ const styles = {
   contact: { backgroundColor: webTokens.color.surface.venueSubtle, borderRadius: webTokens.radius.xl, display: "grid", gap: webTokens.spacing.sm, padding: webTokens.spacing.xl },
   history: { display: "grid", gap: webTokens.spacing.md, listStyle: "none", marginBlock: 0, paddingInlineStart: 0 },
   historyItem: { borderBlockStart: `${webTokens.spacing.hairline}px solid ${webTokens.color.border.subtle}`, paddingBlockStart: webTokens.spacing.md },
+  actions: { backgroundColor: webTokens.color.surface.venueSubtle, borderRadius: webTokens.radius.xl, display: "grid", gap: webTokens.spacing.lg, padding: webTokens.spacing.xl },
+  actionRow: { display: "flex", flexWrap: "wrap", gap: webTokens.spacing.md },
+  dangerButton: { backgroundColor: webTokens.color.surface.raised, border: `${webTokens.spacing.hairline}px solid ${webTokens.color.feedback.danger}`, borderRadius: webTokens.radius.lg, color: webTokens.color.feedback.danger, cursor: "pointer", fontWeight: webTokens.typography.fontWeight.bold, paddingBlock: webTokens.spacing.md, paddingInline: webTokens.spacing.xl },
+  input: { border: `${webTokens.spacing.hairline}px solid ${webTokens.color.border.venue}`, borderRadius: webTokens.radius.lg, font: "inherit", paddingBlock: webTokens.spacing.md, paddingInline: webTokens.spacing.lg },
 } satisfies Record<string, CSSProperties>;
 
 function timeLabel(instant: string, locale: string): string {
@@ -53,17 +58,21 @@ async function loadToday(api: ApiClient): Promise<{ bookings: Booking[]; busines
   const schedule = await api.GET("/api/v1/venue/availability");
   if (!schedule.data) return { bookings: [], businessDate: "", error: schedule.error };
   const businessDate = schedule.data.data.businessDate;
-  const bookings: Booking[] = [];
+  const bookings = new Map<string, Booking>();
+  const seenCursors = new Set<string>();
   let cursor: string | undefined;
   do {
     const page = await api.GET("/api/v1/venue/bookings", {
       params: { query: { from: businessDate, limit: 100, to: businessDate, ...(cursor ? { cursor } : {}) } },
     });
     if (!page.data) return { bookings: [], businessDate, error: page.error };
-    bookings.push(...page.data.data.items);
-    cursor = page.data.data.nextCursor ?? undefined;
+    page.data.data.items.forEach((booking) => bookings.set(booking.bookingId, booking));
+    const nextCursor = page.data.data.nextCursor ?? undefined;
+    if (!nextCursor || seenCursors.has(nextCursor)) break;
+    seenCursors.add(nextCursor);
+    cursor = nextCursor;
   } while (cursor);
-  return { bookings, businessDate };
+  return { bookings: Array.from(bookings.values()), businessDate };
 }
 
 export function TodayBookingsScreen({ api, onOpenBooking }: { api: ApiClient; onOpenBooking: (bookingId: string) => void }) {
@@ -123,11 +132,14 @@ export function BookingDetailScreen({ api, backLabel, bookingId, onBack }: { api
   const [detail, setDetail] = useState<BookingDetail>();
   const [error, setError] = useState<string>();
   const [reload, setReload] = useState(0);
+  const [clockOffsetMs, setClockOffsetMs] = useState(0);
 
   const load = useCallback(() => {
     void api.GET("/api/v1/venue/bookings/{bookingId}", { params: { path: { bookingId } } }).then(({ data, error: body }) => {
       if (!data) return setError(bookingErrorMessage(apiErrorOf(body).code, messages));
       setDetail(data.data);
+      setClockOffsetMs(serverClockOffset(data.meta.serverTime));
+      setError(undefined);
     }).catch(() => setError(messages.bookings.errors.network));
   }, [api, bookingId, messages]);
 
@@ -156,7 +168,109 @@ export function BookingDetailScreen({ api, backLabel, bookingId, onBack }: { api
         {booking.rejectReasonText ? <DetailItem label={t.rejectReason} value={booking.rejectReasonText} /> : null}
       </dl>
       {contactPhone ? <section style={styles.contact}><h3 style={styles.groupHeading}>{t.contact}</h3><p><strong>{t.customerPhone}</strong><br />{contactPhone}</p></section> : null}
+      <BookingActions api={api} booking={booking} clockOffsetMs={clockOffsetMs} onChanged={() => setReload((value) => value + 1)} />
       {detail.history.length ? <section><h3 style={styles.groupHeading}>{t.history}</h3><ul style={styles.history}>{detail.history.map((entry, index) => <li key={`${entry.at}-${index}`} style={styles.historyItem}><time dateTime={entry.at}>{dateTimeLabel(entry.at, t.locale)}</time> · {entry.toStatus ? messages.bookings.today.statuses[entry.toStatus] : entry.terminalReason ? t.terminalReasons[entry.terminalReason] : entry.eventType ? t.events[entry.eventType] : t.bookingUpdate}</li>)}</ul></section> : null}
     </article>
+  </section>;
+}
+
+type BookingAction = "check-in" | "late-present" | "no-show" | "cancel-manual" | "cancel-confirmed";
+
+function BookingActions({ api, booking, clockOffsetMs, onChanged }: { api: ApiClient; booking: Booking; clockOffsetMs: number; onChanged: () => void }) {
+  const messages = useMessages();
+  const t = messages.bookings.detail;
+  const now = useServerNow(clockOffsetMs);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const [success, setSuccess] = useState<string>();
+  const [confirming, setConfirming] = useState<"no-show" | "cancel-manual" | "cancel-confirmed">();
+  const [ownerPin, setOwnerPin] = useState("");
+  const keys = useRef(new Map<string, string>());
+  const busyRef = useRef(false);
+
+  const attendance = booking.attendance;
+  const attendanceRecorded = Boolean(attendance?.checkedInAt || attendance?.latePresentAt || attendance?.noShowAt);
+  const attendanceStatusAllowsAction = booking.status === "CONFIRMED" || booking.status === "ACTIVE";
+  const canCheckIn = Boolean(attendanceStatusAllowsAction && attendance && !attendanceRecorded && isInsideWindow(attendance.checkInWindow, now));
+  const canLate = Boolean(attendanceStatusAllowsAction && attendance && !attendanceRecorded && isInsideWindow(attendance.lateWindow, now));
+  const canCancelManual = booking.source === "MANUAL" && (booking.status === "CONFIRMED" || booking.status === "ACTIVE");
+  const canCancelConfirmed = booking.source === "ONLINE" && booking.status === "CONFIRMED";
+
+  const messageFor = (value: unknown) => {
+    const code = apiErrorOf(value).code;
+    return code && code in t.actionErrors ? t.actionErrors[code as keyof typeof t.actionErrors] : t.actionErrors.unexpected;
+  };
+
+  const clearConfirmedCancel = () => {
+    setOwnerPin("");
+    for (const signature of keys.current.keys()) {
+      if (signature.startsWith("cancel-confirmed:")) keys.current.delete(signature);
+    }
+  };
+
+  const closeConfirmation = () => {
+    if (confirming === "cancel-confirmed") clearConfirmedCancel();
+    setConfirming(undefined);
+  };
+
+  const act = async (action: BookingAction) => {
+    if (busyRef.current) return;
+    const signature = action === "cancel-confirmed" ? `${action}:${ownerPin}` : action;
+    const key = keys.current.get(signature) ?? createIdempotencyKey();
+    keys.current.set(signature, key);
+    busyRef.current = true;
+    setBusy(true);
+    setError(undefined);
+    setSuccess(undefined);
+    try {
+      const common = { params: { header: { "Idempotency-Key": key }, path: { bookingId: booking.bookingId } } } as const;
+      const result = action === "check-in"
+        ? await api.POST("/api/v1/venue/bookings/{bookingId}/check-in", common)
+        : action === "late-present"
+          ? await api.POST("/api/v1/venue/bookings/{bookingId}/late-present", common)
+          : action === "no-show"
+            ? await api.POST("/api/v1/venue/bookings/{bookingId}/no-show", common)
+            : action === "cancel-manual"
+              ? await api.POST("/api/v1/venue/bookings/{bookingId}/cancel-manual", common)
+              : await api.POST("/api/v1/venue/bookings/{bookingId}/cancel-confirmed", { ...common, body: { ownerPassword: ownerPin } });
+      if (!result.data) {
+        setError(messageFor(result.error));
+        if (action === "cancel-confirmed" && result.response?.status === 423) clearConfirmedCancel();
+        if (result.response?.status === 409 || result.response?.status === 422) onChanged();
+        return;
+      }
+      keys.current.delete(signature);
+      setConfirming(undefined);
+      if (action === "cancel-confirmed") clearConfirmedCancel();
+      setSuccess(action === "check-in" || action === "late-present" || action === "no-show"
+        ? t.attendanceRecorded
+        : action === "cancel-manual" ? t.manualCancelled : t.confirmedCancelled);
+      onChanged();
+    } catch {
+      setError(t.actionErrors.network);
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
+
+  if (!canCheckIn && !canLate && !canCancelManual && !canCancelConfirmed && !attendanceRecorded) return null;
+  return <section style={styles.actions}>
+    <h3 style={styles.groupHeading}>{attendance ? t.attendance : t.actions}</h3>
+    {error ? <p role="alert" style={styles.error}>{error}</p> : null}
+    {success ? <p role="status">{success}</p> : null}
+    {attendance?.checkedInAt ? <p>{t.checkIn}: {dateTimeLabel(attendance.checkedInAt, t.locale)}</p> : null}
+    {attendance?.latePresentAt ? <p>{t.latePresent}: {dateTimeLabel(attendance.latePresentAt, t.locale)}</p> : null}
+    {attendance?.noShowAt ? <p>{t.noShow}: {dateTimeLabel(attendance.noShowAt, t.locale)}</p> : null}
+    <div style={styles.actionRow}>
+      {canCheckIn ? <button disabled={busy} onClick={() => void act("check-in")} style={styles.button} type="button">{busy ? t.actionWorking : t.checkIn}</button> : null}
+      {canLate ? <button disabled={busy} onClick={() => void act("late-present")} style={styles.button} type="button">{busy ? t.actionWorking : t.latePresent}</button> : null}
+      {canLate && confirming !== "no-show" ? <button disabled={busy} onClick={() => setConfirming("no-show")} style={styles.dangerButton} type="button">{t.noShow}</button> : null}
+      {confirming === "no-show" ? <><button disabled={busy} onClick={() => void act("no-show")} style={styles.dangerButton} type="button">{busy ? t.actionWorking : t.confirmNoShow}</button><button disabled={busy} onClick={closeConfirmation} style={styles.button} type="button">{t.cancelAction}</button></> : null}
+      {canCancelManual && confirming !== "cancel-manual" ? <button disabled={busy} onClick={() => setConfirming("cancel-manual")} style={styles.dangerButton} type="button">{t.cancelManual}</button> : null}
+      {confirming === "cancel-manual" ? <><button disabled={busy} onClick={() => void act("cancel-manual")} style={styles.dangerButton} type="button">{busy ? t.actionWorking : t.confirmCancelManual}</button><button disabled={busy} onClick={closeConfirmation} style={styles.button} type="button">{t.cancelAction}</button></> : null}
+      {canCancelConfirmed && confirming !== "cancel-confirmed" ? <button disabled={busy} onClick={() => setConfirming("cancel-confirmed")} style={styles.dangerButton} type="button">{t.cancelConfirmed}</button> : null}
+    </div>
+    {confirming === "cancel-confirmed" ? <div style={styles.actions}><label>{t.ownerPin}<input aria-describedby="owner-pin-hint" autoComplete="off" inputMode="numeric" maxLength={4} onChange={(event) => setOwnerPin(event.target.value.replace(/\D/gu, ""))} style={styles.input} type="password" value={ownerPin} /></label><p id="owner-pin-hint" style={styles.intro}>{t.ownerPinHint}</p><div style={styles.actionRow}><button disabled={busy || ownerPin.length !== 4} onClick={() => void act("cancel-confirmed")} style={styles.dangerButton} type="button">{busy ? t.actionWorking : t.confirmCancelConfirmed}</button><button disabled={busy} onClick={closeConfirmation} style={styles.button} type="button">{t.cancelAction}</button></div></div> : null}
   </section>;
 }
