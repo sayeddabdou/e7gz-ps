@@ -37,7 +37,8 @@ import ps.e7gz.venue.api.OperatingSessions.SessionPeriod;
  *       {@link AvailabilityQuery}'s answer (checks 1-4 are state lookups that do not depend on the period, arch 05
  *       section 2.1);</li>
  *   <li>candidate starts come from free-gap boundaries ({@link FreeWindows}) over the ledger's merged occupied ranges
- *       ({@code range_agg}) and the declared Emergency intervals of check 5 - never a minute-by-minute scan;</li>
+ *       ({@code range_agg}) and the declared Emergency intervals of check 5 - never a minute-by-minute scan - rounded
+ *       up to the 15-minute Cairo wall-time {@link StartGrid} (PO decision 12 Oct 2026, E7-115);</li>
  *   <li>every candidate is accepted only when {@link AvailabilityQuery#isFree} says FREE.</li>
  * </ul>
  */
@@ -135,18 +136,18 @@ class NearestAvailabilityCalculator {
     }
 
     /**
-     * arch 05 section 5.2: session by session from {@code max(now + 15 min, session start)}, the earliest start of a
-     * 60-minute window any eligible Resource has free; the first session with one wins. {@code null} when no
-     * materialized session has one.
+     * arch 05 section 5.2: session by session from {@code max(now + 15 min, session start)} rounded up to the
+     * {@link StartGrid}, the earliest grid start of a 60-minute window inside the session that any eligible Resource
+     * has free; the first session with one wins. {@code null} when no materialized session has one.
      */
     private Instant nearest(CommandContext command, UUID venueId, List<UUID> resources, Instant lead, Instant now) {
         List<SessionPeriod> upcoming = sessions.endingAfter(command, venueId, lead).stream()
-                .filter(session -> !latest(lead, session.start()).plus(MINIMUM).isAfter(session.end()))
+                .filter(session -> !firstStart(lead, session).plus(MINIMUM).isAfter(session.end()))
                 .toList();
         if (upcoming.isEmpty()) {
             return null;
         }
-        Instant from = latest(lead, upcoming.get(0).start());
+        Instant from = firstStart(lead, upcoming.get(0));
         Instant to = upcoming.get(upcoming.size() - 1).end();
         Map<UUID, List<Span>> busy = busy(command, venueId, resources, from, to);
         for (SessionPeriod session : upcoming) {
@@ -181,7 +182,8 @@ class NearestAvailabilityCalculator {
     }
 
     /**
-     * The first free-gap candidate of the Resource in the session, if the canonical predicate confirms it.
+     * The first free-gap candidate on the {@link StartGrid} of the Resource in the session, if the canonical predicate
+     * confirms it.
      *
      * <p>A refusal here is a defensive path only: Maintenance and Closures always have their ledger guard rows (arch 05
      * section 3.2) and Emergency intervals are explicit boundaries, so the boundaries normally match the predicate. A
@@ -190,7 +192,7 @@ class NearestAvailabilityCalculator {
      */
     private Optional<Instant> earliestIn(CommandContext command, SessionPeriod session, UUID resource, List<Span> busy,
                                          Instant lead, Instant now) {
-        Optional<Instant> candidate = FreeWindows.firstFit(busy, latest(lead, session.start()), session.end(), MINIMUM);
+        Optional<Instant> candidate = StartGrid.firstFit(busy, latest(lead, session.start()), session.end(), MINIMUM);
         if (candidate.isEmpty()) {
             return Optional.empty();
         }
@@ -226,6 +228,11 @@ class NearestAvailabilityCalculator {
             }
         }
         return lowest;
+    }
+
+    /** The session's first possible grid start: {@code max(now + 15 min, session start)} rounded up to the grid. */
+    private static Instant firstStart(Instant lead, SessionPeriod session) {
+        return StartGrid.ceil(latest(lead, session.start()));
     }
 
     private static Instant latest(Instant a, Instant b) {
