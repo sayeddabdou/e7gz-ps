@@ -136,7 +136,7 @@ Tables without a producer (Booking, Reservation, Tournament, Participant, Attend
 
 ## 4.6 Loyalty, fees and configuration
 
-Points and Wallet are append-only ledgers (`loyalty.points_transaction`, `loyalty.wallet_transaction`) with non-negative balances and `UNRECOVERED_REVERSAL_AMOUNT` audit for capped reversals. Reward values are read from versioned configuration at the Product's anchor instant and stored on the transaction (`loyalty.reward_application`).
+Points and Wallet are append-only ledgers (`loyalty.points_transaction`, `loyalty.wallet_transaction`; since v1.1.39 the Wallet ledger holds Booking Fee refund credits and Booking Fee payment debits, PCR-009) with non-negative balances and `UNRECOVERED_REVERSAL_AMOUNT` audit for capped reversals. Reward values are read from versioned configuration at the Product's anchor instant and stored on the transaction (`loyalty.reward_application`).
 
 Configuration (`ADR-028`): `config.configuration_key` (registry, append-only) · `config.configuration_version` (append-only history with `effective_from`) · `config.system_configuration` (current value). Launch keys: `booking.fee` (EGP 0), `tournament.creation_fee` (EGP 0), `loyalty.attended_points` (200), `loyalty.referral_points` (1000), `loyalty.wallet_refunds_enabled` (false). `config.effective_numeric(key, at)` returns the value effective at an instant; Booking and Tournament creation check their fee snapshots against it.
 
@@ -2218,7 +2218,7 @@ APPEND-ONLY physical Wallet ledger. Never pays the venue gaming charge.
 
 **Constraints**
 
-- `ck_wallet_tx_launch_source` (CHECK): `CHECK (((cause = 'BOOKING_FEE_REFUND'::text) AND (amount > (0)::numeric) AND (amount <> 'NaN'::numeric) AND (balance_before <> 'NaN'::numeric) AND (balance_after = (balance_before + amount))))`
+- `ck_wallet_tx_source` (CHECK, v1.1.39 replaces `ck_wallet_tx_launch_source`): `CHECK (amount <> 'NaN' AND balance_before <> 'NaN' AND balance_after = balance_before + amount AND ((cause = 'BOOKING_FEE_REFUND' AND amount > 0 AND refund_id IS NOT NULL) OR (cause = 'BOOKING_FEE_PAYMENT' AND amount < 0 AND refund_id IS NULL AND balance_after >= 0)))`
 - `fk_wallet_transaction_booking_id__booking_id` (FK): `FOREIGN KEY (booking_id) REFERENCES booking.booking(id) ON DELETE RESTRICT`
 - `fk_wallet_transaction_wallet_account_id__wallet_account_us` (FK): `FOREIGN KEY (wallet_account_id) REFERENCES loyalty.wallet_account(user_id) ON DELETE RESTRICT`
 - `fk_wallet_tx_audit` (FK): `FOREIGN KEY (audit_event_id) REFERENCES audit.audit_event(id) ON DELETE RESTRICT`

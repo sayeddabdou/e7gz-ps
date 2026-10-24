@@ -3,7 +3,8 @@
 
 **Status:** APPROVED / INCORPORATED  
 **Date:** 26 September 2026  
-**Applies to:** Product Specification v5.0 §46.6; amends `FR-PTS-11`
+**Applies to:** Product Specification v5.0 §46.6; amends `FR-PTS-11`  
+**Amended by:** PCR-009 (24 October 2026) — the Wallet pays the Booking Fee of a future booking
 
 ## Change
 

@@ -1721,7 +1721,8 @@
       "AdminWalletTransaction": {
         "properties": {
           "amount": {
-            "$ref": "#/components/schemas/Money"
+            "$ref": "#/components/schemas/Money",
+            "description": "How much moved, never negative: BOOKING_FEE_REFUND adds it, BOOKING_FEE_PAYMENT spends it on a later booking's fee (PCR-009)."
           },
           "balanceAfter": {
             "$ref": "#/components/schemas/Money"
@@ -3579,7 +3580,8 @@
       "CustomerWalletTransaction": {
         "properties": {
           "amount": {
-            "$ref": "#/components/schemas/Money"
+            "$ref": "#/components/schemas/Money",
+            "description": "How much moved, never negative: BOOKING_FEE_REFUND adds it, BOOKING_FEE_PAYMENT spends it on a later booking's fee (PCR-009)."
           },
           "balanceAfter": {
             "$ref": "#/components/schemas/Money"
@@ -6785,7 +6787,8 @@
       },
       "WalletTransactionCause": {
         "enum": [
-          "BOOKING_FEE_REFUND"
+          "BOOKING_FEE_REFUND",
+          "BOOKING_FEE_PAYMENT"
         ],
         "type": "string"
       }
@@ -33674,7 +33677,7 @@
     },
     "/api/v1/customer/wallet": {
       "get": {
-        "description": "While the booking fee is EGP 0 the balance is normally 0.00 with no transactions (PCR-004). The wallet never pays the venue gaming charge (FR-PTS-10). Implemented by E7-66.",
+        "description": "While the booking fee is EGP 0 the balance is normally 0.00 with no transactions (PCR-004). The wallet never pays the venue gaming charge (FR-PTS-10); it pays the booking fee of a later booking when it holds at least the whole fee (PCR-009). Implemented by E7-66.",
         "operationId": "customerGetWallet",
         "parameters": [
           {
