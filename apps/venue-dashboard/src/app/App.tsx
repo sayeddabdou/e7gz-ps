@@ -11,6 +11,7 @@ import { revokeVenuePush } from "../features/requests/pushSubscription";
 import { NotificationsScreen } from "../features/notifications";
 import { BookingDetailScreen, BookingHistoryScreen, TodayBookingsScreen } from "../features/today";
 import { ManualBookingScreen } from "../features/walk-in";
+import { OverviewScreen } from "../features/overview";
 import { directionOf, messages, MessagesContext, type Language, type Messages } from "../i18n";
 import "../dashboard.css";
 
@@ -181,6 +182,20 @@ function ManualBookingRoute({ api }: { api: ReturnType<typeof createDashboardApi
   return <ManualBookingScreen api={api} onOpenBooking={(bookingId) => navigate(`/bookings/${bookingId}`)} />;
 }
 
+function OverviewRoute({ api, direction }: { api: ReturnType<typeof createDashboardApiClient>; direction: "ltr" | "rtl" }) {
+  const navigate = useNavigate();
+  const { bookingChangeVersion } = useLiveRequests();
+  return (
+    <OverviewScreen
+      api={api}
+      bookingChangeVersion={bookingChangeVersion}
+      direction={direction}
+      onOpenManualBooking={() => navigate("/manual-booking")}
+      onOpenPendingRequests={() => navigate("/pending-requests")}
+    />
+  );
+}
+
 function BookingDetailRoute({ api, backLabel, backTo }: { api: ReturnType<typeof createDashboardApiClient>; backLabel?: string; backTo: string }) {
   const navigate = useNavigate();
   const { bookingId } = useParams();
@@ -294,7 +309,9 @@ function ProtectedShell({
                 key={route.path}
                 path={route.path}
                 element={
-                  route.path === "/pending-requests" ? (
+                  route.path === "/" ? (
+                    <OverviewRoute api={api} direction={direction} />
+                  ) : route.path === "/pending-requests" ? (
                     <PendingRequestsRoute />
                   ) : route.path === "/missed-requests" ? (
                     <MissedRequestsRoute api={api} />
