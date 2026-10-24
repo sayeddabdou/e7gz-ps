@@ -25,10 +25,12 @@ export function PasswordResetFlow({
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [success, setSuccess] = useState<string>();
 
   const run = async (action: () => Promise<void>) => {
     setBusy(true);
     setError(undefined);
+    setSuccess(undefined);
     try {
       await action();
     } catch {
@@ -38,14 +40,16 @@ export function PasswordResetFlow({
     }
   };
 
-  const requestCode = () => run(async () => {
+  const requestCode = (resend = false) => run(async () => {
     const result = await api.requestPasswordReset(phone);
     if (!result.ok) {
       setError(profileErrorMessage(result.code));
       return;
     }
     setChallengeId(result.value.challengeId);
+    setCode("");
     setStep("code");
+    if (resend) setSuccess(t.profile.verificationCodeSent);
   });
 
   const complete = () => run(async () => {
@@ -75,14 +79,15 @@ export function PasswordResetFlow({
               <Field label={t.profile.passwordReset.newPassword} value={password} onChangeText={setPassword} secureTextEntry />
             </>
           )}
+          {success ? <Notice kind="success">{success}</Notice> : null}
           {error ? <Notice kind="error">{error}</Notice> : null}
           <PrimaryButton
             busy={busy}
             label={busy ? t.profile.working : step === "phone" ? t.profile.passwordReset.request : t.profile.passwordReset.complete}
-            onPress={step === "phone" ? requestCode : complete}
+            onPress={step === "phone" ? () => requestCode() : complete}
           />
           {step === "code" ? (
-            <SecondaryButton disabled={busy} label={t.profile.passwordReset.resend} onPress={requestCode} />
+            <SecondaryButton disabled={busy} label={t.profile.passwordReset.resend} onPress={() => requestCode(true)} />
           ) : null}
           <SecondaryButton disabled={busy} label={cancelLabel} onPress={onCancel} />
         </View>

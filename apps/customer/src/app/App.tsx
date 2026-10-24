@@ -142,6 +142,7 @@ export function App({
   );
   const [authenticated, setAuthenticated] = useState<boolean>();
   const [resettingPassword, setResettingPassword] = useState(false);
+  const [passwordResetNotice, setPasswordResetNotice] = useState<string>();
   const [pushBookingId, setPushBookingId] = useState<string>();
   const [pushSetupState, setPushSetupState] = useState<PushSetupState>();
   useEffect(() => {
@@ -174,6 +175,17 @@ export function App({
     return () => pushRegistration.stop();
   }, [authenticated, openBookingFromNotification, pushRegistration]);
 
+  const finishPasswordReset = async () => {
+    // The reset endpoint has already revoked every server session. End this device locally without calling logout or
+    // revoking its push registration with a refresh token that is no longer valid.
+    try { pushRegistration?.stop(); } catch { /* A post-reset local transition must not fail. */ }
+    try { await secureTokens.clear(); } catch { /* The server-side reset still succeeded; never report it as failed. */ }
+    setPushSetupState(undefined);
+    setAuthenticated(false);
+    setResettingPassword(false);
+    setPasswordResetNotice(t.profile.passwordReset.completed);
+  };
+
   if (!config.ok || !api) {
     return (
       <SafeAreaProvider>
@@ -196,11 +208,7 @@ export function App({
           <PasswordResetFlow
             api={profileApi}
             onCancel={() => setResettingPassword(false)}
-            onComplete={async () => {
-              await secureTokens.clear();
-              setAuthenticated(false);
-              setResettingPassword(false);
-            }}
+            onComplete={finishPasswordReset}
           />
           <StatusBar style="auto" />
         </SafeAreaProvider>
@@ -208,7 +216,13 @@ export function App({
     }
     return (
       <SafeAreaProvider>
-        <AuthFlow api={customerAuth} tokenStore={secureTokens} onAuthenticated={() => setAuthenticated(true)} onForgotPassword={() => setResettingPassword(true)} />
+        <AuthFlow
+          api={customerAuth}
+          tokenStore={secureTokens}
+          notice={passwordResetNotice}
+          onAuthenticated={() => { setPasswordResetNotice(undefined); setAuthenticated(true); }}
+          onForgotPassword={() => { setPasswordResetNotice(undefined); setResettingPassword(true); }}
+        />
         <StatusBar style="auto" />
       </SafeAreaProvider>
     );
@@ -300,7 +314,7 @@ export function App({
             >
               {() => (
                 <SafeAreaView edges={["top"]} style={styles.screen}>
-                  <ProfileScreen api={profileApi!} onLogout={logout} />
+                  <ProfileScreen api={profileApi!} onLogout={logout} onPasswordResetComplete={finishPasswordReset} />
                 </SafeAreaView>
               )}
             </Tab.Screen>

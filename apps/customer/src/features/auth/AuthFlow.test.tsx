@@ -31,6 +31,12 @@ function authApi(overrides: Partial<CustomerAuthApi> = {}): CustomerAuthApi {
 }
 
 describe("customer authentication", () => {
+  it("shows a post-reset confirmation on the login screen", () => {
+    render(<AuthFlow api={authApi()} tokenStore={tokenStore} notice="Password reset. Every session has ended. Log in with your new password." onAuthenticated={jest.fn()} />);
+
+    expect(screen.getByText("Password reset. Every session has ended. Log in with your new password.")).toBeTruthy();
+  });
+
   it("opens the phone-only password reset flow from login", () => {
     const onForgotPassword = jest.fn();
     render(<AuthFlow api={authApi()} tokenStore={tokenStore} onAuthenticated={jest.fn()} onForgotPassword={onForgotPassword} />);

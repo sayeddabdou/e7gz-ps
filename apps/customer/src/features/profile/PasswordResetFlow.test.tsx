@@ -46,4 +46,33 @@ describe("password reset", () => {
     expect(await screen.findByText("A new code cannot be sent yet.")).toBeTruthy();
     expect(requestPasswordReset).toHaveBeenCalledTimes(2);
   });
+
+  it("replaces the challenge, clears the old code and confirms a successful resend", async () => {
+    const requestPasswordReset = jest.fn()
+      .mockResolvedValueOnce({ ok: true, value: { challengeId: "reset-1" } })
+      .mockResolvedValueOnce({ ok: true, value: { challengeId: "reset-2" } });
+    const api = profileApi({ requestPasswordReset });
+    render(<PasswordResetFlow api={api} initialPhone="+201001234567" onCancel={jest.fn()} onComplete={jest.fn()} />);
+
+    fireEvent.press(screen.getByRole("button", { name: "Send reset code" }));
+    fireEvent.changeText(await screen.findByLabelText("Verification code"), "111111");
+    fireEvent.press(screen.getByRole("button", { name: "Resend code" }));
+
+    expect(await screen.findByText("A new verification code was sent.")).toBeTruthy();
+    expect(screen.getByLabelText("Verification code").props.value).toBe("");
+    fireEvent.changeText(screen.getByLabelText("Verification code"), "482913");
+    fireEvent.changeText(screen.getByLabelText("New password"), "newPassword1");
+    fireEvent.press(screen.getByRole("button", { name: "Reset password" }));
+    await waitFor(() => expect(api.completePasswordReset).toHaveBeenCalledWith("reset-2", "482913", "newPassword1"));
+  });
+
+  it("uses neutral copy when a reset request is not found", async () => {
+    const api = profileApi({ requestPasswordReset: jest.fn().mockResolvedValue({ ok: false, code: "NOT_FOUND" }) });
+    render(<PasswordResetFlow api={api} onCancel={jest.fn()} onComplete={jest.fn()} />);
+
+    fireEvent.changeText(screen.getByLabelText("Phone number"), "+201001234567");
+    fireEvent.press(screen.getByRole("button", { name: "Send reset code" }));
+
+    expect(await screen.findByText("That request was not found. Start again.")).toBeTruthy();
+  });
 });

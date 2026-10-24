@@ -63,6 +63,19 @@ describe("customer profile", () => {
     expect(await screen.findByText("Your username cannot be changed yet. Check the available date shown on your profile.")).toBeTruthy();
   });
 
+  it("changes the username and renders the profile returned by the server", async () => {
+    const updated = { ...profile, username: "omar_new" };
+    const api = profileApi({ changeUsername: jest.fn().mockResolvedValue({ ok: true, value: updated }) });
+    render(<ProfileScreen api={api} onLogout={jest.fn()} />);
+
+    fireEvent.press(await screen.findByRole("button", { name: "Change username" }));
+    fireEvent.changeText(screen.getByLabelText("Username"), "omar_new");
+    fireEvent.press(screen.getByRole("button", { name: "Change username" }));
+
+    expect(await screen.findByText("Your username was updated.")).toBeTruthy();
+    expect(screen.getByText("omar_new")).toBeTruthy();
+  });
+
   it("performs the two-step phone change and resends through the server", async () => {
     const updated = { ...profile, phone: "+201009999999" };
     const api = profileApi({
@@ -76,8 +89,11 @@ describe("customer profile", () => {
     fireEvent.press(screen.getByRole("button", { name: "Continue" }));
 
     expect(await screen.findByRole("header", { name: "Verify your new phone" })).toBeTruthy();
+    fireEvent.changeText(screen.getByLabelText("Verification code"), "111111");
     fireEvent.press(screen.getByRole("button", { name: "Resend code" }));
     await waitFor(() => expect(api.requestPhoneChange).toHaveBeenCalledTimes(2));
+    expect(screen.getByLabelText("Verification code").props.value).toBe("");
+    expect(screen.getByText("A new verification code was sent.")).toBeTruthy();
     fireEvent.changeText(screen.getByLabelText("Verification code"), "482913");
     fireEvent.press(screen.getByRole("button", { name: "Verify phone" }));
 
@@ -85,13 +101,52 @@ describe("customer profile", () => {
     expect(await screen.findByText("Your phone number was updated.")).toBeTruthy();
   });
 
+  it("maps PHONE_TAKEN while starting a phone change", async () => {
+    const api = profileApi({ requestPhoneChange: jest.fn().mockResolvedValue({ ok: false, code: "PHONE_TAKEN" }) });
+    render(<ProfileScreen api={api} onLogout={jest.fn()} />);
+
+    fireEvent.press(await screen.findByRole("button", { name: "Change phone number" }));
+    fireEvent.changeText(screen.getByLabelText("Phone number"), "+201009999999");
+    fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+
+    expect(await screen.findByText("That phone number is already registered.")).toBeTruthy();
+  });
+
+  it.each([
+    ["OTP_INVALID", "That verification code is not correct."],
+    ["OTP_EXPIRED", "That verification code has expired. Request a new one."],
+  ] as const)("maps %s while verifying a phone change", async (code, message) => {
+    const api = profileApi({
+      requestPhoneChange: jest.fn().mockResolvedValue({ ok: true, value: { challengeId: "challenge-1" } }),
+      verifyPhoneChange: jest.fn().mockResolvedValue({ ok: false, code }),
+    });
+    render(<ProfileScreen api={api} onLogout={jest.fn()} />);
+
+    fireEvent.press(await screen.findByRole("button", { name: "Change phone number" }));
+    fireEvent.changeText(screen.getByLabelText("Phone number"), "+201009999999");
+    fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.changeText(await screen.findByLabelText("Verification code"), "482913");
+    fireEvent.press(screen.getByRole("button", { name: "Verify phone" }));
+
+    expect(await screen.findByText(message)).toBeTruthy();
+  });
+
+  it("maps a forbidden profile load without exposing backend text", async () => {
+    const api = profileApi({ getProfile: jest.fn().mockResolvedValue({ ok: false, code: "FORBIDDEN" }) });
+    render(<ProfileScreen api={api} onLogout={jest.fn()} />);
+
+    expect(await screen.findByText("This account cannot perform that action.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
   it("logs out after a successful password reset", async () => {
     const onLogout = jest.fn();
+    const onPasswordResetComplete = jest.fn();
     const api = profileApi({
       requestPasswordReset: jest.fn().mockResolvedValue({ ok: true, value: { challengeId: "reset-1" } }),
       completePasswordReset: jest.fn().mockResolvedValue({ ok: true, value: undefined }),
     });
-    render(<ProfileScreen api={api} onLogout={onLogout} />);
+    render(<ProfileScreen api={api} onLogout={onLogout} onPasswordResetComplete={onPasswordResetComplete} />);
 
     fireEvent.press(await screen.findByRole("button", { name: "Reset password" }));
     fireEvent.press(screen.getByRole("button", { name: "Send reset code" }));
@@ -99,6 +154,7 @@ describe("customer profile", () => {
     fireEvent.changeText(screen.getByLabelText("New password"), "newPassword1");
     fireEvent.press(screen.getByRole("button", { name: "Reset password" }));
 
-    await waitFor(() => expect(onLogout).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onPasswordResetComplete).toHaveBeenCalledTimes(1));
+    expect(onLogout).not.toHaveBeenCalled();
   });
 });

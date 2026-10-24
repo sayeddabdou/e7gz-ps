@@ -12,7 +12,7 @@ function dateText(value: string): string {
   return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
-export function ProfileScreen({ api, onLogout }: { api: CustomerProfileApi; onLogout(): void | Promise<void> }) {
+export function ProfileScreen({ api, onLogout, onPasswordResetComplete = onLogout }: { api: CustomerProfileApi; onLogout(): void | Promise<void>; onPasswordResetComplete?(): void | Promise<void> }) {
   const [profile, setProfile] = useState<CustomerProfile>();
   const [mode, setMode] = useState<Mode>("summary");
   const [busy, setBusy] = useState(false);
@@ -84,11 +84,13 @@ export function ProfileScreen({ api, onLogout }: { api: CustomerProfileApi; onLo
     else setError(profileErrorMessage(result.code));
   });
 
-  const requestPhone = () => run(async () => {
+  const requestPhone = (resend = false) => run(async () => {
     const result = await api.requestPhoneChange(phone);
     if (result.ok) {
       setChallengeId(result.value.challengeId);
+      setCode("");
       setMode("phoneOtp");
+      if (resend) setSuccess(t.profile.verificationCodeSent);
     } else setError(profileErrorMessage(result.code));
   });
 
@@ -99,7 +101,7 @@ export function ProfileScreen({ api, onLogout }: { api: CustomerProfileApi; onLo
   });
 
   if (mode === "password" && profile) {
-    return <PasswordResetFlow api={api} initialPhone={profile.phone} cancelLabel={t.profile.cancel} onCancel={() => setMode("summary")} onComplete={onLogout} />;
+    return <PasswordResetFlow api={api} initialPhone={profile.phone} cancelLabel={t.profile.cancel} onCancel={() => setMode("summary")} onComplete={onPasswordResetComplete} />;
   }
 
   if (loading && !profile) {
@@ -140,9 +142,10 @@ export function ProfileScreen({ api, onLogout }: { api: CustomerProfileApi; onLo
           ) : null}
           {mode === "phone" ? <Field label={t.profile.phone} value={phone} onChangeText={setPhone} keyboardType="phone-pad" /> : null}
           {mode === "phoneOtp" ? <Field label={t.profile.verificationCode} value={code} onChangeText={setCode} keyboardType="number-pad" /> : null}
+          {success ? <Notice kind="success">{success}</Notice> : null}
           {error ? <Notice kind="error">{error}</Notice> : null}
-          <PrimaryButton busy={busy} label={busy ? t.profile.working : mode === "name" ? t.profile.save : mode === "username" ? t.profile.changeUsername : mode === "phone" ? t.profile.continue : t.profile.verify} onPress={mode === "name" ? saveName : mode === "username" ? saveUsername : mode === "phone" ? requestPhone : verifyPhone} />
-          {mode === "phoneOtp" ? <SecondaryButton disabled={busy} label={t.profile.resend} onPress={requestPhone} /> : null}
+          <PrimaryButton busy={busy} label={busy ? t.profile.working : mode === "name" ? t.profile.save : mode === "username" ? t.profile.changeUsername : mode === "phone" ? t.profile.continue : t.profile.verify} onPress={mode === "name" ? saveName : mode === "username" ? saveUsername : mode === "phone" ? () => requestPhone() : verifyPhone} />
+          {mode === "phoneOtp" ? <SecondaryButton disabled={busy} label={t.profile.resend} onPress={() => requestPhone(true)} /> : null}
           <SecondaryButton disabled={busy} label={t.profile.cancel} onPress={() => setMode("summary")} />
         </View>
       </ScrollView>

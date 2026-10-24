@@ -9,7 +9,7 @@ import { authErrorMessage } from "./errorMessages";
 
 type Step = "login" | "register" | "otp";
 
-export function AuthFlow({ api, tokenStore, onAuthenticated, onForgotPassword }: { api: CustomerAuthApi; tokenStore: TokenStore; onAuthenticated(): void; onForgotPassword?(): void }) {
+export function AuthFlow({ api, tokenStore, notice, onAuthenticated, onForgotPassword }: { api: CustomerAuthApi; tokenStore: TokenStore; notice?: string; onAuthenticated(): void; onForgotPassword?(): void }) {
   const [step, setStep] = useState<Step>("login");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -81,6 +81,7 @@ export function AuthFlow({ api, tokenStore, onAuthenticated, onForgotPassword }:
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.brandMark}><Text style={styles.brandText}>{t.brandMark}</Text></View>
         <Text accessibilityRole="header" style={styles.title}>{title}</Text>
+        {step === "login" && notice ? <View style={styles.successBox}><Text accessibilityLiveRegion="polite" style={styles.success}>{notice}</Text></View> : null}
         <View style={styles.formCard}>
           {step === "register" ? (
             <>
@@ -142,6 +143,8 @@ const styles = StyleSheet.create({
   input: { backgroundColor: nativeTokens.color.surface.canvas, borderColor: nativeTokens.color.border.customer, borderRadius: nativeTokens.radius["2xl"], borderWidth: nativeTokens.spacing.hairline, color: nativeTokens.color.text.customer, fontSize: nativeTokens.typography.fontSize.bodyLarge, minHeight: 52, paddingHorizontal: nativeTokens.spacing["3xl"] },
   errorBox: { backgroundColor: nativeTokens.color.feedback.dangerSurface, borderRadius: nativeTokens.radius["2xl"], marginBottom: nativeTokens.spacing.md, padding: nativeTokens.spacing["2xl"] },
   error: { color: nativeTokens.color.feedback.danger, fontSize: nativeTokens.typography.fontSize.bodySmall },
+  successBox: { backgroundColor: nativeTokens.color.feedback.successSurface, borderRadius: nativeTokens.radius["2xl"], marginBottom: nativeTokens.spacing.md, padding: nativeTokens.spacing["2xl"] },
+  success: { color: nativeTokens.color.feedback.success, fontSize: nativeTokens.typography.fontSize.bodySmall },
   primaryButton: { alignItems: "center", backgroundColor: nativeTokens.color.brand.primary, borderRadius: nativeTokens.radius["3xl"], minHeight: 54, justifyContent: "center", marginTop: nativeTokens.spacing.md, ...nativeTokens.shadow.action },
   primaryButtonText: { color: nativeTokens.color.text.inverse, fontWeight: nativeTokens.typography.fontWeight.bold },
   linkButton: { alignItems: "center", padding: nativeTokens.spacing["4xl"] },

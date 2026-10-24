@@ -113,6 +113,89 @@ describe("Customer app shell", () => {
     expect(pushRegistration.revoke).toHaveBeenCalledTimes(1);
   });
 
+  it("completes Forgot password with a local sign-out and confirmation, without calling logout", async () => {
+    const signedOutStore: TokenStore = {
+      read: jest.fn().mockResolvedValue(null),
+      write: jest.fn().mockResolvedValue(undefined),
+      clear: jest.fn().mockResolvedValue(undefined),
+    };
+    const logout = jest.fn();
+    const pushRegistration: PushRegistration = {
+      start: jest.fn(),
+      revoke: jest.fn(),
+      stop: jest.fn(),
+    };
+    const resetApi = {
+      requestPasswordReset: jest.fn().mockResolvedValue({ ok: true, value: { challengeId: "reset-1" } }),
+      completePasswordReset: jest.fn().mockResolvedValue({ ok: true, value: undefined }),
+    } as unknown as CustomerProfileApi;
+    render(
+      <App
+        config={config}
+        tokenStore={signedOutStore}
+        authApi={{ logout, refresh: jest.fn() } as never}
+        profileApi={resetApi}
+        pushRegistrationOverride={pushRegistration}
+      />,
+    );
+
+    fireEvent.press(await screen.findByRole("button", { name: "Forgot password?" }));
+    fireEvent.changeText(screen.getByLabelText("Phone number"), "+201001234567");
+    fireEvent.press(screen.getByRole("button", { name: "Send reset code" }));
+    fireEvent.changeText(await screen.findByLabelText("Verification code"), "482913");
+    fireEvent.changeText(screen.getByLabelText("New password"), "newPassword1");
+    fireEvent.press(screen.getByRole("button", { name: "Reset password" }));
+
+    expect(await screen.findByText("Password reset. Every session has ended. Log in with your new password.")).toBeTruthy();
+    expect(screen.getByRole("header", { name: "Welcome back" })).toBeTruthy();
+    expect(signedOutStore.clear).toHaveBeenCalledTimes(1);
+    expect(pushRegistration.stop).toHaveBeenCalledTimes(1);
+    expect(pushRegistration.revoke).not.toHaveBeenCalled();
+    expect(logout).not.toHaveBeenCalled();
+  });
+
+  it("completes a Profile password reset with the same local sign-out and confirmation", async () => {
+    const signedInStore: TokenStore = {
+      read: jest.fn().mockResolvedValue({ accessToken: "access", refreshToken: "refresh" }),
+      write: jest.fn().mockResolvedValue(undefined),
+      clear: jest.fn().mockResolvedValue(undefined),
+    };
+    const logout = jest.fn();
+    const pushRegistration: PushRegistration = {
+      start: jest.fn().mockResolvedValue("unsupported"),
+      revoke: jest.fn(),
+      stop: jest.fn(),
+    };
+    const resetApi = {
+      getProfile: jest.fn().mockResolvedValue({ ok: true, value: profile, serverTime: meta.serverTime }),
+      requestPasswordReset: jest.fn().mockResolvedValue({ ok: true, value: { challengeId: "reset-1" } }),
+      completePasswordReset: jest.fn().mockResolvedValue({ ok: true, value: undefined }),
+    } as unknown as CustomerProfileApi;
+    render(
+      <App
+        config={config}
+        tokenStore={signedInStore}
+        authApi={{ logout, refresh: jest.fn() } as never}
+        profileApi={resetApi}
+        pushRegistrationOverride={pushRegistration}
+      />,
+    );
+
+    fireEvent.press(await screen.findByText("Profile"));
+    fireEvent.press(await screen.findByRole("button", { name: "Reset password" }));
+    fireEvent.press(screen.getByRole("button", { name: "Send reset code" }));
+    fireEvent.changeText(await screen.findByLabelText("Verification code"), "482913");
+    fireEvent.changeText(screen.getByLabelText("New password"), "newPassword1");
+    fireEvent.press(screen.getByRole("button", { name: "Reset password" }));
+
+    expect(await screen.findByText("Password reset. Every session has ended. Log in with your new password.")).toBeTruthy();
+    expect(screen.getByRole("header", { name: "Welcome back" })).toBeTruthy();
+    expect(signedInStore.clear).toHaveBeenCalledTimes(1);
+    expect(pushRegistration.stop).toHaveBeenCalled();
+    expect(pushRegistration.revoke).not.toHaveBeenCalled();
+    expect(logout).not.toHaveBeenCalled();
+  });
+
   it("keeps the inbox available and explains when push permission is denied", async () => {
     const pushRegistration: PushRegistration = {
       start: jest.fn().mockResolvedValue("denied"),
