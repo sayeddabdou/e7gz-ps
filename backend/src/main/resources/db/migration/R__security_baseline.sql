@@ -27,6 +27,10 @@ DECLARE
   -- Never callable by a runtime role: private write-token and context-creation internals.
   internal text[] := ARRAY['technical.enter_write','technical.leave_write','loyalty.enter_write','loyalty.leave_write',
                            'trust.secure_created_context','review.remove_reviews_of_deleted_account'];
+  -- v1.1.38 (E7-66, Product Owner decision 23 Oct 2026): DEFERRED until the payment gateway (ADR-018). A Booking Fee
+  -- receipt is what turns a refund decision into Wallet money (loyalty.settle_refund), so no runtime role may record
+  -- one. The payment gateway's settlement-adapter role is granted it when payment collection ships.
+  deferred text[] := ARRAY['loyalty.record_fee_receipt'];
   -- Platform Admin producers: admin runtime only.
   admin_only text[] := ARRAY['admin.begin_command','admin.bind_admin','admin.acknowledge_alert','trust.begin_admin_command',
                              'loyalty.begin_admin_command','loyalty.configure','loyalty.adjust_points','loyalty.invalidate_referral',
@@ -61,7 +65,7 @@ BEGIN
     WHERE n.nspname = ANY(schemas) AND p.prokind='f'
  LOOP
    EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC',f);
-   IF qn = ANY(internal) THEN
+   IF qn = ANY(internal) OR qn = ANY(deferred) THEN
      EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM e7gz_app_runtime, e7gz_admin_runtime',f);
    ELSIF qn = ANY(admin_only) THEN
      EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM e7gz_app_runtime',f);
