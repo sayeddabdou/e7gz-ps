@@ -124,6 +124,7 @@ Trust events and replay, bans, Verified Player, points, wallet, referrals, confi
 | S4-P1 | E7-66 | Platform | Loyalty ledgers and fee treatment | Points and wallet ledgers, and what happens to the booking fee in every case. | S2-E4 |
 | S4-P2 | E7-67 | Platform | Referrals | Invite a friend: referral rewards and reversals. | S4-P1, S0-P5 |
 | S4-P3 | E7-68 | Platform | Configuration service (fees and points) | Admin changes the booking fee and points values (from a date onward). | S0-E1 |
+| S4-P4 | E7-119 | Platform | Revoke push devices when every session ends | When every session of a customer ends (password reset, a verification through resend, a released unverified account), the server also stops push to all of the customer's phones. | S3-P3, S2-P4 |
 | S4-E1 | E7-69 | Engine | Trust events and replay | Trust history of every customer, recalculated exactly from events. | S3-E4 |
 | S4-E2 | E7-70 | Engine | Reconciler and attendance corrections | Fix attendance mistakes and recalculate trust correctly. | S4-E1 |
 | S4-E3 | E7-71 | Engine | Bans and the ban cascade (O14) | Temporary bans after repeated no-shows, and their effects. | S4-E2 |
@@ -2562,6 +2563,34 @@ Constraints: stay inside this task's module(s); do not edit docs/ or V1__baselin
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
 
+### S4-P4 (E7-119) — Revoke push devices when every session ends
+
+**What this task does:** When every session of a customer ends (password reset, a verification through resend, a released unverified account), the server also stops push to all of the customer's phones.
+
+Lane: Platform · Depends on: S3-P3, S2-P4
+
+```text
+Read CLAUDE.md first. You are implementing task S4-P4 — "Revoke push devices when every session ends" (Platform lane) of the E7GZ PS build plan.
+
+Read only these docs for this task:
+- FRS FR-ACC-09
+- arch 08 §4 (device tokens: revoked, never deleted)
+- packages/api-client/SPRINT-3-CONTRACT.md (the E7-57 changes)
+
+Do:
+1. notification.api: add CustomerPushDevices with int revokeAll(CommandContext context, UUID customerId). Every active notification.device_token row of the customer gets revoked_at in the caller's transaction (revoked, never deleted, arch 08 §4), as VenueBrowserPush.revokeAll does for venue browsers.
+2. identity: call it in the same command next to each RefreshTokens.revokeAll for a customer: password reset complete (CustomerProfiles.completePasswordReset), a verification with a new password (VerifyPhoneCommand), and a released unverified account (UnverifiedAccounts, used by registration and by a phone change).
+
+Done when (write these as tests first where possible):
+- After each of the three events, every active device token of that customer is revoked in the same transaction; other customers' tokens and already-revoked tokens are untouched.
+- No schema change; ArchUnit green.
+
+PO decision 24 Oct 2026 (E7-64 review): when every session of a customer ends, the server also revokes every push device of the account, in the same command. Account deletion (iam.anonymise_user) is E7-103's: it calls the same revokeAll there.
+
+Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
+Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
+```
+
 ### S4-E1 (E7-69) — Trust events and replay
 
 **What this task does:** Trust history of every customer, recalculated exactly from events.
@@ -3640,10 +3669,13 @@ Do:
 3. Tournament participant precedence in the same transaction.
 
 Done when (write these as tests first where possible):
-- Deleted account: PII blanked, tokens revoked, reviews removed, participants INELIGIBLE/ACCOUNT_DELETED.
+- Deleted account: PII blanked, tokens and push devices revoked, reviews removed, participants INELIGIBLE/ACCOUNT_DELETED.
 
 Carry-forward from E7-13 (do these too):
 - The ACCOUNT_DELETED branch of identity CustomerActivation is tested only with a fixture row: add an end-to-end test on an account anonymised through iam.anonymise_user.
+
+PO decision 24 Oct 2026 (E7-64 review, do this too):
+- In the same command as iam.anonymise_user, also revoke the customer's push devices through notification.api.CustomerPushDevices.revokeAll (E7-119): deletion ends every session, so no phone keeps getting the account's pushes. Test it with the deleted-account test.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
