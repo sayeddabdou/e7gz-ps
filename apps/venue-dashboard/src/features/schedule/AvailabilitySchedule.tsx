@@ -50,18 +50,23 @@ function ticksFor(range: { start: number; end: number } | undefined): number[] {
 export function AvailabilitySchedule({
   api,
   direction,
+  refreshVersion = 0,
+  variant = "page",
 }: {
   api: ApiClient;
   direction: "ltr" | "rtl";
+  refreshVersion?: number;
+  variant?: "page" | "overview";
 }) {
   const t = useMessages();
+  const embedded = variant === "overview";
   const locale = direction === "rtl" ? "ar-EG" : "en-US";
   const [selectedDate, setSelectedDate] = useState("");
   const [requestedDate, setRequestedDate] = useState<string>();
   const [schedule, setSchedule] = useState<VenueSchedule>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
-  const [refreshVersion, setRefreshVersion] = useState(0);
+  const [retryVersion, setRetryVersion] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -87,7 +92,7 @@ export function AvailabilitySchedule({
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [api, refreshVersion, requestedDate, t]);
+  }, [api, refreshVersion, requestedDate, retryVersion, t]);
 
   const range = useMemo(() => schedule ? rangeOf(schedule) : undefined, [schedule]);
   const ticks = useMemo(() => ticksFor(range), [range]);
@@ -120,17 +125,19 @@ export function AvailabilitySchedule({
   const retry = () => {
     setLoading(true);
     setError(undefined);
-    setRefreshVersion((version) => version + 1);
+    setRetryVersion((version) => version + 1);
   };
 
   return (
     <section dir={direction} style={styles.page}>
       <header>
-        <h2 style={styles.heading}>{t.schedule.title}</h2>
-        <p style={styles.intro}>{t.schedule.description}</p>
+        {embedded
+          ? <h3 style={styles.heading}>{t.overview.scheduleTitle}</h3>
+          : <h2 style={styles.heading}>{t.schedule.title}</h2>}
+        {!embedded ? <p style={styles.intro}>{t.schedule.description}</p> : null}
       </header>
 
-      <div style={styles.controls}>
+      {!embedded ? <div style={styles.controls}>
         <button aria-label={t.schedule.previousDate} disabled={!selectedDate} onClick={() => loadDate(shiftBusinessDate(selectedDate, -1))} style={styles.button} type="button">
           {t.schedule.previous}
         </button>
@@ -141,7 +148,7 @@ export function AvailabilitySchedule({
         <button aria-label={t.schedule.nextDate} disabled={!selectedDate} onClick={() => loadDate(shiftBusinessDate(selectedDate, 1))} style={styles.button} type="button">
           {t.schedule.next}
         </button>
-      </div>
+      </div> : null}
 
       {loading ? <p role="status" style={styles.status}>{t.schedule.loading}</p> : null}
       {!loading && error ? (
