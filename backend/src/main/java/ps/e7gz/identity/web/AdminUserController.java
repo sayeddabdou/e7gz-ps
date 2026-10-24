@@ -18,17 +18,20 @@ import org.springframework.web.bind.annotation.RestController;
 import ps.e7gz.common.codes.VerifiedPlayerQualification;
 import ps.e7gz.common.codes.VerifiedPlayerStatus;
 import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
 import ps.e7gz.common.web.MoneyView;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.PageView;
+import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.identity.internal.AdminUsers;
+import ps.e7gz.trust.api.AccountStandings;
 
 /**
  * Platform Admin user management (arch 09 §5 "Users", FR-ADM-04): find a customer and see their standing before a trust
  * or points action. In the Sprint 4 contract by PO decision D4 (17 Oct 2026); implemented by E7-66 (PO decision 19 Oct
- * 2026). The detail reads standing, Verified Player, points and wallet through those modules' api packages.
+ * 2026, PR 2). The detail reads standing, Verified Player, points and wallet through those modules' api packages.
  * Anonymisation and deletion requests are Sprint 7's.
  */
 @RestController
@@ -36,6 +39,14 @@ import ps.e7gz.common.web.PageView;
 @Tag(name = "admin-users")
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class AdminUserController {
+
+    private final AdminUsers users;
+    private final ResponseMetaFactory meta;
+
+    AdminUserController(AdminUsers users, ResponseMetaFactory meta) {
+        this.users = users;
+        this.meta = meta;
+    }
 
     @GetMapping
     @Operation(operationId = "adminListUsers", summary = "Customers, newest first (FR-ADM-04)",
@@ -45,7 +56,8 @@ public class AdminUserController {
             @RequestParam(required = false) @Size(max = 100) String q,
             @RequestParam(required = false) String cursor,
             @RequestParam(required = false) @Min(1) @Max(100) Integer limit) {
-        throw NotImplementedYet.stub();
+        AdminUsers.Page page = users.list(q, cursor, limit);
+        return meta.data(new PageView<>(page.items().stream().map(AdminUserSummary::of).toList(), page.nextCursor()));
     }
 
     @GetMapping("/{userId}")
@@ -54,7 +66,8 @@ public class AdminUserController {
             description = "activeBan is the one ACTIVE ban, or null; its banId is what the ban routes take.")
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     public DataResponse<AdminUserDetail> get(@PathVariable UUID userId) {
-        throw NotImplementedYet.stub();
+        return meta.data(AdminUserDetail.of(users.detail(userId)
+                .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND))));
     }
 
     /** The FR-ADM-04 columns. Account status is banned and deleted (anonymised), each a flag. */
@@ -74,6 +87,16 @@ public class AdminUserController {
             @NotNull @Schema(description = "An ACTIVE ban now.") Boolean banned,
             @NotNull @Schema(description = "Anonymised (FR-ACC-10).") Boolean deleted,
             @NotNull @Schema(example = "2026-09-30T12:00:00Z") Instant joinedAt) {
+
+        /** An anonymised account has no phone any more (FR-ACC-10): it is shown empty, like its name and email. */
+        static AdminUserSummary of(AdminUsers.User user) {
+            AdminUsers.Account account = user.account();
+            return new AdminUserSummary(account.userId(), account.fullName(), account.username(),
+                    account.phone() == null ? "" : account.phone(), account.email(), account.phoneVerified(),
+                    user.verifiedPlayer().status(), user.verifiedPlayer().completedBookings(),
+                    user.standing().consecutiveNoShows(), user.standing().penaltyStage(), user.standing().banned(),
+                    account.deleted(), account.joinedAt());
+        }
     }
 
     @Schema(name = "AdminUserDetail")
@@ -86,6 +109,14 @@ public class AdminUserController {
             @NotNull @Schema(example = "1200") Integer pointsBalance,
             @NotNull MoneyView walletBalance,
             @NotNull @Schema(example = "K7M3QX9P") String referralCode) {
+
+        static AdminUserDetail of(AdminUsers.Detail detail) {
+            AdminUsers.User user = detail.user();
+            return new AdminUserDetail(AdminUserSummary.of(user), user.account().emailVerified(),
+                    user.standing().currentThreshold(), AdminUserActiveBan.of(user.standing().activeBan()),
+                    user.verifiedPlayer().qualification(), detail.balances().points(),
+                    MoneyView.of(detail.balances().wallet()), user.account().referralCode());
+        }
     }
 
     @Schema(name = "AdminUserActiveBan")
@@ -94,5 +125,11 @@ public class AdminUserController {
             @NotNull @Schema(example = "0") Integer penaltyStage,
             @NotNull @Schema(example = "2026-11-02T18:00:00Z") Instant activatedAt,
             @NotNull @Schema(example = "2026-11-09T18:00:00Z") Instant endsAt) {
+
+        /** {@code null} when no ban is in force. */
+        static AdminUserActiveBan of(AccountStandings.Ban ban) {
+            return ban == null ? null
+                    : new AdminUserActiveBan(ban.banId(), ban.penaltyStage(), ban.activatedAt(), ban.endsAt());
+        }
     }
 }

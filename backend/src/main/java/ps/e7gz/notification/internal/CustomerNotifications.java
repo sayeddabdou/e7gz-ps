@@ -24,13 +24,14 @@ import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
+import ps.e7gz.notification.api.CustomerPushDevices;
 
 /**
  * The customer's notification list and push devices (E7-39 contract, FR-NTF-02; arch 08 section 4). Open to every
  * signed-in customer, phone verified or not (PO decision 10 Oct 2026).
  */
 @Component
-public class CustomerNotifications {
+public class CustomerNotifications implements CustomerPushDevices {
 
     static final int DEFAULT_PAGE_SIZE = 20;
 
@@ -122,6 +123,15 @@ public class CustomerNotifications {
     /** Revokes one of the customer's devices (e.g. on logout); an already-revoked one changes nothing. */
     public void revoke(UUID userId, UUID deviceId) {
         runner.run(new Revoke(userId, deviceId));
+    }
+
+    /** Every active device of the customer, on the caller's command (revoked, never deleted; E7-119). */
+    @Override
+    public int revokeAll(CommandContext context, UUID customerId) {
+        return context.jdbc().sql("""
+                        UPDATE notification.device_token SET revoked_at = greatest(:now, last_seen_at)
+                         WHERE user_id = :user AND revoked_at IS NULL""")
+                .param("now", utc(context.commandNow())).param("user", customerId).update();
     }
 
     private record MarkRead(NotificationRecipientType recipientType, UUID recipientId, EligibilityCategory category,

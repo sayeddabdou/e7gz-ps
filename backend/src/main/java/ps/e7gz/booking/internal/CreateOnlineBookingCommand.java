@@ -17,6 +17,7 @@ import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.inventory.ledger.api.NewReservation;
 import ps.e7gz.inventory.ledger.api.ReservationLedger;
 import ps.e7gz.inventory.ledger.api.ReservationOwner;
+import ps.e7gz.loyalty.api.BookingFeePayments;
 import ps.e7gz.messaging.api.IntegrationEvents;
 import ps.e7gz.messaging.api.NewOutboxEvent;
 import ps.e7gz.messaging.api.Outbox;
@@ -30,7 +31,9 @@ import ps.e7gz.venue.api.VenueContacts;
  * — → PENDING (arch 06 §1.2, FR-BOK-11, FR-BOK-13, arch 01 §11.1): in one {@code READ COMMITTED} command transaction,
  * the twenty conditions, then the PENDING Online Booking with its snapshots, its BOOKING reservation (and the ledger's
  * {@code ReservationHeld}), the first history row, the venue response deadline job (T1) and the {@code BookingCreated}
- * event. All commit together or not at all (I2, EC-AVAI-001).
+ * event. All commit together or not at all (I2, EC-AVAI-001). When the stored Booking Fee is above zero, the Customer's
+ * Wallet pays it in the same transaction if it covers the whole fee (PCR-009, E7-66 PR 3); at the launch fee of EGP 0
+ * there is nothing to pay and Loyalty is not called.
  *
  * <p>Write order follows the database: {@code fk_resource_reservation_booking_id__booking_id} is not deferrable, so
  * the Booking row comes before its reservation. The database refuses what raced past the conditions - another
@@ -59,10 +62,11 @@ final class CreateOnlineBookingCommand implements Command<CreatedBooking> {
     private final ScheduledJobs jobs;
     private final Outbox outbox;
     private final VenueContacts venues;
+    private final BookingFeePayments payments;
 
     CreateOnlineBookingCommand(OnlineBookingRequest request, ResourceCatalog.Entry resource,
                                OnlineCreationPredicate predicate, OnlineBookingStore store, ReservationLedger ledger,
-                               ScheduledJobs jobs, Outbox outbox, VenueContacts venues) {
+                               ScheduledJobs jobs, Outbox outbox, VenueContacts venues, BookingFeePayments payments) {
         this.request = Objects.requireNonNull(request, "request");
         this.resource = Objects.requireNonNull(resource, "resource");
         this.predicate = predicate;
@@ -71,6 +75,7 @@ final class CreateOnlineBookingCommand implements Command<CreatedBooking> {
         this.jobs = jobs;
         this.outbox = outbox;
         this.venues = venues;
+        this.payments = payments;
     }
 
     /** A new marketplace activity (ADR-022, arch 06 §1.4). */
@@ -108,6 +113,10 @@ final class CreateOnlineBookingCommand implements Command<CreatedBooking> {
         UUID reservationId = ledger.create(context, new NewReservation(resource.resourceId(),
                 ReservationOwner.booking(bookingId), request.startAt(), approval.endAt()));
         store.insertCreatedHistory(context, bookingId, request.customerId(), now, CorrelationId.require());
+        // PCR-009: the Wallet pays the stored fee when it covers all of it; the Customer is in this command's lock set
+        if (!approval.amounts().bookingFee().isZero()) {
+            payments.payFromWallet(context, request.customerId(), bookingId);
+        }
         // T1 at the stored deadline; the job's own fire re-reads it (arch 08 §2.2)
         jobs.schedule(context, NewJob.of(VENUE_RESPONSE_EXPIRY, BOOKING_SUBJECT, bookingId, expiresAt));
         outbox.publish(context, bookingCreated(bookingId, approval.endAt()));

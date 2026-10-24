@@ -12,6 +12,7 @@ import ps.e7gz.common.codes.AuthSubjectType;
 import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
+import ps.e7gz.notification.api.CustomerPushDevices;
 
 /**
  * Releasing an account that never verified its phone (Sprint 0 review S-3, PO decisions 2 and 16 Oct 2026, E7-57): a
@@ -23,7 +24,7 @@ import ps.e7gz.common.error.ApiException;
  *       ({@code gd_username_cooldown} would refuse it): then it keeps it, and a registration that needs it is
  *       {@code USERNAME_TAKEN} (PO decision 16 Oct 2026);</li>
  *   <li>full name, email and password hash are emptied - an empty hash never matches, so nobody can log in again;</li>
- *   <li>its open OTP codes are superseded and its refresh tokens revoked.</li>
+ *   <li>its open OTP codes are superseded, its refresh tokens and push devices revoked (E7-119).</li>
  * </ul>
  * A verified account is never released: its phone and username stay {@code PHONE_TAKEN} / {@code USERNAME_TAKEN}.
  */
@@ -70,7 +71,7 @@ final class UnverifiedAccounts {
      * @throws ApiException {@code USERNAME_TAKEN} when an unverified holder needs to give up the username but is inside
      *                      its 30-day username cooldown
      */
-    static void releaseUnverified(CommandContext ctx, List<Holder> holders) {
+    static void releaseUnverified(CommandContext ctx, List<Holder> holders, CustomerPushDevices pushDevices) {
         for (Holder holder : holders) {
             if (holder.phoneVerified()) {
                 continue;
@@ -79,11 +80,12 @@ final class UnverifiedAccounts {
             if (holder.holdsUsername() && !usernameFree) {
                 throw new ApiException(ApiErrorCode.USERNAME_TAKEN, "username");
             }
-            release(ctx, holder.userId(), usernameFree);
+            release(ctx, holder.userId(), usernameFree, pushDevices);
         }
     }
 
-    private static void release(CommandContext ctx, UUID userId, boolean releaseUsername) {
+    private static void release(CommandContext ctx, UUID userId, boolean releaseUsername,
+                                CustomerPushDevices pushDevices) {
         ctx.jdbc().sql("""
                         UPDATE iam.user_account
                            SET phone_e164 = :phone, full_name = '', email = '', password_hash = '',
@@ -103,6 +105,7 @@ final class UnverifiedAccounts {
                 .param("id", userId)
                 .update();
         RefreshTokens.revokeAll(ctx, AuthSubjectType.CUSTOMER, userId);
+        pushDevices.revokeAll(ctx, userId);                          // PO decision 24 Oct 2026 (E7-119)
     }
 
     /** {@code gd_username_cooldown}'s own test, on the database clock it uses. */

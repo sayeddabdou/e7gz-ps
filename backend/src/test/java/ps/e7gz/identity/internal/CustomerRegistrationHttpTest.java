@@ -135,7 +135,8 @@ class CustomerRegistrationHttpTest extends IntegrationTest {
 
     /**
      * Sprint 0 review S-3 (E7-57): registering on a phone and username held by an account that was never verified
-     * replaces it - the new registration goes ahead, and the old account can no longer log in or refresh.
+     * replaces it - the new registration goes ahead, and the old account can no longer log in or refresh, nor get
+     * push on its phones (E7-119).
      */
     @Test
     void registeringOnAnUnverifiedAccountsPhoneAndUsernameReleasesIt() throws Exception {
@@ -145,6 +146,7 @@ class CustomerRegistrationHttpTest extends IntegrationTest {
         db.sql("UPDATE iam.user_account SET phone_e164 = :phone WHERE id = :id").param("phone", e164(local))
                 .param("id", old).update();
         insertRefreshToken(old);
+        TestCustomers.insertPushDevice(db, old);
 
         register("New", username, local, "new@example.com", "Passw0rd1").andExpect(status().isCreated());
 
@@ -158,6 +160,7 @@ class CustomerRegistrationHttpTest extends IntegrationTest {
                         SELECT count(*) FROM iam.auth_refresh_token
                          WHERE subject_id = :id AND revoked_at IS NULL""").param("id", old)
                 .query(Long.class).single()).isZero();
+        assertThat(TestCustomers.activePushDevices(db, old)).isZero();
     }
 
     /** PO decision 16 Oct 2026: an unverified holder inside its username cooldown keeps it: USERNAME_TAKEN. */
@@ -177,13 +180,15 @@ class CustomerRegistrationHttpTest extends IntegrationTest {
 
     /**
      * Sprint 0 review (E7-57): a code from otp/send verifies only with a new password, which replaces the old one and
-     * ends every session - an account someone else created with this phone cannot be kept by them.
+     * ends every session - an account someone else created with this phone cannot be kept by them. Its phones stop
+     * getting push too (E7-119), but only once the verification succeeds.
      */
     @Test
     void verifyingThroughAResendNeedsANewPasswordAndEndsTheOtherSessions() throws Exception {
         String phone = e164(randomLocalPhone());
         UUID userId = insertUnverifiedUser(phone);
         insertRefreshToken(userId);
+        TestCustomers.insertPushDevice(db, userId);
         UUID fresh = sendOtp(phone).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()
                 .transform(this::read).path("data").path("otpChallengeId").asText().transform(UUID::fromString);
         String code = sms.lastCode.get(phone);
@@ -193,7 +198,9 @@ class CustomerRegistrationHttpTest extends IntegrationTest {
                 .andExpect(jsonPath("$.error.field").value("password"));
         verify(fresh, code, "short").andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.field").value("password"));
+        assertThat(TestCustomers.activePushDevices(db, userId)).isOne();
         verify(fresh, code, "N3wPassword").andExpect(status().isOk());
+        assertThat(TestCustomers.activePushDevices(db, userId)).isZero();
 
         assertThat(db.sql("""
                         SELECT count(*) FROM iam.auth_refresh_token

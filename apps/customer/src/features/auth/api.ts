@@ -14,7 +14,7 @@ export type AuthResult<T> =
 export interface CustomerAuthApi {
   register(request: RegisterRequest): Promise<AuthResult<{ phone: string; challengeId: string }>>;
   login(request: LoginRequest): Promise<AuthResult<TokenPair>>;
-  verifyPhone(challengeId: string, code: string): Promise<AuthResult<TokenPair>>;
+  verifyPhone(challengeId: string, code: string, password?: string): Promise<AuthResult<TokenPair>>;
   resend(phone: string): Promise<AuthResult<{ challengeId: string }>>;
   refresh(refreshToken: string): Promise<TokenPair | null>;
   logout(): Promise<void>;
@@ -37,8 +37,10 @@ export function createCustomerAuthApi(config: AppConfig, tokenStore: TokenStore)
       if (data) return { ok: true, value: data.data, serverTime: data.meta.serverTime };
       return { ok: false, code: codeFrom(error), serverTime: error?.meta.serverTime };
     },
-    async verifyPhone(challengeId, code) {
-      const { data, error } = await client.POST("/api/v1/customer/auth/verify-phone", { body: { otpChallengeId: challengeId, code } });
+    async verifyPhone(challengeId, code, password) {
+      const { data, error } = await client.POST("/api/v1/customer/auth/verify-phone", {
+        body: { otpChallengeId: challengeId, code, ...(password === undefined ? {} : { password }) },
+      });
       if (data) return { ok: true, value: data.data, serverTime: data.meta.serverTime };
       return { ok: false, code: codeFrom(error), serverTime: error?.meta.serverTime };
     },

@@ -9,6 +9,7 @@ import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.inventory.ledger.api.ReservationLedger;
+import ps.e7gz.loyalty.api.BookingFeePayments;
 import ps.e7gz.messaging.api.Idempotency;
 import ps.e7gz.messaging.api.IdempotentRequest;
 import ps.e7gz.messaging.api.IdempotentResult;
@@ -37,10 +38,11 @@ public class OnlineBookingCreation {
     private final ScheduledJobs jobs;
     private final Outbox outbox;
     private final VenueContacts venues;
+    private final BookingFeePayments payments;
 
     OnlineBookingCreation(CommandRunner runner, Idempotency idempotency, ResourceCatalog resources,
                           OnlineCreationPredicate predicate, OnlineBookingStore store, ReservationLedger ledger,
-                          ScheduledJobs jobs, Outbox outbox, VenueContacts venues) {
+                          ScheduledJobs jobs, Outbox outbox, VenueContacts venues, BookingFeePayments payments) {
         this.runner = runner;
         this.idempotency = idempotency;
         this.resources = resources;
@@ -50,6 +52,7 @@ public class OnlineBookingCreation {
         this.jobs = jobs;
         this.outbox = outbox;
         this.venues = venues;
+        this.payments = payments;
     }
 
     /**
@@ -80,7 +83,8 @@ public class OnlineBookingCreation {
     /** The Resource is read first, in its own read-only command, because the creation command's lock set names it. */
     private CreateOnlineBookingCommand command(OnlineBookingRequest request) {
         ResourceCatalog.Entry resource = runner.run(new FindResource(resources, request.resourceId()));
-        return new CreateOnlineBookingCommand(request, resource, predicate, store, ledger, jobs, outbox, venues);
+        return new CreateOnlineBookingCommand(request, resource, predicate, store, ledger, jobs, outbox, venues,
+                payments);
     }
 
     /** The creation command with its result mapped to the response, in the same transaction and lock set. */

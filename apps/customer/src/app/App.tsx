@@ -1,5 +1,5 @@
 import { type ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -13,6 +13,7 @@ import { DiscoveryScreen } from "../features/discovery";
 import { AuthFlow, createCustomerAuthApi } from "../features/auth";
 import type { CustomerAuthApi } from "../features/auth/api";
 import { MyBookingsScreen } from "../features/my-bookings";
+import { createCustomerProfileApi, PasswordResetFlow, ProfileScreen, type CustomerProfileApi } from "../features/profile";
 import {
   createExpoPushAdapter,
   createPushRegistration,
@@ -56,17 +57,6 @@ function Screen({ title }: { title: string }) {
 
 function TournamentsScreen() {
   return <Screen title={t.tabs.tournaments} />;
-}
-
-function ProfileScreen({ onLogout }: { onLogout(): void }) {
-  return (
-    <SafeAreaView edges={["top"]} style={styles.screen}>
-      <Text accessibilityRole="header" style={styles.title}>{t.tabs.profile}</Text>
-      <Pressable accessibilityRole="button" onPress={onLogout} style={styles.logoutButton}>
-        <Text style={styles.logoutText}>{t.auth.logout}</Text>
-      </Pressable>
-    </SafeAreaView>
-  );
 }
 
 function tabIcon(
@@ -135,12 +125,14 @@ export function App({
   tokenStore,
   refreshAccessToken,
   authApi,
+  profileApi: profileApiOverride,
   pushRegistrationOverride,
 }: {
   config: ConfigResult;
   tokenStore?: TokenStore;
   refreshAccessToken?: RefreshAccessToken;
   authApi?: CustomerAuthApi;
+  profileApi?: CustomerProfileApi;
   pushRegistrationOverride?: PushRegistration;
 }) {
   const secureTokens = useMemo(() => tokenStore ?? createSecureTokenStore(), [tokenStore]);
@@ -149,6 +141,8 @@ export function App({
     [authApi, config, secureTokens],
   );
   const [authenticated, setAuthenticated] = useState<boolean>();
+  const [resettingPassword, setResettingPassword] = useState(false);
+  const [passwordResetNotice, setPasswordResetNotice] = useState<string>();
   const [pushBookingId, setPushBookingId] = useState<string>();
   const [pushSetupState, setPushSetupState] = useState<PushSetupState>();
   useEffect(() => {
@@ -166,6 +160,7 @@ export function App({
       : undefined,
     [config, customerAuth, refreshAccessToken, secureTokens],
   );
+  const profileApi = useMemo(() => profileApiOverride ?? (api ? createCustomerProfileApi(api) : undefined), [api, profileApiOverride]);
   const pushRegistration = useMemo(
     () => pushRegistrationOverride ?? (api ? createPushRegistration(api, createExpoPushAdapter(), createSecurePushRegistrationStore()) : undefined),
     [api, pushRegistrationOverride],
@@ -180,6 +175,17 @@ export function App({
     return () => pushRegistration.stop();
   }, [authenticated, openBookingFromNotification, pushRegistration]);
 
+  const finishPasswordReset = async () => {
+    // The access token remains valid briefly after reset, so revoke this phone's push device before clearing tokens.
+    // A post-reset cleanup failure must never report the successful password reset as failed.
+    try { await pushRegistration?.revoke(); } catch { /* Local sign-out still completes while offline. */ }
+    try { await secureTokens.clear(); } catch { /* The server-side reset still succeeded; never report it as failed. */ }
+    setPushSetupState(undefined);
+    setAuthenticated(false);
+    setResettingPassword(false);
+    setPasswordResetNotice(t.profile.passwordReset.completed);
+  };
+
   if (!config.ok || !api) {
     return (
       <SafeAreaProvider>
@@ -191,14 +197,34 @@ export function App({
     );
   }
 
+  const activeProfileApi = profileApi ?? createCustomerProfileApi(api);
+
   if (authenticated === undefined) {
     return <SafeAreaProvider><SafeAreaView style={styles.screen}><Text>{t.loading}</Text></SafeAreaView></SafeAreaProvider>;
   }
 
   if (!authenticated && customerAuth) {
+    if (resettingPassword) {
+      return (
+        <SafeAreaProvider>
+          <PasswordResetFlow
+            api={activeProfileApi}
+            onCancel={() => setResettingPassword(false)}
+            onComplete={finishPasswordReset}
+          />
+          <StatusBar style="auto" />
+        </SafeAreaProvider>
+      );
+    }
     return (
       <SafeAreaProvider>
-        <AuthFlow api={customerAuth} tokenStore={secureTokens} onAuthenticated={() => setAuthenticated(true)} />
+        <AuthFlow
+          api={customerAuth}
+          tokenStore={secureTokens}
+          notice={passwordResetNotice}
+          onAuthenticated={() => { setPasswordResetNotice(undefined); setAuthenticated(true); }}
+          onForgotPassword={() => { setPasswordResetNotice(undefined); setResettingPassword(true); }}
+        />
         <StatusBar style="auto" />
       </SafeAreaProvider>
     );
@@ -288,7 +314,11 @@ export function App({
                 title: t.tabs.profile,
               }}
             >
-              {() => <ProfileScreen onLogout={logout} />}
+              {() => (
+                <SafeAreaView edges={["top"]} style={styles.screen}>
+                  <ProfileScreen api={activeProfileApi} onLogout={logout} onPasswordResetComplete={finishPasswordReset} />
+                </SafeAreaView>
+              )}
             </Tab.Screen>
           </Tab.Navigator>
         </NavigationContainer>
@@ -325,18 +355,6 @@ const styles = StyleSheet.create({
     fontSize: nativeTokens.typography.fontSize.caption,
     fontWeight: nativeTokens.typography.fontWeight.bold,
     marginTop: nativeTokens.spacing.xs,
-  },
-  logoutButton: {
-    alignItems: "center",
-    borderColor: nativeTokens.color.feedback.danger,
-    borderRadius: nativeTokens.radius["2xl"],
-    borderWidth: nativeTokens.spacing.hairline,
-    minHeight: 48,
-    justifyContent: "center",
-  },
-  logoutText: {
-    color: nativeTokens.color.feedback.danger,
-    fontWeight: nativeTokens.typography.fontWeight.bold,
   },
   pushNotice: {
     color: nativeTokens.color.text.customer,

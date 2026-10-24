@@ -30,11 +30,38 @@ const settingsResponse = (languagePreference: "en" | "ar") => new Response(
   }),
   { status: 200, headers: { "Content-Type": "application/json" } },
 );
+const overviewResponse = () => new Response(JSON.stringify({
+  data: {
+    todayRevenue: { amount: "0.00", currency: "EGP" },
+    monthRevenue: { amount: "0.00", currency: "EGP" },
+    todayBookings: 0,
+    pendingRequests: 0,
+  },
+  meta: { correlationId: "c-1", serverTime: "2026-10-02T10:00:00Z" },
+}), { status: 200, headers: { "Content-Type": "application/json" } });
+const availabilityResponse = () => new Response(JSON.stringify({
+  data: { businessDate: "2026-10-02", closed: false, resources: [] },
+  meta: { correlationId: "c-1", serverTime: "2026-10-02T10:00:00Z" },
+}), { status: 200, headers: { "Content-Type": "application/json" } });
+
+function defaultResponse(input: RequestInfo | URL, languagePreference: "en" | "ar" = "en"): Response {
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+  if (url.endsWith("/api/v1/venue/settings")) return settingsResponse(languagePreference);
+  if (url.endsWith("/api/v1/venue/overview")) return overviewResponse();
+  if (url.endsWith("/api/v1/venue/availability")) return availabilityResponse();
+  if (url.includes("/api/v1/venue/requests/pending")) {
+    return new Response(JSON.stringify({ data: [], meta: { correlationId: "c-1", serverTime: "2026-10-02T10:00:00Z" } }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  return sessionResponse("memory-only-access");
+}
 
 beforeEach(() => {
   window.localStorage.clear();
   window.history.replaceState({}, "", "/");
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(sessionResponse("memory-only-access")));
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => defaultResponse(input)));
 });
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -63,8 +90,7 @@ describe("Venue Dashboard shell", () => {
 
   it("prefers the venue account language, mirrors the shell in Arabic, and keeps logical styles", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      return url.endsWith("/api/v1/venue/settings") ? settingsResponse("ar") : sessionResponse("memory-only-access");
+      return defaultResponse(input, "ar");
     }));
     render(<App config={readyConfig} />);
 
@@ -102,6 +128,15 @@ describe("Venue Dashboard shell", () => {
     expect(window.location.pathname).toBe("/schedule");
   });
 
+  it("opens the pending requests route from the Overview quick action", async () => {
+    render(<App config={readyConfig} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "View pending requests" }));
+
+    expect(window.location.pathname).toBe("/pending-requests");
+    expect(await screen.findByRole("heading", { name: "Pending Requests" })).toBeTruthy();
+  });
+
   it("restores and ends the HttpOnly-cookie session without browser token storage", async () => {
     const fetch = vi.mocked(globalThis.fetch);
     render(<App config={readyConfig} />);
@@ -129,13 +164,7 @@ describe("Venue Dashboard shell", () => {
     const fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       if (url.endsWith("/api/v1/venue/auth/refresh")) return sessionResponse("memory-only-access");
-      if (url.endsWith("/api/v1/venue/settings")) return settingsResponse("en");
-      if (url.includes("/api/v1/venue/requests/pending")) {
-        return new Response(JSON.stringify({ data: [], meta: { correlationId: "c-1", serverTime: "2026-10-02T10:00:00Z" } }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
+      if (url.endsWith("/api/v1/venue/settings") || url.endsWith("/api/v1/venue/overview") || url.endsWith("/api/v1/venue/availability") || url.includes("/api/v1/venue/requests/pending")) return defaultResponse(input);
       return new Response(undefined, { status: 204 });
     });
     vi.stubGlobal("fetch", fetch);

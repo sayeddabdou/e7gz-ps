@@ -124,6 +124,7 @@ Trust events and replay, bans, Verified Player, points, wallet, referrals, confi
 | S4-P1 | E7-66 | Platform | Loyalty ledgers and fee treatment | Points and wallet ledgers, and what happens to the booking fee in every case. | S2-E4 |
 | S4-P2 | E7-67 | Platform | Referrals | Invite a friend: referral rewards and reversals. | S4-P1, S0-P5 |
 | S4-P3 | E7-68 | Platform | Configuration service (fees and points) | Admin changes the booking fee and points values (from a date onward). | S0-E1 |
+| S4-P4 | E7-119 | Platform | Revoke push devices when every session ends | When every session of a customer ends (password reset, a verification through resend, a released unverified account), the server also stops push to all of the customer's phones. | S3-P3, S2-P4 |
 | S4-E1 | E7-69 | Engine | Trust events and replay | Trust history of every customer, recalculated exactly from events. | S3-E4 |
 | S4-E2 | E7-70 | Engine | Reconciler and attendance corrections | Fix attendance mistakes and recalculate trust correctly. | S4-E1 |
 | S4-E3 | E7-71 | Engine | Bans and the ban cascade (O14) | Temporary bans after repeated no-shows, and their effects. | S4-E2 |
@@ -2501,6 +2502,24 @@ Carry-forward from E7-65 (Sprint 4 contract, PO decisions 17 Oct 2026, do these 
 Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do these too):
 - Reuse loyalty.api.BookingRewards (added by E7-59) for every booking outcome's Loyalty reconciliation (loyalty.reconcile_booking); don't add a second entry point.
 
+PO decisions 23 Oct 2026 — E7-66 kickoff (do these too):
+- Fee treatment: FeeQuery.feeTreatmentFor(BookingTerminalReason) is an exhaustive switch with no default branch and returns common.codes.FeeTreatment (FULL_REFUND, CUSTOMER_POLICY, NOT_APPLICABLE: the database's names, not "FULL"). The database already decides every refund (booking.expected_fee_treatment, used by loyalty.record_refund), so a test checks that the switch and the database function give the same treatment for every BookingTerminalReason.
+- Points notifications are this task's (E7-59's carry-forward left them to Sprint 4): POINTS_EARNED (In-App + Push) when attended-completion points are posted, and ADMIN_ACCOUNT_CHANGE (In-App + Email) when an admin adjusts points (FR-NTF-11). Both come from the LOYALTY_POINTS_LEDGER_COMMITTED outbox event through the one notification path (E7-55's consumer), never Notifications.notify. Referral points stay with E7-67.
+- Booking fee receipt: payment collection is deferred (ADR-018), so loyalty.record_fee_receipt has no production caller. Use it only in the NFR-38 test: with a non-zero fee and the wallet-refund switch on, every terminal reason resolves to exactly one treatment with the right refund, and a refund lands in the wallet. Add the PaymentProvider port (arch 03 §18, ps.e7gz.ports) with no implementation and no caller, and the ArchUnit test that nothing under ps.e7gz.booking, ps.e7gz.loyalty or ps.e7gz.tournament imports it.
+- Booking fee receipt deactivated until the payment gateway (PO decision 23 Oct 2026, the same day): no runtime role may call loyalty.record_fee_receipt, because a receipt is what turns a refund decision into wallet money. Security baseline v1.1.38: a new deferred list in R__security_baseline.sql and its docs copy, a change-report entry and two checks in test_privileges_v127.sh (this item may update docs/04-erd/physical; the PO reviews it), and FeeReceiptPrivilegesTest. The NFR-38 test records the receipt on the owner connection while the booking is still live, as the future adapter will. The payment gateway task creates the settlement-adapter role, grants it the function and removes it from deferred.
+
+Delivery (PO decision 23 Oct 2026): this task ships as two PRs, merged in order:
+- PR 1 (branch E7-66-loyalty-ledgers): fee treatment, the PaymentProvider port and the NFR-38 tests; GET /customer/points and GET /customer/wallet; GET /admin/wallet, GET /admin/users/{userId}/wallet, GET /admin/points, GET /admin/users/{userId}/points and POST /admin/points/adjust; the points notifications; the record_fee_receipt deferral (v1.1.38).
+- PR 2 (branch E7-66-admin-users): GET /admin/users and GET /admin/users/{userId} (D4) with the trust.api read ports, which Amr reviews.
+- Each PR passes ./gradlew check on its own and is reviewed separately.
+
+PO decisions 24 Oct 2026 — the wallet pays a future booking fee (PCR-009, do these too):
+- A refund of a collected booking fee goes to the in-app wallet, never back to the card. When a new Online Booking's stored fee is above EGP 0 and the wallet holds at least the whole fee, booking creation pays that fee from the wallet automatically, in the same transaction; no request field, no app button. Whole fee only: a smaller balance pays nothing and the fee stays uncollected until a payment provider exists (ADR-018). Never the venue gaming charge, no top-up, no withdrawal, no admin wallet adjustment.
+- A refund of a wallet-paid fee follows the normal rules (FR-PTS-14 to FR-PTS-16) and goes back to the wallet; a late customer cancellation keeps the fee.
+- Database (physical model v1.1.39, V<yyyyMMddHHmm>__wallet_booking_fee_payment.sql, .dbm block, change report, PO review): a BOOKING_FEE_PAYMENT debit in loyalty.wallet_transaction (ck_wallet_tx_source), the producer loyalty.pay_fee_from_wallet writing the booking's WALLET collection receipt (so refunds settle back unchanged), assert_user and guard_audit_origin extended with added lines only. This item may update docs/ (PCR-009 and the arch docs it names).
+- loyalty.api.BookingFeePayments, called once by CreateOnlineBookingCommand when the fee is above zero (Engine lane: Amr reviews that call). WalletTransactionCause gains BOOKING_FEE_PAYMENT; a wallet item's amount is how much moved (never negative) and its cause says credited or spent.
+- Delivery: PR 3 (branch E7-66-wallet-payments), on top of PR 2 and merged after it; it passes ./gradlew check on its own.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2557,6 +2576,34 @@ Done when (write these as tests first where possible):
 
 Carry-forward from E7-65 (Sprint 4 contract, PO decisions 17 Oct 2026, do these too):
 - Fill the stubs of the Sprint 4 contract (E7-65, packages/api-client/SPRINT-4-CONTRACT.md): GET/PUT /admin/fees (config/web AdminFeeController, config.change_configuration) and the new GET/PUT /admin/points/settings (D3; loyalty/web AdminLoyaltyController, loyalty.configure) for attendedPoints, referralPoints and walletRefundsEnabled. Each value with its effectiveFrom; a change takes effect now, for later events only (FR-ADM-11). Omitted fields keep their value; a value equal to the current one changes nothing (skip it: change_configuration refuses an unchanged value); none given -> 400 VALIDATION_FAILED. The Idempotency-Key is required on both PUTs (D6). Replace this task's lines in backend/src/test/java/ps/e7gz/openapi/Sprint4StubHttpTest.java with your own tests.
+
+Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
+Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
+```
+
+### S4-P4 (E7-119) — Revoke push devices when every session ends
+
+**What this task does:** When every session of a customer ends (password reset, a verification through resend, a released unverified account), the server also stops push to all of the customer's phones.
+
+Lane: Platform · Depends on: S3-P3, S2-P4
+
+```text
+Read CLAUDE.md first. You are implementing task S4-P4 — "Revoke push devices when every session ends" (Platform lane) of the E7GZ PS build plan.
+
+Read only these docs for this task:
+- FRS FR-ACC-09
+- arch 08 §4 (device tokens: revoked, never deleted)
+- packages/api-client/SPRINT-3-CONTRACT.md (the E7-57 changes)
+
+Do:
+1. notification.api: add CustomerPushDevices with int revokeAll(CommandContext context, UUID customerId). Every active notification.device_token row of the customer gets revoked_at in the caller's transaction (revoked, never deleted, arch 08 §4), as VenueBrowserPush.revokeAll does for venue browsers.
+2. identity: call it in the same command next to each RefreshTokens.revokeAll for a customer: password reset complete (CustomerProfiles.completePasswordReset), a verification with a new password (VerifyPhoneCommand), and a released unverified account (UnverifiedAccounts, used by registration and by a phone change).
+
+Done when (write these as tests first where possible):
+- After each of the three events, every active device token of that customer is revoked in the same transaction; other customers' tokens and already-revoked tokens are untouched.
+- No schema change; ArchUnit green.
+
+PO decision 24 Oct 2026 (E7-64 review): when every session of a customer ends, the server also revokes every push device of the account, in the same command. Account deletion (iam.anonymise_user) is E7-103's: it calls the same revokeAll there.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2743,6 +2790,7 @@ Read CLAUDE.md first. You are implementing task S4-C1 — "Customer app: standin
 Read only these docs for this task:
 - Customer App prototype
 - PCR-004 (Customer Wallet Screen: a read-only wallet IS shown at launch; it overrides FRS §3.1 'hidden-at-launch Wallet')
+- PCR-009 (the wallet pays a future booking's fee; amends PCR-004)
 - FRS §3.1 (Customer Mobile App)
 - FRS F-32…F-35 (bans, Verified Player, points, referrals)
 - FRS §4.11, §4.12 (Trust and bans; Points, Referrals, Wallet and Fees)
@@ -2751,7 +2799,7 @@ Read only these docs for this task:
 
 Do:
 1. Account standing (ban, Verified Player), points history, referral code sharing.
-2. Wallet screen (PO decision A11 / PCR-004): balance and transaction history, read-only, from GET /customer/wallet. It explains that the wallet holds booking-fee refunds. No top-up, no pay-with-wallet.
+2. Wallet screen (PO decision A11 / PCR-004): balance and transaction history, read-only, from GET /customer/wallet. It explains that the wallet holds booking-fee refunds and pays the booking fee of a later booking by itself (PCR-009). No top-up, no withdrawal, no pay button.
 
 Done when (write these as tests first where possible):
 - Matches API codes; no rule text hard-coded.
@@ -2767,6 +2815,9 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 
 Carry-forward from E7-65 (Sprint 4 contract, PO decisions 17 Oct 2026, do these too):
 - Build against the Sprint 4 contract (E7-65, packages/api-client/SPRINT-4-CONTRACT.md): the standing has exactly one currentBan or null, and its remaining time is currentBan.endsAt against meta.serverTime; points show applied amounts; referrals show my code and my referrals' status, not who signed up; the wallet is read-only and shows 0.00 clearly.
+
+PO decision 24 Oct 2026 — PCR-009 (do this too):
+- The wallet list shows both causes: BOOKING_FEE_REFUND (added) and BOOKING_FEE_PAYMENT (spent on the booking it names, with a link to that booking); amount is always positive, so the sign comes from the cause. The balance line explains that it pays the next booking's fee when it covers the whole fee.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -3640,10 +3691,13 @@ Do:
 3. Tournament participant precedence in the same transaction.
 
 Done when (write these as tests first where possible):
-- Deleted account: PII blanked, tokens revoked, reviews removed, participants INELIGIBLE/ACCOUNT_DELETED.
+- Deleted account: PII blanked, tokens and push devices revoked, reviews removed, participants INELIGIBLE/ACCOUNT_DELETED.
 
 Carry-forward from E7-13 (do these too):
 - The ACCOUNT_DELETED branch of identity CustomerActivation is tested only with a fixture row: add an end-to-end test on an account anonymised through iam.anonymise_user.
+
+PO decision 24 Oct 2026 (E7-64 review, do this too):
+- In the same command as iam.anonymise_user, also revoke the customer's push devices through notification.api.CustomerPushDevices.revokeAll (E7-119): deletion ends every session, so no phone keeps getting the account's pushes. Test it with the deleted-account test.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.

@@ -24,6 +24,7 @@ import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.messaging.api.Outbox;
+import ps.e7gz.notification.api.CustomerPushDevices;
 import ps.e7gz.notification.api.NotificationRequest;
 import ps.e7gz.notification.api.Notifications;
 
@@ -40,7 +41,8 @@ import ps.e7gz.notification.api.Notifications;
  *       verified (FR-ACC-07); a phone of another verified account is {@code PHONE_TAKEN}, an unverified holder is
  *       released (Sprint 0 review S-3).</li>
  *   <li>Password reset: a {@code PASSWORD_RESET} code to the account's verified phone, then the code and a new password;
- *       no old password (FR-ACC-09). Every refresh token is revoked (PO decision 11 Oct 2026, E7-54).</li>
+ *       no old password (FR-ACC-09). Every refresh token is revoked (PO decision 11 Oct 2026, E7-54), and every push
+ *       device with them (PO decision 24 Oct 2026, E7-119).</li>
  * </ul>
  * OTP limits are the database's (FR-ACC-04). A code is decided from the challenge read under the User's lock, and a
  * wrong one commits its attempt: the outcome is returned from the command and thrown after the commit, as in
@@ -62,15 +64,17 @@ public class CustomerProfiles {
     private final OtpPayloadCipher otpCipher;
     private final Outbox outbox;
     private final Notifications notifications;
+    private final CustomerPushDevices pushDevices;
     private final JdbcClient jdbc;
 
     CustomerProfiles(CommandRunner runner, PasswordEncoder passwords, OtpPayloadCipher otpCipher, Outbox outbox,
-                     Notifications notifications, DataSource appDataSource) {
+                     Notifications notifications, CustomerPushDevices pushDevices, DataSource appDataSource) {
         this.runner = runner;
         this.passwords = passwords;
         this.otpCipher = otpCipher;
         this.outbox = outbox;
         this.notifications = notifications;
+        this.pushDevices = pushDevices;
         this.jdbc = JdbcClient.create(appDataSource);
     }
 
@@ -163,7 +167,7 @@ public class CustomerProfiles {
             if (held.stream().anyMatch(holder -> holder.phoneVerified() || !holders.contains(holder.userId()))) {
                 return CodeOutcome.PHONE_TAKEN;                                  // nothing written; the code stays
             }
-            UnverifiedAccounts.releaseUnverified(ctx, held);
+            UnverifiedAccounts.releaseUnverified(ctx, held, pushDevices);
             OtpChallenges.consume(ctx, challengeId);
             ctx.jdbc().sql("""
                             UPDATE iam.user_account
@@ -235,6 +239,7 @@ public class CustomerProfiles {
             ctx.jdbc().sql("UPDATE iam.user_account SET password_hash = :hash WHERE id = :id")
                     .param("hash", hash).param("id", userId).update();
             RefreshTokens.revokeAll(ctx, AuthSubjectType.CUSTOMER, userId);
+            pushDevices.revokeAll(ctx, userId);
             notifications.notify(ctx, NotificationRequest.of("PASSWORD_RESET", NotificationRecipientType.CUSTOMER,
                     userId, Map.of()));
             return CodeOutcome.DONE;

@@ -134,6 +134,12 @@ textarea:focus-visible {
   margin-block-start: 8px;
 }
 
+@media (max-width: 1050px) {
+  .overview-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
 .venue-content img {
   display: block;
   object-fit: cover;
@@ -169,6 +175,19 @@ textarea:focus-visible {
 }
 
 @media (max-width: 600px) {
+  .overview-header {
+    align-items: stretch !important;
+  }
+
+  .overview-actions {
+    display: grid !important;
+    inline-size: 100%;
+  }
+
+  .overview-kpis {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
   .venue-content {
     padding-block: 20px !important;
     padding-inline: 16px !important;

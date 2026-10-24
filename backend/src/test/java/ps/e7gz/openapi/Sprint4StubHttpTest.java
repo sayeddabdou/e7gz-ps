@@ -53,19 +53,15 @@ class Sprint4StubHttpTest extends IntegrationTest {
     }
 
     @Test
-    void customerStandingPointsReferralsAndWalletAreStubs() throws Exception {
+    void customerStandingAndReferralsAreStubs() throws Exception {
         notImplemented(get("/api/v1/customer/account-standing"), customer);         // E7-71, E7-72
-        notImplemented(get("/api/v1/customer/points"), customer);                   // E7-66
         notImplemented(get("/api/v1/customer/referrals"), customer);                // E7-67
-        notImplemented(get("/api/v1/customer/wallet"), customer);                   // E7-66
         // FRS §2.11: standing and history are open to every customer state, unverified included.
         notImplemented(get("/api/v1/customer/account-standing"), unverified);
     }
 
     @Test
-    void adminUsersTrustAndVerifiedPlayerRoutesAreStubs() throws Exception {
-        notImplemented(get("/api/v1/admin/users"), admin);                          // E7-66 (PO D4)
-        notImplemented(get(USER), admin);                                           // E7-66 (PO D4)
+    void adminTrustAndVerifiedPlayerRoutesAreStubs() throws Exception {
         notImplemented(write(post(USER + "/trust-adjustment"),
                 "{\"counterAfter\":0,\"penaltyStageAfter\":0,\"reason\":\"Wrong no-show.\"}"), admin); // E7-71
         notImplemented(write(post(BAN + "/lift"), REASON), admin);                  // E7-71
@@ -88,13 +84,7 @@ class Sprint4StubHttpTest extends IntegrationTest {
     }
 
     @Test
-    void adminLoyaltyAndConfigurationRoutesAreStubs() throws Exception {
-        notImplemented(get("/api/v1/admin/wallet"), admin);                         // E7-66
-        notImplemented(get(USER + "/wallet"), admin);                               // E7-66
-        notImplemented(get("/api/v1/admin/points"), admin);                         // E7-66
-        notImplemented(get(USER + "/points"), admin);                               // E7-66
-        notImplemented(write(post("/api/v1/admin/points/adjust"), "{\"userId\":\"" + UUID.randomUUID()
-                + "\",\"amount\":-50,\"reason\":\"Duplicate reward.\"}"), admin);    // E7-66
+    void adminReferralAndConfigurationRoutesAreStubs() throws Exception {
         notImplemented(get("/api/v1/admin/referrals"), admin);                      // E7-67
         notImplemented(write(post("/api/v1/admin/referrals/" + UUID.randomUUID() + "/invalidate"), REASON),
                 admin);                                                              // E7-67

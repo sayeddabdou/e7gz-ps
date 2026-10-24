@@ -13,7 +13,7 @@
 | `E7GZ-PS-security-baseline-v1.1.27.sql` | Roles `e7gz_app_runtime` / `e7gz_admin_runtime` and all grants; idempotent; re-run after every migration |
 | `test_behaviour_v127.sh` | 86 behaviour checks of the database rules |
 | `test_tournament_v127.sh` | 22 isolated checks of Tournament approval and Ban-boundary rules |
-| `test_privileges_v127.sh` | 21 checks that the runtime roles can do exactly what they should |
+| `test_privileges_v127.sh` | 23 checks that the runtime roles can do exactly what they should |
 
 ## Build a database
 
@@ -256,6 +256,38 @@ Amr's engineering decision for E7-113, 17 Oct 2026 (not yet a Product Owner deci
 Unchanged on purpose: every other table, column, constraint, trigger and grant; booking reads by `operating_session_id`; `tournament.assert_tournament_aggregate` (reads its tournament's session by id); the guard identifier mapping (`ex_session_no_overlap` keeps its name). Upgrade seeds: `upgrade-seed/V202610131300.sql` (sessions and a referenced booking as they exist before the migration) and `upgrade-seed/V202610171400.sql` (a superseded session beside its day's current one, with a booking on each). Platform-lane table (Venue) with Engine-lane booking guards: needs both owners' review.
 
 - Tests: `MigrationSafetyTest` (the migration on the seeded database; both seeds); the `.dbm`/migration identity check in `MigrationFilesTest`; `SessionPlanTest`; `OpeningHoursChangeIntegrationTest` (a closed day and a shortened day after an hours change: the historical row and its bookings stay, the current session is created, Online intake inside the new hours succeeds and outside it is refused, availability readers agree, a Manual walk-in in the old window has no snapshot and is not cancelled by a later unrelated hours change); `OperatingSessionSupersessionDbTest` (the database guards: supersession once, only on referenced rows, superseded history never snapshotted, current-only uniqueness and overlap).
+
+### v1.1.38 — the Booking Fee receipt is deferred until the payment gateway (E7-66, 23 Oct 2026)
+
+**Product Owner decision, 23 Oct 2026 (Sayed):** solve the mismatch and deactivate `loyalty.record_fee_receipt` until payment collection ships (ADR-018). Grants only, in `E7GZ-PS-security-baseline-v1.1.27.sql` and its Flyway copy `R__security_baseline.sql`, as v1.1.29: the `.dbm` holds no grants, and the baseline re-applies after every migration. No versioned migration.
+
+**Why.** The function's own comment says it is "granted ONLY to the authenticated settlement adapter role", but no such role exists and the baseline granted it to both runtime roles like any other producer. A receipt is what turns a refund decision into Wallet money (`loyalty.settle_refund` credits only a collected fee), so whoever can record one can create Wallet credit. Nothing calls it at launch: the Booking Fee is EGP 0, the `PaymentProvider` port has no implementation and no caller, and the function itself refuses while `loyalty.wallet_refunds_enabled` is false.
+
+| Function | `e7gz_app_runtime` before | after | `e7gz_admin_runtime` before | after |
+|---|---|---|---|---|
+| `loyalty.record_fee_receipt(uuid, numeric, text, text, timestamptz)` | EXECUTE | none | EXECUTE | none |
+
+The baseline gains a `deferred` list, handled like `internal` (EXECUTE revoked from PUBLIC and from both runtime roles). When payments ship, that task creates the payment gateway's settlement-adapter role, grants it this function, and removes it from `deferred`. Body, signature, owner and every other grant unchanged; `record_refund` and `settle_refund` stay callable by both runtime roles (`settle_refund` credits nothing without a receipt).
+
+- Tests: two new checks in `test_privileges_v127.sh`; `FeeReceiptPrivilegesTest` (neither runtime role may execute it, the other fee producers still may); `BookingFeeNonZeroIntegrationTest` records the receipt on the owner connection, as the future adapter role will; the copy check in `MigrationFilesTest`.
+
+### v1.1.39 — the Wallet pays a future Booking's Booking Fee (E7-66 PR 3, 24 Oct 2026)
+
+**Product Owner decision, 24 Oct 2026 (Sayed), PCR-009** (amends PCR-004 "no payment with the wallet", FR-PTS-10, FR-PTS-11): a refund of a collected Booking Fee is credited to the in-app Wallet, never back to the card, and the customer spends it on the fee of a later booking. Automatic: when a new Online Booking's stored fee is above zero and the Wallet holds at least that amount, the command that creates the Booking pays the whole fee from the Wallet; otherwise nothing is paid and the fee stays uncollected until a payment provider exists (ADR-018). Never a partial payment, a top-up, a withdrawal or the venue gaming charge. `.dbm` block `v1_1_39_wallet_booking_fee_payment` = Flyway `V202610241200__wallet_booking_fee_payment.sql`, byte for byte; the `wallet_transaction` table model has the nullable `refund_id` and the new check. **For Product Owner review.**
+
+| Object | Change |
+|---|---|
+| `loyalty.wallet_transaction.refund_id` | Now nullable: set on a `BOOKING_FEE_REFUND` credit, NULL on a `BOOKING_FEE_PAYMENT` debit. Column comment |
+| `ck_wallet_tx_launch_source` → `ck_wallet_tx_source` | Same arithmetic (`balance_after = balance_before + amount`, no NaN) and either a refund credit (`amount > 0`, `refund_id` set) or a fee payment (`amount < 0`, no `refund_id`, `balance_after >= 0`) |
+| `loyalty.pay_fee_from_wallet(p_booking) → uuid` | New, `SECURITY DEFINER`, the one producer of a Wallet payment. In the Loyalty context of the command that creates the Booking (PENDING, `created_at` = the command instant): pays the stored fee when the Wallet covers it, writing the Booking's collection receipt (provider `WALLET`, reference = the Wallet transaction), the debit, the balance, two audits (`BOOKING_FEE_COLLECTION_RECORDED`, `BOOKING_FEE_WALLET_PAYMENT`) and `LOYALTY_WALLET_LEDGER_COMMITTED`. Returns NULL for a FREE booking or an uncovered fee; a second call answers the same payment. EXECUTE for both runtime roles through the security baseline |
+| `loyalty.assert_user(p_user)` | V1 definition plus one block in the Wallet loop: a `BOOKING_FEE_PAYMENT` row is bound to its `WALLET` receipt for the same Booking and amount, its audit and its outbox event |
+| `loyalty.guard_audit_origin()` | V1 definition plus `BOOKING_FEE_WALLET_PAYMENT` as a private-producer action |
+
+**Refund of a Wallet-paid fee.** The `WALLET` receipt is an ordinary collection receipt, so `loyalty.record_refund` → `loyalty.settle_refund` credit the Wallet back exactly as for a card-collected fee: full refund for operational causes, the 15-minute customer policy (FR-PTS-14), nothing for a late customer cancellation. Unchanged: `settle_refund`, `record_refund`, `record_fee_receipt` (still deferred, v1.1.38), `refund_basis`, `assert_booking`.
+
+**Existing data.** Every existing Wallet row is a refund credit with its `refund_id`, so it satisfies the new check; no backfill. No upgrade seed: no column is added, and a Wallet payment needs a collected fee, which no launch database has.
+
+- Tests: `WalletBookingFeePaymentIntegrationTest` (pay at creation, refund back to the Wallet, late cancellation keeps the fee, uncovered and FREE fees pay nothing, only the creating command may pay); `MigrationSafetyTest` (the migration on the seeded database); the `.dbm`/migration identity and added-lines checks in `MigrationFilesTest`; `ClosedValueContract` (two causes).
 
 ## Product Owner decisions (26 Sep 2026)
 
