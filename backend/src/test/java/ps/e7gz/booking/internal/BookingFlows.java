@@ -9,6 +9,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.context.ApplicationContext;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import ps.e7gz.booking.lateconfirm.internal.LateConfirmations;
 import ps.e7gz.common.codes.BookingSource;
 import ps.e7gz.common.codes.BookingStatus;
@@ -478,6 +479,30 @@ public final class BookingFlows {
             cancellation.cancel(context, booking.bookingId(), booking.customerId());
             return null;
         }));
+    }
+
+    /** The Owner PIN {@link #venueCancelsConfirmed} gives the booking's venue account. */
+    public static final String OWNER_PIN = "4321";
+
+    /**
+     * E7-114: the venue cancels its CONFIRMED Online Booking through the real protected command, the Owner Password
+     * gate included; the venue account gets {@link #OWNER_PIN} first if it has no Owner Password yet.
+     */
+    public void venueCancelsConfirmed(Booking booking) {
+        ownerPin(booking.venueAccountId());
+        assertThat(context.getBean(VenueConfirmedCancellations.class)
+                .cancel(booking.venueAccountId(), booking.bookingId(), OWNER_PIN).status())
+                .isEqualTo(BookingStatus.CANCELLED);
+    }
+
+    /** Gives the venue account the Owner Password {@link #OWNER_PIN}, unless it already has one. */
+    public void ownerPin(UUID venueAccountId) {
+        OnlineBookingWorld.OWNER.sql("""
+                        INSERT INTO iam.venue_owner_secret (venue_account_id, owner_password_hash, changed_at, version)
+                        VALUES (:account, :hash, now() - interval '1 day', 0)
+                        ON CONFLICT (venue_account_id) DO NOTHING""")
+                .param("account", venueAccountId)
+                .param("hash", context.getBean(PasswordEncoder.class).encode(OWNER_PIN)).update();
     }
 
     // ---------------------------------------------------------------------------- E7-58 Late Confirm (O3)

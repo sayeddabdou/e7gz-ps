@@ -29,6 +29,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import ps.e7gz.support.IntegrationTest;
 import ps.e7gz.support.PostgresTestContainer;
@@ -165,6 +166,79 @@ class CommandRunnerTest extends IntegrationTest {
                 .satisfies(e -> assertThat(CommandRunner.isSerializationFailure(e)).isTrue())
                 .rootCause().hasMessageContaining("test serialization failure");
         assertThat(attempts).as("e7gz.command.retry.max-attempts").hasValue(3);
+    }
+
+    /** A {@link TestCommand} that also records {@link Command#beforeAttempt}, and whether a transaction was open then. */
+    record HookedCommand<R>(CommandScope scope, List<String> events, Function<CommandContext, R> body)
+            implements Command<R> {
+
+        @Override
+        public EligibilityCategory eligibilityCategory() {
+            return EligibilityCategory.C_INTERNAL_VENUE_OPERATION;
+        }
+
+        @Override
+        public void beforeAttempt(int attempt) {
+            events.add("before " + attempt + (TransactionSynchronizationManager.isActualTransactionActive()
+                    ? " in a transaction" : ""));
+        }
+
+        @Override
+        public R execute(CommandContext context) {
+            events.add("body " + context.attempt());
+            return body.apply(context);
+        }
+    }
+
+    /**
+     * E7-114 (Q2): {@code beforeAttempt} runs exactly once at the start of every attempt, the 40001 reruns included,
+     * before that attempt's transaction - so before {@code begin_command} - and the body still runs once per attempt.
+     */
+    @Test
+    void beforeAttemptRunsOnceAtTheStartOfEveryAttemptBeforeItsTransaction() {
+        List<String> events = new ArrayList<>();
+
+        String result = runner.run(new HookedCommand<>(CommandScope.shared(LockSet.empty()), events, context -> {
+            if (context.attempt() < 3) {
+                context.jdbc().sql(RAISE_40001).update();
+            }
+            return "done";
+        }));
+
+        assertThat(result).isEqualTo("done");
+        assertThat(events).containsExactly("before 1", "body 1", "before 2", "body 2", "before 3", "body 3");
+    }
+
+    /** A {@code beforeAttempt} that throws ends the run before any transaction: no body, no retry. */
+    @Test
+    void aBeforeAttemptThatThrowsEndsTheRunBeforeItsTransaction() {
+        List<String> events = new ArrayList<>();
+        HookedCommand<String> command = new HookedCommand<>(CommandScope.shared(LockSet.empty()), events,
+                context -> "never");
+
+        assertThatThrownBy(() -> runner.run(new Command<String>() {
+            @Override
+            public EligibilityCategory eligibilityCategory() {
+                return command.eligibilityCategory();
+            }
+
+            @Override
+            public CommandScope scope() {
+                return command.scope();
+            }
+
+            @Override
+            public void beforeAttempt(int attempt) {
+                command.beforeAttempt(attempt);
+                throw new IllegalStateException("refused before attempt " + attempt);
+            }
+
+            @Override
+            public String execute(CommandContext context) {
+                return command.execute(context);
+            }
+        })).isInstanceOf(IllegalStateException.class).hasMessage("refused before attempt 1");
+        assertThat(events).containsExactly("before 1");
     }
 
     @Test

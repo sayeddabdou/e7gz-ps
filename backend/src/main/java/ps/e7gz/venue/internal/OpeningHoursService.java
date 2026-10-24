@@ -124,8 +124,14 @@ public class OpeningHoursService {
      * runs the unprotected command, which still answers 423 OWNER_PASSWORD_REQUIRED if, under the locks, one became
      * protected. Both write nothing when refused, the idempotency record included.
      *
-     * <p>A retry with the same key and request returns the stored answer without running anything; the first pass is
-     * then only a read. If that read is refused (a Tournament hold appeared), the commit still runs, under the venue
+     * <p>A request that supplies an Owner Password - any value, blank included - always runs the protected command,
+     * whatever the set (D1, approved 24 Oct 2026): the gate checks the password before the Idempotency-Key lookup (PO
+     * decision Q3), so a replay of a protected commit is checked like a first request even though its own preview is
+     * empty by then, and a blank one is 423 OWNER_PASSWORD_REQUIRED, never a quiet unprotected save. A request without
+     * one decides by the set as before.
+     *
+     * <p>A retry with the same key and request returns the stored answer without running anything else; the first pass
+     * is then only a read. If that read is refused (a Tournament hold appeared), the commit still runs, under the venue
      * lock alone, so a replay answers as stored and a new request is refused under the lock as before.
      */
     public <R> IdempotentResult<R> commit(UUID venueAccountId, Proposal proposal, String previewToken,
@@ -151,15 +157,15 @@ public class OpeningHoursService {
             locks = LockSet.builder().venues(venueId).build();
             protectedSet = false;
         }
-        if (!protectedSet) {
+        if (!protectedSet && ownerPassword == null) {
             return runner.run(idempotency.wrap(key, response, new Mapped<>(new OpeningHoursCommands.Commit(venueId,
                     venueAccountId, hours, previewToken, locks, readers), answer)));
         }
         UUID correlationId = CorrelationId.require();
         return gate.run(new OpeningHoursCommands.Protected<>(idempotency.wrap(key, response,
                 new Mapped<>(new OpeningHoursCommands.ProtectedCommit(venueId, venueAccountId, hours, previewToken,
-                        locks, ownerPassword, correlationId, readers, gate, audit), answer))),
-                venueAccountId, correlationId);
+                        locks, correlationId, readers, gate, audit), answer))),
+                venueAccountId, ownerPassword, correlationId);
     }
 
     /** A command's result mapped to the response, in the command's transaction. */

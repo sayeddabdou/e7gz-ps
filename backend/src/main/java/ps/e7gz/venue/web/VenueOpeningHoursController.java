@@ -175,7 +175,8 @@ public class VenueOpeningHoursController {
             @NotNull @Valid VenueOpeningHoursProposal proposal,
             @NotBlank String previewToken,
             @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY,
-                    description = "Required only when the preview had protected cancellations (FR-VEN-25).")
+                    description = "Required only when the preview had protected cancellations (FR-VEN-25). "
+                            + "When sent, it is always checked, whatever the preview.")
             String ownerPassword) {
     }
 }
