@@ -1854,6 +1854,31 @@
   ],
   "prompt": "Read CLAUDE.md first. You are implementing task S4-P3 — \"Configuration service (fees and points)\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- ADR-028\n- arch 11 (config scope)\n- arch 01 §14 A8\n\nDo:\n1. Read effective values via config.effective_numeric; admin changes via config.change_configuration / loyalty.configure; only fees and points are configurable (A8).\n\nDone when (write these as tests first where possible):\n- Changing the booking fee affects only bookings created after the change.\n\nCarry-forward from E7-65 (Sprint 4 contract, PO decisions 17 Oct 2026, do these too):\n- Fill the stubs of the Sprint 4 contract (E7-65, packages/api-client/SPRINT-4-CONTRACT.md): GET/PUT /admin/fees (config/web AdminFeeController, config.change_configuration) and the new GET/PUT /admin/points/settings (D3; loyalty/web AdminLoyaltyController, loyalty.configure) for attendedPoints, referralPoints and walletRefundsEnabled. Each value with its effectiveFrom; a change takes effect now, for later events only (FR-ADM-11). Omitted fields keep their value; a value equal to the current one changes nothing (skip it: change_configuration refuses an unchanged value); none given -> 400 VALIDATION_FAILED. The Idempotency-Key is required on both PUTs (D6). Replace this task's lines in backend/src/test/java/ps/e7gz/openapi/Sprint4StubHttpTest.java with your own tests.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
+ "E7-119": {
+  "id": "S4-P4",
+  "title": "Revoke push devices when every session ends",
+  "owner": "Sayed",
+  "what": "When every session of a customer ends (password reset, a verification through resend, a released unverified account), the server also stops push to all of the customer's phones.",
+  "read": [
+   "FRS FR-ACC-09",
+   "arch 08 §4 (device tokens: revoked, never deleted)",
+   "packages/api-client/SPRINT-3-CONTRACT.md (the E7-57 changes)"
+  ],
+  "steps": [
+   "notification.api: add CustomerPushDevices with int revokeAll(CommandContext context, UUID customerId). Every active notification.device_token row of the customer gets revoked_at in the caller's transaction (revoked, never deleted, arch 08 §4), as VenueBrowserPush.revokeAll does for venue browsers.",
+   "identity: call it in the same command next to each RefreshTokens.revokeAll for a customer: password reset complete (CustomerProfiles.completePasswordReset), a verification with a new password (VerifyPhoneCommand), and a released unverified account (UnverifiedAccounts, used by registration and by a phone change).",
+   "PO decision 24 Oct 2026 (E7-64 review): when every session of a customer ends, the server also revokes every push device of the account, in the same command. Account deletion (iam.anonymise_user) is E7-103's: it calls the same revokeAll there."
+  ],
+  "done": [
+   "After each of the three events, every active device token of that customer is revoked in the same transaction; other customers' tokens and already-revoked tokens are untouched.",
+   "No schema change; ArchUnit green."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/notification/ (api, internal: customer push devices)",
+   "backend/src/main/java/ps/e7gz/identity/internal/ (the three revoke-all calls)"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S4-P4 — \"Revoke push devices when every session ends\" (Platform lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- FRS FR-ACC-09\n- arch 08 §4 (device tokens: revoked, never deleted)\n- packages/api-client/SPRINT-3-CONTRACT.md (the E7-57 changes)\n\nDo:\n1. notification.api: add CustomerPushDevices with int revokeAll(CommandContext context, UUID customerId). Every active notification.device_token row of the customer gets revoked_at in the caller's transaction (revoked, never deleted, arch 08 §4), as VenueBrowserPush.revokeAll does for venue browsers.\n2. identity: call it in the same command next to each RefreshTokens.revokeAll for a customer: password reset complete (CustomerProfiles.completePasswordReset), a verification with a new password (VerifyPhoneCommand), and a released unverified account (UnverifiedAccounts, used by registration and by a phone change).\n\nDone when (write these as tests first where possible):\n- After each of the three events, every active device token of that customer is revoked in the same transaction; other customers' tokens and already-revoked tokens are untouched.\n- No schema change; ArchUnit green.\n\nPO decision 24 Oct 2026 (E7-64 review): when every session of a customer ends, the server also revokes every push device of the account, in the same command. Account deletion (iam.anonymise_user) is E7-103's: it calls the same revokeAll there.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
  "E7-69": {
   "id": "S4-E1",
   "title": "Trust events and replay",
@@ -2686,15 +2711,16 @@
    "Customer request: call iam.request_account_deletion.",
    "Admin completion: call ONLY iam.anonymise_user inside admin.begin_command — it anonymises the user and completes the open deletion request itself (it calls iam.complete_account_deletion_request internally). Never call complete_account_deletion_request from Java.",
    "Tournament participant precedence in the same transaction.",
-   "Carry-forward from E7-13: The ACCOUNT_DELETED branch of identity CustomerActivation is tested only with a fixture row: add an end-to-end test on an account anonymised through iam.anonymise_user."
+   "Carry-forward from E7-13: The ACCOUNT_DELETED branch of identity CustomerActivation is tested only with a fixture row: add an end-to-end test on an account anonymised through iam.anonymise_user.",
+   "PO decision 24 Oct 2026 (E7-64 review): In the same command as iam.anonymise_user, also revoke the customer's push devices through notification.api.CustomerPushDevices.revokeAll (E7-119): deletion ends every session, so no phone keeps getting the account's pushes. Test it with the deleted-account test."
   ],
   "done": [
-   "Deleted account: PII blanked, tokens revoked, reviews removed, participants INELIGIBLE/ACCOUNT_DELETED."
+   "Deleted account: PII blanked, tokens and push devices revoked, reviews removed, participants INELIGIBLE/ACCOUNT_DELETED."
   ],
   "folders": [
    "backend/src/main/java/ps/e7gz/identity/ (deletion)"
   ],
-  "prompt": "Read CLAUDE.md first. You are implementing task S7-E2 — \"Account deletion and O19\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- ADR-024\n- PCR-002\n- arch 10 (anonymisation)\n\nDo:\n1. Customer request: call iam.request_account_deletion.\n2. Admin completion: call ONLY iam.anonymise_user inside admin.begin_command — it anonymises the user and completes the open deletion request itself (it calls iam.complete_account_deletion_request internally). Never call complete_account_deletion_request from Java.\n3. Tournament participant precedence in the same transaction.\n\nDone when (write these as tests first where possible):\n- Deleted account: PII blanked, tokens revoked, reviews removed, participants INELIGIBLE/ACCOUNT_DELETED.\n\nCarry-forward from E7-13 (do these too):\n- The ACCOUNT_DELETED branch of identity CustomerActivation is tested only with a fixture row: add an end-to-end test on an account anonymised through iam.anonymise_user.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+  "prompt": "Read CLAUDE.md first. You are implementing task S7-E2 — \"Account deletion and O19\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- ADR-024\n- PCR-002\n- arch 10 (anonymisation)\n\nDo:\n1. Customer request: call iam.request_account_deletion.\n2. Admin completion: call ONLY iam.anonymise_user inside admin.begin_command — it anonymises the user and completes the open deletion request itself (it calls iam.complete_account_deletion_request internally). Never call complete_account_deletion_request from Java.\n3. Tournament participant precedence in the same transaction.\n\nDone when (write these as tests first where possible):\n- Deleted account: PII blanked, tokens and push devices revoked, reviews removed, participants INELIGIBLE/ACCOUNT_DELETED.\n\nCarry-forward from E7-13 (do these too):\n- The ACCOUNT_DELETED branch of identity CustomerActivation is tested only with a fixture row: add an end-to-end test on an account anonymised through iam.anonymise_user.\n\nPO decision 24 Oct 2026 (E7-64 review, do this too):\n- In the same command as iam.anonymise_user, also revoke the customer's push devices through notification.api.CustomerPushDevices.revokeAll (E7-119): deletion ends every session, so no phone keeps getting the account's pushes. Test it with the deleted-account test.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
  "E7-104": {
   "id": "S7-E3",
