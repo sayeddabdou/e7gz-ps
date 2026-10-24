@@ -1,4 +1,5 @@
 import * as Notifications from "expo-notifications";
+import { TurboModuleRegistry } from "react-native";
 import type { PushAdapter } from "./pushRegistration";
 
 // iPhone push goes through FCM to APNs (architecture A7). expo-notifications returns the raw APNs token on iOS, which
@@ -14,6 +15,10 @@ type RemoteMessage = { data?: Record<string, unknown> } | null;
  * not offered: the in-app Notifications page is the fallback, with no banner.
  */
 export function loadFirebaseMessaging(): Messaging | undefined {
+  // Metro cannot reliably catch a native-module registration failure thrown while evaluating a dynamic require.
+  // Check for RNFirebase's native app module first so Expo Go takes the documented no-push fallback without loading
+  // any RNFirebase JavaScript. A Firebase-enabled development/release build registers this TurboModule.
+  if (!TurboModuleRegistry.get("NativeRNFBTurboApp")) return undefined;
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const app = require("@react-native-firebase/app") as typeof import("@react-native-firebase/app");

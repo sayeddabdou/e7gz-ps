@@ -1,5 +1,6 @@
 import * as Notifications from "expo-notifications";
-import { createIosPushAdapter } from "./iosPushAdapter";
+import { TurboModuleRegistry } from "react-native";
+import { createIosPushAdapter, loadFirebaseMessaging } from "./iosPushAdapter";
 
 // E7-43 (PO decision 10 Oct 2026): iPhone push uses the FCM token from React Native Firebase, not the raw APNs token.
 function fakeFirebase() {
@@ -49,5 +50,11 @@ describe("iPhone push adapter", () => {
 
   it("offers no push, and so no banner, when the build has no Firebase iOS app yet", () => {
     expect(createIosPushAdapter(undefined).supported).toBe(false);
+  });
+
+  it("does not load React Native Firebase when its native module is absent in Expo Go", () => {
+    jest.spyOn(TurboModuleRegistry, "get").mockReturnValue(null);
+
+    expect(loadFirebaseMessaging()).toBeUndefined();
   });
 });
