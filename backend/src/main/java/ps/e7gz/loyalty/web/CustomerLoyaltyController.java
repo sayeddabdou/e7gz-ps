@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 import ps.e7gz.common.codes.PointsTransactionCause;
 import ps.e7gz.common.codes.ReferralStatus;
 import ps.e7gz.common.codes.WalletTransactionCause;
+import ps.e7gz.common.money.Money;
 import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.DataResponse;
 import ps.e7gz.common.web.MoneyView;
@@ -74,7 +75,8 @@ public class CustomerLoyaltyController {
     @Operation(operationId = "customerGetWallet",
             summary = "My wallet: balance and booking-fee refunds, read-only (PCR-004, FR-PTS-10)",
             description = "While the booking fee is EGP 0 the balance is normally 0.00 with no transactions (PCR-004). "
-                    + "The wallet never pays the venue gaming charge (FR-PTS-10). Implemented by E7-66.")
+                    + "The wallet never pays the venue gaming charge (FR-PTS-10); it pays the booking fee of a later "
+                    + "booking when it holds at least the whole fee (PCR-009). Implemented by E7-66.")
     public DataResponse<CustomerWallet> wallet(
             @RequestParam(required = false) String cursor,
             @RequestParam(required = false) @Min(1) @Max(100) Integer limit,
@@ -144,13 +146,15 @@ public class CustomerLoyaltyController {
             @NotNull @Schema(example = "018f3c2a-7b1e-7c4d-9e0f-1a2b3c4d5e6f") UUID transactionId,
             @NotNull @Schema(example = "2026-10-20T19:00:00Z") Instant occurredAt,
             @NotNull WalletTransactionCause cause,
-            @NotNull MoneyView amount,
+            @NotNull @Schema(description = "How much moved, never negative: BOOKING_FEE_REFUND adds it, "
+                    + "BOOKING_FEE_PAYMENT spends it on a later booking's fee (PCR-009).") MoneyView amount,
             @NotNull MoneyView balanceAfter,
             @NotNull @Schema(example = "018f3c2a-7b1e-7c4d-9e0f-1a2b3c4d5e70") UUID bookingId) {
 
         static CustomerWalletTransaction of(LoyaltyLedgers.WalletTransaction row) {
             return new CustomerWalletTransaction(row.transactionId(), row.occurredAt(), row.cause(),
-                    MoneyView.of(row.amount()), MoneyView.of(row.balanceAfter()), row.bookingId());
+                    MoneyView.of(Money.of(row.amount().amount().abs())), MoneyView.of(row.balanceAfter()),
+                    row.bookingId());
         }
     }
 }
