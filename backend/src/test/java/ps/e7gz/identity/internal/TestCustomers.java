@@ -41,6 +41,22 @@ public final class TestCustomers {
         return new Customer(id, username, local, phone);
     }
 
+    /** E7-119: an active push device of the customer, as {@code POST /customer/notifications/devices} leaves it. */
+    public static UUID insertPushDevice(JdbcClient db, UUID userId) {
+        UUID id = UUID.randomUUID();
+        db.sql("""
+                        INSERT INTO notification.device_token (id, user_id, token, platform, last_seen_at, created_at)
+                        VALUES (:id, :user, :token, 'ANDROID', now(), now())""")
+                .param("id", id).param("user", userId).param("token", "test-token-" + id).update();
+        return id;
+    }
+
+    /** E7-119: how many of the customer's push devices still receive push. */
+    public static long activePushDevices(JdbcClient db, UUID userId) {
+        return db.sql("SELECT count(*) FROM notification.device_token WHERE user_id = :user AND revoked_at IS NULL")
+                .param("user", userId).query(Long.class).single();
+    }
+
     /** A random Egyptian mobile number in local form ({@code 010XXXXXXXX}). */
     public static String randomLocalPhone() {
         return "010" + String.format("%08d", ThreadLocalRandom.current().nextInt(100_000_000));

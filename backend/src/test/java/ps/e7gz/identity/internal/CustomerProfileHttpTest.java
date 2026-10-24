@@ -198,10 +198,15 @@ class CustomerProfileHttpTest extends IntegrationTest {
                 .andExpect(jsonPath("$.error.field").value("phone"));
     }
 
-    /** Sprint 0 review S-3: an account that never verified the phone gives it up when I verify it. */
+    /**
+     * Sprint 0 review S-3: an account that never verified the phone gives it up when I verify it, and its phones stop
+     * getting push (E7-119). My own phone change ends none of my sessions.
+     */
     @Test
     void aPhoneHeldByAnUnverifiedAccountIsTakenOverOnVerification() throws Exception {
         TestCustomers.Customer squatter = TestCustomers.insert(db, false, passwordHash);
+        TestCustomers.insertPushDevice(db, squatter.id());
+        TestCustomers.insertPushDevice(db, me.id());
         UUID challenge = challengeId(startPhoneChange(squatter.localPhone()).andExpect(status().isCreated()));
 
         mvc.perform(authed(json(post(PROFILE + "/phone/verify"),
@@ -210,6 +215,8 @@ class CustomerProfileHttpTest extends IntegrationTest {
 
         assertThat(phoneOf(squatter.id())).isEqualTo("released:" + squatter.id());
         login(squatter.username(), PASSWORD).andExpect(status().isUnauthorized());
+        assertThat(TestCustomers.activePushDevices(db, squatter.id())).isZero();
+        assertThat(TestCustomers.activePushDevices(db, me.id())).isOne();
     }
 
     // ------------------------------------------------------------------------------------------------ password reset
@@ -231,6 +238,32 @@ class CustomerProfileHttpTest extends IntegrationTest {
         login(me.localPhone(), PASSWORD).andExpect(status().isUnauthorized());
         login(me.localPhone(), NEW_PASSWORD).andExpect(status().isOk());
         assertThat(notifications(me.id(), "PASSWORD_RESET")).isOne();
+    }
+
+    /**
+     * E7-119 (PO decision 24 Oct 2026): the reset also stops push on every phone of the account, in the same command.
+     * A device revoked before keeps its own revocation time; another customer's phones are untouched.
+     */
+    @Test
+    void aPasswordResetAlsoStopsPushOnEveryPhoneOfTheAccount() throws Exception {
+        TestCustomers.insertPushDevice(db, me.id());
+        TestCustomers.insertPushDevice(db, me.id());
+        UUID earlier = TestCustomers.insertPushDevice(db, me.id());
+        db.sql("UPDATE notification.device_token SET revoked_at = last_seen_at WHERE id = :id").param("id", earlier)
+                .update();
+        OffsetDateTime earlierRevokedAt = revokedAt(earlier);
+        TestCustomers.Customer other = TestCustomers.insert(db, true, passwordHash);
+        TestCustomers.insertPushDevice(db, other.id());
+        UUID challenge = challengeId(requestReset(me.localPhone()).andExpect(status().isCreated()));
+
+        mvc.perform(json(post(AUTH + "/password-reset/complete"),
+                        Map.of("otpChallengeId", challenge, "code", sms.lastCode.get(me.phoneE164()),
+                                "password", NEW_PASSWORD)))
+                .andExpect(status().isNoContent());
+
+        assertThat(TestCustomers.activePushDevices(db, me.id())).isZero();
+        assertThat(revokedAt(earlier)).isEqualTo(earlierRevokedAt);
+        assertThat(TestCustomers.activePushDevices(db, other.id())).isOne();
     }
 
     @Test
@@ -259,6 +292,7 @@ class CustomerProfileHttpTest extends IntegrationTest {
 
     @Test
     void aWrongResetCodeChangesNothing() throws Exception {
+        TestCustomers.insertPushDevice(db, me.id());
         UUID challenge = challengeId(requestReset(me.localPhone()));
 
         mvc.perform(json(post(AUTH + "/password-reset/complete"),
@@ -267,6 +301,7 @@ class CustomerProfileHttpTest extends IntegrationTest {
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error.code").value("OTP_INVALID"));
         login(me.localPhone(), PASSWORD).andExpect(status().isOk());
+        assertThat(TestCustomers.activePushDevices(db, me.id())).isOne();
     }
 
     // ------------------------------------------------------------------------------------------------ helpers
@@ -339,6 +374,11 @@ class CustomerProfileHttpTest extends IntegrationTest {
                         SELECT count(*) FROM notification.notification
                          WHERE recipient_type = 'CUSTOMER' AND recipient_id = :id AND code = :code""")
                 .param("id", userId).param("code", code).query(Long.class).single();
+    }
+
+    private OffsetDateTime revokedAt(UUID deviceId) {
+        return db.sql("SELECT revoked_at FROM notification.device_token WHERE id = :id").param("id", deviceId)
+                .query(OffsetDateTime.class).single();
     }
 
     private String phoneOf(UUID userId) {

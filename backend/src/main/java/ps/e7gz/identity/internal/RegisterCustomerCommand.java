@@ -9,6 +9,7 @@ import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
 import ps.e7gz.messaging.api.Outbox;
+import ps.e7gz.notification.api.CustomerPushDevices;
 
 /**
  * Registration (FR-ACC-01, FR-ACC-06, arch 09 section 2): the account, unverified, and its first phone OTP, in one
@@ -21,7 +22,8 @@ import ps.e7gz.messaging.api.Outbox;
  */
 record RegisterCustomerCommand(UUID userId, String fullName, String username, String phoneE164, String email,
                                String passwordHash, String referralCode, UUID challengeId, String codeHash,
-                               String sealedCode, Outbox outbox, List<UUID> holders)
+                               String sealedCode, Outbox outbox, List<UUID> holders,
+                               CustomerPushDevices pushDevices)
         implements Command<Void> {
 
     /** No Venue is in scope, so the category selects no venue rule (ADR-022 names none for account commands). */
@@ -40,7 +42,7 @@ record RegisterCustomerCommand(UUID userId, String fullName, String username, St
     public Void execute(CommandContext ctx) {
         // Only the holders this command locked; one that appeared since meets the unique index below (*_TAKEN)
         UnverifiedAccounts.releaseUnverified(ctx, UnverifiedAccounts.holders(ctx, phoneE164, username).stream()
-                .filter(holder -> holders.contains(holder.userId())).toList());
+                .filter(holder -> holders.contains(holder.userId())).toList(), pushDevices);
         ctx.jdbc().sql("""
                         INSERT INTO iam.user_account (id, full_name, username, phone_e164, email, password_hash,
                                                       phone_verified, phone_verified_at, email_verified,
