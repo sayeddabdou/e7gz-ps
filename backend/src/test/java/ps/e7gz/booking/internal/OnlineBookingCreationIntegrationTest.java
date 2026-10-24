@@ -47,6 +47,7 @@ import ps.e7gz.common.money.Money;
 import ps.e7gz.config.BookingFeeConfiguration;
 import ps.e7gz.inventory.ledger.api.ReservationLedger;
 import ps.e7gz.inventory.ledger.api.SlotTaken;
+import ps.e7gz.loyalty.api.BookingFeePayments;
 import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.scheduling.api.NewJob;
 import ps.e7gz.scheduling.api.ScheduledJobs;
@@ -80,6 +81,9 @@ class OnlineBookingCreationIntegrationTest extends IntegrationTest {
 
     @Autowired
     OnlineBookingStore store;
+
+    @Autowired
+    BookingFeePayments payments;
 
     @Autowired
     ReservationLedger ledger;
@@ -210,7 +214,7 @@ class OnlineBookingCreationIntegrationTest extends IntegrationTest {
         OnlineBookingRequest request = world.request(world.start(), 120);
 
         assertThatThrownBy(() -> runner.run(new CreateOnlineBookingCommand(request, world.entry(world.room), predicate,
-                store, ledger, failing, outbox, venues))).isInstanceOf(IllegalStateException.class);
+                store, ledger, failing, outbox, venues, payments))).isInstanceOf(IllegalStateException.class);
 
         UUID id = bookingId.get();
         assertThat(id).isNotNull();
@@ -478,7 +482,7 @@ class OnlineBookingCreationIntegrationTest extends IntegrationTest {
         OnlineBookingRequest request = world.request(start.plus(Duration.ofMinutes(30)), 60);
 
         assertThatThrownBy(() -> runner.run(new CreateOnlineBookingCommand(request, world.entry(world.room),
-                approvingEverything(world, request), store, ledger, jobs, outbox, venues)))
+                approvingEverything(world, request), store, ledger, jobs, outbox, venues, payments)))
                 .isInstanceOf(SlotTaken.class)
                 .satisfies(e -> assertThat(((ApiException) e).code()).isEqualTo(ApiErrorCode.SLOT_NO_LONGER_AVAILABLE));
         assertThat(count("booking.booking WHERE customer_id = :id", world.customer.id())).isZero();
@@ -493,7 +497,7 @@ class OnlineBookingCreationIntegrationTest extends IntegrationTest {
         OnlineBookingRequest request = world.request(world.customer.id(), second, start.plus(Duration.ofMinutes(30)), 60);
 
         assertThatThrownBy(() -> runner.run(new CreateOnlineBookingCommand(request, world.entry(second),
-                approvingEverything(world, request), store, ledger, jobs, outbox, venues)))
+                approvingEverything(world, request), store, ledger, jobs, outbox, venues, payments)))
                 .satisfies(e -> assertThat(DatabaseErrorCodes.translate(e)).contains(ApiErrorCode.OVERLAPPING_COMMITMENT));
         assertThat(count("booking.booking WHERE resource_id = :id", second.id())).isZero();
     }
@@ -586,7 +590,7 @@ class OnlineBookingCreationIntegrationTest extends IntegrationTest {
     private CreatedBooking createAtCommandInstantPlus(OnlineBookingWorld world, Duration lead) {
         OnlineBookingRequest template = world.request(world.start(), 120);
         CreateOnlineBookingCommand shape = new CreateOnlineBookingCommand(template, world.entry(world.room), predicate,
-                store, ledger, jobs, outbox, venues);
+                store, ledger, jobs, outbox, venues, payments);
         return runner.run(new Command<CreatedBooking>() {
             @Override
             public EligibilityCategory eligibilityCategory() {
@@ -602,7 +606,7 @@ class OnlineBookingCreationIntegrationTest extends IntegrationTest {
             public CreatedBooking execute(CommandContext context) {
                 OnlineBookingRequest request = world.request(context.commandNow().plus(lead), 120);
                 return new CreateOnlineBookingCommand(request, world.entry(world.room), predicate, store, ledger, jobs,
-                        outbox, venues).execute(context);
+                        outbox, venues, payments).execute(context);
             }
         });
     }

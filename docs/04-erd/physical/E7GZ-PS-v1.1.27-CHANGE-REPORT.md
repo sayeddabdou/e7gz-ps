@@ -271,6 +271,24 @@ The baseline gains a `deferred` list, handled like `internal` (EXECUTE revoked f
 
 - Tests: two new checks in `test_privileges_v127.sh`; `FeeReceiptPrivilegesTest` (neither runtime role may execute it, the other fee producers still may); `BookingFeeNonZeroIntegrationTest` records the receipt on the owner connection, as the future adapter role will; the copy check in `MigrationFilesTest`.
 
+### v1.1.39 — the Wallet pays a future Booking's Booking Fee (E7-66 PR 3, 24 Oct 2026)
+
+**Product Owner decision, 24 Oct 2026 (Sayed), PCR-009** (amends PCR-004 "no payment with the wallet", FR-PTS-10, FR-PTS-11): a refund of a collected Booking Fee is credited to the in-app Wallet, never back to the card, and the customer spends it on the fee of a later booking. Automatic: when a new Online Booking's stored fee is above zero and the Wallet holds at least that amount, the command that creates the Booking pays the whole fee from the Wallet; otherwise nothing is paid and the fee stays uncollected until a payment provider exists (ADR-018). Never a partial payment, a top-up, a withdrawal or the venue gaming charge. `.dbm` block `v1_1_39_wallet_booking_fee_payment` = Flyway `V202610241200__wallet_booking_fee_payment.sql`, byte for byte; the `wallet_transaction` table model has the nullable `refund_id` and the new check. **For Product Owner review.**
+
+| Object | Change |
+|---|---|
+| `loyalty.wallet_transaction.refund_id` | Now nullable: set on a `BOOKING_FEE_REFUND` credit, NULL on a `BOOKING_FEE_PAYMENT` debit. Column comment |
+| `ck_wallet_tx_launch_source` → `ck_wallet_tx_source` | Same arithmetic (`balance_after = balance_before + amount`, no NaN) and either a refund credit (`amount > 0`, `refund_id` set) or a fee payment (`amount < 0`, no `refund_id`, `balance_after >= 0`) |
+| `loyalty.pay_fee_from_wallet(p_booking) → uuid` | New, `SECURITY DEFINER`, the one producer of a Wallet payment. In the Loyalty context of the command that creates the Booking (PENDING, `created_at` = the command instant): pays the stored fee when the Wallet covers it, writing the Booking's collection receipt (provider `WALLET`, reference = the Wallet transaction), the debit, the balance, two audits (`BOOKING_FEE_COLLECTION_RECORDED`, `BOOKING_FEE_WALLET_PAYMENT`) and `LOYALTY_WALLET_LEDGER_COMMITTED`. Returns NULL for a FREE booking or an uncovered fee; a second call answers the same payment. EXECUTE for both runtime roles through the security baseline |
+| `loyalty.assert_user(p_user)` | V1 definition plus one block in the Wallet loop: a `BOOKING_FEE_PAYMENT` row is bound to its `WALLET` receipt for the same Booking and amount, its audit and its outbox event |
+| `loyalty.guard_audit_origin()` | V1 definition plus `BOOKING_FEE_WALLET_PAYMENT` as a private-producer action |
+
+**Refund of a Wallet-paid fee.** The `WALLET` receipt is an ordinary collection receipt, so `loyalty.record_refund` → `loyalty.settle_refund` credit the Wallet back exactly as for a card-collected fee: full refund for operational causes, the 15-minute customer policy (FR-PTS-14), nothing for a late customer cancellation. Unchanged: `settle_refund`, `record_refund`, `record_fee_receipt` (still deferred, v1.1.38), `refund_basis`, `assert_booking`.
+
+**Existing data.** Every existing Wallet row is a refund credit with its `refund_id`, so it satisfies the new check; no backfill. No upgrade seed: no column is added, and a Wallet payment needs a collected fee, which no launch database has.
+
+- Tests: `WalletBookingFeePaymentIntegrationTest` (pay at creation, refund back to the Wallet, late cancellation keeps the fee, uncovered and FREE fees pay nothing, only the creating command may pay); `MigrationSafetyTest` (the migration on the seeded database); the `.dbm`/migration identity and added-lines checks in `MigrationFilesTest`; `ClosedValueContract` (two causes).
+
 ## Product Owner decisions (26 Sep 2026)
 
 A1 overlapping Maintenance allowed · A2 booking horizon is a deployment setting, default 120 days · A4 rate-limit table approved · A5 reports FR-AUD-11/12 at launch · A6 venue alerts = live + Web Push + audible alert · A8 configurable = fees and points only · A9 Venue never returns to ONBOARDING · A10 login limits stored as `LOGIN` rate-limit rows · A11 read-only customer wallet screen (PCR-004, no DB change) · review self-reporting allowed, duplicate open reports blocked.

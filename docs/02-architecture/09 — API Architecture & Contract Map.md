@@ -310,12 +310,12 @@ Venues with marketplace `ONBOARDING`, `INACTIVE` or `SUSPENDED` are absent from 
 **Participant cause is not a new public status.** The alignment does not add a customer- or venue-facing status token. Domain logic and audit retain `BAN | ACCOUNT_DELETED` as the cause of `INELIGIBLE`; a surface must not invent a new enum member or response status to represent either cause.
 | `POST` | `/customer/tournaments/{id}/cancel` — creator, before the checkpoint only | `FR-TRN-21` |
 | `GET` | `/customer/points` · `/customer/referrals` | `FR-PTS-01`, `FR-PTS-06` |
-| `GET` | `/customer/wallet` — balance + transactions, read-only | `FR-PTS-10`, `FR-PTS-11` as amended by PCR-004 |
+| `GET` | `/customer/wallet` — balance + transactions, read-only | `FR-PTS-10`, `FR-PTS-11` as amended by PCR-004 and PCR-009 |
 | `POST` `PATCH` `DELETE` | `/customer/venues/{id}/review` | `FR-REV-01`…`FR-REV-07` |
 | `GET` `POST` | `/customer/notifications` · `/{id}/read` · `/devices` | `FR-NTF-02` |
 | `POST` | `/customer/notifications/devices/{id}/revoke` — revoked, never deleted (`08 §4`) | Product Owner decision, 5 Oct 2026 (E7-39) |
 
-> The customer wallet is **read-only** at launch (PCR-004): no top-up, no pay-with-wallet, no withdrawal. `POST /admin/wallet/adjust` still does not exist (`FR-PTS-11`).
+> The customer wallet is **read-only** at launch (PCR-004): no top-up, no withdrawal. `POST /admin/wallet/adjust` still does not exist (`FR-PTS-11`). Since PCR-009 the Wallet pays the whole Booking Fee of a new Online Booking when it holds at least that fee, inside `POST /customer/bookings` (no new route or field); a Wallet item's `amount` is how much moved and its `cause` (`BOOKING_FEE_REFUND` or `BOOKING_FEE_PAYMENT`) whether it was credited or spent.
 
 ---
 

@@ -21,6 +21,7 @@ import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.inventory.ledger.api.ReservationLedger;
+import ps.e7gz.loyalty.api.BookingFeePayments;
 import ps.e7gz.messaging.api.Idempotency;
 import ps.e7gz.messaging.api.IdempotentRequest;
 import ps.e7gz.messaging.api.IdempotentResult;
@@ -54,6 +55,9 @@ class OnlineBookingIdempotencyIntegrationTest extends IntegrationTest {
 
     @Autowired
     OnlineBookingStore store;
+
+    @Autowired
+    BookingFeePayments payments;
 
     @Autowired
     ReservationLedger ledger;
@@ -110,7 +114,7 @@ class OnlineBookingIdempotencyIntegrationTest extends IntegrationTest {
             }
         };
         CreateOnlineBookingCommand command = new CreateOnlineBookingCommand(request, world.entry(world.room),
-                predicate, store, ledger, failing, outbox, venues);
+                predicate, store, ledger, failing, outbox, venues, payments);
 
         assertThatThrownBy(() -> runner.run(idempotency.wrap(key, response, refOf(command))))
                 .isInstanceOf(IllegalStateException.class);

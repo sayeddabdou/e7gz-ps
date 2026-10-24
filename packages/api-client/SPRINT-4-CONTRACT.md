@@ -26,7 +26,7 @@ Sources: arch 09 §1, §3.1, §3.4, §5 · arch 07 §5, §6, §7.4, §8 · arch 
 | Admin | `GET PUT /admin/fees` `{bookingFee?, tournamentCreationFee?, reason}` | `config/web/AdminFeeController` | E7-68 |
 | Admin | `GET /admin/global-rules` — the no-show ladder, read-only (D7) | `trust/web/AdminGlobalRulesController` | E7-71 |
 
-New shared code enum: `WalletTransactionCause` (`BOOKING_FEE_REFUND`, the only value `ck_wallet_tx_launch_source` allows), registered in `ClosedValueContract`.
+New shared code enum: `WalletTransactionCause` (`BOOKING_FEE_REFUND`, the only value `ck_wallet_tx_launch_source` allows), registered in `ClosedValueContract`. Since PCR-009 (E7-66 PR 3, 24 Oct 2026) it also has `BOOKING_FEE_PAYMENT` (`ck_wallet_tx_source`): the Wallet pays a later booking's fee; a Wallet item's `amount` stays never negative and its `cause` says credited or spent.
 
 Not in Sprint 4: `GET /admin/no-shows` (Sprint 7, S7-P1 "remaining admin modules"); account deletion and anonymisation (Sprint 7); `POST /admin/wallet/adjust` **never** exists (FR-PTS-11, PCR-004).
 
