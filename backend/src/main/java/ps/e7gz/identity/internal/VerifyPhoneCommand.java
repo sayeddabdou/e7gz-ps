@@ -10,6 +10,7 @@ import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
+import ps.e7gz.notification.api.CustomerPushDevices;
 
 /**
  * Phone verification (FR-ACC-02, FR-ACC-04): a valid code consumes the challenge and sets {@code phone_verified} -
@@ -21,13 +22,15 @@ import ps.e7gz.common.command.LockSet;
  *
  * <p>A code that did not come with the registration itself - a resend through {@code /otp/send} - must bring a new
  * password (Sprint 0 review, E7-57): it replaces the old one and every refresh token of the account is revoked, so an
- * account someone else created with this phone cannot be kept by them. The registration's own code was issued in the
- * registration's command, at its {@code joined_at}; any other code was issued later.
+ * account someone else created with this phone cannot be kept by them. Its push devices are revoked with them (PO
+ * decision 24 Oct 2026, E7-119). The registration's own code was issued in the registration's command, at its
+ * {@code joined_at}; any other code was issued later.
  *
  * <p>The outcome is <b>returned</b>, never thrown: a wrong code must commit its attempt, or the 5-attempt limit would
  * never be reached. The caller turns the outcome into the API error after the commit.
  */
-record VerifyPhoneCommand(UUID userId, UUID challengeId, String code, String newPasswordHash)
+record VerifyPhoneCommand(UUID userId, UUID challengeId, String code, String newPasswordHash,
+                          CustomerPushDevices pushDevices)
         implements Command<VerifyPhoneCommand.Outcome> {
 
     enum Outcome { VERIFIED, INVALID, EXPIRED, ATTEMPTS_EXCEEDED, ACCOUNT_DELETED, PASSWORD_REQUIRED }
@@ -91,6 +94,7 @@ record VerifyPhoneCommand(UUID userId, UUID challengeId, String code, String new
             ctx.jdbc().sql("UPDATE iam.user_account SET password_hash = :hash WHERE id = :id")
                     .param("hash", newPasswordHash).param("id", userId).update();
             RefreshTokens.revokeAll(ctx, AuthSubjectType.CUSTOMER, userId);
+            pushDevices.revokeAll(ctx, userId);
         }
         return Outcome.VERIFIED;
     }

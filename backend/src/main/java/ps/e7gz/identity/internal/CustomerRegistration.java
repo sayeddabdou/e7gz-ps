@@ -12,6 +12,7 @@ import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.messaging.api.Outbox;
+import ps.e7gz.notification.api.CustomerPushDevices;
 
 /**
  * Customer registration and phone verification (FRS F-01; FR-ACC-01…06; arch 09 section 2 and section 3.1).
@@ -28,14 +29,16 @@ public class CustomerRegistration {
     private final PasswordEncoder passwords;
     private final OtpPayloadCipher otpCipher;
     private final Outbox outbox;
+    private final CustomerPushDevices pushDevices;
     private final JdbcClient jdbc;
 
     CustomerRegistration(CommandRunner runner, PasswordEncoder passwords, OtpPayloadCipher otpCipher, Outbox outbox,
-                         DataSource appDataSource) {
+                         CustomerPushDevices pushDevices, DataSource appDataSource) {
         this.runner = runner;
         this.passwords = passwords;
         this.otpCipher = otpCipher;
         this.outbox = outbox;
+        this.pushDevices = pushDevices;
         this.jdbc = JdbcClient.create(appDataSource);
     }
 
@@ -71,7 +74,8 @@ public class CustomerRegistration {
                 OtpCodes.hash(code),
                 otpCipher.seal(challengeId, code),
                 outbox,
-                holders));
+                holders,
+                pushDevices));
         return new Registered(userId, challengeId);
     }
 
@@ -105,7 +109,7 @@ public class CustomerRegistration {
         UUID userId = challengeOwner(challengeId)
                 .orElseThrow(() -> new ApiException(ApiErrorCode.OTP_INVALID, "code"));
         String hash = password == null ? null : passwords.encode(password);           // the Argon2id gate (E7-24)
-        return switch (runner.run(new VerifyPhoneCommand(userId, challengeId, code, hash))) {
+        return switch (runner.run(new VerifyPhoneCommand(userId, challengeId, code, hash, pushDevices))) {
             case VERIFIED -> userId;
             case INVALID -> throw new ApiException(ApiErrorCode.OTP_INVALID, "code");
             case EXPIRED -> throw new ApiException(ApiErrorCode.OTP_EXPIRED, "code");
