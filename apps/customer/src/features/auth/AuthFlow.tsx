@@ -9,7 +9,7 @@ import { authErrorMessage } from "./errorMessages";
 
 type Step = "login" | "register" | "otp";
 
-export function AuthFlow({ api, tokenStore, onAuthenticated }: { api: CustomerAuthApi; tokenStore: TokenStore; onAuthenticated(): void }) {
+export function AuthFlow({ api, tokenStore, notice, onAuthenticated, onForgotPassword }: { api: CustomerAuthApi; tokenStore: TokenStore; notice?: string; onAuthenticated(): void; onForgotPassword?(): void }) {
   const [step, setStep] = useState<Step>("login");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -18,6 +18,7 @@ export function AuthFlow({ api, tokenStore, onAuthenticated }: { api: CustomerAu
   const [deadline, setDeadline] = useState<string>();
   const [clockOffset, setClockOffset] = useState(0);
   const [remaining, setRemaining] = useState(0);
+  const [resent, setResent] = useState(false);
 
   useEffect(() => {
     if (!deadline) return undefined;
@@ -63,24 +64,30 @@ export function AuthFlow({ api, tokenStore, onAuthenticated }: { api: CustomerAu
     } else setError(authErrorMessage(result.code));
   });
   const submitOtp = () => run(async () => {
-    const result = await api.verifyPhone(challengeId, form.code);
+    const result = resent
+      ? await api.verifyPhone(challengeId, form.code, form.password)
+      : await api.verifyPhone(challengeId, form.code);
     if (result.ok) await finish(result.value); else setError(authErrorMessage(result.code));
   });
   const resend = () => run(async () => {
     const result = await api.resend(form.phone);
     if (result.ok) {
       setChallengeId(result.value.challengeId);
+      setForm((current) => ({ ...current, code: "", password: "" }));
+      setResent(true);
       startResendCountdown(result.serverTime);
     } else setError(authErrorMessage(result.code));
   });
 
   const title = step === "login" ? t.auth.login.title : step === "register" ? t.auth.register.title : t.auth.otp.title;
   const submitLabel = step === "login" ? t.auth.login.submit : step === "register" ? t.auth.register.submit : t.auth.otp.submit;
+  const submitDisabled = busy || (step === "otp" && resent && form.password.trim().length === 0);
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.brandMark}><Text style={styles.brandText}>{t.brandMark}</Text></View>
         <Text accessibilityRole="header" style={styles.title}>{title}</Text>
+        {step === "login" && notice ? <View style={styles.successBox}><Text accessibilityLiveRegion="polite" style={styles.success}>{notice}</Text></View> : null}
         <View style={styles.formCard}>
           {step === "register" ? (
             <>
@@ -94,9 +101,14 @@ export function AuthFlow({ api, tokenStore, onAuthenticated }: { api: CustomerAu
               <Field label={t.auth.fields.username} value={form.username} onChangeText={update("username")} />
               <Field label={t.auth.fields.password} value={form.password} onChangeText={update("password")} secureTextEntry />
             </>
-          ) : <Field label={t.auth.fields.code} value={form.code} onChangeText={update("code")} keyboardType="number-pad" />}
+          ) : (
+            <>
+              <Field label={t.auth.fields.code} value={form.code} onChangeText={update("code")} keyboardType="number-pad" />
+              {resent ? <Field label={t.profile.passwordReset.newPassword} value={form.password} onChangeText={update("password")} secureTextEntry /> : null}
+            </>
+          )}
           {error ? <View style={styles.errorBox}><Text accessibilityRole="alert" style={styles.error}>{error}</Text></View> : null}
-          <Pressable accessibilityRole="button" disabled={busy} onPress={step === "login" ? submitLogin : step === "register" ? submitRegistration : submitOtp} style={styles.primaryButton}>
+          <Pressable accessibilityRole="button" disabled={submitDisabled} onPress={step === "login" ? submitLogin : step === "register" ? submitRegistration : submitOtp} style={[styles.primaryButton, submitDisabled && styles.disabled]}>
             <Text style={styles.primaryButtonText}>{busy ? t.auth.working : submitLabel}</Text>
           </Pressable>
         </View>
@@ -105,9 +117,16 @@ export function AuthFlow({ api, tokenStore, onAuthenticated }: { api: CustomerAu
             <Text style={styles.linkText}>{remaining > 0 ? t.auth.otp.resendCountdown.replace("{seconds}", String(remaining)) : t.auth.otp.resend}</Text>
           </Pressable>
         ) : (
-          <Pressable accessibilityRole="button" onPress={() => { setError(undefined); setStep(step === "login" ? "register" : "login"); }} style={styles.linkButton}>
-            <Text style={styles.linkText}>{step === "login" ? t.auth.login.createAccount : t.auth.register.haveAccount}</Text>
-          </Pressable>
+          <>
+            {step === "login" && onForgotPassword ? (
+              <Pressable accessibilityRole="button" onPress={onForgotPassword} style={styles.linkButton}>
+                <Text style={styles.linkText}>{t.profile.passwordReset.forgot}</Text>
+              </Pressable>
+            ) : null}
+            <Pressable accessibilityRole="button" onPress={() => { setError(undefined); setStep(step === "login" ? "register" : "login"); }} style={styles.linkButton}>
+              <Text style={styles.linkText}>{step === "login" ? t.auth.login.createAccount : t.auth.register.haveAccount}</Text>
+            </Pressable>
+          </>
         )}
       </ScrollView>
     </KeyboardAvoidingView>
@@ -135,8 +154,11 @@ const styles = StyleSheet.create({
   input: { backgroundColor: nativeTokens.color.surface.canvas, borderColor: nativeTokens.color.border.customer, borderRadius: nativeTokens.radius["2xl"], borderWidth: nativeTokens.spacing.hairline, color: nativeTokens.color.text.customer, fontSize: nativeTokens.typography.fontSize.bodyLarge, minHeight: 52, paddingHorizontal: nativeTokens.spacing["3xl"] },
   errorBox: { backgroundColor: nativeTokens.color.feedback.dangerSurface, borderRadius: nativeTokens.radius["2xl"], marginBottom: nativeTokens.spacing.md, padding: nativeTokens.spacing["2xl"] },
   error: { color: nativeTokens.color.feedback.danger, fontSize: nativeTokens.typography.fontSize.bodySmall },
+  successBox: { backgroundColor: nativeTokens.color.feedback.successSurface, borderRadius: nativeTokens.radius["2xl"], marginBottom: nativeTokens.spacing.md, padding: nativeTokens.spacing["2xl"] },
+  success: { color: nativeTokens.color.feedback.success, fontSize: nativeTokens.typography.fontSize.bodySmall },
   primaryButton: { alignItems: "center", backgroundColor: nativeTokens.color.brand.primary, borderRadius: nativeTokens.radius["3xl"], minHeight: 54, justifyContent: "center", marginTop: nativeTokens.spacing.md, ...nativeTokens.shadow.action },
   primaryButtonText: { color: nativeTokens.color.text.inverse, fontWeight: nativeTokens.typography.fontWeight.bold },
+  disabled: { opacity: 0.55 },
   linkButton: { alignItems: "center", padding: nativeTokens.spacing["4xl"] },
   linkText: { color: nativeTokens.color.brand.primary, fontSize: nativeTokens.typography.fontSize.bodySmall, fontWeight: nativeTokens.typography.fontWeight.bold },
 });
