@@ -753,6 +753,7 @@ TrustReplay
 | Hard self-referral checks are same phone and same email; same device and same IP are stored as fraud signals only | `FR-PTS-08` |
 | Invalidating a REWARDED referral creates a compensating transaction for the **exact historical reward**, and may leave an unrecovered amount | `FR-PTS-09` |
 | Every user has a wallet at EGP 0 supporting fee refunds and a future conversion; **the wallet never pays the venue gaming charge** | `FR-PTS-10` |
+| The wallet pays the **whole** Booking Fee of a new Online Booking when it holds at least that fee, in the creating transaction; never partly; a refund of that fee goes back to the wallet | PCR-009 |
 | The wallet ledger exists in the backend; **no active wallet screen ships**; admin wallet adjustment is not a launch action | `FR-PTS-11` |
 | The global booking fee is EGP 0, charged **per booking**, configurable, displayed as FREE; each booking stores the fee applied at creation; Late Confirm reuses the **original stored** fee | `FR-PTS-13` |
 | Refund classification is binding the moment a non-zero fee is enabled: customer-caused follows the 15-minute rule; venue, platform or resource operationally caused receives a **full refund** | `FR-PTS-14` |
@@ -767,6 +768,7 @@ TrustReplay
 PointsCommands   grantForAttendedCompletion(bookingId) / grantForReferral(referralId)
                  compensate(userId, amount, cause, adminId?, reason?)   // MIN rule
 WalletCommands   creditFeeRefund(bookingId, amount, cause)
+                 payFeeFromWallet(bookingId)   // PCR-009: at creation, whole fee only
 ReferralCommands createOnSignup(referrerCode, referredUserId)
                  markRewardedOnVerification(referredUserId)   // FR-PTS-06
                  invalidate(referralId, adminId, reason)

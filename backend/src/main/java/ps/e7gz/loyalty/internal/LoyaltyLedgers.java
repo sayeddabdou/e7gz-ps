@@ -51,7 +51,10 @@ public class LoyaltyLedgers {
                                     UUID bookingId, UUID referralId, UUID adminId, String reason) {
     }
 
-    /** One wallet ledger row: a Booking Fee refund, the only credit at launch ({@code ck_wallet_tx_launch_source}). */
+    /**
+     * One wallet ledger row ({@code ck_wallet_tx_source}): a Booking Fee refund credits {@code amount}, a Booking Fee
+     * payment of a later booking spends it ({@code amount} is negative; PCR-009).
+     */
     public record WalletTransaction(UUID transactionId, Instant occurredAt, WalletTransactionCause cause, Money amount,
                                     Money balanceAfter, UUID bookingId) {
     }

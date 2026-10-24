@@ -314,6 +314,52 @@ class MigrationFilesTest {
     }
 
     /** {@code open}'s definition in {@code migration} is its definition in {@code earlier} plus exactly {@code lines}. */
+    /**
+     * v1.1.39 (E7-66 PR 3, PCR-009): the migration is the model's own block, byte for byte; the table model has the
+     * nullable refund_id and the new check; assert_user and guard_audit_origin are their V1 definitions plus exactly
+     * the Wallet-payment lines; no grant (the security baseline grants the new producer).
+     */
+    @Test
+    void walletBookingFeePaymentMigrationIsTheModelsV1139Block() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String open = "<genericsql name=\"v1_1_39_wallet_booking_fee_payment\">\n\t<definition> <![CDATA[\n";
+        int start = model.indexOf(open);
+        assertThat(start).as("v1.1.39 block in the .dbm").isPositive();
+        String block = model.substring(start + open.length(), model.indexOf("]]> </definition>", start));
+        String migration = classpath("db/migration/V202610241200__wallet_booking_fee_payment.sql");
+        assertThat(migration).isEqualTo(block);
+
+        int tableStart = model.indexOf("<table name=\"wallet_transaction\" layers");
+        String table = model.substring(tableStart, model.indexOf("</table>", tableStart));
+        assertThat(table).contains("<column name=\"refund_id\">")
+                .contains("<constraint name=\"ck_wallet_tx_source\"")
+                .contains("cause='BOOKING_FEE_PAYMENT' AND amount<0 AND refund_id IS NULL AND balance_after>=0")
+                .doesNotContain("ck_wallet_tx_launch_source");
+        assertThat(migration).contains("ALTER TABLE loyalty.wallet_transaction ALTER COLUMN refund_id DROP NOT NULL;")
+                .contains("DROP CONSTRAINT ck_wallet_tx_launch_source;")
+                .contains("CREATE OR REPLACE FUNCTION loyalty.pay_fee_from_wallet(p_booking uuid)")
+                .doesNotContain("GRANT")
+                .doesNotContain("DISABLE TRIGGER");
+
+        String baseline = classpath("db/migration/V1__baseline.sql");
+        // one block inserted into the Wallet loop, from its comment to its CONTINUE; everything else is V1's
+        String first = "   -- v1.1.39 (PCR-009): a Wallet payment of a Booking Fee is bound";
+        String last = "     CONTINUE;\n   END IF;\n";
+        String added = migration.substring(migration.indexOf(first), migration.indexOf(last) + last.length());
+        assertThat(added).contains("IF rr.cause='BOOKING_FEE_PAYMENT' THEN")
+                .contains("rc.provider='WALLET'")
+                .contains("a.action='BOOKING_FEE_WALLET_PAYMENT'")
+                .contains("o.event_type='LOYALTY_WALLET_LEDGER_COMMITTED'");
+        assertAddedLinesOnly(baseline, migration, "CREATE OR REPLACE FUNCTION loyalty.assert_user(p_user uuid)",
+                added);
+        String audit = "CREATE OR REPLACE FUNCTION loyalty.guard_audit_origin()";
+        assertAddedLinesOnly(baseline.substring(baseline.lastIndexOf(audit)), migration, audit,
+                " -- v1.1.39 (PCR-009): the Wallet payment audit is private-producer only too.\n"
+                        + " IF NEW.action='BOOKING_FEE_WALLET_PAYMENT' THEN\n"
+                        + "   PERFORM loyalty.require_write('audit.audit_event',NEW.id::text);\n"
+                        + " END IF;\n");
+    }
+
     private static void assertAddedLinesOnly(String earlier, String migration, String open, String... lines) {
         String migrated = function(migration, open);
         String stripped = migrated;

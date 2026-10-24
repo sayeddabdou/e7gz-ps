@@ -30,6 +30,7 @@ import ps.e7gz.common.codes.ReferralStatus;
 import ps.e7gz.common.codes.WalletTransactionCause;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
+import ps.e7gz.common.money.Money;
 import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
@@ -231,13 +232,15 @@ public class AdminLoyaltyController {
             @NotNull @Schema(example = "018f3c2a-7b1e-7c4d-9e0f-1a2b3c4d5e6f") UUID transactionId,
             @NotNull @Schema(example = "2026-10-20T19:00:00Z") Instant occurredAt,
             @NotNull WalletTransactionCause cause,
-            @NotNull MoneyView amount,
+            @NotNull @Schema(description = "How much moved, never negative: BOOKING_FEE_REFUND adds it, "
+                    + "BOOKING_FEE_PAYMENT spends it on a later booking's fee (PCR-009).") MoneyView amount,
             @NotNull MoneyView balanceAfter,
             @NotNull @Schema(example = "018f3c2a-7b1e-7c4d-9e0f-1a2b3c4d5e70") UUID bookingId) {
 
         static AdminWalletTransaction of(LoyaltyLedgers.WalletTransaction row) {
             return new AdminWalletTransaction(row.transactionId(), row.occurredAt(), row.cause(),
-                    MoneyView.of(row.amount()), MoneyView.of(row.balanceAfter()), row.bookingId());
+                    MoneyView.of(Money.of(row.amount().amount().abs())), MoneyView.of(row.balanceAfter()),
+                    row.bookingId());
         }
     }
 
