@@ -81,6 +81,7 @@ export function AuthFlow({ api, tokenStore, notice, onAuthenticated, onForgotPas
 
   const title = step === "login" ? t.auth.login.title : step === "register" ? t.auth.register.title : t.auth.otp.title;
   const submitLabel = step === "login" ? t.auth.login.submit : step === "register" ? t.auth.register.submit : t.auth.otp.submit;
+  const submitDisabled = busy || (step === "otp" && resent && form.password.trim().length === 0);
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -107,7 +108,7 @@ export function AuthFlow({ api, tokenStore, notice, onAuthenticated, onForgotPas
             </>
           )}
           {error ? <View style={styles.errorBox}><Text accessibilityRole="alert" style={styles.error}>{error}</Text></View> : null}
-          <Pressable accessibilityRole="button" disabled={busy} onPress={step === "login" ? submitLogin : step === "register" ? submitRegistration : submitOtp} style={styles.primaryButton}>
+          <Pressable accessibilityRole="button" disabled={submitDisabled} onPress={step === "login" ? submitLogin : step === "register" ? submitRegistration : submitOtp} style={[styles.primaryButton, submitDisabled && styles.disabled]}>
             <Text style={styles.primaryButtonText}>{busy ? t.auth.working : submitLabel}</Text>
           </Pressable>
         </View>
@@ -157,6 +158,7 @@ const styles = StyleSheet.create({
   success: { color: nativeTokens.color.feedback.success, fontSize: nativeTokens.typography.fontSize.bodySmall },
   primaryButton: { alignItems: "center", backgroundColor: nativeTokens.color.brand.primary, borderRadius: nativeTokens.radius["3xl"], minHeight: 54, justifyContent: "center", marginTop: nativeTokens.spacing.md, ...nativeTokens.shadow.action },
   primaryButtonText: { color: nativeTokens.color.text.inverse, fontWeight: nativeTokens.typography.fontWeight.bold },
+  disabled: { opacity: 0.55 },
   linkButton: { alignItems: "center", padding: nativeTokens.spacing["4xl"] },
   linkText: { color: nativeTokens.color.brand.primary, fontSize: nativeTokens.typography.fontSize.bodySmall, fontWeight: nativeTokens.typography.fontWeight.bold },
 });

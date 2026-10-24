@@ -124,7 +124,9 @@ describe("customer authentication", () => {
 
     fireEvent.press(await screen.findByRole("button", { name: "Resend code" }));
     fireEvent.changeText(await screen.findByLabelText("Verification code"), "482913");
+    expect(screen.getByRole("button", { name: "Verify" }).props.accessibilityState?.disabled).toBe(true);
     fireEvent.changeText(screen.getByLabelText("New password"), "replacement1");
+    expect(screen.getByRole("button", { name: "Verify" }).props.accessibilityState?.disabled).toBe(false);
     fireEvent.press(screen.getByRole("button", { name: "Verify" }));
 
     await waitFor(() => expect(api.verifyPhone).toHaveBeenCalledWith("resend-1", "482913", "replacement1"));

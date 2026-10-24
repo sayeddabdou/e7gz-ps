@@ -28,6 +28,16 @@ function profileApi(overrides: Partial<CustomerProfileApi> = {}): CustomerProfil
 }
 
 describe("customer profile", () => {
+  it("shows the required profile summary and username cooldown", async () => {
+    render(<ProfileScreen api={profileApi()} onLogout={jest.fn()} />);
+
+    expect(await screen.findByText("Omar Hassan")).toBeTruthy();
+    expect(screen.getByText("omar_h")).toBeTruthy();
+    expect(screen.getByText("Verified")).toBeTruthy();
+    expect(screen.getByText("Not verified")).toBeTruthy();
+    expect(screen.getByText("You can change your username again on Nov 10, 2026, 2:00 PM.")).toBeTruthy();
+  });
+
   it("formats profile dates in Cairo time and derives prototype initials", () => {
     expect(profileDateText("2026-11-10T12:00:00Z")).toBe("Nov 10, 2026, 2:00 PM");
     expect(profileDateText("2026-10-01T09:30:00Z")).toBe("Oct 1, 2026, 12:30 PM");
