@@ -37,6 +37,7 @@ import ps.e7gz.booking.internal.ManualBookings;
 import ps.e7gz.booking.internal.VenueBookingFilter;
 import ps.e7gz.booking.internal.VenueBookingRow;
 import ps.e7gz.booking.internal.VenueBookings;
+import ps.e7gz.booking.internal.VenueConfirmedCancellations;
 import ps.e7gz.booking.internal.VenueResponses;
 import ps.e7gz.common.codes.Activity;
 import ps.e7gz.common.codes.AttendanceResult;
@@ -52,7 +53,6 @@ import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
 import ps.e7gz.common.web.MoneyView;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.PageView;
 import ps.e7gz.common.web.ResponseMetaFactory;
@@ -63,8 +63,8 @@ import ps.e7gz.messaging.api.StoredResponse;
 
 /**
  * Venue Dashboard — booking requests and bookings (arch 09 §4.1). The request lists, accept, reject and reject after
- * expiry are E7-47's, manual booking and its cancel E7-48's, the bookings list and detail E7-49's; cancel-confirmed is a
- * stub of the Sprint 3 contract (E7-54) until E7-114. Every route acts for the signed-in account's own venue, never one
+ * expiry are E7-47's, manual booking and its cancel E7-48's, the bookings list and detail E7-49's, cancel-confirmed
+ * E7-114's (Sprint 3 contract, E7-54). Every route acts for the signed-in account's own venue, never one
  * named by the request. Only cancel-confirmed needs the Owner Password (FR-VEN-03); every write is in ADR-015's scope,
  * so the Idempotency-Key is required. The venue DTOs are separate from the customer ones (arch 09 §1.1): they carry
  * nothing about the customer's other commitments (NFR-19), and the customer phone is absent when the retention rule
@@ -82,20 +82,24 @@ public class VenueBookingController {
     static final String REJECT_AFTER_EXPIRY_ENDPOINT = "POST /api/v1/venue/bookings/{bookingId}/reject-after-expiry";
     static final String CREATE_MANUAL_ENDPOINT = "POST /api/v1/venue/bookings";
     static final String CANCEL_MANUAL_ENDPOINT = "POST /api/v1/venue/bookings/{bookingId}/cancel-manual";
+    static final String CANCEL_CONFIRMED_ENDPOINT = "POST /api/v1/venue/bookings/{bookingId}/cancel-confirmed";
     static final String BOOKING_AGGREGATE = "BOOKING";
     static final String BOOKING_ID = "bookingId";
 
     private final VenueBookings bookings;
     private final VenueResponses responses;
     private final ManualBookings manualBookings;
+    private final VenueConfirmedCancellations confirmedCancellations;
     private final Idempotency idempotency;
     private final ResponseMetaFactory meta;
 
     public VenueBookingController(VenueBookings bookings, VenueResponses responses, ManualBookings manualBookings,
-                                  Idempotency idempotency, ResponseMetaFactory meta) {
+                                  VenueConfirmedCancellations confirmedCancellations, Idempotency idempotency,
+                                  ResponseMetaFactory meta) {
         this.bookings = bookings;
         this.responses = responses;
         this.manualBookings = manualBookings;
+        this.confirmedCancellations = confirmedCancellations;
         this.idempotency = idempotency;
         this.meta = meta;
     }
@@ -290,8 +294,15 @@ public class VenueBookingController {
     public DataResponse<VenueBooking> cancelConfirmed(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
             @PathVariable UUID bookingId,
-            @RequestBody VenueBookingCancelConfirmedRequest request) {
-        throw NotImplementedYet.stub();
+            @RequestBody VenueBookingCancelConfirmedRequest request,
+            @AuthenticationPrincipal AuthenticatedSubject venue) {
+        // The Owner Password enters the fingerprint only as an HMAC (Idempotency#request) and is never stored
+        IdempotentResult<VenueBooking> result = confirmedCancellations.cancel(venue.id(), bookingId,
+                request.ownerPassword(),
+                idempotency.request(venue, CANCEL_CONFIRMED_ENDPOINT, idempotencyKey, Map.of(BOOKING_ID, bookingId),
+                        request),
+                response(), VenueBooking::of);
+        return meta.data(result.body());
     }
 
     @GetMapping("/bookings")

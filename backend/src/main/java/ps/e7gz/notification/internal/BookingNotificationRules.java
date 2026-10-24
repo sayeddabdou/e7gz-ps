@@ -105,6 +105,10 @@ final class BookingNotificationRules {
             plan(customer("BOOKING_AUTO_CANCELLED"), venue("VENUE_BOOKING_AUTO_CANCELLED")),
             // E7-48: the venue cancelled its own Manual Booking; there is no customer to tell
             BookingTerminalReason.VENUE_CANCELLED_MANUAL_BOOKING, Plan.NONE,
+            // E7-114 (FR-VEN-03): the venue cancelled a CONFIRMED Online Booking with the Owner Password. §52.2 "Booking
+            // Cancelled", the existing customer code (Amr Heiba 23 Oct 2026, subject to PO review); the customer only:
+            // the venue made the cancellation itself
+            BookingTerminalReason.VENUE_CANCELLED_CONFIRMED_BOOKING, plan(customer("BOOKING_CANCELLED")),
             // E7-113 (O5, FR-VEN-23 step 9, FR-VEN-28): §52.2 "Venue Opening Hours Changed", one per cancelled booking.
             // The customer only: the venue made the change itself. A Manual Booking gets nothing (cancelled(event)).
             BookingTerminalReason.VENUE_OPENING_HOURS_CHANGED, plan(customer("VENUE_OPENING_HOURS_CHANGED")));
