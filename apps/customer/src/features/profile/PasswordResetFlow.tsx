@@ -4,6 +4,7 @@ import { en as t } from "../../i18n/en";
 import type { CustomerProfileApi } from "./api";
 import { profileErrorMessage } from "./errorMessages";
 import { Field, Notice, PrimaryButton, SecondaryButton, profileStyles as styles } from "./ui";
+import { useResendCountdown } from "./useResendCountdown";
 
 export function PasswordResetFlow({
   api,
@@ -26,6 +27,7 @@ export function PasswordResetFlow({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [success, setSuccess] = useState<string>();
+  const resendCountdown = useResendCountdown();
 
   const run = async (action: () => Promise<void>) => {
     setBusy(true);
@@ -43,11 +45,12 @@ export function PasswordResetFlow({
   const requestCode = (resend = false) => run(async () => {
     const result = await api.requestPasswordReset(phone);
     if (!result.ok) {
-      setError(profileErrorMessage(result.code));
+      setError(result.code === "NOT_FOUND" ? t.profile.passwordReset.notFound : profileErrorMessage(result.code));
       return;
     }
     setChallengeId(result.value.challengeId);
     setCode("");
+    resendCountdown.start(result.serverTime);
     setStep("code");
     if (resend) setSuccess(t.profile.verificationCodeSent);
   });
@@ -87,7 +90,13 @@ export function PasswordResetFlow({
             onPress={step === "phone" ? () => requestCode() : complete}
           />
           {step === "code" ? (
-            <SecondaryButton disabled={busy} label={t.profile.passwordReset.resend} onPress={() => requestCode(true)} />
+            <SecondaryButton
+              disabled={busy || resendCountdown.remaining > 0}
+              label={resendCountdown.remaining > 0
+                ? t.auth.otp.resendCountdown.replace("{seconds}", String(resendCountdown.remaining))
+                : t.profile.passwordReset.resend}
+              onPress={() => requestCode(true)}
+            />
           ) : null}
           <SecondaryButton disabled={busy} label={cancelLabel} onPress={onCancel} />
         </View>

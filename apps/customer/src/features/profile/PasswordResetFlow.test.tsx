@@ -73,6 +73,24 @@ describe("password reset", () => {
     fireEvent.changeText(screen.getByLabelText("Phone number"), "+201001234567");
     fireEvent.press(screen.getByRole("button", { name: "Send reset code" }));
 
-    expect(await screen.findByText("That request was not found. Start again.")).toBeTruthy();
+    expect(await screen.findByText("No account with a verified phone matches this number.")).toBeTruthy();
+  });
+
+  it("starts the reset resend countdown from server time", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-10-23T10:00:00Z"));
+    const api = profileApi({
+      requestPasswordReset: jest.fn().mockResolvedValue({
+        ok: true,
+        value: { challengeId: "reset-1" },
+        serverTime: "2026-10-23T10:00:00Z",
+      }),
+    });
+    render(<PasswordResetFlow api={api} initialPhone="+201001234567" onCancel={jest.fn()} onComplete={jest.fn()} />);
+
+    fireEvent.press(screen.getByRole("button", { name: "Send reset code" }));
+
+    const resend = await screen.findByRole("button", { name: "Resend in 60s" });
+    expect(resend.props.accessibilityState?.disabled ?? resend.props.disabled).toBe(true);
+    jest.useRealTimers();
   });
 });

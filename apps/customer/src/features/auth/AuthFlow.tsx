@@ -18,6 +18,7 @@ export function AuthFlow({ api, tokenStore, notice, onAuthenticated, onForgotPas
   const [deadline, setDeadline] = useState<string>();
   const [clockOffset, setClockOffset] = useState(0);
   const [remaining, setRemaining] = useState(0);
+  const [resent, setResent] = useState(false);
 
   useEffect(() => {
     if (!deadline) return undefined;
@@ -63,13 +64,17 @@ export function AuthFlow({ api, tokenStore, notice, onAuthenticated, onForgotPas
     } else setError(authErrorMessage(result.code));
   });
   const submitOtp = () => run(async () => {
-    const result = await api.verifyPhone(challengeId, form.code);
+    const result = resent
+      ? await api.verifyPhone(challengeId, form.code, form.password)
+      : await api.verifyPhone(challengeId, form.code);
     if (result.ok) await finish(result.value); else setError(authErrorMessage(result.code));
   });
   const resend = () => run(async () => {
     const result = await api.resend(form.phone);
     if (result.ok) {
       setChallengeId(result.value.challengeId);
+      setForm((current) => ({ ...current, code: "", password: "" }));
+      setResent(true);
       startResendCountdown(result.serverTime);
     } else setError(authErrorMessage(result.code));
   });
@@ -95,7 +100,12 @@ export function AuthFlow({ api, tokenStore, notice, onAuthenticated, onForgotPas
               <Field label={t.auth.fields.username} value={form.username} onChangeText={update("username")} />
               <Field label={t.auth.fields.password} value={form.password} onChangeText={update("password")} secureTextEntry />
             </>
-          ) : <Field label={t.auth.fields.code} value={form.code} onChangeText={update("code")} keyboardType="number-pad" />}
+          ) : (
+            <>
+              <Field label={t.auth.fields.code} value={form.code} onChangeText={update("code")} keyboardType="number-pad" />
+              {resent ? <Field label={t.profile.passwordReset.newPassword} value={form.password} onChangeText={update("password")} secureTextEntry /> : null}
+            </>
+          )}
           {error ? <View style={styles.errorBox}><Text accessibilityRole="alert" style={styles.error}>{error}</Text></View> : null}
           <Pressable accessibilityRole="button" disabled={busy} onPress={step === "login" ? submitLogin : step === "register" ? submitRegistration : submitOtp} style={styles.primaryButton}>
             <Text style={styles.primaryButtonText}>{busy ? t.auth.working : submitLabel}</Text>

@@ -1,15 +1,22 @@
 import { useEffect, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import { nativeTokens } from "@e7gz/tokens/native";
 import { en as t } from "../../i18n/en";
 import type { CustomerProfile, CustomerProfileApi } from "./api";
 import { profileErrorMessage } from "./errorMessages";
 import { PasswordResetFlow } from "./PasswordResetFlow";
 import { Field, Notice, PrimaryButton, SecondaryButton, profileStyles as styles } from "./ui";
+import { useResendCountdown } from "./useResendCountdown";
 
 type Mode = "summary" | "name" | "username" | "phone" | "phoneOtp" | "password";
 
-function dateText(value: string): string {
-  return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+export function profileDateText(value: string): string {
+  return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Cairo" }).format(new Date(value));
+}
+
+export function profileInitials(fullName: string): string {
+  return fullName.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 }
 
 export function ProfileScreen({ api, onLogout, onPasswordResetComplete = onLogout }: { api: CustomerProfileApi; onLogout(): void | Promise<void>; onPasswordResetComplete?(): void | Promise<void> }) {
@@ -24,6 +31,7 @@ export function ProfileScreen({ api, onLogout, onPasswordResetComplete = onLogou
   const [phone, setPhone] = useState("");
   const [challengeId, setChallengeId] = useState("");
   const [code, setCode] = useState("");
+  const resendCountdown = useResendCountdown();
 
   useEffect(() => {
     let active = true;
@@ -89,6 +97,7 @@ export function ProfileScreen({ api, onLogout, onPasswordResetComplete = onLogou
     if (result.ok) {
       setChallengeId(result.value.challengeId);
       setCode("");
+      resendCountdown.start(result.serverTime);
       setMode("phoneOtp");
       if (resend) setSuccess(t.profile.verificationCodeSent);
     } else setError(profileErrorMessage(result.code));
@@ -137,7 +146,7 @@ export function ProfileScreen({ api, onLogout, onPasswordResetComplete = onLogou
           {mode === "username" ? (
             <>
               <Field label={t.profile.username} value={value} onChangeText={setValue} />
-              {profile.usernameChangeAvailableAt ? <Notice kind="info">{t.profile.usernameCooldown(dateText(profile.usernameChangeAvailableAt))}</Notice> : null}
+              {profile.usernameChangeAvailableAt ? <Notice kind="info">{t.profile.usernameCooldown(profileDateText(profile.usernameChangeAvailableAt))}</Notice> : null}
             </>
           ) : null}
           {mode === "phone" ? <Field label={t.profile.phone} value={phone} onChangeText={setPhone} keyboardType="phone-pad" /> : null}
@@ -145,7 +154,15 @@ export function ProfileScreen({ api, onLogout, onPasswordResetComplete = onLogou
           {success ? <Notice kind="success">{success}</Notice> : null}
           {error ? <Notice kind="error">{error}</Notice> : null}
           <PrimaryButton busy={busy} label={busy ? t.profile.working : mode === "name" ? t.profile.save : mode === "username" ? t.profile.changeUsername : mode === "phone" ? t.profile.continue : t.profile.verify} onPress={mode === "name" ? saveName : mode === "username" ? saveUsername : mode === "phone" ? () => requestPhone() : verifyPhone} />
-          {mode === "phoneOtp" ? <SecondaryButton disabled={busy} label={t.profile.resend} onPress={() => requestPhone(true)} /> : null}
+          {mode === "phoneOtp" ? (
+            <SecondaryButton
+              disabled={busy || resendCountdown.remaining > 0}
+              label={resendCountdown.remaining > 0
+                ? t.auth.otp.resendCountdown.replace("{seconds}", String(resendCountdown.remaining))
+                : t.profile.resend}
+              onPress={() => requestPhone(true)}
+            />
+          ) : null}
           <SecondaryButton disabled={busy} label={t.profile.cancel} onPress={() => setMode("summary")} />
         </View>
       </ScrollView>
@@ -157,35 +174,60 @@ export function ProfileScreen({ api, onLogout, onPasswordResetComplete = onLogou
       <Text accessibilityRole="header" style={styles.title}>{t.profile.title}</Text>
       {success ? <Notice kind="success">{success}</Notice> : null}
       {error ? <Notice kind="error">{error}</Notice> : null}
-      <View style={styles.card}>
-        <Value label={t.profile.fullName} value={profile.fullName} />
-        <Value label={t.profile.username} value={profile.username} />
-        {profile.usernameChangeAvailableAt ? <Notice kind="info">{t.profile.usernameCooldown(dateText(profile.usernameChangeAvailableAt))}</Notice> : null}
-        <Value label={t.profile.phone} value={`${profile.phone} · ${profile.phoneVerified ? t.profile.verified : t.profile.notVerified}`} />
-        <Value label={t.profile.email} value={`${profile.email} · ${profile.emailVerified ? t.profile.verified : t.profile.notVerified}`} />
-        <Value label={t.profile.joined} value={dateText(profile.joinedAt)} />
+      <View style={styles.identityCard}>
+        <View style={styles.avatar}><Text style={styles.avatarText}>{profileInitials(profile.fullName)}</Text></View>
+        <View style={styles.identityDetails}>
+          <Text testID="profile-name" style={styles.identityName}>{profile.fullName}</Text>
+          <ContactLine value={profile.phone} verified={profile.phoneVerified} />
+          <ContactLine value={profile.email} verified={profile.emailVerified} />
+          <Text style={styles.memberSince}>{`${t.profile.joined} ${profileDateText(profile.joinedAt)}`}</Text>
+        </View>
+        <Pressable accessibilityLabel={t.profile.editName} accessibilityRole="button" onPress={() => show("name", profile.fullName)} style={styles.editChip}>
+          <Text style={styles.editChipText}>{t.profile.edit}</Text>
+        </Pressable>
       </View>
-      <View style={styles.actions}>
-        <SecondaryButton label={t.profile.editName} onPress={() => show("name", profile.fullName)} />
-        <SecondaryButton label={t.profile.changeUsername} onPress={() => show("username", profile.username)} />
-        <SecondaryButton label={t.profile.changePhone} onPress={() => { setPhone(""); show("phone"); }} />
+      <View style={styles.menu}>
+        <ActionRow
+          label={t.profile.changeUsername}
+          value={profile.username}
+          hint={profile.usernameChangeAvailableAt ? t.profile.usernameCooldown(profileDateText(profile.usernameChangeAvailableAt)) : undefined}
+          onPress={() => show("username", profile.username)}
+        />
+        <ActionRow label={t.profile.changePhone} onPress={() => { setPhone(""); show("phone"); }} />
+        {profile.phoneVerified ? <ActionRow label={t.profile.resetPassword} onPress={() => show("password")} /> : null}
+        <LogoutButton onLogout={onLogout} />
       </View>
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>{t.profile.security}</Text>
-        <SecondaryButton label={t.profile.resetPassword} onPress={() => show("password")} />
-      </View>
-      <LogoutButton onLogout={onLogout} />
     </ScrollView>
   );
 }
 
-function Value({ label, value }: { label: string; value: string }) {
-  return <View style={styles.valueRow}><Text style={styles.valueLabel}>{label}</Text><Text style={styles.value}>{value}</Text></View>;
+function ContactLine({ value, verified }: { value: string; verified: boolean }) {
+  return (
+    <View style={styles.contactLine}>
+      <Text numberOfLines={1} style={styles.contactValue}>{value}</Text>
+      <View style={[styles.statusBadge, verified ? styles.verifiedBadge : styles.unverifiedBadge]}>
+        <Text style={[styles.statusText, verified ? styles.verifiedText : styles.unverifiedText]}>{verified ? t.profile.verified : t.profile.notVerified}</Text>
+      </View>
+    </View>
+  );
+}
+
+function ActionRow({ label, value, hint, onPress }: { label: string; value?: string; hint?: string; onPress(): void }) {
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.actionRow, pressed && styles.pressed]}>
+      <View style={styles.actionContent}>
+        <Text style={styles.actionLabel}>{label}</Text>
+        {hint ? <Text style={styles.actionHint}>{hint}</Text> : null}
+      </View>
+      {value ? <Text numberOfLines={1} style={styles.actionValue}>{value}</Text> : null}
+      <Ionicons name="chevron-forward" color={nativeTokens.color.text.subtle} size={18} />
+    </Pressable>
+  );
 }
 
 function LogoutButton({ onLogout }: { onLogout(): void | Promise<void> }) {
   return (
-    <Pressable accessibilityRole="button" onPress={() => void onLogout()} style={styles.dangerButton}>
+    <Pressable accessibilityRole="button" onPress={() => void onLogout()} style={({ pressed }) => [styles.logoutRow, pressed && styles.pressed]}>
       <Text style={styles.dangerText}>{t.auth.logout}</Text>
     </Pressable>
   );

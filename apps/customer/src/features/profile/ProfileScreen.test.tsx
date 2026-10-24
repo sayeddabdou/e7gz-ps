@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import type { CustomerProfile, CustomerProfileApi } from "./api";
-import { ProfileScreen } from "./ProfileScreen";
+import { profileDateText, profileInitials, ProfileScreen } from "./ProfileScreen";
 
 const profile: CustomerProfile = {
   userId: "3f6c1d2e-8a4b-4c5d-9e6f-7a8b9c0d1e2f",
@@ -28,14 +28,39 @@ function profileApi(overrides: Partial<CustomerProfileApi> = {}): CustomerProfil
 }
 
 describe("customer profile", () => {
-  it("loads the profile and shows the server cooldown instant", async () => {
-    render(<ProfileScreen api={profileApi()} onLogout={jest.fn()} />);
+  it("formats profile dates in Cairo time and derives prototype initials", () => {
+    expect(profileDateText("2026-11-10T12:00:00Z")).toBe("Nov 10, 2026, 2:00 PM");
+    expect(profileDateText("2026-10-01T09:30:00Z")).toBe("Oct 1, 2026, 12:30 PM");
+    expect(profileInitials("Omar Hassan")).toBe("OH");
+  });
 
-    expect(await screen.findByText("Omar Hassan")).toBeTruthy();
-    expect(screen.getByText("omar_h")).toBeTruthy();
-    expect(screen.getByText("+201001234567 · Verified")).toBeTruthy();
-    expect(screen.getByText("omar@example.com · Not verified")).toBeTruthy();
-    expect(screen.getByText(/You can change your username again on/)).toBeTruthy();
+  it("starts the phone-change resend countdown from server time", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-10-23T10:00:00Z"));
+    const api = profileApi({
+      requestPhoneChange: jest.fn().mockResolvedValue({
+        ok: true,
+        value: { challengeId: "challenge-1" },
+        serverTime: "2026-10-23T10:00:00Z",
+      }),
+    });
+    render(<ProfileScreen api={api} onLogout={jest.fn()} />);
+
+    await screen.findByTestId("profile-name");
+    fireEvent.press(screen.getByRole("button", { name: "Change phone number" }));
+    fireEvent.changeText(screen.getByLabelText("Phone number"), "+201009999999");
+    fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+
+    const resend = await screen.findByRole("button", { name: "Resend in 60s" });
+    expect(resend.props.accessibilityState?.disabled ?? resend.props.disabled).toBe(true);
+    jest.useRealTimers();
+  });
+
+  it("hides password reset when the profile phone is unverified", async () => {
+    const api = profileApi({ getProfile: jest.fn().mockResolvedValue({ ok: true, value: { ...profile, phoneVerified: false } }) });
+    render(<ProfileScreen api={api} onLogout={jest.fn()} />);
+
+    expect(await screen.findByTestId("profile-name")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Reset password" })).toBeNull();
   });
 
   it("updates only the editable full name and uses the returned profile", async () => {

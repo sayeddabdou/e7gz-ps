@@ -176,9 +176,9 @@ export function App({
   }, [authenticated, openBookingFromNotification, pushRegistration]);
 
   const finishPasswordReset = async () => {
-    // The reset endpoint has already revoked every server session. End this device locally without calling logout or
-    // revoking its push registration with a refresh token that is no longer valid.
-    try { pushRegistration?.stop(); } catch { /* A post-reset local transition must not fail. */ }
+    // The access token remains valid briefly after reset, so revoke this phone's push device before clearing tokens.
+    // A post-reset cleanup failure must never report the successful password reset as failed.
+    try { await pushRegistration?.revoke(); } catch { /* Local sign-out still completes while offline. */ }
     try { await secureTokens.clear(); } catch { /* The server-side reset still succeeded; never report it as failed. */ }
     setPushSetupState(undefined);
     setAuthenticated(false);
@@ -197,16 +197,18 @@ export function App({
     );
   }
 
+  const activeProfileApi = profileApi ?? createCustomerProfileApi(api);
+
   if (authenticated === undefined) {
     return <SafeAreaProvider><SafeAreaView style={styles.screen}><Text>{t.loading}</Text></SafeAreaView></SafeAreaProvider>;
   }
 
-  if (!authenticated && customerAuth && profileApi) {
+  if (!authenticated && customerAuth) {
     if (resettingPassword) {
       return (
         <SafeAreaProvider>
           <PasswordResetFlow
-            api={profileApi}
+            api={activeProfileApi}
             onCancel={() => setResettingPassword(false)}
             onComplete={finishPasswordReset}
           />
@@ -314,7 +316,7 @@ export function App({
             >
               {() => (
                 <SafeAreaView edges={["top"]} style={styles.screen}>
-                  <ProfileScreen api={profileApi!} onLogout={logout} onPasswordResetComplete={finishPasswordReset} />
+                  <ProfileScreen api={activeProfileApi} onLogout={logout} onPasswordResetComplete={finishPasswordReset} />
                 </SafeAreaView>
               )}
             </Tab.Screen>

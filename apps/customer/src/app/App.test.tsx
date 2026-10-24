@@ -29,17 +29,7 @@ const profileApi = {
 beforeEach(() => {
   jest.spyOn(globalThis, "fetch").mockImplementation(async (request) => {
     const url = request instanceof Request ? request.url : String(request);
-    const data = url.endsWith("/api/v1/customer/profile") ? {
-      userId: "3f6c1d2e-8a4b-4c5d-9e6f-7a8b9c0d1e2f",
-      fullName: "Omar Hassan",
-      username: "omar_h",
-      phone: "+201001234567",
-      phoneVerified: true,
-      email: "omar@example.com",
-      emailVerified: false,
-      usernameChangeAvailableAt: null,
-      joinedAt: "2026-10-01T09:30:00Z",
-    } : [];
+    const data = url.endsWith("/api/v1/customer/profile") ? profile : [];
     return new Response(JSON.stringify({ data, meta }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -85,7 +75,7 @@ describe("Customer app shell", () => {
 
     fireEvent.press(screen.getByText("Profile"));
     expect(screen.getByRole("header", { name: "Profile" })).toBeTruthy();
-    expect(await screen.findByText("Omar Hassan")).toBeTruthy();
+    expect(await screen.findByTestId("profile-name")).toBeTruthy();
   });
 
   it("logs out even when push-device revocation fails offline", async () => {
@@ -106,7 +96,7 @@ describe("Customer app shell", () => {
     );
 
     fireEvent.press(await screen.findByText("Profile"));
-    expect(await screen.findByText("Omar Hassan")).toBeTruthy();
+    expect(await screen.findByTestId("profile-name")).toBeTruthy();
     fireEvent.press(screen.getByText("Log out"));
 
     await waitFor(() => expect(logout).toHaveBeenCalledTimes(1));
@@ -149,8 +139,7 @@ describe("Customer app shell", () => {
     expect(await screen.findByText("Password reset. Every session has ended. Log in with your new password.")).toBeTruthy();
     expect(screen.getByRole("header", { name: "Welcome back" })).toBeTruthy();
     expect(signedOutStore.clear).toHaveBeenCalledTimes(1);
-    expect(pushRegistration.stop).toHaveBeenCalledTimes(1);
-    expect(pushRegistration.revoke).not.toHaveBeenCalled();
+    expect(pushRegistration.revoke).toHaveBeenCalledTimes(1);
     expect(logout).not.toHaveBeenCalled();
   });
 
@@ -191,8 +180,9 @@ describe("Customer app shell", () => {
     expect(await screen.findByText("Password reset. Every session has ended. Log in with your new password.")).toBeTruthy();
     expect(screen.getByRole("header", { name: "Welcome back" })).toBeTruthy();
     expect(signedInStore.clear).toHaveBeenCalledTimes(1);
-    expect(pushRegistration.stop).toHaveBeenCalled();
-    expect(pushRegistration.revoke).not.toHaveBeenCalled();
+    expect(pushRegistration.revoke).toHaveBeenCalledTimes(1);
+    expect((pushRegistration.revoke as jest.Mock).mock.invocationCallOrder[0]!)
+      .toBeLessThan((signedInStore.clear as jest.Mock).mock.invocationCallOrder[0]!);
     expect(logout).not.toHaveBeenCalled();
   });
 

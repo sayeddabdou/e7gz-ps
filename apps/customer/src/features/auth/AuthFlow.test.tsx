@@ -95,4 +95,39 @@ describe("customer authentication", () => {
     expect(deadline).toBe("2026-10-01T10:01:00.000Z");
     expect(secondsUntil(deadline, skewedDeviceNow + 15_000, offset)).toBe(45);
   });
+
+  it("requires and sends a new password after resending a registration code", async () => {
+    const deviceNow = Date.parse("2020-10-01T10:00:00Z");
+    const now = jest.spyOn(Date, "now").mockReturnValueOnce(deviceNow).mockReturnValue(deviceNow + 61_000);
+    const api = authApi({
+      register: jest.fn().mockResolvedValue({
+        ok: true,
+        value: { phone: "+201001234567", challengeId: "registration-1" },
+        serverTime: "2020-10-01T10:00:00Z",
+      }),
+      resend: jest.fn().mockResolvedValue({
+        ok: true,
+        value: { challengeId: "resend-1" },
+        serverTime: "2020-10-01T10:00:00Z",
+      }),
+      verifyPhone: jest.fn().mockResolvedValue({ ok: true, value: tokens, serverTime: "2020-10-01T10:00:01Z" }),
+    });
+    render(<AuthFlow api={api} tokenStore={tokenStore} onAuthenticated={jest.fn()} />);
+
+    fireEvent.press(screen.getByRole("button", { name: "Create an account" }));
+    fireEvent.changeText(screen.getByLabelText("Full name"), "Omar Hassan");
+    fireEvent.changeText(screen.getByLabelText("Phone number"), "+201001234567");
+    fireEvent.changeText(screen.getByLabelText("Email"), "omar@example.com");
+    fireEvent.changeText(screen.getByLabelText("Username or phone"), "omar_h");
+    fireEvent.changeText(screen.getByLabelText("Password"), "password1");
+    fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+
+    fireEvent.press(await screen.findByRole("button", { name: "Resend code" }));
+    fireEvent.changeText(await screen.findByLabelText("Verification code"), "482913");
+    fireEvent.changeText(screen.getByLabelText("New password"), "replacement1");
+    fireEvent.press(screen.getByRole("button", { name: "Verify" }));
+
+    await waitFor(() => expect(api.verifyPhone).toHaveBeenCalledWith("resend-1", "482913", "replacement1"));
+    now.mockRestore();
+  });
 });
