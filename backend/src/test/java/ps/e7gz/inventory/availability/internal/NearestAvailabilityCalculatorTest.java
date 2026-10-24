@@ -13,6 +13,11 @@ import static org.mockito.Mockito.when;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.zone.ZoneOffsetTransition;
+import java.time.zone.ZoneRules;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -88,6 +93,8 @@ class NearestAvailabilityCalculatorTest {
 
     private static final Instant NOW = at("2031-02-03T11:00:00Z");
 
+    private static final ZoneId CAIRO = ZoneId.of("Africa/Cairo");
+
     @BeforeEach
     void playStationVenueWithOneSession() {
         when(catalog.ofVenue(command, VENUE)).thenReturn(List.of(
@@ -117,6 +124,85 @@ class NearestAvailabilityCalculatorTest {
     @Test
     void theLeadGovernsInsideARunningSession() {
         assertThat(calculate(Activity.PLAYSTATION).nearestAvailableAt()).isEqualTo(NOW.plusSeconds(15 * 60));
+    }
+
+    // ------------------------------------------------------------- the 15-minute grid (PO decision 12 Oct 2026, E7-115)
+
+    private static Instant cairo(String localDateTime) {
+        return LocalDateTime.parse(localDateTime).atZone(CAIRO).toInstant();
+    }
+
+    private Instant nearestAt(Instant now) {
+        return calculator.calculate(command, VENUE, Activity.PLAYSTATION, now).orElseThrow().nearestAvailableAt();
+    }
+
+    @Test
+    void theLeadRoundsUpToTheNextQuarterHourOfCairoWallTime() {
+        // The session is 12:00-23:00 Cairo (+02:00 in February).
+        assertThat(nearestAt(cairo("2031-02-03T19:22:41"))).as("19:37:41 rounds up")
+                .isEqualTo(cairo("2031-02-03T19:45:00"));
+        assertThat(nearestAt(cairo("2031-02-03T19:30:00"))).as("19:45:00 is already on the grid")
+                .isEqualTo(cairo("2031-02-03T19:45:00"));
+        assertThat(nearestAt(cairo("2031-02-03T19:30:00").plusNanos(1))).as("a nanosecond past is past")
+                .isEqualTo(cairo("2031-02-03T20:00:00"));
+    }
+
+    @Test
+    void aSessionOpeningOffTheGridGivesItsFirstQuarterHour() {
+        sessions(new SessionPeriod(LocalDate.parse("2031-02-04"), cairo("2031-02-04T12:10:00"),
+                cairo("2031-02-04T20:00:00")));
+
+        assertThat(nearestAt(cairo("2031-02-04T11:00:00"))).as("lead 11:15 is before the 12:10 opening")
+                .isEqualTo(cairo("2031-02-04T12:15:00"));
+    }
+
+    @Test
+    void aBusyEndOffTheGridRoundsUpAndAGapThatFitsOnlyOffTheGridIsSkipped() {
+        when(occupied.occupied(any(), anyCollection(), any(), any())).thenReturn(List.of(
+                new Occupied(ROOM_1, at("2031-02-03T11:00:00Z"), at("2031-02-03T12:05:00Z")),
+                new Occupied(ROOM_1, at("2031-02-03T13:05:00Z"), at("2031-02-03T15:00:00Z")),
+                new Occupied(ROOM_2, at("2031-02-03T11:00:00Z"), at("2031-02-03T15:52:00Z"))));
+
+        // Room 1's 12:05-13:05 gap holds 60 minutes only from 12:05; from 12:15 it does not. Room 1 is next free at
+        // 15:00, room 2 at 15:52 -> 16:00.
+        assertThat(calculate(Activity.PLAYSTATION).nearestAvailableAt()).isEqualTo(at("2031-02-03T15:00:00Z"));
+        assertThat(predicate.asked).as("the predicate is asked only grid starts").allMatch(asked -> {
+            Instant start = Instant.parse(asked.substring(asked.indexOf('@') + 1));
+            return StartGrid.ceil(start).equals(start);
+        });
+    }
+
+    @Test
+    void aSessionWithoutSixtyMinutesAfterTheRoundedLeadIsSkipped() {
+        // now + 15 min = 11:15:30Z rounds up to 11:30Z; the session ends 12:20Z, so 11:30-12:30 does not fit.
+        sessions(new SessionPeriod(LocalDate.parse("2031-02-03"), at("2031-02-03T10:00:00Z"),
+                        at("2031-02-03T12:20:00Z")),
+                new SessionPeriod(LocalDate.parse("2031-02-04"), at("2031-02-04T10:00:00Z"),
+                        at("2031-02-04T21:00:00Z")));
+
+        assertThat(nearestAt(at("2031-02-03T11:00:30Z"))).isEqualTo(at("2031-02-04T10:00:00Z"));
+    }
+
+    @Test
+    void onBothCairoDstChangesTheGridStaysOnWallTimeQuarterHours() {
+        ZoneRules rules = CAIRO.getRules();
+        ZoneOffsetTransition spring = rules.nextTransition(at("2031-01-01T00:00:00Z"));
+        ZoneOffsetTransition autumn = rules.nextTransition(spring.getInstant());
+        assertThat(spring.isGap()).as("Cairo springs forward 00:00 -> 01:00 in April").isTrue();
+        assertThat(autumn.isOverlap()).as("and falls back 24:00 -> 23:00 in October").isTrue();
+
+        for (ZoneOffsetTransition change : List.of(spring, autumn)) {
+            Instant at = change.getInstant();
+            sessions(new SessionPeriod(LocalDate.ofInstant(at, CAIRO), at.minusSeconds(6 * 3600),
+                    at.plusSeconds(6 * 3600)));
+
+            // 8 minutes before the change: now + 15 min is 7 minutes after it, on the new offset.
+            Instant nearest = nearestAt(at.minusSeconds(8 * 60));
+
+            assertThat(nearest).isEqualTo(at.plusSeconds(15 * 60));
+            assertThat(ZonedDateTime.ofInstant(nearest, CAIRO).getMinute()).isEqualTo(15);
+            assertThat(ZonedDateTime.ofInstant(nearest, CAIRO).getHour()).isEqualTo(change.isGap() ? 1 : 23);
+        }
     }
 
     @Test
