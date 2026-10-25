@@ -146,15 +146,15 @@ final class OpeningHoursCommands {
     }
 
     /**
-     * Steps 6–8 with the Owner Password (FRS §2.4 "Hours/Closure save cancelling protected bookings", FR-VEN-25): the
-     * password is checked first, inside this transaction (arch 10 §3); its success is audited on its own row
-     * (FR-VEN-05, arch 10 §8.1) - the hours change itself has no audit row (PO decision 3 Oct 2026). Then as
-     * {@link Commit}, every affected booking included. Run through {@link OwnerPasswordGate#run} (via
-     * {@link Protected}), which audits a refusal.
+     * Steps 6–8 with the Owner Password (FRS §2.4 "Hours/Closure save cancelling protected bookings", FR-VEN-25), run
+     * by the gate after it checked the password inside this transaction, before the Idempotency-Key lookup (arch 10 §3;
+     * PO decision Q3, 24 Oct 2026); its success is audited on its own row (FR-VEN-05, arch 10 §8.1) - the hours change
+     * itself has no audit row (PO decision 3 Oct 2026). Then as {@link Commit}, every affected booking included. Run
+     * through {@link OwnerPasswordGate#run(Command, UUID, String, UUID)} (via {@link Protected}), which audits a refusal.
      */
     @OwnerProtected(PROTECTED_ACTION)
     record ProtectedCommit(UUID venueId, UUID venueAccountId, OpeningHours hours, String previewToken, LockSet locks,
-                           String ownerPassword, UUID correlationId, Readers readers, OwnerPasswordGate gate,
+                           UUID correlationId, Readers readers, OwnerPasswordGate gate,
                            AuditWriter audit) implements Command<Template> {
 
         @Override
@@ -169,7 +169,7 @@ final class OpeningHoursCommands {
 
         @Override
         public Template execute(CommandContext context) {
-            OwnerPasswordCheck check = gate.verify(context, venueAccountId, ownerPassword);
+            OwnerPasswordCheck check = gate.verified(context, venueAccountId);
             audit.write(context, AuditRecord.builder(VenueAccountAuditAction.OWNER_PASSWORD_ACCEPTED,
                             AuditActor.venue(venueAccountId), venueAccountId, correlationId)
                     .ownerPasswordCheck(check)
@@ -178,7 +178,7 @@ final class OpeningHoursCommands {
             return committed(context, venueId, venueAccountId, hours, previewToken, locks, readers, true);
         }
 
-        /** Never the Owner Password (NFR-21): a record's own {@code toString} would print it. */
+        /** The venue and the actor only, as before; the password is the gate's alone (NFR-21). */
         @Override
         public String toString() {
             return "ProtectedCommit[venueId=" + venueId + ", venueAccountId=" + venueAccountId + "]";
@@ -187,8 +187,8 @@ final class OpeningHoursCommands {
 
     /**
      * The command {@link OwnerPasswordGate#run} is given for a protected commit: the Idempotency-Key wrapper around a
-     * {@link ProtectedCommit}, which checks the password itself. It only carries the action id the gate audits a refusal
-     * under, and adds nothing to the transaction.
+     * {@link ProtectedCommit}. The gate checks the password before it, so before the Idempotency-Key lookup. It only
+     * carries the action id the gate audits a refusal under, and adds nothing to the transaction.
      */
     @OwnerProtected(PROTECTED_ACTION)
     record Protected<R>(Command<R> command) implements Command<R> {

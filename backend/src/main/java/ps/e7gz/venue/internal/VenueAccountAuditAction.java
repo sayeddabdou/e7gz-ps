@@ -24,9 +24,10 @@ enum VenueAccountAuditAction implements AuditAction {
      * action itself has none - the opening-hours change cancelling protected bookings (E7-113; no audit row for the
      * hours change itself, PO decision 3 Oct 2026). {@code protectedAction} is the matrix id; the row carries
      * owner_password_outcome = SUCCESS and is written in the action's transaction, so it exists only if the action
-     * committed.
+     * committed. Also the row the gate writes on its own when a protected action's password was right but the action
+     * was then refused (PO decision Q2, 24 Oct 2026): {@code refusalCode} is then the refusal's API error code.
      */
-    OWNER_PASSWORD_ACCEPTED(AuditPayloadAllowlist.of("protectedAction")),
+    OWNER_PASSWORD_ACCEPTED(AuditPayloadAllowlist.of("protectedAction", "refusalCode")),
     /** The Platform Admin disabled Dashboard access (FR-ADM-03, FR-VEN-08); the admin's reason is required. */
     VENUE_ACCOUNT_DISABLED(AuditPayloadAllowlist.of("venueId", "previousStatus", "newStatus"), true),
     /** The Platform Admin re-enabled Dashboard access (FR-ADM-03); the admin's reason is required. */

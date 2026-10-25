@@ -14,7 +14,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import ps.e7gz.common.codes.AuthSubjectType;
 import ps.e7gz.common.security.AccessTokens;
-import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.support.IntegrationTest;
 import ps.e7gz.support.fixtures.Fixtures;
 
@@ -27,7 +26,6 @@ import ps.e7gz.support.fixtures.Fixtures;
 @AutoConfigureMockMvc
 class Sprint3StubHttpTest extends IntegrationTest {
 
-    private static final String VENUE_BOOKING = "/api/v1/venue/bookings/" + UUID.randomUUID();
     private static final String CHALLENGE = "{\"otpChallengeId\":\"" + UUID.randomUUID() + "\",\"code\":\"123456\"}";
 
     @Autowired
@@ -45,10 +43,9 @@ class Sprint3StubHttpTest extends IntegrationTest {
         venue = "Bearer " + accessTokens.issue(AuthSubjectType.VENUE, Fixtures.aVenueAccount().create().id());
     }
 
+    /** E7-114 built cancel-confirmed (VenueCancelConfirmedHttpTest); the Overview waits for E7-115. */
     @Test
-    void cancelConfirmedAndOverviewAreStubs() throws Exception {
-        notImplemented(json(idempotent(post(VENUE_BOOKING + "/cancel-confirmed")), "{\"ownerPassword\":\"1234\"}"),
-                venue);                                                                      // E7-114
+    void overviewIsAStub() throws Exception {
         notImplemented(get("/api/v1/venue/overview"), venue);                               // E7-115
     }
 
@@ -64,10 +61,6 @@ class Sprint3StubHttpTest extends IntegrationTest {
             request.header("Authorization", token);
         }
         mvc.perform(request).andExpect(status().isNotImplemented());
-    }
-
-    private static MockHttpServletRequestBuilder idempotent(MockHttpServletRequestBuilder request) {
-        return request.header(OpenApiConfig.IDEMPOTENCY_KEY, UUID.randomUUID().toString());
     }
 
     private static MockHttpServletRequestBuilder json(MockHttpServletRequestBuilder request, String body) {
