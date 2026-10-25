@@ -42184,7 +42184,7 @@
     },
     "/api/v1/venue/overview": {
       "get": {
-        "description": "For the signed-in account's own venue. Today and this month are business dates in the venue's time zone (arch 04 §4.3). Revenue counts only COMPLETED bookings, online and manual (tournament revenue joins in Sprint 6); CONFIRMED, ACTIVE and every cancelled or rejected booking count nothing (PO decision 6 Oct 2026). No payment method, cash/card split or reconciliation field (FR-VEN-36). Every number comes from here: the Dashboard sums nothing. Implemented by E7-115.",
+        "description": "For the signed-in account's own venue. Today and this month are business dates in the venue's time zone (arch 04 §4.3). Revenue counts only COMPLETED bookings, online and manual (tournament revenue joins in Sprint 6); CONFIRMED, ACTIVE and every cancelled or rejected booking count nothing (PO decision 6 Oct 2026). No payment method, cash/card split or reconciliation field (FR-VEN-36). Every number comes from here: the Dashboard sums nothing.",
         "operationId": "venueGetOverview",
         "parameters": [
           {

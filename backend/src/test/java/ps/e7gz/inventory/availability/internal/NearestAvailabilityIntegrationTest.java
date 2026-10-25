@@ -351,13 +351,14 @@ class NearestAvailabilityIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    void theCandidateIsTheExactFreeGapBoundaryNotAMinuteStep() {
+    void theCandidateIsTheFreeGapBoundaryRoundedUpToTheGridNotAMinuteStep() {
+        // The boundary is the exact busy end; the 15-minute grid (PO decision 12 Oct 2026, E7-115) then rounds it up.
         Fixtures.Venue venue = venue();
         Fixtures.Resource room = aResource().at(venue).create();
         Instant oddEnd = at("2031-02-03T10:07:13.500Z");
         book(venue, room, at("2031-02-03T10:00:00Z"), oddEnd);
 
-        assertThat(nearest(venue, "2031-02-03T08:00:00Z")).isEqualTo(oddEnd);
+        assertThat(nearest(venue, "2031-02-03T08:00:00Z")).isEqualTo(at("2031-02-03T10:15:00Z"));
     }
 
     @Test
@@ -429,7 +430,8 @@ class NearestAvailabilityIntegrationTest extends IntegrationTest {
         Result result = run(ctx -> calculator.calculate(ctx, venue.id(), Activity.PLAYSTATION,
                 declaredAt.minusSeconds(1))).orElseThrow();
 
-        assertThat(result.nearestAvailableAt()).isEqualTo(expectedEnd);
+        assertThat(result.nearestAvailableAt()).as("the interval's end, on the 15-minute grid (E7-115)")
+                .isEqualTo(StartGrid.ceil(expectedEnd));
     }
 
     // ---- starting price (PO decision 7 Oct 2026) ----------------------------------------------------------------

@@ -1,6 +1,5 @@
 package ps.e7gz.openapi;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -35,21 +34,16 @@ class Sprint3StubHttpTest extends IntegrationTest {
     AccessTokens accessTokens;
 
     private String customer;
-    private String venue;
 
     @BeforeEach
     void signIn() {
         customer = "Bearer " + accessTokens.issue(AuthSubjectType.CUSTOMER, Fixtures.aUser().verified().create().id());
-        venue = "Bearer " + accessTokens.issue(AuthSubjectType.VENUE, Fixtures.aVenueAccount().create().id());
     }
 
-    /** E7-114 built cancel-confirmed (VenueCancelConfirmedHttpTest); the Overview waits for E7-115. */
-    @Test
-    void overviewIsAStub() throws Exception {
-        notImplemented(get("/api/v1/venue/overview"), venue);                               // E7-115
-    }
-
-    /** E7-57 built the profile and password reset; only the email pair waits for the PO's email decision. */
+    /**
+     * E7-57 built the profile and password reset, E7-114 cancel-confirmed (VenueCancelConfirmedHttpTest) and E7-115 the
+     * Overview (VenueOverviewHttpTest); only the email pair waits for the PO's email decision.
+     */
     @Test
     void emailChangeAndVerificationAreStillStubs() throws Exception {
         notImplemented(json(post("/api/v1/customer/profile/email"), "{\"email\":\"omar@example.com\"}"), customer);
