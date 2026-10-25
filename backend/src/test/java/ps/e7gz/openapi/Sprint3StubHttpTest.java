@@ -13,7 +13,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import ps.e7gz.common.codes.AuthSubjectType;
 import ps.e7gz.common.security.AccessTokens;
-import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.support.IntegrationTest;
 import ps.e7gz.support.fixtures.Fixtures;
 
@@ -26,7 +25,6 @@ import ps.e7gz.support.fixtures.Fixtures;
 @AutoConfigureMockMvc
 class Sprint3StubHttpTest extends IntegrationTest {
 
-    private static final String VENUE_BOOKING = "/api/v1/venue/bookings/" + UUID.randomUUID();
     private static final String CHALLENGE = "{\"otpChallengeId\":\"" + UUID.randomUUID() + "\",\"code\":\"123456\"}";
 
     @Autowired
@@ -36,22 +34,16 @@ class Sprint3StubHttpTest extends IntegrationTest {
     AccessTokens accessTokens;
 
     private String customer;
-    private String venue;
 
     @BeforeEach
     void signIn() {
         customer = "Bearer " + accessTokens.issue(AuthSubjectType.CUSTOMER, Fixtures.aUser().verified().create().id());
-        venue = "Bearer " + accessTokens.issue(AuthSubjectType.VENUE, Fixtures.aVenueAccount().create().id());
     }
 
-    /** E7-115 built the Overview (VenueOverviewHttpTest); cancel-confirmed waits for E7-114. */
-    @Test
-    void cancelConfirmedIsAStub() throws Exception {
-        notImplemented(json(idempotent(post(VENUE_BOOKING + "/cancel-confirmed")), "{\"ownerPassword\":\"1234\"}"),
-                venue);                                                                      // E7-114
-    }
-
-    /** E7-57 built the profile and password reset; only the email pair waits for the PO's email decision. */
+    /**
+     * E7-57 built the profile and password reset, E7-114 cancel-confirmed (VenueCancelConfirmedHttpTest) and E7-115 the
+     * Overview (VenueOverviewHttpTest); only the email pair waits for the PO's email decision.
+     */
     @Test
     void emailChangeAndVerificationAreStillStubs() throws Exception {
         notImplemented(json(post("/api/v1/customer/profile/email"), "{\"email\":\"omar@example.com\"}"), customer);
@@ -63,10 +55,6 @@ class Sprint3StubHttpTest extends IntegrationTest {
             request.header("Authorization", token);
         }
         mvc.perform(request).andExpect(status().isNotImplemented());
-    }
-
-    private static MockHttpServletRequestBuilder idempotent(MockHttpServletRequestBuilder request) {
-        return request.header(OpenApiConfig.IDEMPOTENCY_KEY, UUID.randomUUID().toString());
     }
 
     private static MockHttpServletRequestBuilder json(MockHttpServletRequestBuilder request, String body) {

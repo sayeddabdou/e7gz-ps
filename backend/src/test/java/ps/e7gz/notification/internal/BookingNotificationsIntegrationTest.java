@@ -225,6 +225,34 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
                 "VENUE_BOOKING_AUTO_CANCELLED");
     }
 
+    // ---------------------------------------------------------------- E7-114 venue cancels a CONFIRMED booking
+
+    /**
+     * FR-VEN-03: the venue's cancellation of a CONFIRMED Online Booking, through the real protected command, tells the
+     * customer once - the existing BOOKING_CANCELLED (§52.2 "Booking Cancelled") - made by that one stored event even
+     * when it is handled twice and redelivered, and tells the venue nothing: it made the cancellation itself.
+     */
+    @Test
+    void aVenueCancelledConfirmedBookingTellsOnlyTheCustomerOnce() {
+        Booking booking = flows.pending();
+        flows.accept(booking);
+        flows.venueCancelsConfirmed(booking);
+        assertThat(outboxEvent(booking, IntegrationEvents.BOOKING_CANCELLED).text("terminalReason"))
+                .isEqualTo("VENUE_CANCELLED_CONFIRMED_BOOKING");
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_CANCELLED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.BOOKING_CANCELLED,
+                "CUSTOMER BOOKING_CANCELLED " + booking.customerId());
+        assertThat(notifications(booking)).containsExactlyInAnyOrder(
+                "CUSTOMER BOOKING_CREATED " + booking.customerId(),
+                "VENUE VENUE_NEW_BOOKING_REQUEST " + booking.venueId(),
+                "CUSTOMER BOOKING_CONFIRMED " + booking.customerId(),
+                "CUSTOMER BOOKING_CANCELLED " + booking.customerId());
+        assertThat(venueCodes(booking)).as("no venue notification for its own cancellation")
+                .containsExactly("VENUE_NEW_BOOKING_REQUEST");
+    }
+
     // ---------------------------------------------------------------- E7-113 opening-hours change (O5), Phase 1
 
     /**

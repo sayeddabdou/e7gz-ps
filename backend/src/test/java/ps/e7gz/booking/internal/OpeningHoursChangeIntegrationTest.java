@@ -64,6 +64,7 @@ import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.security.AccessTokens;
+import ps.e7gz.identity.api.OwnerPasswordAttempts;
 import ps.e7gz.messaging.api.CommandAnswer;
 import ps.e7gz.messaging.api.IdempotentRequest;
 import ps.e7gz.messaging.api.IntegrationEvents;
@@ -511,15 +512,161 @@ class OpeningHoursChangeIntegrationTest extends IntegrationTest {
         assertThat(snapshots(List.of(confirmed.bookingId(), pending.bookingId()))).isEqualTo(after);
         assertThat(v.version()).isEqualTo(2);
 
-        expectError(commit(v, v.closing(3), token, PIN, key, UUID.randomUUID()), 422,
-                ApiErrorCode.IDEMPOTENCY_KEY_REUSED);
-        expectError(commit(v, change, token, "1111", key, UUID.randomUUID()), 422,
-                ApiErrorCode.IDEMPOTENCY_KEY_REUSED);
+        // Another request under the key with the right PIN: checked, then 422 - the gate's Q2 row records it.
+        UUID reused = UUID.randomUUID();
+        expectError(commit(v, v.closing(3), token, PIN, key, reused), 422, ApiErrorCode.IDEMPOTENCY_KEY_REUSED);
+        assertThat(auditOf(reused)).containsExactly(
+                "OWNER_PASSWORD_ACCEPTED VENUE_ACCOUNT SUCCESS HOURS_CLOSURE_SAVE_CANCELLING_PROTECTED");
+        // PO decision Q3: a wrong PIN under the key is checked before the lookup - 423, audited and counted - where it
+        // was once 422 IDEMPOTENCY_KEY_REUSED without any check (the protected commit's replay previews nothing now).
+        UUID wrong = UUID.randomUUID();
+        expectError(commit(v, change, token, "1111", key, wrong), 423, ApiErrorCode.OWNER_PASSWORD_INVALID);
+        assertThat(auditOf(wrong)).containsExactly(
+                "OWNER_PASSWORD_REFUSED VENUE_ACCOUNT FAILURE HOURS_CLOSURE_SAVE_CANCELLING_PROTECTED");
+        assertThat(failures(v)).isOne();
+        // D1: the same replay without its PIN is a different request: 422, never the stored answer, nothing checked.
+        UUID withoutPin = UUID.randomUUID();
+        commit(v, change, token, null, key, withoutPin).andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("IDEMPOTENCY_KEY_REUSED"))
+                .andExpect(jsonPath("$.data").doesNotExist());
+        assertThat(auditOf(withoutPin)).isEmpty();
+        // A blank PIN is supplied, so checked: 423 OWNER_PASSWORD_REQUIRED before the lookup, not counted.
+        expectError(commit(v, change, token, "  ", key, UUID.randomUUID()), 423, ApiErrorCode.OWNER_PASSWORD_REQUIRED);
+        assertThat(failures(v)).isOne();
+        // The right PIN still replays the original answer.
+        String again = commit(v, change, token, PIN, key, UUID.randomUUID()).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(json.readTree(again).path("data")).isEqualTo(json.readTree(answer).path("data"));
         mvc.perform(post(HOURS + "/commit").header("Authorization", "Bearer " + v.token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(Map.of("proposal", change, "previewToken", token))))
                 .andExpect(status().isBadRequest());
         assertThat(snapshots(List.of(confirmed.bookingId(), pending.bookingId()))).isEqualTo(after);
+        assertThat(v.version()).isEqualTo(2);
+        assertThat(idempotencyRecords(v, key)).isOne();
+    }
+
+    /**
+     * PO decision Q3 on a replay: five wrong PINs under a successful key are each 423 and counted, then the account is
+     * locked out - 429 even for the right PIN - and nothing of the commit runs again.
+     */
+    @Test
+    void wrongPinReplaysAreCountedAndLockTheAccountOutWithoutRunningAnything() throws Exception {
+        Venue v = venue();
+        Booked confirmed = confirmed(v, v.world.customer.id(), v.world.room, v.tomorrowAt(12));
+        Map<String, Object> change = v.closingTomorrow();
+        String token = previewToken(v, change);
+        UUID key = UUID.randomUUID();
+        commit(v, change, token, PIN, key, UUID.randomUUID()).andExpect(status().isOk());
+        Snapshot after = snapshot(confirmed.bookingId());
+
+        for (int i = 0; i < OwnerPasswordAttempts.MAX_FAILURES; i++) {
+            expectError(commit(v, change, token, String.format("%04d", i), key, UUID.randomUUID()), 423,
+                    ApiErrorCode.OWNER_PASSWORD_INVALID);
+        }
+        UUID locked = UUID.randomUUID();
+        expectError(commit(v, change, token, PIN, key, locked), 429, ApiErrorCode.RATE_LIMITED);
+
+        assertThat(failures(v)).isEqualTo(OwnerPasswordAttempts.MAX_FAILURES);
+        assertThat(auditOf(locked)).containsExactly(
+                "OWNER_PASSWORD_REFUSED VENUE_ACCOUNT FAILURE HOURS_CLOSURE_SAVE_CANCELLING_PROTECTED");
+        assertThat(snapshot(confirmed.bookingId())).isEqualTo(after);
+        assertThat(v.version()).isEqualTo(2);
+        assertThat(idempotencyRecords(v, key)).isOne();
+    }
+
+    /**
+     * PO decision Q2: the right PIN, then the commit is refused (a booking made after the preview: 409) - one
+     * OWNER_PASSWORD_ACCEPTED row from the gate with the refusal's code, not counted, nothing else written.
+     */
+    @Test
+    void aRightPinThenARefusedCommitIsAuditedOnceAsAcceptedAndNotCounted() throws Exception {
+        Venue v = venue();
+        Booked confirmed = confirmed(v, v.world.customer.id(), v.world.room, v.tomorrowAt(12));
+        Map<String, Object> change = v.closingTomorrow();
+        String token = previewToken(v, change);
+        Booked later = online(v, v.world.anotherCustomer(), v.room2, v.tomorrowAt(12));
+        Map<UUID, Snapshot> before = snapshots(List.of(confirmed.bookingId(), later.bookingId()));
+        UUID key = UUID.randomUUID();
+        UUID correlationId = UUID.randomUUID();
+
+        expectError(commit(v, change, token, PIN, key, correlationId), 409,
+                ApiErrorCode.AFFECTED_SET_CHANGED_REFRESH_PREVIEW);
+
+        assertThat(auditOf(correlationId)).containsExactly(
+                "OWNER_PASSWORD_ACCEPTED VENUE_ACCOUNT SUCCESS HOURS_CLOSURE_SAVE_CANCELLING_PROTECTED");
+        assertThat(refusalCodes(correlationId)).containsExactly("AFFECTED_SET_CHANGED_REFRESH_PREVIEW");
+        assertThat(failures(v)).isZero();
+        assertThat(writesOf(correlationId)).isZero();
+        assertThat(snapshots(List.of(confirmed.bookingId(), later.bookingId()))).isEqualTo(before);
+        assertThat(v.version()).isEqualTo(1);
+        assertThat(idempotencyRecords(v, key)).isZero();
+    }
+
+    /**
+     * Q2 audit accuracy at COMMIT: a database guard that fires only when the transaction commits (a deferred trigger)
+     * after the right PIN fails the COMMIT itself, which the API answers 500 (an unexpected failure - unchanged by
+     * E7-114). It is no refusal the client is told of, so the gate audits no acceptance with a code; the hours,
+     * cancellations, audit rows and the idempotency record all roll back. (A refusal raised at commit as an API error
+     * is audited: {@code OwnerPasswordGateIntegrationTest}.)
+     */
+    @Test
+    void aGuardFailingTheCommitAfterARightPinIsAnUnexpectedFailureNotAnAcceptedRefusal() throws Exception {
+        Venue v = venue();
+        Booked confirmed = confirmed(v, v.world.customer.id(), v.world.room, v.tomorrowAt(12));
+        Map<String, Object> change = v.closingTomorrow();
+        String token = previewToken(v, change);
+        Snapshot before = snapshot(confirmed.bookingId());
+        UUID key = UUID.randomUUID();
+        UUID correlationId = UUID.randomUUID();
+
+        try (FaultTrigger ignored = FaultTrigger.atCommitAsGuard("venue.venue_opening_template", v.world.venue.id(),
+                "gd_reservation_conflict_booking")) {
+            commit(v, change, token, PIN, key, correlationId).andExpect(status().isInternalServerError());
+        }
+
+        assertThat(auditOf(correlationId)).isEmpty();
+        assertThat(failures(v)).isZero();
+        assertThat(writesOf(correlationId)).isZero();
+        assertThat(snapshot(confirmed.bookingId())).isEqualTo(before);
+        assertThat(v.version()).isEqualTo(1);
+        assertThat(idempotencyRecords(v, key)).isZero();
+    }
+
+    /**
+     * D1 (approved 24 Oct 2026): a commit that supplies a PIN takes the protected path even when nothing it cancels
+     * needs one - a wrong PIN is 423 and counted, a blank one 423 OWNER_PASSWORD_REQUIRED, and neither saves anything
+     * as an unprotected commit would; the right one saves, audited. Without a PIN the same commit saves as before.
+     */
+    @Test
+    void aSuppliedPinIsAlwaysCheckedEvenWhenTheSetIsUnprotected() throws Exception {
+        Venue v = venue();
+        Booked pending = online(v, v.world.customer.id(), v.world.room, v.tomorrowAt(12));
+        Map<String, Object> change = v.closingTomorrow();
+        String token = preview(v, change).andExpect(jsonPath("$.data.ownerPasswordRequired").value(false))
+                .andReturn().getResponse().getContentAsString().transform(this::data).path("previewToken").asText();
+        Snapshot before = snapshot(pending.bookingId());
+        UUID key = UUID.randomUUID();
+
+        UUID wrong = UUID.randomUUID();
+        expectError(commit(v, change, token, "9999", key, wrong), 423, ApiErrorCode.OWNER_PASSWORD_INVALID);
+        assertThat(auditOf(wrong)).containsExactly(
+                "OWNER_PASSWORD_REFUSED VENUE_ACCOUNT FAILURE HOURS_CLOSURE_SAVE_CANCELLING_PROTECTED");
+        for (String blank : List.of("", "   ")) {
+            UUID refused = UUID.randomUUID();
+            expectError(commit(v, change, token, blank, key, refused), 423, ApiErrorCode.OWNER_PASSWORD_REQUIRED);
+            assertThat(auditOf(refused)).isEmpty();
+        }
+        assertThat(failures(v)).isOne();
+        assertThat(snapshot(pending.bookingId())).isEqualTo(before);
+        assertThat(v.version()).isEqualTo(1);
+        assertThat(idempotencyRecords(v, key)).isZero();
+
+        UUID right = UUID.randomUUID();
+        commit(v, change, token, PIN, key, right).andExpect(status().isOk());
+        assertCancelledByTheChange(v, pending.bookingId(), terminalAt(pending.bookingId()), right);
+        assertThat(auditOf(right)).contains(
+                "OWNER_PASSWORD_ACCEPTED VENUE_ACCOUNT SUCCESS HOURS_CLOSURE_SAVE_CANCELLING_PROTECTED");
     }
 
     // ================================================================ atomicity: injected failures roll back everything
@@ -1101,6 +1248,24 @@ class OpeningHoursChangeIntegrationTest extends IntegrationTest {
                 .param("c", correlationId).query(String.class).list();
     }
 
+    /** The refusal codes of the gate's OWNER_PASSWORD_ACCEPTED rows of one correlation (PO decision Q2). */
+    private static List<String> refusalCodes(UUID correlationId) {
+        return OWNER.sql("""
+                        SELECT payload ->> 'refusalCode' FROM audit.audit_event
+                         WHERE correlation_id = :c AND action = 'OWNER_PASSWORD_ACCEPTED' ORDER BY occurred_at""")
+                .param("c", correlationId).query(String.class).list();
+    }
+
+    /** The venue account's counted wrong PINs: identity's OWNER_PASSWORD rate-limit counter (0 without a row). */
+    private static long failures(Venue v) {
+        return OWNER.sql("""
+                        SELECT coalesce((SELECT counter FROM iam.security_rate_limit_counter
+                                          WHERE limiter_type = 'OWNER_PASSWORD'
+                                            AND subject_key_hash = encode(sha256(convert_to(
+                                                    'venue-account:' || CAST(:id AS text), 'UTF8')), 'hex')), 0)""")
+                .param("id", v.world.account.id()).query(Long.class).single();
+    }
+
     /** Committed rows carrying one correlation: booking history, Booking Fee decisions and outbox events. */
     private static long writesOf(UUID correlationId) {
         return OWNER.sql("""
@@ -1246,23 +1411,34 @@ class OpeningHoursChangeIntegrationTest extends IntegrationTest {
         /** Raises right after a row of {@code table} whose {@code booking_id} is a booking of {@code venueId}. */
         static FaultTrigger afterInsert(String table, UUID venueId) {
             return create(table, "CREATE TRIGGER %s AFTER INSERT ON %s FOR EACH ROW EXECUTE FUNCTION %s('%s', '%s')",
-                    venueId, "booking");
+                    venueId, "booking", null);
         }
 
         /** Raises at COMMIT for a row of {@code table} whose {@code venue_id} is {@code venueId}. */
         static FaultTrigger atCommit(String table, UUID venueId) {
-            return create(table, "CREATE CONSTRAINT TRIGGER %s AFTER INSERT OR UPDATE ON %s DEFERRABLE INITIALLY "
-                    + "DEFERRED FOR EACH ROW EXECUTE FUNCTION %s('%s', '%s')", venueId, "venue");
+            return atCommit(table, venueId, null);
         }
 
-        private static FaultTrigger create(String table, String template, UUID venueId, String scope) {
+        /** As {@link #atCommit(String, UUID)}, raised as a Product guard: P0001 with {@code guard} as CONSTRAINT. */
+        static FaultTrigger atCommitAsGuard(String table, UUID venueId, String guard) {
+            return atCommit(table, venueId, guard);
+        }
+
+        private static FaultTrigger atCommit(String table, UUID venueId, String guard) {
+            return create(table, "CREATE CONSTRAINT TRIGGER %s AFTER INSERT OR UPDATE ON %s DEFERRABLE INITIALLY "
+                    + "DEFERRED FOR EACH ROW EXECUTE FUNCTION %s('%s', '%s')", venueId, "venue", guard);
+        }
+
+        private static FaultTrigger create(String table, String template, UUID venueId, String scope, String guard) {
             String name = "e7_113_test_fault_" + UUID.randomUUID().toString().replace("-", "");
+            String raise = guard == null ? "RAISE EXCEPTION '" + MESSAGE + "'"
+                    : "RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = '" + MESSAGE + "', CONSTRAINT = '" + guard + "'";
             OWNER.sql("CREATE OR REPLACE FUNCTION " + FUNCTION + "() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN "
                     + "IF TG_ARGV[1] = 'venue' THEN "
-                    + "  IF NEW.venue_id = TG_ARGV[0]::uuid THEN RAISE EXCEPTION '" + MESSAGE + "'; END IF; "
+                    + "  IF NEW.venue_id = TG_ARGV[0]::uuid THEN " + raise + "; END IF; "
                     + "ELSIF EXISTS (SELECT 1 FROM booking.booking b "
                     + "               WHERE b.id = NEW.booking_id AND b.venue_id = TG_ARGV[0]::uuid) THEN "
-                    + "  RAISE EXCEPTION '" + MESSAGE + "'; "
+                    + "  " + raise + "; "
                     + "END IF; RETURN NULL; END $$").update();
             OWNER.sql(String.format(template, name, table, FUNCTION, venueId, scope)).update();
             return new FaultTrigger(table, name);

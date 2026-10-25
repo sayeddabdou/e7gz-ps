@@ -28,6 +28,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * The one way a business write reaches the database (arch 04 section 2.1, ADR-026 section 3):
  * <ol>
+ *   <li>{@link Command#beforeAttempt} at the start of each attempt, before its transaction;</li>
  *   <li>one {@code READ COMMITTED} transaction, opened here and never joined to a caller's transaction;</li>
  *   <li>{@code tournament.begin_command(...)} or {@code admin.begin_command(...)} first, with the declared lock set -
  *       the database takes the locks in its fixed order and samples the command instant;</li>
@@ -78,6 +79,7 @@ public class CommandRunner {
 
         for (int attempt = 1; ; attempt++) {
             int thisAttempt = attempt;
+            command.beforeAttempt(thisAttempt);
             try {
                 return pool.transaction.execute(status -> {
                     Instant commandNow = pool.begin(scope);
