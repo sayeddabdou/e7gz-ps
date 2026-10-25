@@ -84,8 +84,9 @@ class BookingCompletionVerifiedPlayerPinTest extends IntegrationTest {
             DueJobs.JobRow job = DueJobs.job(BookingFlows.bookingCompleteKey(tenth.bookingId()));
             assertThat(job.attempt()).isEqualTo(attempt);
             assertThat(job.status()).isEqualTo(attempt < MAX_ATTEMPTS ? "PENDING" : "FAILED");
+            // a failed COMMIT is a DataAccessException carrying the guard's message (CommandRunner, 25 Oct 2026)
             assertThat(lastError(tenth)).as("refused at commit, by a deferred database guard")
-                    .contains("JDBC commit failed");
+                    .contains("JDBC commit").contains(REFUSAL);
             assertNothingOfTheCompletion(tenth, historyBefore, outboxBefore);
         }
         // the worker logs each failed attempt with its cause chain: the guard's own message (E7-40 logFailure)
