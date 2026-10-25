@@ -407,6 +407,24 @@
         ],
         "type": "object"
       },
+      "AdminConfiguredFeeMode": {
+        "properties": {
+          "effectiveFrom": {
+            "description": "When this value took effect.",
+            "example": "2026-10-01T00:00:00Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/BookingFeeMode"
+          }
+        },
+        "required": [
+          "effectiveFrom",
+          "value"
+        ],
+        "type": "object"
+      },
       "AdminConfiguredInteger": {
         "properties": {
           "effectiveFrom": {
@@ -449,7 +467,15 @@
         "properties": {
           "bookingFee": {
             "$ref": "#/components/schemas/AdminConfiguredMoney",
-            "description": "Per booking (FR-PTS-13)."
+            "description": "The fee of one booking in PER_BOOKING mode (FR-PTS-13)."
+          },
+          "bookingFeeMode": {
+            "$ref": "#/components/schemas/AdminConfiguredFeeMode",
+            "description": "PER_BOOKING: bookingFee once per booking; PER_HOUR: bookingFeePerHour × nominal minutes ÷ 60, half-up to 2 places (PCR-010)."
+          },
+          "bookingFeePerHour": {
+            "$ref": "#/components/schemas/AdminConfiguredMoney",
+            "description": "The fee of one hour in PER_HOUR mode (PCR-010)."
           },
           "tournamentCreationFee": {
             "$ref": "#/components/schemas/AdminConfiguredMoney"
@@ -457,6 +483,8 @@
         },
         "required": [
           "bookingFee",
+          "bookingFeeMode",
+          "bookingFeePerHour",
           "tournamentCreationFee"
         ],
         "type": "object"
@@ -464,6 +492,26 @@
       "AdminFeesChangeRequest": {
         "properties": {
           "bookingFee": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bookingFeeMode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BookingFeeMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bookingFeePerHour": {
             "anyOf": [
               {
                 "$ref": "#/components/schemas/Money"
@@ -666,6 +714,10 @@
             "$ref": "#/components/schemas/AdminConfiguredInteger",
             "description": "Points for a completed booking with qualifying attendance (200 at launch)."
           },
+          "pointsPerFeeUnit": {
+            "$ref": "#/components/schemas/AdminConfiguredInteger",
+            "description": "Points that pay one hour of booking fee (PER_HOUR; a half hour costs half) or one whole booking fee (PER_BOOKING); even, 10,000 at launch (PCR-010)."
+          },
           "referralPoints": {
             "$ref": "#/components/schemas/AdminConfiguredInteger",
             "description": "Points for a referral sign-up (1,000 at launch)."
@@ -677,6 +729,7 @@
         },
         "required": [
           "attendedPoints",
+          "pointsPerFeeUnit",
           "referralPoints",
           "walletRefundsEnabled"
         ],
@@ -688,6 +741,16 @@
             "example": 250,
             "format": "int32",
             "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "pointsPerFeeUnit": {
+            "description": "Even (PCR-010).",
+            "example": 10000,
+            "format": "int32",
+            "minimum": 2,
             "type": [
               "integer",
               "null"
@@ -1872,6 +1935,13 @@
         ],
         "type": "string"
       },
+      "BookingFeeMode": {
+        "enum": [
+          "PER_BOOKING",
+          "PER_HOUR"
+        ],
+        "type": "string"
+      },
       "BookingHistoryEntryKind": {
         "enum": [
           "STATUS_TRANSITION",
@@ -2113,6 +2183,10 @@
           "bookingFee": {
             "$ref": "#/components/schemas/CustomerBookingFee"
           },
+          "bookingFeePayment": {
+            "$ref": "#/components/schemas/CustomerBookingFeePayment",
+            "description": "How Points and the Wallet paid the fee at creation (PCR-010)."
+          },
           "bookingId": {
             "example": "018f3c2a-7b1e-7c4d-9e0f-1a2b3c4d5e6f",
             "format": "uuid",
@@ -2197,6 +2271,7 @@
         "required": [
           "attendanceResult",
           "bookingFee",
+          "bookingFeePayment",
           "bookingId",
           "displayBucket",
           "endAt",
@@ -2234,6 +2309,35 @@
           "amount",
           "currency",
           "displayAsFree"
+        ],
+        "type": "object"
+      },
+      "CustomerBookingFeePayment": {
+        "properties": {
+          "leftToPay": {
+            "$ref": "#/components/schemas/Money",
+            "description": "The rest, collected by the payment provider."
+          },
+          "paidByPoints": {
+            "$ref": "#/components/schemas/Money",
+            "description": "The part of the fee the Points pay."
+          },
+          "paidByWallet": {
+            "$ref": "#/components/schemas/Money",
+            "description": "The part the Wallet pays: all of what Points leave, or nothing."
+          },
+          "pointsUsed": {
+            "description": "Points spent on the fee.",
+            "example": 20000,
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "leftToPay",
+          "paidByPoints",
+          "paidByWallet",
+          "pointsUsed"
         ],
         "type": "object"
       },
@@ -2322,6 +2426,10 @@
           "bookingFee": {
             "$ref": "#/components/schemas/CustomerBookingFee"
           },
+          "bookingFeePayment": {
+            "$ref": "#/components/schemas/CustomerBookingFeePayment",
+            "description": "How my Points and Wallet would pay the fee now (PCR-010)."
+          },
           "hourlyPrice": {
             "$ref": "#/components/schemas/Money"
           },
@@ -2339,6 +2447,7 @@
         },
         "required": [
           "bookingFee",
+          "bookingFeePayment",
           "hourlyPrice",
           "nominalBookedMinutes",
           "totalAmount",
@@ -2806,6 +2915,9 @@
             "format": "int32",
             "type": "integer"
           },
+          "feeUnit": {
+            "$ref": "#/components/schemas/CustomerPointsFeeUnit"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/CustomerPointsTransaction"
@@ -2822,15 +2934,33 @@
         },
         "required": [
           "balance",
+          "feeUnit",
           "items",
           "nextCursor"
+        ],
+        "type": "object"
+      },
+      "CustomerPointsFeeUnit": {
+        "properties": {
+          "bookingFeeMode": {
+            "$ref": "#/components/schemas/BookingFeeMode"
+          },
+          "pointsPerFeeUnit": {
+            "example": 10000,
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bookingFeeMode",
+          "pointsPerFeeUnit"
         ],
         "type": "object"
       },
       "CustomerPointsTransaction": {
         "properties": {
           "amount": {
-            "description": "Applied amount: positive earned, negative reversed.",
+            "description": "Applied amount: positive earned or given back, negative reversed or spent on a booking fee.",
             "example": 200,
             "format": "int32",
             "type": "integer"
@@ -5109,7 +5239,9 @@
           "ATTENDED_COMPLETION",
           "REFERRAL_SIGNUP",
           "COMPENSATION",
-          "ADMIN"
+          "ADMIN",
+          "BOOKING_FEE_PAYMENT",
+          "BOOKING_FEE_REFUND"
         ],
         "type": "string"
       },
@@ -11392,7 +11524,7 @@
     },
     "/api/v1/admin/fees": {
       "get": {
-        "description": "EGP 0 at launch; the customer sees a zero booking fee as FREE (FR-PTS-13). Implemented by E7-68.",
+        "description": "EGP 0 per booking at launch; the customer sees a zero booking fee as FREE (FR-PTS-13). The booking fee mode says which amount is used: bookingFee once per booking, or bookingFeePerHour × nominal minutes ÷ 60 (PCR-010). A launch value shows the instant it was installed. Implemented by E7-68.",
         "operationId": "adminGetFees",
         "parameters": [
           {
@@ -11575,13 +11707,13 @@
             "bearerAuth": []
           }
         ],
-        "summary": "The two platform fees and when each took effect (FR-ADM-10)",
+        "summary": "The platform fees and when each took effect (FR-ADM-10)",
         "tags": [
           "admin-fees"
         ]
       },
       "put": {
-        "description": "Omitted fields keep their value; a value equal to the current one changes nothing; none given is VALIDATION_FAILED. Amounts are from 0.00. Implemented by E7-68.",
+        "description": "Omitted fields keep their value; a value equal to the current one changes nothing; none given is VALIDATION_FAILED. Amounts are from 0.00. Every change takes effect now and only for bookings created after it; Points pay the fee of the mode in force (PCR-010). Implemented by E7-68.",
         "operationId": "adminChangeFees",
         "parameters": [
           {
@@ -11869,7 +12001,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Change one or both platform fees (FR-ADM-10, FR-ADM-11)",
+        "summary": "Change one or more platform fees (FR-ADM-10, FR-ADM-11)",
         "tags": [
           "admin-fees"
         ]
@@ -13013,7 +13145,7 @@
     },
     "/api/v1/admin/points/settings": {
       "get": {
-        "description": "Each value with the instant it took effect. Implemented by E7-68.",
+        "description": "Each value with the instant it took effect; a launch value shows the instant it was installed. Implemented by E7-68.",
         "operationId": "adminGetPointsSettings",
         "parameters": [
           {
@@ -13196,13 +13328,13 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Completed-booking points, referral points and the wallet-refund switch (A8)",
+        "summary": "Completed-booking points, referral points, the wallet-refund switch and the Points per fee unit (A8, PCR-010)",
         "tags": [
           "admin-loyalty"
         ]
       },
       "put": {
-        "description": "PO decision D3 (17 Oct 2026). Omitted fields keep their value; a value equal to the current one changes nothing. Every change takes effect now and only for later events: history keeps the value it was granted with (FR-ADM-11, FR-PTS-01). Points are whole numbers from 0; none given is VALIDATION_FAILED. Through loyalty.configure. Implemented by E7-68.",
+        "description": "PO decision D3 (17 Oct 2026). Omitted fields keep their value; a value equal to the current one changes nothing. Every change takes effect now and only for later events: history keeps the value it was granted or paid with (FR-ADM-11, FR-PTS-01, PCR-010). Points are whole numbers from 0; pointsPerFeeUnit is an even whole number from 2, else VALIDATION_FAILED on it; none given is VALIDATION_FAILED. Through loyalty.configure. Implemented by E7-68.",
         "operationId": "adminChangePointsSettings",
         "parameters": [
           {
@@ -13490,7 +13622,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Change points values or the wallet-refund switch",
+        "summary": "Change points values, the wallet-refund switch or the Points per fee unit",
         "tags": [
           "admin-loyalty"
         ]
@@ -27499,7 +27631,7 @@
     },
     "/api/v1/customer/bookings/quote": {
       "get": {
-        "description": "The same price the booking would snapshot if created now: hourly price × nominal minutes ÷ 60, half-up to 2 places, plus the booking fee. Not an availability check and not a hold: the created booking's own amounts are authoritative. PO decision 5 Oct 2026 (E7-39). An unknown resourceId is NOT_FOUND (PO decision 9 Oct 2026). Implemented by E7-46.",
+        "description": "The same price the booking would snapshot if created now: hourly price × nominal minutes ÷ 60, half-up to 2 places, plus the booking fee (per booking, or per hour × nominal minutes ÷ 60, PCR-010). bookingFeePayment is how my Points and Wallet would pay that fee now: Points first, then the Wallet for all of the rest or nothing (PCR-009, PCR-010). Not an availability check and not a hold: the created booking's own amounts are authoritative. PO decision 5 Oct 2026 (E7-39). An unknown resourceId is NOT_FOUND (PO decision 9 Oct 2026). Implemented by E7-46; the fee split by E7-68.",
         "operationId": "customerQuoteBooking",
         "parameters": [
           {
@@ -30578,7 +30710,7 @@
     },
     "/api/v1/customer/points": {
       "get": {
-        "description": "The balance is never negative (FR-PTS-03). amount is what was applied: a reversal of 1,000 at a balance of 300 shows -300. Implemented by E7-66.",
+        "description": "The balance is never negative (FR-PTS-03). amount is what was applied: a reversal of 1,000 at a balance of 300 shows -300. Points pay the booking fee by themselves (PCR-010): BOOKING_FEE_PAYMENT spends them on the booking it names, BOOKING_FEE_REFUND gives them back; feeUnit says how many pay what, for the app's explanation. Implemented by E7-66 and E7-68.",
         "operationId": "customerGetPoints",
         "parameters": [
           {

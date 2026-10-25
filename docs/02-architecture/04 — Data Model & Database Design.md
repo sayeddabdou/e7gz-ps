@@ -87,7 +87,7 @@ Tables without a producer (Booking, Reservation, Tournament, Participant, Attend
 | `attendance` | Attendance | `attendance_protection_candidate` · `attendance_record` |
 | `tournament` | Tournament | `tournament` · `tournament_history` · `tournament_participant` · `tournament_resource` |
 | `trust` | Trust | `ban_cascade_booking_target` · `ban_cascade_reservation_target` · `ban_instance` · `ban_qualification` · `ban_qualification_consumption` · `cascade_execution` · `trust_event` · `trust_projection` · `trust_projection_checkpoint` · `verified_player_transition` |
-| `loyalty` | Loyalty | `booking_fee_receipt` · `booking_fee_refund` · `points_account` · `points_transaction` · `referral` · `reward_application` · `wallet_account` · `wallet_transaction` |
+| `loyalty` | Loyalty | `booking_fee_points_payment` · `booking_fee_receipt` · `booking_fee_refund` · `points_account` · `points_transaction` · `referral` · `reward_application` · `wallet_account` · `wallet_transaction` |
 | `review` | Reviews | `review` · `review_cooldown` · `review_moderation_event` · `review_report` · `venue_rating_stats` |
 | `notification` | Notifications | `device_token` · `notification` · `notification_catalogue` · `notification_delivery` · `venue_push_subscription` |
 | `config` | Platform Configuration | `configuration_key` · `configuration_version` · `system_configuration` |
@@ -1943,6 +1943,45 @@ Immutable confirmation of collected E7GZ Booking Fee from a trusted payment adap
 **Guards** — `tr_123_final_integrity` → `loyalty.final_integrity_trigger` (deferred) · `tr_123_no_truncate` → `technical.reject_append_only_mutation` · `tr_123_write_guard` → `loyalty.write_guard
 `
 
+### `loyalty.booking_fee_points_payment`
+
+v1.1.40 (PCR-010). APPEND-ONLY. What Points paid of one Online Booking's Booking Fee, at its creation: one fee unit (`points_per_fee_unit`, even) pays one hour of fee (PER_HOUR, a half hour costs half a unit) or the whole fee (PER_BOOKING). Written only by `loyalty.pay_booking_fee`; `loyalty.assert_booking` replays the automatic rule from the Points transaction's `balance_before`.
+
+| Column | Type | Null | Default | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | NOT NULL |  |  |
+| `booking_id` | `uuid` | NOT NULL |  |  |
+| `user_id` | `uuid` | NOT NULL |  |  |
+| `fee_mode` | `text` | NOT NULL |  | PER_BOOKING · PER_HOUR |
+| `fee_rate` | `numeric(12,2)` | NOT NULL |  | the per-booking or per-hour fee of the creation |
+| `fee_amount` | `numeric(12,2)` | NOT NULL |  | = `booking.booking_fee_snapshot` |
+| `points_per_fee_unit` | `integer` | NOT NULL |  | snapshot of `loyalty.points_per_fee_unit` at the creation |
+| `configuration_version_id` | `uuid` | NOT NULL |  | that unit's configuration version |
+| `half_hours_paid` | `integer` |  |  | PER_HOUR only: the half hours the Points paid; NULL for PER_BOOKING |
+| `points_used` | `integer` | NOT NULL |  |  |
+| `amount_paid` | `numeric(12,2)` | NOT NULL |  | EGP of the fee the Points paid; the Wallet or the payment provider pays `fee_amount - amount_paid` |
+| `points_transaction_id` | `uuid` | NOT NULL |  | the `BOOKING_FEE_PAYMENT` debit |
+| `paid_at` | `timestamp with time zone` | NOT NULL |  | = the booking's creation instant |
+| `correlation_id` | `uuid` | NOT NULL |  |  |
+
+**Constraints**
+
+- `ck_fee_points_payment_shape` (CHECK): `fee_mode IN ('PER_BOOKING','PER_HOUR') AND fee_rate>0 AND fee_amount>0 AND points_per_fee_unit>=2 AND mod(points_per_fee_unit,2)=0 AND amount_paid>0 AND amount_paid<=fee_amount AND ((fee_mode='PER_BOOKING' AND half_hours_paid IS NULL AND points_used=points_per_fee_unit AND fee_rate=fee_amount AND amount_paid=fee_amount) OR (fee_mode='PER_HOUR' AND half_hours_paid BETWEEN 1 AND 12 AND points_used::bigint=half_hours_paid::bigint*(points_per_fee_unit/2) AND amount_paid=round(fee_rate*half_hours_paid/2.0,2)))`
+- `fk_fee_points_payment_booking` (FK): `FOREIGN KEY (booking_id) REFERENCES booking.booking(id) ON DELETE RESTRICT`
+- `fk_fee_points_payment_config` (FK): `FOREIGN KEY (configuration_version_id) REFERENCES config.configuration_version(id) ON DELETE RESTRICT`
+- `fk_fee_points_payment_tx` (FK): `FOREIGN KEY (points_transaction_id) REFERENCES loyalty.points_transaction(id) ON DELETE RESTRICT`
+- `fk_fee_points_payment_user` (FK): `FOREIGN KEY (user_id) REFERENCES iam.user_account(id) ON DELETE RESTRICT`
+- `booking_fee_points_payment_pk` (PK): `PRIMARY KEY (id)`
+- `uq_fee_points_payment_booking` (UNIQUE): `UNIQUE (booking_id)`
+- `uq_fee_points_payment_tx` (UNIQUE): `UNIQUE (points_transaction_id)`
+
+**Indexes**
+
+- `ix_fk_booking_fee_points_payment_configuration_version_id`: `CREATE INDEX ix_fk_booking_fee_points_payment_configuration_version_id USING btree (configuration_version_id) WITH (fillfactor='90')`
+- `ix_fk_booking_fee_points_payment_user_id`: `CREATE INDEX ix_fk_booking_fee_points_payment_user_id USING btree (user_id) WITH (fillfactor='90')`
+
+**Guards** — `tr_123_final_integrity` → `loyalty.final_integrity_trigger` (deferred) · `tr_123_no_truncate` → `technical.reject_append_only_mutation` · `tr_123_write_guard` → `loyalty.write_guard`
+
 ### `loyalty.booking_fee_refund`
 
 | Column | Type | Null | Default | Notes |
@@ -1963,6 +2002,7 @@ Immutable confirmation of collected E7GZ Booking Fee from a trusted payment adap
 | `wallet_transaction_id` | `uuid` |  |  |  |
 | `settled_at` | `timestamp with time zone` |  |  |  |
 | `audit_event_id` | `uuid` | NOT NULL |  |  |
+| `points_transaction_id` | `uuid` |  |  | v1.1.40 (PCR-010): the `BOOKING_FEE_REFUND` that gave back the Points used, written with the decision |
 
 **Constraints**
 
@@ -1977,6 +2017,8 @@ Immutable confirmation of collected E7GZ Booking Fee from a trusted payment adap
 - `fk_fee_refund_user` (FK): `FOREIGN KEY (user_id) REFERENCES iam.user_account(id) ON DELETE RESTRICT`
 - `fk_fee_refund_wallet` (FK): `FOREIGN KEY (wallet_transaction_id) REFERENCES loyalty.wallet_transaction(id) ON DELETE RESTRICT`
 - `booking_fee_refund_pk` (PK): `PRIMARY KEY (id)`
+- `ck_fee_refund_points` (CHECK): `CHECK (((points_transaction_id IS NULL) OR (amount > (0)::numeric)))` (v1.1.40)
+- `fk_fee_refund_points_tx` (FK): `FOREIGN KEY (points_transaction_id) REFERENCES loyalty.points_transaction(id) ON DELETE RESTRICT` (v1.1.40)
 - `uq_fee_refund_booking` (UNIQUE): `UNIQUE (booking_id)`
 
 **Indexes**
@@ -1987,6 +2029,7 @@ Immutable confirmation of collected E7GZ Booking Fee from a trusted payment adap
 - `ix_fk_booking_fee_refund_receipt_id`: `CREATE INDEX ix_fk_booking_fee_refund_receipt_id USING btree (receipt_id) WITH (fillfactor='90')`
 - `ix_fk_booking_fee_refund_service_loss_audit_id`: `CREATE INDEX ix_fk_booking_fee_refund_service_loss_audit_id USING btree (service_loss_audit_id) WITH (fillfactor='90')`
 - `ix_fk_booking_fee_refund_wallet_transaction_id`: `CREATE INDEX ix_fk_booking_fee_refund_wallet_transaction_id USING btree (wallet_transaction_id) WITH (fillfactor='90')`
+- `ux_fee_refund_points_tx`: `CREATE UNIQUE INDEX ux_fee_refund_points_tx USING btree (points_transaction_id) WITH (fillfactor='90') WHERE (points_transaction_id IS NOT NULL)` (v1.1.40)
 
 **Guards** — `tr_123_final_integrity` → `loyalty.final_integrity_trigger` (deferred) · `tr_123_no_truncate` → `technical.reject_append_only_mutation` · `tr_123_refund_lifecycle` → `loyalty.refund_mutation_guard` · `tr_123_write_guard` → `loyalty.write_guard
 `
@@ -2017,7 +2060,7 @@ APPEND-ONLY physical Points ledger. Source/critical constraints: - ux_points_boo
 | `id` | `uuid` | NOT NULL |  |  |
 | `points_account_id` | `uuid` | NOT NULL |  |  |
 | `amount` | `integer` | NOT NULL |  | signed |
-| `cause` | `text` | NOT NULL |  | ATTENDED_COMPLETION · REFERRAL_SIGNUP · COMPENSATION · ADMIN |
+| `cause` | `text` | NOT NULL |  | ATTENDED_COMPLETION · REFERRAL_SIGNUP · COMPENSATION · ADMIN · BOOKING_FEE_PAYMENT · BOOKING_FEE_REFUND (v1.1.40, PCR-010) |
 | `booking_id` | `uuid` |  |  |  |
 | `referral_id` | `uuid` |  |  |  |
 | `granted_value_snapshot` | `integer` | NOT NULL | `0` | historical snapshot. the configured value AT the moment |
@@ -2040,10 +2083,10 @@ APPEND-ONLY physical Points ledger. Source/critical constraints: - ux_points_boo
 
 **Constraints**
 
-- `ck_points_transaction_cause` (CHECK): `CHECK ((cause = ANY (ARRAY['ATTENDED_COMPLETION'::text, 'REFERRAL_SIGNUP'::text, 'COMPENSATION'::text, 'ADMIN'::text])))`
+- `ck_points_transaction_cause` (CHECK): `CHECK ((cause = ANY (ARRAY['ATTENDED_COMPLETION'::text, 'REFERRAL_SIGNUP'::text, 'COMPENSATION'::text, 'ADMIN'::text, 'BOOKING_FEE_PAYMENT'::text, 'BOOKING_FEE_REFUND'::text])))` (v1.1.40)
 - `ck_points_tx_amounts` (CHECK): `CHECK (((balance_before >= 0) AND (balance_after >= 0) AND ((balance_after)::bigint = ((balance_before)::bigint + (amount)::bigint)) AND (granted_value_snapshot >= 0) AND (unrecovered_reversal_amount >= 0) AND (((requested_amount >= 0) AND (amount = requested_amount) AND (unrecovered_reversal_amount = 0)) OR ((requested_amount < 0) AND (amount = GREATEST(requested_amount, (- balance_before))) AND ((unrecovered_reversal_amount)::bigint = ((amount)::bigint - (requested_amount)::bigint))))))`
 - `ck_points_tx_config` (CHECK): `CHECK ((((cause = 'ADMIN'::text) AND (configuration_version_id IS NULL) AND (configuration_as_of IS NULL)) OR ((cause <> 'ADMIN'::text) AND (configuration_version_id IS NOT NULL) AND (configuration_as_of IS NOT NULL))))`
-- `ck_points_tx_origin` (CHECK): `CHECK ((((cause = 'ATTENDED_COMPLETION'::text) AND (booking_id IS NOT NULL) AND (referral_id IS NULL) AND (source_trust_event_id IS NOT NULL) AND (compensates_transaction_id IS NULL) AND (amount >= 0)) OR ((cause = 'REFERRAL_SIGNUP'::text) AND (referral_id IS NOT NULL) AND (booking_id IS NULL) AND (source_trust_event_id IS NULL) AND (compensates_transaction_id IS NULL) AND (amount >= 0)) OR ((cause = 'COMPENSATION'::text) AND (compensates_transaction_id IS NOT NULL) AND (((booking_id IS NOT NULL) AND (referral_id IS NULL) AND (source_trust_event_id IS NOT NULL)) OR ((booking_id IS NULL) AND (referral_id IS NOT NULL) AND (source_trust_event_id IS NULL)))) OR ((cause = 'ADMIN'::text) AND (booking_id IS NULL) AND (referral_id IS NULL) AND (source_trust_event_id IS NULL) AND (compensates_transaction_id IS NULL) AND (admin_id IS NOT NULL) AND (NULLIF(btrim(reason), ''::text) IS NOT NULL))))`
+- `ck_points_tx_origin` (CHECK): `CHECK ((((cause = 'ATTENDED_COMPLETION'::text) AND (booking_id IS NOT NULL) AND (referral_id IS NULL) AND (source_trust_event_id IS NOT NULL) AND (compensates_transaction_id IS NULL) AND (amount >= 0)) OR ((cause = 'REFERRAL_SIGNUP'::text) AND (referral_id IS NOT NULL) AND (booking_id IS NULL) AND (source_trust_event_id IS NULL) AND (compensates_transaction_id IS NULL) AND (amount >= 0)) OR ((cause = 'COMPENSATION'::text) AND (compensates_transaction_id IS NOT NULL) AND (((booking_id IS NOT NULL) AND (referral_id IS NULL) AND (source_trust_event_id IS NOT NULL)) OR ((booking_id IS NULL) AND (referral_id IS NOT NULL) AND (source_trust_event_id IS NULL)))) OR ((cause = 'ADMIN'::text) AND (booking_id IS NULL) AND (referral_id IS NULL) AND (source_trust_event_id IS NULL) AND (compensates_transaction_id IS NULL) AND (admin_id IS NOT NULL) AND (NULLIF(btrim(reason), ''::text) IS NOT NULL)) OR ((cause = 'BOOKING_FEE_PAYMENT'::text) AND (booking_id IS NULL) AND (referral_id IS NULL) AND (source_trust_event_id IS NULL) AND (compensates_transaction_id IS NULL) AND (admin_id IS NULL) AND (amount < 0) AND (amount = requested_amount)) OR ((cause = 'BOOKING_FEE_REFUND'::text) AND (booking_id IS NULL) AND (referral_id IS NULL) AND (source_trust_event_id IS NULL) AND (compensates_transaction_id IS NOT NULL) AND (amount > 0))))` (v1.1.40: a Booking Fee movement leaves `booking_id` to rewards; its Booking is its payment row's or its refund decision's)
 - `fk_points_transaction_admin_id__admin_account_id` (FK): `FOREIGN KEY (admin_id) REFERENCES iam.admin_account(id) ON DELETE RESTRICT`
 - `fk_points_transaction_booking_id__booking_id` (FK): `FOREIGN KEY (booking_id) REFERENCES booking.booking(id) ON DELETE RESTRICT`
 - `fk_points_transaction_compensates_transaction_id__points_t` (FK): `FOREIGN KEY (compensates_transaction_id) REFERENCES loyalty.points_transaction(id) ON DELETE RESTRICT`

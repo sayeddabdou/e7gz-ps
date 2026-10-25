@@ -22,11 +22,13 @@ Sources: arch 09 §1, §3.1, §3.4, §5 · arch 07 §5, §6, §7.4, §8 · arch 
 | Admin | `GET /admin/wallet?q=` · `GET /admin/users/{userId}/wallet` | `loyalty/web/AdminLoyaltyController` | E7-66 |
 | Admin | `GET /admin/points?q=` · `GET /admin/users/{userId}/points` · `POST /admin/points/adjust` `{userId, amount, reason}` | `loyalty/web/AdminLoyaltyController` | E7-66 |
 | Admin | `GET /admin/referrals?status=&q=` · `POST /admin/referrals/{referralId}/invalidate` `{reason}` | `loyalty/web/AdminLoyaltyController` | E7-67 |
-| Admin | `GET PUT /admin/points/settings` `{attendedPoints?, referralPoints?, walletRefundsEnabled?, reason}` | `loyalty/web/AdminLoyaltyController` | E7-68 |
-| Admin | `GET PUT /admin/fees` `{bookingFee?, tournamentCreationFee?, reason}` | `config/web/AdminFeeController` | E7-68 |
+| Admin | `GET PUT /admin/points/settings` `{attendedPoints?, referralPoints?, walletRefundsEnabled?, pointsPerFeeUnit?, reason}` (`pointsPerFeeUnit`: PCR-010) | `loyalty/web/AdminLoyaltyController` | E7-68 |
+| Admin | `GET PUT /admin/fees` `{bookingFeeMode?, bookingFee?, bookingFeePerHour?, tournamentCreationFee?, reason}` (mode and per-hour fee: PCR-010) | `config/web/AdminFeeController` | E7-68 |
 | Admin | `GET /admin/global-rules` — the no-show ladder, read-only (D7) | `trust/web/AdminGlobalRulesController` | E7-71 |
 
 New shared code enum: `WalletTransactionCause` (`BOOKING_FEE_REFUND`, the only value `ck_wallet_tx_launch_source` allows), registered in `ClosedValueContract`. Since PCR-009 (E7-66 PR 3, 24 Oct 2026) it also has `BOOKING_FEE_PAYMENT` (`ck_wallet_tx_source`): the Wallet pays a later booking's fee; a Wallet item's `amount` stays never negative and its `cause` says credited or spent.
+
+PCR-010 (E7-68, Product Owner decisions 25 Oct 2026) adds to the contract, additively: the booking fee mode and the per-hour fee on `/admin/fees`, the Points per fee unit on `/admin/points/settings`, `feeUnit` on `GET /customer/points`, `bookingFeePayment` (Points used, paid by Points, paid by the Wallet, left to pay) on the booking quote and the customer booking (`POST /customer/bookings`, `GET /customer/bookings/{id}`, the cancel answer), the shared code enum `BookingFeeMode` (`PER_BOOKING`, `PER_HOUR`) and two `PointsTransactionCause` members, `BOOKING_FEE_PAYMENT` and `BOOKING_FEE_REFUND`; a Points item of either names its booking in `bookingId`.
 
 Not in Sprint 4: `GET /admin/no-shows` (Sprint 7, S7-P1 "remaining admin modules"); account deletion and anonymisation (Sprint 7); `POST /admin/wallet/adjust` **never** exists (FR-PTS-11, PCR-004).
 

@@ -109,6 +109,8 @@ final class ClosedValueContract {
             one(BanInstanceStatus.class, "trust.ban_instance", "ck_ban_instance_status", "status"),
             one(BookingEventDetailCode.class, "booking.booking_history", "ck_booking_history_detail_code_scope", "detail_code"),
             one(BookingEventType.class, "booking.booking_history", "ck_booking_history_event_type_values", "event_type"),
+            // PCR-010 (v1.1.40): also the booking.fee_mode configuration key's allowed values (BookingFeeModeTest)
+            one(BookingFeeMode.class, "loyalty.booking_fee_points_payment", "ck_fee_points_payment_shape", "fee_mode"),
             one(BookingHistoryEntryKind.class, "booking.booking_history", "ck_booking_history_entry_kind", "entry_kind"),
             one(BookingSource.class, "booking.booking", "ck_booking_source_values", "source"),
 

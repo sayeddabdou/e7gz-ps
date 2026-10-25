@@ -135,7 +135,8 @@ class GuardErrorIdentifiersTest {
 
     /**
      * What a later migration does to one of these functions, so a fresh install (every migration) still compares with
-     * this upgrade: v1.1.37 (E7-113) reads the Online intake window from current sessions only.
+     * this upgrade: v1.1.37 (E7-113) reads the Online intake window from current sessions only; v1.1.40 (E7-68,
+     * PCR-010) checks the fee snapshot against {@code config.booking_fee_for}, per booking or per hour.
      */
     private static FunctionState laterMigrations(String name, FunctionState upgraded) {
         if (!name.equals("booking.validate_online_booking_intake")) {
@@ -143,8 +144,16 @@ class GuardErrorIdentifiersTest {
         }
         String before = "s.session_period @> NEW.created_at\n";
         assertThat(upgraded.definition()).containsOnlyOnce(before);
-        return new FunctionState(upgraded.definition().replace(before,
-                "s.session_period @> NEW.created_at AND s.superseded_at IS NULL\n"), upgraded.attributes());
+        String feeBefore = " -- §5.1: the stored fee is the global Booking Fee at creation.\n"
+                + " IF NEW.booking_fee_snapshot IS DISTINCT FROM config.effective_numeric('booking.fee',NEW.created_at) THEN\n";
+        assertThat(upgraded.definition()).containsOnlyOnce(feeBefore);
+        return new FunctionState(upgraded.definition()
+                .replace(before, "s.session_period @> NEW.created_at AND s.superseded_at IS NULL\n")
+                .replace(feeBefore, " -- §5.1, PCR-010 (v1.1.40): the stored fee is the Booking Fee of this booking's "
+                        + "nominal minutes at creation.\n"
+                        + " IF NEW.booking_fee_snapshot IS DISTINCT FROM (SELECT f.fee_amount FROM "
+                        + "config.booking_fee_for(NEW.nominal_booked_minutes,NEW.created_at) f) THEN\n"),
+                upgraded.attributes());
     }
 
     @Test

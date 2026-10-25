@@ -3,8 +3,10 @@ package ps.e7gz.loyalty.internal;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -17,6 +19,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
+import ps.e7gz.common.codes.BookingFeeMode;
 import ps.e7gz.common.codes.PointsTransactionCause;
 import ps.e7gz.common.codes.WalletTransactionCause;
 import ps.e7gz.common.error.ApiErrorCode;
@@ -59,7 +62,14 @@ public class LoyaltyLedgers {
                                     Money balanceAfter, UUID bookingId) {
     }
 
-    public record PointsHistory(int balance, Page<PointsTransaction> page) {
+    /**
+     * What Points pay now (PCR-010): {@code pointsPerFeeUnit} Points pay one hour of booking fee in PER_HOUR mode or
+     * one whole booking fee in PER_BOOKING mode.
+     */
+    public record FeeUnit(BookingFeeMode bookingFeeMode, int pointsPerFeeUnit) {
+    }
+
+    public record PointsHistory(int balance, FeeUnit feeUnit, Page<PointsTransaction> page) {
     }
 
     public record WalletHistory(Money balance, Page<WalletTransaction> page) {
@@ -78,10 +88,18 @@ public class LoyaltyLedgers {
     public record AdminWalletHistory(WalletAccount account, Page<WalletTransaction> page) {
     }
 
+    /**
+     * A Booking Fee movement (PCR-010) leaves {@code booking_id} to rewards: its Booking is its payment row's, or the
+     * refund decision's that gave the Points back.
+     */
     static final String POINTS_PAGE = """
             SELECT t.id, t.points_account_id, t.occurred_at, t.cause, t.requested_amount, t.amount,
-                   t.unrecovered_reversal_amount, t.balance_after, t.booking_id, t.referral_id, t.admin_id, t.reason
+                   t.unrecovered_reversal_amount, t.balance_after,
+                   COALESCE(t.booking_id, fp.booking_id, fr.booking_id) AS booking_id, t.referral_id, t.admin_id,
+                   t.reason
               FROM loyalty.points_transaction t
+              LEFT JOIN loyalty.booking_fee_points_payment fp ON fp.points_transaction_id = t.id
+              LEFT JOIN loyalty.booking_fee_refund fr ON fr.points_transaction_id = t.id
              WHERE t.points_account_id = :user
                AND (CAST(:after AS uuid) IS NULL
                     OR t.ledger_sequence < (SELECT c.ledger_sequence FROM loyalty.points_transaction c
@@ -129,12 +147,14 @@ public class LoyaltyLedgers {
     private final JdbcClient app;
     private final JdbcClient admin;
     private final AccountHolders holders;
+    private final Clock clock;
 
     LoyaltyLedgers(DataSource appDataSource, @Qualifier(DataSourceConfig.ADMIN_DATA_SOURCE) DataSource adminDataSource,
-                   AccountHolders holders) {
+                   AccountHolders holders, Clock clock) {
         this.app = JdbcClient.create(appDataSource);
         this.admin = JdbcClient.create(adminDataSource);
         this.holders = holders;
+        this.clock = clock;
     }
 
     // ------------------------------------------------------------------------------------------------- customer
@@ -142,13 +162,23 @@ public class LoyaltyLedgers {
     /** The customer's own points: balance and history (FR-PTS-01, FR-PTS-05). */
     public PointsHistory points(UUID userId, String cursor, Integer limit) {
         Objects.requireNonNull(userId, "userId");
-        return new PointsHistory(pointsBalance(app, userId), pointsPage(app, userId, cursor, limit));
+        return new PointsHistory(pointsBalance(app, userId), feeUnit(app), pointsPage(app, userId, cursor, limit));
     }
 
     /** The customer's own wallet: balance and Booking Fee refunds, read-only (PCR-004, FR-PTS-10). */
     public WalletHistory wallet(UUID userId, String cursor, Integer limit) {
         Objects.requireNonNull(userId, "userId");
         return new WalletHistory(walletBalance(app, userId), walletPage(app, userId, cursor, limit));
+    }
+
+    /** The fee mode and the Points per fee unit in force now (PCR-010). */
+    private FeeUnit feeUnit(JdbcClient jdbc) {
+        return jdbc.sql("""
+                        SELECT config.effective_text('booking.fee_mode', CAST(:at AS timestamptz)) AS mode,
+                               loyalty.config_integer('loyalty.points_per_fee_unit', CAST(:at AS timestamptz)) AS unit""")
+                .param("at", OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC))
+                .query((rs, n) -> new FeeUnit(BookingFeeMode.valueOf(rs.getString("mode")), rs.getInt("unit")))
+                .single();
     }
 
     // ---------------------------------------------------------------------------------------------- Platform Admin

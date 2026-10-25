@@ -42,14 +42,15 @@ import ps.e7gz.common.web.ResponseMetaFactory;
 import ps.e7gz.loyalty.api.AccountHolders;
 import ps.e7gz.loyalty.internal.LoyaltyLedgers;
 import ps.e7gz.loyalty.internal.PointsAdjustments;
+import ps.e7gz.loyalty.internal.PointsSettings;
 import ps.e7gz.messaging.api.Idempotency;
 import ps.e7gz.messaging.api.ResultAggregate;
 import ps.e7gz.messaging.api.StoredResponse;
 
 /**
  * Platform Admin Wallet, Points and Referrals modules and the points configuration (arch 09 §5, FR-ADM-09, FR-PTS-09,
- * FR-PTS-11, arch 01 §14 A8): the Sprint 4 contract (E7-65). Wallet and points implemented by E7-66; referrals (E7-67)
- * and settings (E7-68) are stubs until their tasks. The wallet is read-only here too: there is no admin wallet
+ * FR-PTS-11, arch 01 §14 A8): the Sprint 4 contract (E7-65). Wallet and points implemented by E7-66, settings by E7-68;
+ * referrals (E7-67) are stubs until their task. The wallet is read-only here too: there is no admin wallet
  * adjustment (FR-PTS-11, PCR-004). Writes need a reason, are audited (FR-AUD-06), notify the customer (FR-NTF-11) and
  * require the Idempotency-Key (PO decision D6, 17 Oct 2026). Lists are cursor-paged (arch 09 §1.2); {@code q} matches
  * part of the full name, username or email, or the exact phone, trimmed and case-insensitive. A user's history sits
@@ -64,19 +65,28 @@ public class AdminLoyaltyController {
     /** {@code technical.idempotency_record.endpoint} of the points adjustment (arch 08 section 6). */
     static final String ADJUST_ENDPOINT = "POST /api/v1/admin/points/adjust";
 
+    /** {@code technical.idempotency_record.endpoint} of the points settings change. */
+    static final String SETTINGS_ENDPOINT = "PUT /api/v1/admin/points/settings";
+
     private static final StoredResponse<AdminPointsTransaction> ADJUSTED = StoredResponse.of(
             AdminPointsTransaction.class, 200,
             (AdminPointsTransaction posted) -> new ResultAggregate("POINTS_TRANSACTION", posted.transactionId()));
 
+    /** The answer names no aggregate: a change touches up to four configuration versions. */
+    private static final StoredResponse<AdminPointsSettings> SETTINGS_CHANGED =
+            StoredResponse.of(AdminPointsSettings.class, 200);
+
     private final LoyaltyLedgers ledgers;
     private final PointsAdjustments adjustments;
+    private final PointsSettings settings;
     private final Idempotency idempotency;
     private final ResponseMetaFactory meta;
 
-    AdminLoyaltyController(LoyaltyLedgers ledgers, PointsAdjustments adjustments, Idempotency idempotency,
-                           ResponseMetaFactory meta) {
+    AdminLoyaltyController(LoyaltyLedgers ledgers, PointsAdjustments adjustments, PointsSettings settings,
+                           Idempotency idempotency, ResponseMetaFactory meta) {
         this.ledgers = ledgers;
         this.adjustments = adjustments;
+        this.settings = settings;
         this.idempotency = idempotency;
         this.meta = meta;
     }
@@ -184,23 +194,32 @@ public class AdminLoyaltyController {
 
     @GetMapping("/points/settings")
     @Operation(operationId = "adminGetPointsSettings",
-            summary = "Completed-booking points, referral points and the wallet-refund switch (A8)",
-            description = "Each value with the instant it took effect. Implemented by E7-68.")
+            summary = "Completed-booking points, referral points, the wallet-refund switch and the Points per fee "
+                    + "unit (A8, PCR-010)",
+            description = "Each value with the instant it took effect; a launch value shows the instant it was "
+                    + "installed. Implemented by E7-68.")
     public DataResponse<AdminPointsSettings> pointsSettings() {
-        throw NotImplementedYet.stub();
+        return meta.data(AdminPointsSettings.of(settings.current()));
     }
 
     @PutMapping("/points/settings")
-    @Operation(operationId = "adminChangePointsSettings", summary = "Change points values or the wallet-refund switch",
+    @Operation(operationId = "adminChangePointsSettings",
+            summary = "Change points values, the wallet-refund switch or the Points per fee unit",
             description = "PO decision D3 (17 Oct 2026). Omitted fields keep their value; a value equal to the current "
                     + "one changes nothing. Every change takes effect now and only for later events: history keeps the "
-                    + "value it was granted with (FR-ADM-11, FR-PTS-01). Points are whole numbers from 0; none given "
-                    + "is VALIDATION_FAILED. Through loyalty.configure. Implemented by E7-68.")
+                    + "value it was granted or paid with (FR-ADM-11, FR-PTS-01, PCR-010). Points are whole numbers "
+                    + "from 0; pointsPerFeeUnit is an even whole number from 2, else VALIDATION_FAILED on it; none "
+                    + "given is VALIDATION_FAILED. Through loyalty.configure. Implemented by E7-68.")
     @ApiError(status = 422, codes = ApiErrorCode.IDEMPOTENCY_KEY_REUSED)
     public DataResponse<AdminPointsSettings> changePointsSettings(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
-            @Valid @RequestBody AdminPointsSettingsChangeRequest request) {
-        throw NotImplementedYet.stub();
+            @Valid @RequestBody AdminPointsSettingsChangeRequest request,
+            @AuthenticationPrincipal AuthenticatedSubject admin) {
+        PointsSettings.Change change = new PointsSettings.Change(request.attendedPoints(), request.referralPoints(),
+                request.walletRefundsEnabled(), request.pointsPerFeeUnit(), request.reason());
+        return meta.data(settings.change(admin.id(), change,
+                idempotency.request(admin, SETTINGS_ENDPOINT, idempotencyKey, Map.of(), request), SETTINGS_CHANGED,
+                AdminPointsSettings::of).body());
     }
 
     @Schema(name = "AdminWalletAccount")
@@ -342,7 +361,21 @@ public class AdminLoyaltyController {
             @NotNull @Schema(description = "Points for a referral sign-up (1,000 at launch).")
             AdminConfiguredInteger referralPoints,
             @NotNull @Schema(description = "Whether booking-fee refunds credit the wallet (false at launch).")
-            AdminConfiguredBoolean walletRefundsEnabled) {
+            AdminConfiguredBoolean walletRefundsEnabled,
+            @NotNull @Schema(description = "Points that pay one hour of booking fee (PER_HOUR; a half hour costs "
+                    + "half) or one whole booking fee (PER_BOOKING); even, 10,000 at launch (PCR-010).")
+            AdminConfiguredInteger pointsPerFeeUnit) {
+
+        static AdminPointsSettings of(PointsSettings.Settings settings) {
+            return new AdminPointsSettings(integer(settings.attendedPoints()), integer(settings.referralPoints()),
+                    new AdminConfiguredBoolean(settings.walletRefundsEnabled().value(),
+                            settings.walletRefundsEnabled().effectiveFrom()),
+                    integer(settings.pointsPerFeeUnit()));
+        }
+
+        private static AdminConfiguredInteger integer(PointsSettings.Configured<Integer> configured) {
+            return new AdminConfiguredInteger(configured.value(), configured.effectiveFrom());
+        }
     }
 
     @Schema(name = "AdminConfiguredInteger")
@@ -364,6 +397,8 @@ public class AdminLoyaltyController {
             @Min(0) @Schema(nullable = true, example = "250") Integer attendedPoints,
             @Min(0) @Schema(nullable = true, example = "1000") Integer referralPoints,
             @Schema(nullable = true, example = "false") Boolean walletRefundsEnabled,
+            @Min(2) @Schema(nullable = true, description = "Even (PCR-010).", example = "10000")
+            Integer pointsPerFeeUnit,
             @NotBlank @Size(min = 1, max = 500) @Schema(example = "Autumn promotion.") String reason) {
     }
 }

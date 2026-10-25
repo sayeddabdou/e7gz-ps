@@ -57,6 +57,14 @@ class PointsNotificationRulesTest {
         assertThat(PointsNotificationRules.planFor(event(cause, 1000))).isEmpty();
     }
 
+    @ParameterizedTest
+    @EnumSource(value = PointsTransactionCause.class, names = {"BOOKING_FEE_PAYMENT", "BOOKING_FEE_REFUND"})
+    void pointsThatPayOrComeBackWithABookingFeeNotifyNobody(PointsTransactionCause cause) {
+        // PCR-010: no new notification type; the booking and its cancellation tell the customer
+        assertThat(PointsNotificationRules.planFor(event(cause, -10000))).isEmpty();
+        assertThat(PointsNotificationRules.planFor(event(cause, 10000))).isEmpty();
+    }
+
     @Test
     void anotherEventTypeIsNotOurs() {
         OutboxEvent event = event(PointsTransactionCause.ADMIN, 100);

@@ -20,6 +20,8 @@ import ps.e7gz.notification.api.NotificationRequest;
  *       notifies nobody.</li>
  *   <li>No other cause here: REFERRAL_SIGNUP is E7-67's; a COMPENSATION follows an admin attendance correction or a
  *       referral invalidation, which notify the customer themselves (E7-70, E7-67).</li>
+ *   <li>BOOKING_FEE_PAYMENT and BOOKING_FEE_REFUND (PCR-010): none. The customer spends Points by booking and sees it
+ *       on the booking; a refund gives them back with the booking's own cancellation notification.</li>
  * </ul>
  */
 final class PointsNotificationRules {
@@ -46,7 +48,7 @@ final class PointsNotificationRules {
                     ? Optional.of(NotificationRequest.of(ADMIN_ACCOUNT_CHANGE, NotificationRecipientType.CUSTOMER,
                             customer, Map.of()))
                     : Optional.empty();
-            case REFERRAL_SIGNUP, COMPENSATION -> Optional.empty();
+            case REFERRAL_SIGNUP, COMPENSATION, BOOKING_FEE_PAYMENT, BOOKING_FEE_REFUND -> Optional.empty();
         };
     }
 }
