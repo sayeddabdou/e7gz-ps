@@ -605,13 +605,14 @@ class OpeningHoursChangeIntegrationTest extends IntegrationTest {
 
     /**
      * Q2 audit accuracy at COMMIT: a database guard that fires only when the transaction commits (a deferred trigger)
-     * after the right PIN fails the COMMIT itself, which the API answers 500 (an unexpected failure - unchanged by
-     * E7-114). It is no refusal the client is told of, so the gate audits no acceptance with a code; the hours,
-     * cancellations, audit rows and the idempotency record all roll back. (A refusal raised at commit as an API error
-     * is audited: {@code OwnerPasswordGateIntegrationTest}.)
+     * after the right PIN is answered with its code, as the same guard firing earlier would be - never 500 (PO decision
+     * 25 Oct 2026, E7-114 follow-up) - so the gate audits one acceptance with that code, not counted; the hours,
+     * cancellations, the command's own audit row and the idempotency record all roll back. A failure at COMMIT with no
+     * code stays an unexpected failure, not audited
+     * ({@link #aFailureAtCommitAfterEveryWriteRollsBackTheHoursSessionsCancellationsRefundsEventsAndAudit}).
      */
     @Test
-    void aGuardFailingTheCommitAfterARightPinIsAnUnexpectedFailureNotAnAcceptedRefusal() throws Exception {
+    void aGuardFailingTheCommitAfterARightPinIsAnsweredWithItsCodeAndAuditedOnceAsAccepted() throws Exception {
         Venue v = venue();
         Booked confirmed = confirmed(v, v.world.customer.id(), v.world.room, v.tomorrowAt(12));
         Map<String, Object> change = v.closingTomorrow();
@@ -622,10 +623,13 @@ class OpeningHoursChangeIntegrationTest extends IntegrationTest {
 
         try (FaultTrigger ignored = FaultTrigger.atCommitAsGuard("venue.venue_opening_template", v.world.venue.id(),
                 "gd_reservation_conflict_booking")) {
-            commit(v, change, token, PIN, key, correlationId).andExpect(status().isInternalServerError());
+            expectError(commit(v, change, token, PIN, key, correlationId), 409,
+                    ApiErrorCode.SLOT_NO_LONGER_AVAILABLE);
         }
 
-        assertThat(auditOf(correlationId)).isEmpty();
+        assertThat(auditOf(correlationId)).containsExactly(
+                "OWNER_PASSWORD_ACCEPTED VENUE_ACCOUNT SUCCESS HOURS_CLOSURE_SAVE_CANCELLING_PROTECTED");
+        assertThat(refusalCodes(correlationId)).containsExactly("SLOT_NO_LONGER_AVAILABLE");
         assertThat(failures(v)).isZero();
         assertThat(writesOf(correlationId)).isZero();
         assertThat(snapshot(confirmed.bookingId())).isEqualTo(before);
