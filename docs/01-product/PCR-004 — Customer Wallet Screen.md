@@ -4,7 +4,7 @@
 **Status:** APPROVED / INCORPORATED  
 **Date:** 26 September 2026  
 **Applies to:** Product Specification v5.0 §46.6; amends `FR-PTS-11`  
-**Amended by:** PCR-009 (24 October 2026) — the Wallet pays the Booking Fee of a future booking
+**Amended by:** PCR-009 (24 October 2026) — the Wallet pays the Booking Fee of a future booking; PCR-010 (25 October 2026) — Points pay the Booking Fee, so there is no Points-to-Wallet conversion
 
 ## Change
 
@@ -13,7 +13,7 @@ The Customer Mobile App shows a **read-only wallet screen** at launch: the walle
 - The wallet is still credited only by E7GZ booking-fee refunds and **never pays the venue gaming charge** (`FR-PTS-10` unchanged).
 - No top-up, no payment with the wallet, no withdrawal.
 - Platform Admin wallet adjustment is still **not** a launch action.
-- Points-to-wallet conversion stays deferred (`FR-PTS-12` unchanged).
+- ~~Points-to-wallet conversion stays deferred (`FR-PTS-12` unchanged).~~ **Changed by PCR-010:** there is no Points-to-Wallet conversion; Points pay the Booking Fee directly.
 
 While the Global Booking Fee is EGP 0 the balance will normally be EGP 0.00; the screen must show that state clearly.
 

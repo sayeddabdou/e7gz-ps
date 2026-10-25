@@ -390,8 +390,8 @@
 | FR-PTS-09 | Loyalty | compensating row | exact historical reward; shortfall recorded | 07 §8 |
 | FR-PTS-10 | Loyalty | `wallet_account` | EGP 0; never pays the venue charge | 03 §16 |
 | FR-PTS-11 | Loyalty | — | ledger exists, **no** wallet screen, no admin adjust | 09 §3.4 |
-| FR-PTS-12 | Loyalty | `system_configuration` | conversion deferred, ratio configurable | 11 §7 |
-| FR-PTS-13 | Loyalty + Booking | `booking.booking_fee_snapshot` | EGP 0, per booking, displayed FREE, LC reuses original | 04 §4.3 |
+| FR-PTS-12 | Loyalty | `loyalty.points_per_fee_unit`, `booking_fee_points_payment`, `pay_booking_fee` | PCR-010: no conversion; Points pay the Booking Fee (10,000 per fee unit, even, configurable) | 03 §16 |
+| FR-PTS-13 | Loyalty + Booking | `booking.booking_fee_snapshot`, `config.booking_fee_for` | EGP 0, per booking or per hour (PCR-010), displayed FREE, LC reuses original | 04 §4.3 |
 | FR-PTS-14 | Loyalty | `fee_treatment` enum | 15-minute rule vs full refund | 03 §16 |
 | FR-PTS-15 | Loyalty | — | closed 18-member full-refund list | 03 §16 |
 | FR-PTS-16 | Loyalty | exhaustive switch, no default | one treatment per reachable reason | 03 §16 |

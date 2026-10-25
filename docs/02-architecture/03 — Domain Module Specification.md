@@ -737,7 +737,7 @@ TrustReplay
 
 **Responsibilities.** Append-only points and wallet ledgers with cached balances; referral lifecycle; the global booking fee and its historical snapshot; refund classification.
 
-**Entities.** `PointsAccount` + `PointsTransaction` · `WalletAccount` + `WalletTransaction` · `Referral` · `BookingFeeRefund`
+**Entities.** `PointsAccount` + `PointsTransaction` · `WalletAccount` + `WalletTransaction` · `Referral` · `BookingFeeRefund` · `BookingFeePointsPayment` (PCR-010)
 
 **Key rules.**
 
@@ -753,9 +753,11 @@ TrustReplay
 | Hard self-referral checks are same phone and same email; same device and same IP are stored as fraud signals only | `FR-PTS-08` |
 | Invalidating a REWARDED referral creates a compensating transaction for the **exact historical reward**, and may leave an unrecovered amount | `FR-PTS-09` |
 | Every user has a wallet at EGP 0 supporting fee refunds and a future conversion; **the wallet never pays the venue gaming charge** | `FR-PTS-10` |
-| The wallet pays the **whole** Booking Fee of a new Online Booking when it holds at least that fee, in the creating transaction; never partly; a refund of that fee goes back to the wallet | PCR-009 |
+| **Points pay the Booking Fee first**, automatically, in the creating transaction: 10,000 Points (configurable, even) = one fee unit — one hour of fee (PER_HOUR; a half hour costs half) or the whole fee (PER_BOOKING; fewer Points pay nothing); worth the fee in force at creation; never Wallet money | PCR-010 |
+| The wallet pays **what Points leave** of the Booking Fee of a new Online Booking when it holds at least that remainder, in the creating transaction; never partly | PCR-009, PCR-010 |
+| A refund returns **exactly the Points used** to the Points balance and the money part to the wallet; when a refund is due is unchanged (`FR-PTS-14`–`FR-PTS-19`) | PCR-009, PCR-010 |
 | The wallet ledger exists in the backend; **no active wallet screen ships**; admin wallet adjustment is not a launch action | `FR-PTS-11` |
-| The global booking fee is EGP 0, charged **per booking**, configurable, displayed as FREE; each booking stores the fee applied at creation; Late Confirm reuses the **original stored** fee | `FR-PTS-13` |
+| The global booking fee is EGP 0, charged **per booking or per hour** as the Platform Admin chooses (per hour: rate × nominal booked minutes / 60, half-up to 2 decimals), configurable, displayed as FREE; each booking stores the fee applied at creation; Late Confirm reuses the **original stored** fee | `FR-PTS-13`, PCR-010 |
 | Refund classification is binding the moment a non-zero fee is enabled: customer-caused follows the 15-minute rule; venue, platform or resource operationally caused receives a **full refund** | `FR-PTS-14` |
 | The full-refund reason list is closed — 18 members | `FR-PTS-15` |
 | **Every reachable terminal reason has exactly one fee treatment**; manual booking is NOT_APPLICABLE | `FR-PTS-16` |
@@ -768,11 +770,13 @@ TrustReplay
 PointsCommands   grantForAttendedCompletion(bookingId) / grantForReferral(referralId)
                  compensate(userId, amount, cause, adminId?, reason?)   // MIN rule
 WalletCommands   creditFeeRefund(bookingId, amount, cause)
-                 payFeeFromWallet(bookingId)   // PCR-009: at creation, whole fee only
+                 payBookingFee(bookingId)      // PCR-009 + PCR-010: at creation; Points first, then the
+                                               // Wallet pays the whole remainder or nothing
+                 previewFeePayment(customerId, nominalMinutes, at)   // the quote's Points / Wallet / left to pay
 ReferralCommands createOnSignup(referrerCode, referredUserId)
                  markRewardedOnVerification(referredUserId)   // FR-PTS-06
                  invalidate(referralId, adminId, reason)
-FeeQuery         currentBookingFee() : Money
+FeeQuery         bookingFeeFor(nominalMinutes, at) : FeeBasis + rate + Money   // PCR-010; config.booking_fee_for
                  feeTreatmentFor(terminalReason) : FULL | CUSTOMER_POLICY | NOT_APPLICABLE
 ```
 
@@ -824,11 +828,12 @@ Entities: `Notification` (the logical event for a recipient) · `NotificationDel
 
 | Rule | Source |
 |---|---|
-| Admin controls the Global Booking Fee (EGP 0) and the Tournament Creation Fee (EGP 0) | `FR-ADM-10` |
+| Admin controls the Global Booking Fee (EGP 0) — its mode (`booking.fee_mode`: PER_BOOKING or PER_HOUR), the per-booking amount (`booking.fee`) and the per-hour amount (`booking.fee_per_hour`) — and the Tournament Creation Fee (EGP 0) | `FR-ADM-10`, PCR-010 |
+| The fee of a booking at an instant is `config.booking_fee_for(nominalMinutes, at)` — the one definition the intake guard, the quote and booking creation share | `FR-PTS-13`, PCR-010 |
 | Every configuration change affects **future events only** | `FR-ADM-11`, `FR-AUD-01` |
 | Configurable keys are exactly those registered in `config.configuration_key` (`ADR-028`, `11 §7`); every other §56 value is a Product rule | `NFR-37` |
 
-`config.configuration_key` registers each key with type and bounds; `config.system_configuration` holds the current value; `config.configuration_version` is append-only with future-only `effective_from`, Admin and reason. Changes go through `config.change_configuration` (Loyalty keys through `loyalty.configure`). **Consumers snapshot the value into their own row at the moment the requirement names** — completion for points, OTP verification for referral reward, creation for booking fee — and never re-read configuration for a historical record.
+`config.configuration_key` registers each key with type and bounds; `config.system_configuration` holds the current value; `config.configuration_version` is append-only with future-only `effective_from`, Admin and reason. Changes go through `config.change_configuration` (Loyalty keys through `loyalty.configure`). **Consumers snapshot the value into their own row at the moment the requirement names** — completion for points, OTP verification for referral reward, creation for booking fee and for the Points per fee unit (PCR-010) — and never re-read configuration for a historical record.
 
 Core no-show ladder values are **Product rules, not admin-editable configuration** (`FR-TRS-13`), and are held as constants with a change-control comment.
 
