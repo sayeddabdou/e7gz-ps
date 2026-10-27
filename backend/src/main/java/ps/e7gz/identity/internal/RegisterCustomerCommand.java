@@ -17,11 +17,15 @@ import ps.e7gz.notification.api.CustomerPushDevices;
  * the database's ({@code ux_user_username_normalized}, {@code uq_user_account_phone_e164}); their violations reach
  * the client as {@code USERNAME_TAKEN} / {@code PHONE_TAKEN}. Every value is prepared before the command, so a retry reruns only SQL.
  *
+ * <p>A {@code referredByCode} (E7-67, FR-PTS-06) makes {@code loyalty.initialize_user} record the referral with the
+ * account: PENDING for a friend's code, INVALID for an unknown code or a self-referral (same phone or email).
+ *
  * <p>An account that never verified its phone does not keep them (Sprint 0 review S-3, E7-57): under its lock it is
  * released first ({@link UnverifiedAccounts}), and the registration goes ahead. A verified holder keeps them.
  */
 record RegisterCustomerCommand(UUID userId, String fullName, String username, String phoneE164, String email,
-                               String passwordHash, String referralCode, UUID challengeId, String codeHash,
+                               String passwordHash, String referralCode, String referredByCode, UUID challengeId,
+                               String codeHash,
                                String sealedCode, Outbox outbox, List<UUID> holders,
                                CustomerPushDevices pushDevices)
         implements Command<Void> {
@@ -46,9 +50,9 @@ record RegisterCustomerCommand(UUID userId, String fullName, String username, St
         ctx.jdbc().sql("""
                         INSERT INTO iam.user_account (id, full_name, username, phone_e164, email, password_hash,
                                                       phone_verified, phone_verified_at, email_verified,
-                                                      referral_code, joined_at)
+                                                      referral_code, referred_by_code, joined_at)
                         VALUES (:id, :fullName, :username, :phone, :email, :passwordHash,
-                                false, NULL, false, :referralCode, :joinedAt)
+                                false, NULL, false, :referralCode, :referredByCode, :joinedAt)
                         """)
                 .param("id", userId)
                 .param("fullName", fullName)
@@ -57,6 +61,7 @@ record RegisterCustomerCommand(UUID userId, String fullName, String username, St
                 .param("email", email)
                 .param("passwordHash", passwordHash)
                 .param("referralCode", referralCode)
+                .param("referredByCode", referredByCode)
                 .param("joinedAt", OtpChallenges.utc(ctx.commandNow()))
                 .update();
         OtpChallenges.issue(ctx, outbox, challengeId, userId, OtpPurpose.PHONE_VERIFICATION, phoneE164, codeHash,

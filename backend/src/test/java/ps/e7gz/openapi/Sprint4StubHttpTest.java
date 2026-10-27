@@ -53,9 +53,9 @@ class Sprint4StubHttpTest extends IntegrationTest {
     }
 
     @Test
-    void customerStandingAndReferralsAreStubs() throws Exception {
+    void customerStandingIsAStub() throws Exception {
         notImplemented(get("/api/v1/customer/account-standing"), customer);         // E7-71, E7-72
-        notImplemented(get("/api/v1/customer/referrals"), customer);                // E7-67
+        // E7-67 filled /customer/referrals: ReferralHttpTest
         // FRS §2.11: standing and history are open to every customer state, unverified included.
         notImplemented(get("/api/v1/customer/account-standing"), unverified);
     }
@@ -85,9 +85,7 @@ class Sprint4StubHttpTest extends IntegrationTest {
 
     @Test
     void adminReferralAndConfigurationRoutesAreStubs() throws Exception {
-        notImplemented(get("/api/v1/admin/referrals"), admin);                      // E7-67
-        notImplemented(write(post("/api/v1/admin/referrals/" + UUID.randomUUID() + "/invalidate"), REASON),
-                admin);                                                              // E7-67
+        // E7-67 filled /admin/referrals and its invalidation: ReferralHttpTest
         notImplemented(get("/api/v1/admin/points/settings"), admin);                // E7-68
         notImplemented(write(put("/api/v1/admin/points/settings"),
                 "{\"attendedPoints\":250,\"reason\":\"Autumn promotion.\"}"), admin); // E7-68

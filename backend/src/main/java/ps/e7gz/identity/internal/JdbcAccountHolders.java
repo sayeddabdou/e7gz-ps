@@ -55,6 +55,12 @@ class JdbcAccountHolders implements AccountHolders {
     }
 
     @Override
+    public Optional<String> referralCode(UUID userId) {
+        return jdbc.sql("SELECT u.referral_code FROM iam.user_account u WHERE u.id = :id")
+                .param("id", Objects.requireNonNull(userId, "userId")).query(String.class).optional();
+    }
+
+    @Override
     public Optional<Holder> find(CommandContext command, UUID userId) {
         Objects.requireNonNull(command, "command");
         return command.jdbc().sql("SELECT " + COLUMNS + " FROM iam.user_account u WHERE u.id = :id")
