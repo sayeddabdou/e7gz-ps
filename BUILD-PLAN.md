@@ -2550,6 +2550,10 @@ Carry-forward from E7-13 (do these too):
 Carry-forward from E7-65 (Sprint 4 contract, PO decisions 17 Oct 2026, do these too):
 - Fill the stubs of the Sprint 4 contract (E7-65, packages/api-client/SPRINT-4-CONTRACT.md) and keep their shapes: GET /customer/referrals (my code and my referrals; the friend's identity is not shown), GET /admin/referrals?status=&q= and POST /admin/referrals/{referralId}/invalidate {reason} -> AdminReferralInvalidation (recorded as ADMIN_FRAUD; a REWARDED referral also gets the compensating transaction under the zero floor, FR-PTS-09; an INVALID referral -> 409 ADMIN_ACTION_NOT_ALLOWED, D5). Idempotency-Key and reason required (D6). Replace this task's lines in backend/src/test/java/ps/e7gz/openapi/Sprint4StubHttpTest.java with your own tests.
 
+PO decisions 27 Oct 2026 (do these too):
+- The referral code format chosen in E7-13 stays: 8 characters from A-Z and 2-9 without look-alikes (no 0/O, 1/I/L), e.g. K7M3QX9P.
+- No device or IP fraud signals at launch: only the hard same-phone / same-email checks run (FR-PTS-08 allows storing them, it does not require it).
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2838,6 +2842,9 @@ PO decisions 25 Oct 2026 — PCR-010 (do these too):
 - The points history shows BOOKING_FEE_PAYMENT (spent on the booking it names, with a link to that booking) and BOOKING_FEE_REFUND (given back by that booking's refund). The points screen explains that points pay the booking fee by themselves, using the fee mode and the Points per fee unit from GET /customer/points (never a hard-coded 10,000).
 - The booking summary (E7-50's screen, from GET /customer/bookings/quote) and the booking detail show bookingFeePayment when the fee is above EGP 0: the fee, the Points used, what the Points and the wallet pay, and what is left to pay. At EGP 0 the fee stays FREE and nothing else is shown.
 - The wallet screen line says the wallet pays what points leave of the next booking's fee, when it covers all of it (PCR-009 as amended by PCR-010).
+
+Carry-forward from E7-67 (do this too):
+- The sign-up screen gets an optional "Referral code" field, sent as referralCode in POST /customer/auth/register (trimmed and upper-cased by the server). A wrong code never blocks the sign-up: the server records it as an INVALID referral, so the screen shows no error for it.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
