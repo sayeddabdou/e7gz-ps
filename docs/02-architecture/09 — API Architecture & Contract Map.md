@@ -167,7 +167,7 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant S as SMS provider
 
-    C->>A: POST /customer/auth/register {fullName, username, phone, email, password}
+    C->>A: POST /customer/auth/register {fullName, username, phone, email, password, referralCode?}
     A->>DB: uniqueness on normalised username + phone (FR-ACC-01, FR-ACC-06)
     A->>DB: INSERT user_account (phone_verified = false)
     A->>DB: INSERT otp_challenge (code hashed, 5-min validity)
@@ -210,7 +210,7 @@ sequenceDiagram
 
 | Method | Path | Auth | FR |
 |---|---|---|---|
-| `POST` | `/customer/auth/register` | — | `FR-ACC-01`, `FR-ACC-06` |
+| `POST` | `/customer/auth/register` — optional `referralCode`: the inviting friend's code (E7-67) | — | `FR-ACC-01`, `FR-ACC-06`, `FR-PTS-06` |
 | `POST` | `/customer/auth/otp/send` | — | `FR-ACC-04` |
 | `POST` | `/customer/auth/verify-phone` `{otpChallengeId, code, password?}` — `password` is required for a code from `otp/send` (not the registration's own): it replaces the old password and revokes every session (Sprint 0 review, E7-57) | — | `FR-ACC-02`, `FR-ACC-04` |
 | `POST` | `/customer/auth/login` · `/refresh` · `/logout` | mixed | — |

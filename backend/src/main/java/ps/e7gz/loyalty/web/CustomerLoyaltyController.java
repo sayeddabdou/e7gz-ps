@@ -22,10 +22,10 @@ import ps.e7gz.common.money.Money;
 import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.DataResponse;
 import ps.e7gz.common.web.MoneyView;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.ResponseMetaFactory;
 import ps.e7gz.loyalty.internal.LoyaltyLedgers;
+import ps.e7gz.loyalty.internal.Referrals;
 
 /**
  * The customer's points, referrals and wallet (arch 09 §3.4, FR-PTS-01, FR-PTS-06, PCR-004): the Sprint 4 contract
@@ -40,10 +40,12 @@ import ps.e7gz.loyalty.internal.LoyaltyLedgers;
 public class CustomerLoyaltyController {
 
     private final LoyaltyLedgers ledgers;
+    private final Referrals referrals;
     private final ResponseMetaFactory meta;
 
-    CustomerLoyaltyController(LoyaltyLedgers ledgers, ResponseMetaFactory meta) {
+    CustomerLoyaltyController(LoyaltyLedgers ledgers, Referrals referrals, ResponseMetaFactory meta) {
         this.ledgers = ledgers;
+        this.referrals = referrals;
         this.meta = meta;
     }
 
@@ -64,11 +66,15 @@ public class CustomerLoyaltyController {
     @Operation(operationId = "customerGetReferrals",
             summary = "My referral code and the sign-ups that used it (FR-PTS-06, FR-PTS-07)",
             description = "A referral is PENDING until the friend verifies their phone, then REWARDED with the value in "
-                    + "force at that moment, or INVALID (FR-PTS-06). Implemented by E7-67.")
+                    + "force at that moment, or INVALID (FR-PTS-06). Newest sign-up first; the friend is not named. "
+                    + "Implemented by E7-67.")
     public DataResponse<CustomerReferrals> referrals(
             @RequestParam(required = false) String cursor,
-            @RequestParam(required = false) @Min(1) @Max(100) Integer limit) {
-        throw NotImplementedYet.stub();
+            @RequestParam(required = false) @Min(1) @Max(100) Integer limit,
+            @AuthenticationPrincipal AuthenticatedSubject customer) {
+        Referrals.MyReferrals mine = referrals.mine(customer.id(), cursor, limit);
+        return meta.data(new CustomerReferrals(mine.referralCode(), mine.page().items().stream()
+                .map(CustomerReferral::of).toList(), mine.page().nextCursor()));
     }
 
     @GetMapping("/wallet")
@@ -131,6 +137,11 @@ public class CustomerLoyaltyController {
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true,
                     description = "The points granted, stored at verification (FR-PTS-07).", example = "1000")
             Integer rewardPoints) {
+
+        static CustomerReferral of(Referrals.CustomerReferral referral) {
+            return new CustomerReferral(referral.referralId(), referral.status(), referral.signedUpAt(),
+                    referral.rewardedAt(), referral.rewardPoints());
+        }
     }
 
     @Schema(name = "CustomerWallet")
