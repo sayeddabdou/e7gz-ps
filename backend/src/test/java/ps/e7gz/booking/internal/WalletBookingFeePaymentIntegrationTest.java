@@ -13,7 +13,6 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import javax.sql.DataSource;
@@ -34,6 +33,7 @@ import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.correlation.CorrelationId;
+import ps.e7gz.common.money.Money;
 import ps.e7gz.common.persistence.DataSourceConfig;
 import ps.e7gz.common.security.AccessTokens;
 import ps.e7gz.loyalty.api.BookingFeePayments;
@@ -180,16 +180,20 @@ class WalletBookingFeePaymentIntegrationTest extends IntegrationTest {
                          WHERE booking_id = :id AND cause = 'BOOKING_FEE_PAYMENT'""")
                 .param("id", next.bookingId()).query(UUID.class).single();
 
-        Optional<UUID> again = runner.run(new Shared<Optional<UUID>>(customer, context ->
-                payments.payFromWallet(context, customer, next.bookingId())));
-        assertThat(again).contains(paid);
+        BookingFeePayments.FeePayment again = runner.run(new Shared<BookingFeePayments.FeePayment>(customer,
+                context -> payments.pay(context, customer, next.bookingId())));
+        assertThat(again.paidByWallet()).isEqualTo(Money.of(FEE));
+        assertThat(VenueAnswerDb.OWNER.sql("""
+                        SELECT id FROM loyalty.wallet_transaction
+                         WHERE booking_id = :id AND cause = 'BOOKING_FEE_PAYMENT'""")
+                .param("id", next.bookingId()).query(UUID.class).list()).as("no second payment").containsExactly(paid);
 
         CreatedBooking unpaid = creation.create(world.request(world.anotherCustomer(), world.room,
                 world.start().plus(Duration.ofHours(4)), 60));
         UUID other = VenueAnswerDb.OWNER.sql("SELECT customer_id FROM booking.booking WHERE id = :id")
                 .param("id", unpaid.bookingId()).query(UUID.class).single();
         assertThatThrownBy(() -> runner.run(new Shared<>(other, context ->
-                payments.payFromWallet(context, other, unpaid.bookingId()))))
+                payments.pay(context, other, unpaid.bookingId()))))
                 .rootCause().hasMessageContaining("only by the command that creates the Booking");
     }
 

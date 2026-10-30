@@ -2,7 +2,6 @@ package ps.e7gz.openapi;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -84,17 +83,12 @@ class Sprint4StubHttpTest extends IntegrationTest {
     }
 
     @Test
-    void adminReferralAndConfigurationRoutesAreStubs() throws Exception {
+    void adminReferralAndGlobalRulesRoutesAreStubs() throws Exception {
         notImplemented(get("/api/v1/admin/referrals"), admin);                      // E7-67
         notImplemented(write(post("/api/v1/admin/referrals/" + UUID.randomUUID() + "/invalidate"), REASON),
                 admin);                                                              // E7-67
-        notImplemented(get("/api/v1/admin/points/settings"), admin);                // E7-68
-        notImplemented(write(put("/api/v1/admin/points/settings"),
-                "{\"attendedPoints\":250,\"reason\":\"Autumn promotion.\"}"), admin); // E7-68
-        notImplemented(get("/api/v1/admin/fees"), admin);                           // E7-68
         notImplemented(get("/api/v1/admin/global-rules"), admin);                   // E7-71 (PO 20 Oct)
-        notImplemented(write(put("/api/v1/admin/fees"), "{\"bookingFee\":{\"amount\":\"5.00\",\"currency\":\"EGP\"},"
-                + "\"reason\":\"Fee switched on.\"}"), admin);                      // E7-68
+        // E7-68 filled /admin/fees and /admin/points/settings: AdminConfigurationHttpTest
     }
 
     @Test

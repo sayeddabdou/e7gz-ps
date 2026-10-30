@@ -6,29 +6,39 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Objects;
 import org.springframework.stereotype.Component;
+import ps.e7gz.common.codes.BookingFeeMode;
 import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.money.Money;
 import ps.e7gz.config.api.BookingFees;
 
-/** {@code config.effective_numeric('booking.fee', at)} on the command's transaction (granted to the app runtime). */
+/** {@code config.booking_fee_for(nominalMinutes, at)} on the command's transaction (granted to the app runtime). */
 @Component
 class JdbcBookingFees implements BookingFees {
 
-    static final String KEY = "booking.fee";
+    static final String PER_BOOKING_KEY = "booking.fee";
+    static final String PER_HOUR_KEY = "booking.fee_per_hour";
 
-    static final String EFFECTIVE = "SELECT config.effective_numeric(:key, CAST(:at AS timestamptz))";
+    static final String FEE = """
+            SELECT f.fee_mode, f.fee_rate, f.fee_amount
+              FROM config.booking_fee_for(:minutes, CAST(:at AS timestamptz)) f""";
 
     @Override
-    public Money effectiveAt(CommandContext command, Instant at) {
+    public BookingFee forBooking(CommandContext command, int nominalMinutes, Instant at) {
         Objects.requireNonNull(command, "command");
         Objects.requireNonNull(at, "at");
-        BigDecimal value = command.jdbc().sql(EFFECTIVE)
-                .param("key", KEY)
+        return command.jdbc().sql(FEE)
+                .param("minutes", nominalMinutes)
                 .param("at", OffsetDateTime.ofInstant(at, ZoneOffset.UTC))
-                .query(BigDecimal.class).single();
-        if (value.stripTrailingZeros().scale() > Money.SCALE) {
-            throw new IllegalStateException(KEY + " has more than " + Money.SCALE + " decimal places: " + value);
-        }
-        return Money.of(value);
+                .query((rs, n) -> {
+                    BookingFeeMode mode = BookingFeeMode.valueOf(rs.getString("fee_mode"));
+                    BigDecimal rate = rs.getBigDecimal("fee_rate");
+                    if (rate.stripTrailingZeros().scale() > Money.SCALE) {
+                        String key = mode == BookingFeeMode.PER_HOUR ? PER_HOUR_KEY : PER_BOOKING_KEY;
+                        throw new IllegalStateException(key + " has more than " + Money.SCALE + " decimal places: "
+                                + rate);
+                    }
+                    return new BookingFee(mode, Money.of(rate), Money.of(rs.getBigDecimal("fee_amount")));
+                })
+                .single();
     }
 }

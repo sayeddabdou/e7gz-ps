@@ -16,6 +16,12 @@ const booking = {
   nominalBookedMinutes: 120,
   venuePriceTotal: { amount: "400.00", currency: "EGP" as const },
   bookingFee: { amount: "0.00", currency: "EGP" as const, displayAsFree: true },
+  bookingFeePayment: {
+    pointsUsed: 0,
+    paidByPoints: { amount: "0.00", currency: "EGP" as const },
+    paidByWallet: { amount: "0.00", currency: "EGP" as const },
+    leftToPay: { amount: "0.00", currency: "EGP" as const },
+  },
   totalAmount: { amount: "400.00", currency: "EGP" as const },
   venueResponseExpiresAt: null,
   venueResponsePaused: false,

@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import ps.e7gz.common.codes.BookingFeeMode;
 import ps.e7gz.common.codes.PointsTransactionCause;
 import ps.e7gz.common.codes.ReferralStatus;
 import ps.e7gz.common.codes.WalletTransactionCause;
@@ -50,14 +51,17 @@ public class CustomerLoyaltyController {
     @GetMapping("/points")
     @Operation(operationId = "customerGetPoints", summary = "My points balance and history (FR-PTS-01, FR-PTS-05)",
             description = "The balance is never negative (FR-PTS-03). amount is what was applied: a reversal of 1,000 "
-                    + "at a balance of 300 shows -300. Implemented by E7-66.")
+                    + "at a balance of 300 shows -300. Points pay the booking fee by themselves (PCR-010): "
+                    + "BOOKING_FEE_PAYMENT spends them on the booking it names, BOOKING_FEE_REFUND gives them back; "
+                    + "feeUnit says how many pay what, for the app's explanation. Implemented by E7-66 and E7-68.")
     public DataResponse<CustomerPoints> points(
             @RequestParam(required = false) String cursor,
             @RequestParam(required = false) @Min(1) @Max(100) Integer limit,
             @AuthenticationPrincipal AuthenticatedSubject customer) {
         LoyaltyLedgers.PointsHistory points = ledgers.points(customer.id(), cursor, limit);
-        return meta.data(new CustomerPoints(points.balance(), points.page().items().stream()
-                .map(CustomerPointsTransaction::of).toList(), points.page().nextCursor()));
+        return meta.data(new CustomerPoints(points.balance(), CustomerPointsFeeUnit.of(points.feeUnit()),
+                points.page().items().stream().map(CustomerPointsTransaction::of).toList(),
+                points.page().nextCursor()));
     }
 
     @GetMapping("/referrals")
@@ -89,9 +93,24 @@ public class CustomerLoyaltyController {
     @Schema(name = "CustomerPoints")
     public record CustomerPoints(
             @NotNull @Schema(example = "1200") Integer balance,
+            @NotNull CustomerPointsFeeUnit feeUnit,
             @NotNull List<CustomerPointsTransaction> items,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true, example = "eyJvZmZzZXQiOjIwfQ")
             String nextCursor) {
+    }
+
+    /**
+     * What Points pay now (PCR-010): {@code pointsPerFeeUnit} Points pay one hour of booking fee (PER_HOUR; a half hour
+     * costs half) or one whole booking fee (PER_BOOKING), worth the fee in force on the day of booking.
+     */
+    @Schema(name = "CustomerPointsFeeUnit")
+    public record CustomerPointsFeeUnit(
+            @NotNull BookingFeeMode bookingFeeMode,
+            @NotNull @Schema(example = "10000") Integer pointsPerFeeUnit) {
+
+        static CustomerPointsFeeUnit of(LoyaltyLedgers.FeeUnit unit) {
+            return new CustomerPointsFeeUnit(unit.bookingFeeMode(), unit.pointsPerFeeUnit());
+        }
     }
 
     @Schema(name = "CustomerPointsTransaction")
@@ -99,7 +118,8 @@ public class CustomerLoyaltyController {
             @NotNull @Schema(example = "018f3c2a-7b1e-7c4d-9e0f-1a2b3c4d5e6f") UUID transactionId,
             @NotNull @Schema(example = "2026-10-20T22:05:00Z") Instant occurredAt,
             @NotNull PointsTransactionCause cause,
-            @NotNull @Schema(description = "Applied amount: positive earned, negative reversed.", example = "200")
+            @NotNull @Schema(description = "Applied amount: positive earned or given back, negative reversed or spent "
+                    + "on a booking fee.", example = "200")
             Integer amount,
             @NotNull @Schema(example = "1200") Integer balanceAfter,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) UUID bookingId) {

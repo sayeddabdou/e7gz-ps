@@ -3,7 +3,7 @@
 
 **Status:** APPROVED — Sayed (Product Owner), 24 October 2026.\
 **Date:** 24 October 2026\
-**Applies to:** Product Specification v5.0 §46.6 and §34; amends `PCR-004` ("no payment with the wallet") and `FR-PTS-10`, `FR-PTS-11`
+**Applies to:** Product Specification v5.0 §46.6 and §34; amends `PCR-004` ("no payment with the wallet") and `FR-PTS-10`, `FR-PTS-11`\n**Amended by:** PCR-010 (25 October 2026) — Points pay the Booking Fee first; the Wallet pays what Points leave, still only when it holds all of it
 
 ## Why
 

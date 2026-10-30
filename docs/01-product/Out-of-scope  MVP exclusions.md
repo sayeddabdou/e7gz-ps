@@ -53,7 +53,7 @@ The frozen Product Specification explicitly excludes:
 - **No direct Customer hard-delete of retained historical data.** The Customer may initiate Account Deletion in-app, but completion uses the audited Support / Platform Admin anonymisation process and preserves required history.
 - **No Customer-side attendance proof** such as QR, PIN, device confirmation or biometrics. Check-in is a Venue staff action.
 - ~~No active Customer Wallet screen at Launch.~~ **Changed by PCR-004:** a read-only wallet screen (balance + refund history) ships at Launch; no top-up, no pay-with-wallet.
-- **No points-to-wallet conversion at Launch.**
+- **No points-to-wallet conversion at Launch.** *(PCR-010: there is none at all; Points pay the Booking Fee directly once it is above EGP 0.)*
 - **No online collection of Venue gaming charges.** Customer ↔ Venue gaming payment remains outside E7GZ.
 - **No booking price filter** in Find Available.
 - **No Favorites / social feed / Elo / leaderboards / match history.**
@@ -146,7 +146,7 @@ The frozen Product Specification explicitly excludes:
 The PRD records the following as possible future work, **not commitments**:
 
 - Non-zero Booking Fee with payment collection and settlement
-- Wallet activation and points-to-wallet conversion
+- Wallet activation ~~and points-to-wallet conversion~~ *(PCR-010: replaced by Points paying the Booking Fee, built now and active once the fee is above EGP 0)*
 - Arabic Customer Mobile UI
 - Tournament brackets, scoring and per-match scheduling
 - Tournament payment collection and prize settlement
