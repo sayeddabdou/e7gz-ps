@@ -2536,6 +2536,7 @@ Read CLAUDE.md first. You are implementing task S4-P2 — "Referrals" (Platform 
 Read only these docs for this task:
 - arch 03 §16
 - FR-PTS-06
+- PCR-011 (Referral code only at launch; the referral link is deferred)
 
 Do:
 1. Referral code on signup; value read at OTP verification; reward/invalidate via producers.
@@ -2549,6 +2550,15 @@ Carry-forward from E7-13 (do these too):
 
 Carry-forward from E7-65 (Sprint 4 contract, PO decisions 17 Oct 2026, do these too):
 - Fill the stubs of the Sprint 4 contract (E7-65, packages/api-client/SPRINT-4-CONTRACT.md) and keep their shapes: GET /customer/referrals (my code and my referrals; the friend's identity is not shown), GET /admin/referrals?status=&q= and POST /admin/referrals/{referralId}/invalidate {reason} -> AdminReferralInvalidation (recorded as ADMIN_FRAUD; a REWARDED referral also gets the compensating transaction under the zero floor, FR-PTS-09; an INVALID referral -> 409 ADMIN_ACTION_NOT_ALLOWED, D5). Idempotency-Key and reason required (D6). Replace this task's lines in backend/src/test/java/ps/e7gz/openapi/Sprint4StubHttpTest.java with your own tests.
+
+PO decisions 27 Oct 2026 (do these too):
+- The referral code format chosen in E7-13 stays: 8 characters from A-Z and 2-9 without look-alikes (no 0/O, 1/I/L), e.g. K7M3QX9P.
+- No device or IP fraud signals at launch: only the hard same-phone / same-email checks run (FR-PTS-08 allows storing them, it does not require it).
+
+PO decisions 30 Oct 2026 (do these too):
+- A referral reversal that deducted nothing (balance 0) sends no notice. When points were taken back it is ADMIN_ACCOUNT_CHANGE (FR-NTF-11).
+- PCR-011: a customer gets a Referral Code and no Referral Link at launch. The link is a future candidate.
+- A wrong code at sign-up shows no message and the sign-up continues; it is recorded as an INVALID referral.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2567,15 +2577,29 @@ Read only these docs for this task:
 - ADR-028
 - arch 11 (config scope)
 - arch 01 §14 A8
+- PCR-010 (Points pay the Booking Fee; per-booking or per-hour Booking Fee)
+- arch 03 §16 and §17.3
+- arch 09 §3.3, §3.4, §5
 
 Do:
 1. Read effective values via config.effective_numeric; admin changes via config.change_configuration / loyalty.configure; only fees and points are configurable (A8).
 
 Done when (write these as tests first where possible):
 - Changing the booking fee affects only bookings created after the change.
+- A 2.5-hour PER_HOUR booking (EGP 10 per hour, 10,000 Points per hour) by a customer with 23,000 Points and EGP 3 in the wallet stores a fee of EGP 25, pays EGP 20 with 20,000 Points, takes nothing from the wallet and leaves EGP 5; a venue cancellation gives the 20,000 Points back.
+- A PER_BOOKING booking (EGP 20) uses 10,000 Points when the customer holds 12,000, and none when they hold 7,000.
 
 Carry-forward from E7-65 (Sprint 4 contract, PO decisions 17 Oct 2026, do these too):
 - Fill the stubs of the Sprint 4 contract (E7-65, packages/api-client/SPRINT-4-CONTRACT.md): GET/PUT /admin/fees (config/web AdminFeeController, config.change_configuration) and the new GET/PUT /admin/points/settings (D3; loyalty/web AdminLoyaltyController, loyalty.configure) for attendedPoints, referralPoints and walletRefundsEnabled. Each value with its effectiveFrom; a change takes effect now, for later events only (FR-ADM-11). Omitted fields keep their value; a value equal to the current one changes nothing (skip it: change_configuration refuses an unchanged value); none given -> 400 VALIDATION_FAILED. The Idempotency-Key is required on both PUTs (D6). Replace this task's lines in backend/src/test/java/ps/e7gz/openapi/Sprint4StubHttpTest.java with your own tests.
+
+PO decisions 25 Oct 2026 — PCR-010, Points pay the Booking Fee; per-booking or per-hour fee (built in this task, PO decision "all in E7-68"; do these too):
+- Fee mode: the Platform Admin chooses PER_BOOKING (booking.fee, as today) or PER_HOUR (booking.fee_per_hour x nominal booked minutes / 60, half-up to 2 decimals: 1.5 h at EGP 10 = EGP 15). A change applies to bookings created after it; launch is PER_BOOKING at EGP 0, shown as FREE. config.booking_fee_for(nominalMinutes, at) is the one definition the intake guard (booking.validate_online_booking_intake), the quote and booking creation use; Late Confirm keeps the stored fee.
+- Points pay the fee first, automatically, in the transaction that creates the booking: loyalty.points_per_fee_unit Points (10,000, admin-configurable, even) = one fee unit, worth the fee in force at creation. PER_HOUR: one hour of fee per unit, a half hour costs half a unit, several units on one booking, as many half hours as the balance covers. PER_BOOKING: the whole fee needs a full unit; fewer Points pay nothing. Then the wallet pays what is left only when it holds all of it (PCR-009 on the remainder); the rest stays uncollected until the payment provider exists (ADR-018). Never the venue gaming charge, never a manual booking or the tournament creation fee.
+- Refunds: when a refund is due is unchanged (FR-PTS-14 to FR-PTS-19); it gives back exactly the Points used, and the money part goes to the wallet as before. A later reversal of a reward that was already spent follows the zero floor (FR-PTS-03, FR-PTS-04).
+- Shown before and after booking: the quote (GET /customer/bookings/quote) and the customer booking carry bookingFeePayment {pointsUsed, paidByPoints, paidByWallet, leftToPay}; GET /customer/points also tells the app the fee mode and the Points per fee unit, so it can explain them without hard-coded numbers. PointsTransactionCause gains BOOKING_FEE_PAYMENT and BOOKING_FEE_REFUND. No new notification type.
+- Admin API: GET/PUT /admin/fees gain bookingFeeMode (PER_BOOKING / PER_HOUR) and bookingFeePerHour, through config.change_configuration in one admin command; GET/PUT /admin/points/settings gains pointsPerFeeUnit, through loyalty.configure (an odd value or one below 2 -> 400 VALIDATION_FAILED). The existing rules for omitted and unchanged fields apply to the new fields too.
+- Database (physical model v1.1.40, V202610251200__points_pay_booking_fee.sql, .dbm, change report, upgrade seed, migration-lock line, PO review): the keys booking.fee_mode, booking.fee_per_hour and loyalty.points_per_fee_unit; config.effective_text and config.booking_fee_for; the table loyalty.booking_fee_points_payment; the Points causes BOOKING_FEE_PAYMENT and BOOKING_FEE_REFUND; the producer loyalty.pay_booking_fee (Points, then the wallet; loyalty.pay_fee_from_wallet becomes its wallet part); the Points refund in loyalty.record_refund; assert_booking, assert_user, settle_refund and record_fee_receipt on the money part. This item may update docs/ (PCR-010 and the arch docs it names).
+- Engine lane (Amr reviews): the intake guard's fee check, the booking-creation call (loyalty.api.BookingFeePayments pays Points, then the wallet) and the quote and booking-detail fields. Clients build the screens in E7-74 and E7-75.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2796,6 +2820,8 @@ Read only these docs for this task:
 - FRS §4.11, §4.12 (Trust and bans; Points, Referrals, Wallet and Fees)
 - FRS §2.11 (customer capability matrix)
 - arch 09 §3.4
+- PCR-010 (Points pay the Booking Fee; per-booking or per-hour Booking Fee)
+- PCR-011 (Referral code only at launch; the referral link is deferred)
 
 Do:
 1. Account standing (ban, Verified Player), points history, referral code sharing.
@@ -2819,6 +2845,17 @@ Carry-forward from E7-65 (Sprint 4 contract, PO decisions 17 Oct 2026, do these 
 PO decision 24 Oct 2026 — PCR-009 (do this too):
 - The wallet list shows both causes: BOOKING_FEE_REFUND (added) and BOOKING_FEE_PAYMENT (spent on the booking it names, with a link to that booking); amount is always positive, so the sign comes from the cause. The balance line explains that it pays the next booking's fee when it covers the whole fee.
 
+PO decisions 25 Oct 2026 — PCR-010 (do these too):
+- The points history shows BOOKING_FEE_PAYMENT (spent on the booking it names, with a link to that booking) and BOOKING_FEE_REFUND (given back by that booking's refund). The points screen explains that points pay the booking fee by themselves, using the fee mode and the Points per fee unit from GET /customer/points (never a hard-coded 10,000).
+- The booking summary (E7-50's screen, from GET /customer/bookings/quote) and the booking detail show bookingFeePayment when the fee is above EGP 0: the fee, the Points used, what the Points and the wallet pay, and what is left to pay. At EGP 0 the fee stays FREE and nothing else is shown.
+- The wallet screen line says the wallet pays what points leave of the next booking's fee, when it covers all of it (PCR-009 as amended by PCR-010).
+
+Carry-forward from E7-67 (do this too):
+- The sign-up screen gets an optional "Referral code" field, sent as referralCode in POST /customer/auth/register (trimmed and upper-cased by the server). A wrong code never blocks the sign-up: the server records it as an INVALID referral, so the screen shows no error for it.
+
+PO decision 30 Oct 2026, PCR-011 (do this too):
+- The app shares the Referral Code as text, with no link and no deep link.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2839,6 +2876,7 @@ Read only these docs for this task:
 - FRS F-30…F-35 (trust replay, attendance correction, bans, Verified Player, points, referrals)
 - FRS §4.11, §4.12, §4.14
 - FRS §2.10 (actor / action authorization)
+- PCR-010 (Points pay the Booking Fee; per-booking or per-hour Booking Fee)
 
 Do:
 1. Trust corrections, ban lift, Verified Player actions, points adjustment, fees/points configuration with effective-from display.
@@ -2858,6 +2896,11 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 Carry-forward from E7-65 (Sprint 4 contract, PO decisions 17 Oct 2026, do these too):
 - Build against the Sprint 4 contract (E7-65, packages/api-client/SPRINT-4-CONTRACT.md): every admin write asks for a reason (required, 1-500 characters) and sends an Idempotency-Key; 409 ADMIN_ACTION_NOT_ALLOWED means "refresh and look again"; fees and points settings show effectiveFrom; the user page reads GET /admin/users/{userId}; the attendance correction asks for the chosen outcome; there is no wallet adjustment.
 - D7 (PO decision 20 Oct 2026): the read-only global rules view reads GET /admin/global-rules (the no-show ladder: penaltyStage, consecutiveNoShows, banDuration as an ISO-8601 period, recurring); no edit controls.
+
+PO decisions 25 Oct 2026 — PCR-010 (do these too):
+- The fees screen (GET/PUT /admin/fees) shows and changes the booking fee mode (per booking / per hour), the per-booking fee and the per-hour fee, each with its effectiveFrom, plus the tournament creation fee; it says a change applies to bookings created after it.
+- The points settings (GET/PUT /admin/points/settings) show and change pointsPerFeeUnit, an even whole number from 2 (the API answers 400 VALIDATION_FAILED otherwise).
+- The points lists show the causes BOOKING_FEE_PAYMENT and BOOKING_FEE_REFUND with the booking they name.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
