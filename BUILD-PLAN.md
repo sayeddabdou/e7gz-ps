@@ -2536,6 +2536,7 @@ Read CLAUDE.md first. You are implementing task S4-P2 — "Referrals" (Platform 
 Read only these docs for this task:
 - arch 03 §16
 - FR-PTS-06
+- PCR-011 (Referral code only at launch; the referral link is deferred)
 
 Do:
 1. Referral code on signup; value read at OTP verification; reward/invalidate via producers.
@@ -2553,6 +2554,11 @@ Carry-forward from E7-65 (Sprint 4 contract, PO decisions 17 Oct 2026, do these 
 PO decisions 27 Oct 2026 (do these too):
 - The referral code format chosen in E7-13 stays: 8 characters from A-Z and 2-9 without look-alikes (no 0/O, 1/I/L), e.g. K7M3QX9P.
 - No device or IP fraud signals at launch: only the hard same-phone / same-email checks run (FR-PTS-08 allows storing them, it does not require it).
+
+PO decisions 30 Oct 2026 (do these too):
+- A referral reversal that deducted nothing (balance 0) sends no notice. When points were taken back it is ADMIN_ACCOUNT_CHANGE (FR-NTF-11).
+- PCR-011: a customer gets a Referral Code and no Referral Link at launch. The link is a future candidate.
+- A wrong code at sign-up shows no message and the sign-up continues; it is recorded as an INVALID referral.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2815,6 +2821,7 @@ Read only these docs for this task:
 - FRS §2.11 (customer capability matrix)
 - arch 09 §3.4
 - PCR-010 (Points pay the Booking Fee; per-booking or per-hour Booking Fee)
+- PCR-011 (Referral code only at launch; the referral link is deferred)
 
 Do:
 1. Account standing (ban, Verified Player), points history, referral code sharing.
@@ -2845,6 +2852,9 @@ PO decisions 25 Oct 2026 — PCR-010 (do these too):
 
 Carry-forward from E7-67 (do this too):
 - The sign-up screen gets an optional "Referral code" field, sent as referralCode in POST /customer/auth/register (trimmed and upper-cased by the server). A wrong code never blocks the sign-up: the server records it as an INVALID referral, so the screen shows no error for it.
+
+PO decision 30 Oct 2026, PCR-011 (do this too):
+- The app shares the Referral Code as text, with no link and no deep link.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
