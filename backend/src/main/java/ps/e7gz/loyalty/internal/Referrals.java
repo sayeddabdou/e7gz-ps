@@ -45,8 +45,8 @@ import ps.e7gz.messaging.api.StoredResponse;
  * (PO decision D6): {@code loyalty.invalidate_referral} makes it INVALID as ADMIN_FRAUD with the admin and the reason,
  * and for a REWARDED referral posts the compensating transaction of the exact historical reward under the zero floor -
  * the shortfall recorded as UNRECOVERED_REVERSAL_AMOUNT, never a debt (FR-PTS-03, FR-PTS-04, FR-PTS-09). Its
- * {@code LOYALTY_POINTS_LEDGER_COMMITTED} event notifies the referrer (FR-NTF-11). An INVALID referral is
- * {@code ADMIN_ACTION_NOT_ALLOWED} (D5).
+ * {@code LOYALTY_POINTS_LEDGER_COMMITTED} event notifies the referrer when points were taken back (FR-NTF-11; PO
+ * decision 30 Oct 2026). An INVALID referral is {@code ADMIN_ACTION_NOT_ALLOWED} (D5).
  *
  * <p>Lists are newest sign-up first with keyset cursors (arch 09 section 1.2). The friend's identity is never in the
  * customer's view.

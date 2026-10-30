@@ -20,9 +20,9 @@ import ps.e7gz.notification.api.NotificationRequest;
  *       notifies nobody.</li>
  *   <li>REFERRAL_SIGNUP that applied points (E7-67): POINTS_EARNED to the referrer, with {@code points} - a referral
  *       reward is points earned (Spec v5 section 52.2, FR-PTS-06).</li>
- *   <li>A COMPENSATION of a referral (it names the referral): ADMIN_ACCOUNT_CHANGE (In-App + Email) - only an admin
- *       invalidates a rewarded referral, and taking its reward back materially changes the referrer's referral reward
- *       (FR-NTF-11, FR-PTS-09), even when the zero floor leaves nothing to deduct (E7-67).</li>
+ *   <li>A COMPENSATION of a referral (it names the referral) that took points back: ADMIN_ACCOUNT_CHANGE (In-App +
+ *       Email) - only an admin invalidates a rewarded referral (FR-NTF-11, FR-PTS-09; E7-67). At a zero balance
+ *       nothing was deducted and nobody is notified (PO decision 30 Oct 2026).</li>
  *   <li>A COMPENSATION of a booking reward follows an admin attendance correction, which notifies the customer
  *       itself (E7-70).</li>
  * </ul>
@@ -55,7 +55,7 @@ final class PointsNotificationRules {
                     ? Optional.of(NotificationRequest.of(POINTS_EARNED, NotificationRecipientType.CUSTOMER, customer,
                             Map.of(POINTS, applied)))
                     : Optional.empty();
-            case COMPENSATION -> event.payload().path("referralId").isTextual()
+            case COMPENSATION -> applied != 0 && event.payload().path("referralId").isTextual()
                     ? Optional.of(NotificationRequest.of(ADMIN_ACCOUNT_CHANGE, NotificationRecipientType.CUSTOMER,
                             customer, Map.of()))
                     : Optional.empty();

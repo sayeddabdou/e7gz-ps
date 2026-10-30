@@ -60,15 +60,23 @@ class PointsNotificationRulesTest {
     }
 
     @Test
-    void takingAReferralRewardBackIsAnAdminAccountChangeEvenAtAZeroBalance() {
+    void takingAReferralRewardBackIsAnAdminAccountChange() {
         // E7-67, FR-NTF-11, FR-PTS-09: only an admin invalidates a rewarded referral
-        for (int applied : new int[] {-1000, -300, 0}) {
+        for (int applied : new int[] {-1000, -300}) {
             OutboxEvent event = event(PointsTransactionCause.COMPENSATION, applied);
             ((ObjectNode) event.payload()).put("referralId", UUID.randomUUID().toString());
             assertThat(PointsNotificationRules.planFor(event)).as("applied %d", applied)
                     .contains(NotificationRequest.of(PointsNotificationRules.ADMIN_ACCOUNT_CHANGE,
                             NotificationRecipientType.CUSTOMER, CUSTOMER, Map.of()));
         }
+    }
+
+    @Test
+    void aReferralReversalThatDeductedNothingNotifiesNobody() {
+        // PO decision 30 Oct 2026: at a zero balance nothing was taken back
+        OutboxEvent event = event(PointsTransactionCause.COMPENSATION, 0);
+        ((ObjectNode) event.payload()).put("referralId", UUID.randomUUID().toString());
+        assertThat(PointsNotificationRules.planFor(event)).isEmpty();
     }
 
     @Test

@@ -56,6 +56,7 @@ The frozen Product Specification explicitly excludes:
 - **No points-to-wallet conversion at Launch.**
 - **No online collection of Venue gaming charges.** Customer ↔ Venue gaming payment remains outside E7GZ.
 - **No booking price filter** in Find Available.
+- **No referral link at Launch** (PCR-011). The app shares the Referral Code as text.
 - **No Favorites / social feed / Elo / leaderboards / match history.**
 - **No Customer pre-emptive opt-out from VENUE_RESPONSE_EXPIRED revival.** A later Late Confirm is an explicit new reactivation request that the Customer may Accept/Decline.
 - **No ordinary Customer cancellation after `startAt`.**
@@ -157,6 +158,7 @@ The PRD records the following as possible future work, **not commitments**:
 - Multi-branch Venue accounts and role-based Venue users
 - Additional cities and multi-timezone support
 - Food, drink and snack ordering / Venue POS
+- Referral link (PCR-011)
 
 ---
 
