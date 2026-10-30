@@ -72,6 +72,9 @@ class PointsBookingFeePaymentIntegrationTest extends IntegrationTest {
     BookingQuotes quotes;
 
     @Autowired
+    ManualBookings manualBookings;
+
+    @Autowired
     MockMvc mvc;
 
     @Autowired
@@ -185,6 +188,37 @@ class PointsBookingFeePaymentIntegrationTest extends IntegrationTest {
         assertThat(unpaid.feePayment()).isEqualTo(FeePayment.unpaid(Money.of("20.00")));
         assertThat(pointsBalance(poor)).isEqualTo(7_000);
         assertThat(pointsPayment(unpaid.bookingId())).isNull();
+    }
+
+    /** PCR-010 item 3: the unit is one hour of the fee in force, not EGP 10 - at EGP 15/hour it pays EGP 15. */
+    @Test
+    void aHigherFeeMakesTheSamePointsPayMore() {
+        config("booking.fee_mode", "\"PER_HOUR\"");
+        config("booking.fee_per_hour", "15.00");
+        UUID fullHour = world.customer.id();
+        UUID halfHour = world.anotherCustomer();
+        givePoints(fullHour, 10_000);
+        givePoints(halfHour, 5_000);
+
+        CreatedBooking full = creation.create(world.request(fullHour, world.room, world.start(), 60));
+        CreatedBooking half = creation.create(world.request(halfHour, world.room,
+                world.start().plus(Duration.ofHours(2)), 60));
+
+        assertThat(full.feePayment()).isEqualTo(new FeePayment(10_000, Money.of("15.00"), Money.ZERO, Money.ZERO));
+        assertThat(pointsPayment(full.bookingId())).isEqualTo("PER_HOUR 15.00 15.00 10000 2 10000 15.00");
+        assertThat(half.feePayment()).isEqualTo(new FeePayment(5_000, Money.of("7.50"), Money.ZERO, Money.of("7.50")));
+    }
+
+    /** PCR-010 item 8, Spec v5 section 34.2: a Manual Booking has no Booking Fee at any setting, so it uses no Points. */
+    @Test
+    void aManualBookingHasNoFeeSoItUsesNoPoints() {
+        config("booking.fee", "20.00");
+
+        VenueBookingRow manual = manualBookings.create(world.account.id(),
+                ManualBookingRequest.of(world.room.id(), PlayMode.SINGLE, world.start(), 60, null, null));
+
+        assertThat(storedFee(manual.bookingId())).isEqualByComparingTo("0.00");
+        assertThat(pointsPayment(manual.bookingId())).isNull();
     }
 
     /**
