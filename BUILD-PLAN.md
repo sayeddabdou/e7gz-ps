@@ -2856,6 +2856,9 @@ Carry-forward from E7-67 (do this too):
 PO decision 30 Oct 2026, PCR-011 (do this too):
 - The app shares the Referral Code as text, with no link and no deep link.
 
+PO decision 5 Nov 2026 (do this too):
+- The points history hides a COMPENSATION row whose amount is 0: a referral reversal at balance 0 took nothing back, and the customer got no notice for it. Every other row shows.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -2901,6 +2904,10 @@ PO decisions 25 Oct 2026 — PCR-010 (do these too):
 - The fees screen (GET/PUT /admin/fees) shows and changes the booking fee mode (per booking / per hour), the per-booking fee and the per-hour fee, each with its effectiveFrom, plus the tournament creation fee; it says a change applies to bookings created after it.
 - The points settings (GET/PUT /admin/points/settings) show and change pointsPerFeeUnit, an even whole number from 2 (the API answers 400 VALIDATION_FAILED otherwise).
 - The points lists show the causes BOOKING_FEE_PAYMENT and BOOKING_FEE_REFUND with the booking they name.
+
+Carry-forward from E7-67, PO decision 5 Nov 2026 (do this too):
+- An Admin Referrals screen (FR-ADM-09) on GET /admin/referrals?status=&q=: newest sign-up first with the cursor; q finds the referrer or the referred user. Each row shows the referrer, the code, the referred user, the sign-up time, the status, the reward points applied, and when it was rewarded or invalidated with the invalidation kind.
+- An Invalidate action on a PENDING or REWARDED referral: POST /admin/referrals/{referralId}/invalidate with a reason (required, 1-500 characters) and an Idempotency-Key. Show the result: the referral is INVALID and, when it had been rewarded, the points asked back, the points taken back and the unrecovered points (never a debt). An INVALID referral has no Invalidate action; 409 ADMIN_ACTION_NOT_ALLOWED means refresh and look again.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
