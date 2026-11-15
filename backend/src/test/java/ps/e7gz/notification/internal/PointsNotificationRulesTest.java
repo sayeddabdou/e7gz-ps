@@ -50,11 +50,41 @@ class PointsNotificationRulesTest {
         assertThat(PointsNotificationRules.planFor(event(PointsTransactionCause.ADMIN, 0))).isEmpty();
     }
 
-    @ParameterizedTest
-    @EnumSource(value = PointsTransactionCause.class, names = {"REFERRAL_SIGNUP", "COMPENSATION"})
-    void referralsAndCompensationsAreNotifiedElsewhere(PointsTransactionCause cause) {
-        // E7-67 (referrals); E7-70 and E7-67 notify the correction or invalidation that compensates
-        assertThat(PointsNotificationRules.planFor(event(cause, 1000))).isEmpty();
+    @Test
+    void aReferralRewardIsPointsEarnedByTheReferrer() {
+        // E7-67, FR-PTS-06: the referral reward is points earned (Spec v5 section 52.2)
+        assertThat(PointsNotificationRules.planFor(event(PointsTransactionCause.REFERRAL_SIGNUP, 1000)))
+                .contains(NotificationRequest.of(PointsNotificationRules.POINTS_EARNED,
+                        NotificationRecipientType.CUSTOMER, CUSTOMER, Map.of(PointsNotificationRules.POINTS, 1000)));
+        assertThat(PointsNotificationRules.planFor(event(PointsTransactionCause.REFERRAL_SIGNUP, 0))).isEmpty();
+    }
+
+    @Test
+    void takingAReferralRewardBackIsAnAdminAccountChange() {
+        // E7-67, FR-NTF-11, FR-PTS-09: only an admin invalidates a rewarded referral
+        for (int applied : new int[] {-1000, -300}) {
+            OutboxEvent event = event(PointsTransactionCause.COMPENSATION, applied);
+            ((ObjectNode) event.payload()).put("referralId", UUID.randomUUID().toString());
+            assertThat(PointsNotificationRules.planFor(event)).as("applied %d", applied)
+                    .contains(NotificationRequest.of(PointsNotificationRules.ADMIN_ACCOUNT_CHANGE,
+                            NotificationRecipientType.CUSTOMER, CUSTOMER, Map.of()));
+        }
+    }
+
+    @Test
+    void aReferralReversalThatDeductedNothingNotifiesNobody() {
+        // PO decision 30 Oct 2026: at a zero balance nothing was taken back
+        OutboxEvent event = event(PointsTransactionCause.COMPENSATION, 0);
+        ((ObjectNode) event.payload()).put("referralId", UUID.randomUUID().toString());
+        assertThat(PointsNotificationRules.planFor(event)).isEmpty();
+    }
+
+    @Test
+    void aBookingRewardCompensationIsNotifiedByItsCorrection() {
+        // E7-70: the admin attendance correction notifies the customer itself
+        OutboxEvent event = event(PointsTransactionCause.COMPENSATION, -200);
+        ((ObjectNode) event.payload()).putNull("referralId").put("bookingId", UUID.randomUUID().toString());
+        assertThat(PointsNotificationRules.planFor(event)).isEmpty();
     }
 
     @Test

@@ -59,12 +59,14 @@ public class CustomerAuthController {
             summary = "Register; the account stays unverified until the phone OTP is verified (FR-ACC-01, FR-ACC-02)",
             description = "A phone or username held by an account that never verified its phone is taken over: that "
                     + "account is released and can no longer log in (Sprint 0 review S-3, E7-57). A verified holder "
-                    + "keeps them: PHONE_TAKEN / USERNAME_TAKEN.")
+                    + "keeps them: PHONE_TAKEN / USERNAME_TAKEN. A referralCode makes a PENDING referral of the "
+                    + "friend who owns it; the phone OTP verification settles it (FR-PTS-06, E7-67).")
     @ApiError(status = 422, codes = {ApiErrorCode.USERNAME_TAKEN, ApiErrorCode.PHONE_TAKEN})
     @ApiError(status = 429, codes = {ApiErrorCode.OTP_RESEND_TOO_SOON, ApiErrorCode.OTP_HOURLY_LIMIT_REACHED})
     public DataResponse<CustomerRegistrationView> register(@Valid @RequestBody CustomerRegisterRequest request) {
         CustomerRegistration.Registered registered = registration.register(new CustomerRegistration.NewCustomer(
-                request.fullName(), request.username(), request.phone(), request.email(), request.password()));
+                request.fullName(), request.username(), request.phone(), request.email(), request.password(),
+                request.referralCode()));
         return meta.data(new CustomerRegistrationView(registered.userId(), registered.otpChallengeId()));
     }
 
@@ -152,7 +154,10 @@ public class CustomerAuthController {
         profiles.completePasswordReset(request.otpChallengeId(), request.code(), request.password());
     }
 
-    /** Arch 09 section 2: {@code {fullName, username, phone, email, password}}, all required (FR-ACC-01). */
+    /**
+     * Arch 09 section 2: {@code {fullName, username, phone, email, password}}, all required (FR-ACC-01); since E7-67
+     * also the optional {@code referralCode} of the friend who invited them (FR-PTS-06).
+     */
     @Schema(name = "CustomerRegisterRequest")
     public record CustomerRegisterRequest(
             @NotBlank @Size(max = MAX_TEXT) @Schema(example = "Omar Hassan") String fullName,
@@ -164,7 +169,11 @@ public class CustomerAuthController {
             @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY,
                     description = "At least 8 characters, with at least one letter and one digit "
                             + "(VALIDATION RULES §2.1). Otherwise 400 VALIDATION_FAILED on field password.")
-            String password) {
+            String password,
+            @Size(max = 32) @Schema(nullable = true, description = "The Referral Code of the friend who invited "
+                    + "me (FR-PTS-06), trimmed and upper-cased. A code nobody has, or my own phone's or email's, is "
+                    + "recorded as an INVALID referral and never blocks the registration.", example = "K7M3QX9P")
+            String referralCode) {
     }
 
     @Schema(name = "CustomerRegistration")

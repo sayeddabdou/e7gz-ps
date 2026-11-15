@@ -8,6 +8,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.stream.Stream;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -23,6 +24,7 @@ import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
+import ps.e7gz.loyalty.api.ReferralSettlement;
 import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.notification.api.CustomerPushDevices;
 import ps.e7gz.notification.api.NotificationRequest;
@@ -65,16 +67,19 @@ public class CustomerProfiles {
     private final Outbox outbox;
     private final Notifications notifications;
     private final CustomerPushDevices pushDevices;
+    private final ReferralSettlement referrals;
     private final JdbcClient jdbc;
 
     CustomerProfiles(CommandRunner runner, PasswordEncoder passwords, OtpPayloadCipher otpCipher, Outbox outbox,
-                     Notifications notifications, CustomerPushDevices pushDevices, DataSource appDataSource) {
+                     Notifications notifications, CustomerPushDevices pushDevices, ReferralSettlement referrals,
+                     DataSource appDataSource) {
         this.runner = runner;
         this.passwords = passwords;
         this.otpCipher = otpCipher;
         this.outbox = outbox;
         this.notifications = notifications;
         this.pushDevices = pushDevices;
+        this.referrals = referrals;
         this.jdbc = JdbcClient.create(appDataSource);
     }
 
@@ -146,7 +151,9 @@ public class CustomerProfiles {
     /**
      * FR-ACC-07, step 2: the code; the new phone becomes the account's phone, verified at this instant. A challenge that
      * is not this customer's phone change is {@code NOT_FOUND}. A phone a verified account took meanwhile is
-     * {@code PHONE_TAKEN} and the code stays usable; an unverified holder is released (S-3).
+     * {@code PHONE_TAKEN} and the code stays usable; an unverified holder is released (S-3). An account that was not
+     * verified yet becomes Account Verified here too, so its PENDING referral is settled in the same transaction, its
+     * referrer locked with it (FR-PTS-06, E7-67).
      */
     public Profile verifyPhoneChange(UUID userId, UUID challengeId, String code) {
         String destination = jdbc.sql("""
@@ -156,7 +163,10 @@ public class CustomerProfiles {
                 .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND));
         List<UUID> holders = UnverifiedAccounts.holders(jdbc, destination, null).stream()
                 .map(UnverifiedAccounts.Holder::userId).filter(id -> !id.equals(userId)).toList();
-        CodeOutcome outcome = runner.run(new UserCommand<>(userId, holders, ctx -> {
+        UUID referrer = referrals.pendingReferrer(userId).orElse(null);
+        List<UUID> locked = referrer == null ? holders
+                : Stream.concat(holders.stream(), Stream.of(referrer)).toList();
+        CodeOutcome outcome = runner.run(new UserCommand<>(userId, locked, ctx -> {
             Optional<OtpChallenges.Challenge> challenge = OtpChallenges.find(ctx, challengeId, OtpPurpose.PHONE_CHANGE);
             CodeOutcome checked = checkCode(ctx, userId, challengeId, challenge, code, null);
             if (checked != CodeOutcome.DONE) {
@@ -175,6 +185,9 @@ public class CustomerProfiles {
                              WHERE id = :id""")
                     .param("phone", destination).param("now", OtpChallenges.utc(ctx.commandNow()))
                     .param("id", userId).update();
+            if (referrer != null) {
+                referrals.settle(ctx, userId, referrer);                                  // FR-PTS-06, E7-67
+            }
             notifications.notify(ctx, NotificationRequest.of("PHONE_CHANGED", NotificationRecipientType.CUSTOMER,
                     userId, Map.of()));
             return CodeOutcome.DONE;

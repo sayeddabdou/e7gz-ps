@@ -3059,6 +3059,16 @@
             "minLength": 0,
             "type": "string"
           },
+          "referralCode": {
+            "description": "The Referral Code of the friend who invited me (FR-PTS-06), trimmed and upper-cased. A code nobody has, or my own phone's or email's, is recorded as an INVALID referral and never blocks the registration.",
+            "example": "K7M3QX9P",
+            "maxLength": 32,
+            "minLength": 0,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "username": {
             "example": "omar_h",
             "maxLength": 200,
@@ -26385,7 +26395,7 @@
     },
     "/api/v1/customer/auth/register": {
       "post": {
-        "description": "A phone or username held by an account that never verified its phone is taken over: that account is released and can no longer log in (Sprint 0 review S-3, E7-57). A verified holder keeps them: PHONE_TAKEN / USERNAME_TAKEN.",
+        "description": "A phone or username held by an account that never verified its phone is taken over: that account is released and can no longer log in (Sprint 0 review S-3, E7-57). A verified holder keeps them: PHONE_TAKEN / USERNAME_TAKEN. A referralCode makes a PENDING referral of the friend who owns it; the phone OTP verification settles it (FR-PTS-06, E7-67).",
         "operationId": "customerRegister",
         "parameters": [
           {
@@ -32814,7 +32824,7 @@
     },
     "/api/v1/customer/referrals": {
       "get": {
-        "description": "A referral is PENDING until the friend verifies their phone, then REWARDED with the value in force at that moment, or INVALID (FR-PTS-06). Implemented by E7-67.",
+        "description": "A referral is PENDING until the friend verifies their phone, then REWARDED with the value in force at that moment, or INVALID (FR-PTS-06). Newest sign-up first; the friend is not named. Implemented by E7-67.",
         "operationId": "customerGetReferrals",
         "parameters": [
           {
