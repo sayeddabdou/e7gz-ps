@@ -73,8 +73,9 @@ public class AdminFeeController {
     @Operation(operationId = "adminChangeFees", summary = "Change one or more platform fees (FR-ADM-10, FR-ADM-11)",
             description = "Omitted fields keep their value; a value equal to the current one changes nothing; none "
                     + "given is VALIDATION_FAILED. Amounts are from 0.00. Every change takes effect now and only for "
-                    + "bookings created after it; Points pay the fee of the mode in force (PCR-010). Implemented by "
-                    + "E7-68.")
+                    + "bookings created after it; Points pay the fee of the mode in force (PCR-010). While no payment provider "
+                    + "collects the fee (the launch setting), a bookingFee or bookingFeePerHour above 0.00 is "
+                    + "VALIDATION_FAILED on that field (PCR-010 item 10). Implemented by E7-68.")
     @ApiError(status = 422, codes = ApiErrorCode.IDEMPOTENCY_KEY_REUSED)
     public DataResponse<AdminFees> change(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,

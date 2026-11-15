@@ -12,6 +12,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import javax.sql.DataSource;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import ps.e7gz.common.codes.BookingFeeMode;
@@ -40,8 +41,13 @@ import ps.e7gz.messaging.api.StoredResponse;
  *
  * <p>An omitted field keeps its value, and a value equal to the current one changes nothing (the producer refuses an
  * unchanged value, so it is skipped here); a request that names no field is {@code VALIDATION_FAILED}.
+ *
+ * <p>PO decision 15 Nov 2026 (PCR-010 item 10): while no payment provider collects the fee
+ * ({@code e7gz.payments.fee-collection-enabled=false}, the launch setting), a Booking Fee above EGP 0 - per booking or
+ * per hour - is refused as {@code VALIDATION_FAILED} on its field. The Tournament Creation Fee is not part of this rule.
  */
 @Component
+@EnableConfigurationProperties(PaymentCollectionProperties.class)
 public class PlatformFees {
 
     static final String MODE = "booking.fee_mode";
@@ -66,12 +72,15 @@ public class PlatformFees {
     private final CommandRunner runner;
     private final Idempotency idempotency;
     private final JdbcClient admin;
+    private final boolean feeCollectionEnabled;
 
     PlatformFees(CommandRunner runner, Idempotency idempotency,
-                 @Qualifier(DataSourceConfig.ADMIN_DATA_SOURCE) DataSource adminDataSource) {
+                 @Qualifier(DataSourceConfig.ADMIN_DATA_SOURCE) DataSource adminDataSource,
+                 PaymentCollectionProperties payments) {
         this.runner = runner;
         this.idempotency = idempotency;
         this.admin = JdbcClient.create(adminDataSource);
+        this.feeCollectionEnabled = payments.feeCollectionEnabled();
     }
 
     /** One configured value and the instant it took effect. */
@@ -100,7 +109,8 @@ public class PlatformFees {
 
     /**
      * Changes the named fees once per Idempotency-Key; the answer is the fees after the change. {@code VALIDATION_FAILED}
-     * before any idempotency record when nothing is named or the reason is blank.
+     * before any idempotency record when nothing is named, the reason is blank, or a Booking Fee above EGP 0 is asked
+     * for while no payment provider collects it (PO decision 15 Nov 2026).
      */
     public <R> IdempotentResult<R> change(UUID adminId, Change change, IdempotentRequest key, StoredResponse<R> response,
                                           Function<Fees, R> view) {
@@ -114,8 +124,22 @@ public class PlatformFees {
         if (change.reason() == null || change.reason().isBlank()) {
             throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "reason");
         }
+        if (!feeCollectionEnabled) {
+            refuseAFeeNobodyCollects(change.bookingFee(), "bookingFee");
+            refuseAFeeNobodyCollects(change.bookingFeePerHour(), "bookingFeePerHour");
+        }
         return runner.run(idempotency.wrap(Objects.requireNonNull(key, "key"), response,
                 new ChangeFees<>(adminId, CorrelationId.require(), change, view)));
+    }
+
+    /**
+     * PCR-010 item 10: without a payment provider the money part of a fee is never collected, so only Customers who
+     * hold Points would pay. The fee stays EGP 0 until collection is enabled.
+     */
+    private static void refuseAFeeNobodyCollects(Money requested, String field) {
+        if (requested != null && requested.amount().signum() > 0) {
+            throw new ApiException(ApiErrorCode.VALIDATION_FAILED, field);
+        }
     }
 
     private static Fees read(JdbcClient jdbc) {

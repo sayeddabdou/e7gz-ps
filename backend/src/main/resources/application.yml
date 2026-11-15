@@ -142,6 +142,11 @@ e7gz:
     tick: 1s
     threads: 1
     retry-delays: 5s, 30s, 2m, 10m, 1h   # arch 08 §4.3; the 6th attempt failing too is DEAD_LETTER (Sev-2)
+  # Booking Fee collection (ADR-018, PCR-010 item 10; PO decision 15 Nov 2026; see PaymentCollectionProperties). false at
+  # launch: no payment provider exists, so the Platform Admin cannot set a Booking Fee above EGP 0. The payment task
+  # turns it on together with its adapter. Not a secret.
+  payments:
+    fee-collection-enabled: ${E7GZ_PAYMENTS_FEE_COLLECTION_ENABLED:false}
 
 # Every log line carries the correlation ID of its request or job (NFR-32; CorrelationId puts it in the MDC).
 # JSON log output is the observability task's (arch 11 §5.1, E7-100); this only adds the field to the default pattern.

@@ -21,6 +21,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import ps.e7gz.common.codes.AuthSubjectType;
@@ -39,6 +40,9 @@ import ps.e7gz.support.fixtures.Fixtures;
  *
  * <p>The values are global, so every test puts the launch values back through the same routes.
  */
+// A fee above EGP 0 needs a payment provider that collects it (PCR-010 item 10, PO decision 15 Nov 2026): these tests
+// run as the deployment that has one. AdminFeesWithoutPaymentCollectionHttpTest covers the launch setting.
+@TestPropertySource(properties = "e7gz.payments.fee-collection-enabled=true")
 @AutoConfigureMockMvc
 class AdminConfigurationHttpTest extends IntegrationTest {
 

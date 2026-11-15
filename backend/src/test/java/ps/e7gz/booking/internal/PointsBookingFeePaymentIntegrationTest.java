@@ -2,6 +2,7 @@ package ps.e7gz.booking.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -12,6 +13,7 @@ import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterEach;
@@ -23,6 +25,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import ps.e7gz.common.codes.AuthSubjectType;
 import ps.e7gz.common.codes.PlayMode;
@@ -38,6 +41,7 @@ import ps.e7gz.common.persistence.DataSourceConfig;
 import ps.e7gz.common.security.AccessTokens;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.loyalty.api.BookingFeePayments.FeePayment;
+import ps.e7gz.loyalty.api.ReferralSettlement;
 import ps.e7gz.support.IntegrationTest;
 import ps.e7gz.support.PostgresTestContainer;
 import ps.e7gz.support.fixtures.Fixtures;
@@ -53,6 +57,9 @@ import ps.e7gz.support.fixtures.Fixtures;
  * afterwards; nothing else runs on the shared database meanwhile. A Wallet balance comes from a refund of a collected
  * fee, recorded the way the future payment gateway's adapter will (no runtime role may, v1.1.38).
  */
+// A fee above EGP 0 needs a payment provider that collects it (PCR-010 item 10, PO decision 15 Nov 2026): these tests
+// run as the deployment that has one. AdminFeesWithoutPaymentCollectionHttpTest covers the launch setting.
+@TestPropertySource(properties = "e7gz.payments.fee-collection-enabled=true")
 @AutoConfigureMockMvc
 class PointsBookingFeePaymentIntegrationTest extends IntegrationTest {
 
@@ -73,6 +80,9 @@ class PointsBookingFeePaymentIntegrationTest extends IntegrationTest {
 
     @Autowired
     ManualBookings manualBookings;
+
+    @Autowired
+    ReferralSettlement referrals;
 
     @Autowired
     MockMvc mvc;
@@ -271,6 +281,47 @@ class PointsBookingFeePaymentIntegrationTest extends IntegrationTest {
         assertThat(storedFee(perHour.bookingId())).as("1.5 h at EGP 10, by the half hour").isEqualByComparingTo("15.00");
     }
 
+    /**
+     * E7-67 with PCR-010: referral Points already spent on a fee are not recovered when the referral is invalidated.
+     * Nothing is deducted (zero floor, FR-PTS-03), the shortfall is recorded, the fee stays paid, and the referrer is
+     * not notified (PO decision 30 Oct 2026). Later Points are kept: never a debt (FR-PTS-04).
+     */
+    @Test
+    void invalidatingAReferralWhosePointsWereSpentOnAFeeDeductsNothing() throws Exception {
+        UUID referrer = world.customer.id();
+        pointsPerFeeUnit(1_000);
+        config("booking.fee", "20.00");
+        UUID friend = aFriendVerifiedThroughTheReferralOf(referrer);
+        assertThat(pointsBalance(referrer)).isEqualTo(1_000);
+
+        CreatedBooking booking = creation.create(world.request(referrer, world.room, world.start(), 60));
+
+        assertThat(booking.feePayment()).isEqualTo(new FeePayment(1_000, Money.of("20.00"), Money.ZERO, Money.ZERO));
+        assertThat(pointsBalance(referrer)).isZero();
+
+        UUID referralId = VenueAnswerDb.OWNER.sql("SELECT id FROM loyalty.referral WHERE referred_user_id = :id")
+                .param("id", friend).query(UUID.class).single();
+        mvc.perform(post("/api/v1/admin/referrals/" + referralId + "/invalidate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + accessTokens.issue(AuthSubjectType.ADMIN, admin))
+                        .header(OpenApiConfig.IDEMPOTENCY_KEY, UUID.randomUUID().toString())
+                        .content("{\"reason\":\"Same person on two phones.\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.referral.status").value("INVALID"))
+                .andExpect(jsonPath("$.data.reversal.requestedAmount").value(-1_000))
+                .andExpect(jsonPath("$.data.reversal.amount").value(0))
+                .andExpect(jsonPath("$.data.reversal.unrecoveredAmount").value(1_000))
+                .andExpect(jsonPath("$.data.reversal.balanceAfter").value(0));
+
+        assertThat(pointsBalance(referrer)).isZero();
+        assertThat(pointsRows(referrer)).containsExactly("REFERRAL_SIGNUP 1000", "BOOKING_FEE_PAYMENT -1000",
+                "COMPENSATION 0");
+        assertThat(pointsPayment(booking.bookingId())).as("the fee stays paid")
+                .isEqualTo("PER_BOOKING 20.00 20.00 1000 null 1000 20.00");
+        givePoints(referrer, 400);
+        assertThat(pointsBalance(referrer)).isEqualTo(400);
+    }
+
     /** At the launch values nothing changes: EGP 0, FREE, no Points or Wallet movement, an all-zero split. */
     @Test
     void atTheLaunchFeeNothingIsPaid() throws Exception {
@@ -330,6 +381,32 @@ class PointsBookingFeePaymentIntegrationTest extends IntegrationTest {
         } finally {
             owner.destroy();
         }
+    }
+
+    /** A sign-up with the referrer's code, then its verification and settlement, as VerifyPhoneCommand does them. */
+    private UUID aFriendVerifiedThroughTheReferralOf(UUID referrer) {
+        UUID friend = UUID.randomUUID();
+        String unique = friend.toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT);
+        VenueAnswerDb.OWNER.sql("""
+                        INSERT INTO iam.user_account (id, full_name, username, phone_e164, email, password_hash,
+                                                      phone_verified, email_verified, referral_code, referred_by_code,
+                                                      joined_at)
+                        SELECT :id, 'A Friend', :username, :phone, :email, 'not-used-here', false, false, :code,
+                               r.referral_code, now()
+                          FROM iam.user_account r WHERE r.id = :referrer""")
+                .param("id", friend).param("username", "f" + unique.toLowerCase(Locale.ROOT))
+                .param("phone", String.format("+2010%08d", Math.abs(friend.hashCode()) % 100_000_000))
+                .param("email", unique.toLowerCase(Locale.ROOT) + "@friend.example.com")
+                .param("code", "R" + unique.substring(1)).param("referrer", referrer).update();
+        runner.run(new AccountCommand(LockSet.builder().users(friend).users(referrer).build(), context -> {
+            context.jdbc().sql("""
+                            UPDATE iam.user_account SET phone_verified = true, phone_verified_at = :now
+                             WHERE id = :id""")
+                    .param("now", OffsetDateTime.ofInstant(context.commandNow(), ZoneOffset.UTC))
+                    .param("id", friend).update();
+            referrals.settle(context, friend, referrer);
+        }));
+        return friend;
     }
 
     /** Points through the Platform Admin's adjustment producer (FR-PTS-11), as POST /admin/points/adjust does. */
@@ -431,6 +508,27 @@ class PointsBookingFeePaymentIntegrationTest extends IntegrationTest {
         return VenueAnswerDb.OWNER.sql("""
                         SELECT provider || ' ' || amount FROM loyalty.booking_fee_receipt WHERE booking_id = :id""")
                 .param("id", bookingId).query(String.class).list().stream().findFirst().orElse(null);
+    }
+
+    /** An account command that names no Venue, as VerifyPhoneCommand (ADR-022). */
+    private record AccountCommand(LockSet locks, java.util.function.Consumer<CommandContext> body)
+            implements Command<Void> {
+
+        @Override
+        public EligibilityCategory eligibilityCategory() {
+            return EligibilityCategory.A_NEW_ACTIVITY_MARKETPLACE;
+        }
+
+        @Override
+        public CommandScope scope() {
+            return CommandScope.shared(locks);
+        }
+
+        @Override
+        public Void execute(CommandContext context) {
+            body.accept(context);
+            return null;
+        }
     }
 
     /** A Platform Admin command; category A, as every admin command that names no Venue (ADR-022). */
