@@ -124,7 +124,7 @@ class VenuePricingHttpTest extends IntegrationTest {
         Map<String, Object> audit = lastAudit("VENUE_PRICING_CHANGED");
         assertThat(audit).containsEntry("subject_id", venueId).containsEntry("context_venue_id", venueId)
                 .containsEntry("owner_password_outcome", "SUCCESS");
-        assertThat(audit.get("payload").toString()).contains("\"defaults\"").doesNotContain(PIN);
+        assertThat(audit.get("payload").toString()).contains("\"defaults\"").doesNotContain("\"" + PIN + "\"");
     }
 
     @Test

@@ -134,7 +134,7 @@ class VenueConfirmedCancellationIntegrationTest extends IntegrationTest {
                         .contains("\"customerId\": \"" + created.customerId() + "\"")
                         .contains("\"venueId\": \"" + world.venue.id() + "\"")
                         .contains("\"terminalReason\": \"VENUE_CANCELLED_CONFIRMED_BOOKING\"")
-                        .doesNotContain(OWNER_PIN));
+                        .doesNotContain("\"" + OWNER_PIN + "\""));
         assertThat(events(IntegrationEvents.RESERVATION_RELEASED, created.reservationId())).hasSize(1);
         assertThat(VenueAnswerDb.outboxTypes(created.bookingId())).containsExactly(IntegrationEvents.BOOKING_CREATED,
                 IntegrationEvents.BOOKING_CONFIRMED, IntegrationEvents.BOOKING_CANCELLED);

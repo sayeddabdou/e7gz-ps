@@ -17,7 +17,8 @@ import ps.e7gz.pricing.api.PriceCalculator;
  * <ul>
  *   <li>hourly price: {@link HourlyPrices} (room override, else venue default);</li>
  *   <li>venue price: {@code hourlyPrice × nominalMinutes ÷ 60}, half-up to 2 places, once ({@link PriceCalculator});</li>
- *   <li>booking fee: the Global Booking Fee in force at the command instant ({@link BookingFees});</li>
+ *   <li>booking fee: the Booking Fee of the nominal minutes in force at the command instant - per booking, or per
+ *       hour since PCR-010 ({@link BookingFees});</li>
  *   <li>total: the sum of the two rounded line items (NFR-25).</li>
  * </ul>
  * Nominal minutes only, never the real elapsed time, so a DST change never moves a price (FR-BOK-07).
@@ -40,7 +41,8 @@ class BookingPricing {
     Optional<BookingAmounts> price(CommandContext command, UUID resourceId, PlayMode playMode, int nominalMinutes) {
         Objects.requireNonNull(command, "command");
         return hourlyPrices.resolve(command, resourceId, playMode)
-                .map(hourly -> amounts(hourly, nominalMinutes, fees.effectiveAt(command, command.commandNow())));
+                .map(hourly -> amounts(hourly, nominalMinutes,
+                        fees.forBooking(command, nominalMinutes, command.commandNow()).amount()));
     }
 
     static BookingAmounts amounts(Money hourlyPrice, int nominalMinutes, Money bookingFee) {

@@ -14,10 +14,12 @@ import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.correlation.CorrelationId;
+import ps.e7gz.common.money.Money;
 import ps.e7gz.inventory.ledger.api.NewReservation;
 import ps.e7gz.inventory.ledger.api.ReservationLedger;
 import ps.e7gz.inventory.ledger.api.ReservationOwner;
 import ps.e7gz.loyalty.api.BookingFeePayments;
+import ps.e7gz.loyalty.api.BookingFeePayments.FeePayment;
 import ps.e7gz.messaging.api.IntegrationEvents;
 import ps.e7gz.messaging.api.NewOutboxEvent;
 import ps.e7gz.messaging.api.Outbox;
@@ -32,8 +34,8 @@ import ps.e7gz.venue.api.VenueContacts;
  * the twenty conditions, then the PENDING Online Booking with its snapshots, its BOOKING reservation (and the ledger's
  * {@code ReservationHeld}), the first history row, the venue response deadline job (T1) and the {@code BookingCreated}
  * event. All commit together or not at all (I2, EC-AVAI-001). When the stored Booking Fee is above zero, the Customer's
- * Wallet pays it in the same transaction if it covers the whole fee (PCR-009, E7-66 PR 3); at the launch fee of EGP 0
- * there is nothing to pay and Loyalty is not called.
+ * Points pay what they cover and the Wallet pays the rest if it holds all of it, in the same transaction (PCR-009,
+ * PCR-010; E7-66 PR 3, E7-68); at the launch fee of EGP 0 there is nothing to pay and Loyalty is not called.
  *
  * <p>Write order follows the database: {@code fk_resource_reservation_booking_id__booking_id} is not deferrable, so
  * the Booking row comes before its reservation. The database refuses what raced past the conditions - another
@@ -113,10 +115,10 @@ final class CreateOnlineBookingCommand implements Command<CreatedBooking> {
         UUID reservationId = ledger.create(context, new NewReservation(resource.resourceId(),
                 ReservationOwner.booking(bookingId), request.startAt(), approval.endAt()));
         store.insertCreatedHistory(context, bookingId, request.customerId(), now, CorrelationId.require());
-        // PCR-009: the Wallet pays the stored fee when it covers all of it; the Customer is in this command's lock set
-        if (!approval.amounts().bookingFee().isZero()) {
-            payments.payFromWallet(context, request.customerId(), bookingId);
-        }
+        // PCR-009, PCR-010: Points first, then the Wallet for all of the rest; the Customer is in this lock set
+        Money fee = approval.amounts().bookingFee();
+        FeePayment feePayment = fee.isZero() ? FeePayment.unpaid(fee)
+                : payments.pay(context, request.customerId(), bookingId);
         // T1 at the stored deadline; the job's own fire re-reads it (arch 08 §2.2)
         jobs.schedule(context, NewJob.of(VENUE_RESPONSE_EXPIRY, BOOKING_SUBJECT, bookingId, expiresAt));
         outbox.publish(context, bookingCreated(bookingId, approval.endAt()));
@@ -127,7 +129,7 @@ final class CreateOnlineBookingCommand implements Command<CreatedBooking> {
         return new CreatedBooking(bookingId, reservationId, request.customerId(), resource.venueId(),
                 resource.resourceId(), request.startAt(), approval.endAt(), expiresAt, approval.amounts(), now,
                 venue.name(), venue.phone(), approval.resourceName(), resource.activity(), resource.consoleType(),
-                request.playMode());
+                request.playMode(), feePayment);
     }
 
     /**

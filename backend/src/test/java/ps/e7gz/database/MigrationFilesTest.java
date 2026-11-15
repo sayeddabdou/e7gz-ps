@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import ps.e7gz.support.RepoFiles;
 
@@ -358,6 +359,53 @@ class MigrationFilesTest {
                         + " IF NEW.action='BOOKING_FEE_WALLET_PAYMENT' THEN\n"
                         + "   PERFORM loyalty.require_write('audit.audit_event',NEW.id::text);\n"
                         + " END IF;\n");
+    }
+
+    /**
+     * v1.1.40 (E7-68, PCR-010): the migration is the model's own block, byte for byte; the model has the new table, the
+     * refund's Points column and check, the two Points causes and the new foreign keys under the migration's names; no
+     * grant (the security baseline grants the new functions and table) and no trigger switched off.
+     */
+    @Test
+    void pointsPayBookingFeeMigrationIsTheModelsV1140Block() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String open = "<genericsql name=\"v1_1_40_points_pay_booking_fee\">\n\t<definition> <![CDATA[\n";
+        int start = model.indexOf(open);
+        assertThat(start).as("v1.1.40 block in the .dbm").isPositive();
+        String block = model.substring(start + open.length(), model.indexOf("]]> </definition>", start));
+        String migration = classpath("db/migration/V202610251200__points_pay_booking_fee.sql");
+        assertThat(migration).isEqualTo(block);
+
+        int tableStart = model.indexOf("<table name=\"booking_fee_points_payment\" layers");
+        assertThat(tableStart).as("the new table in the model").isPositive();
+        String table = model.substring(tableStart, model.indexOf("</table>", tableStart));
+        assertThat(table).contains("<column name=\"half_hours_paid\">")
+                .contains("<constraint name=\"uq_fee_points_payment_booking\"")
+                .contains("<constraint name=\"uq_fee_points_payment_tx\"")
+                .contains("<constraint name=\"ck_fee_points_payment_shape\"");
+        int refundStart = model.indexOf("<table name=\"booking_fee_refund\" layers");
+        assertThat(model.substring(refundStart, model.indexOf("</table>", refundStart)))
+                .contains("<column name=\"points_transaction_id\">")
+                .contains("<constraint name=\"ck_fee_refund_points\"");
+        assertThat(model).contains("cause IN ('ATTENDED_COMPLETION','REFERRAL_SIGNUP','COMPENSATION','ADMIN',"
+                        + "'BOOKING_FEE_PAYMENT','BOOKING_FEE_REFUND')")
+                .contains("<index name=\"ux_fee_refund_points_tx\"");
+        for (String fk : List.of("fk_fee_points_payment_booking", "fk_fee_points_payment_user",
+                "fk_fee_points_payment_tx", "fk_fee_points_payment_config", "fk_fee_refund_points_tx")) {
+            assertThat(model).contains("<constraint name=\"" + fk + "\" type=\"fk-constr\"");
+            assertThat(migration).contains("ADD CONSTRAINT " + fk + " FOREIGN KEY");
+        }
+        assertThat(migration).contains("CREATE TABLE loyalty.booking_fee_points_payment (")
+                .contains("CREATE OR REPLACE FUNCTION config.booking_fee_for(p_minutes integer,p_at timestamptz)")
+                .contains("CREATE OR REPLACE FUNCTION loyalty.pay_booking_fee(p_booking uuid)")
+                .doesNotContain("GRANT")
+                .doesNotContain("DISABLE TRIGGER");
+        // every function it redefines, once; the previous definitions stay in their own migrations
+        for (String redefined : List.of("booking.validate_online_booking_intake()", "loyalty.configure(",
+                "loyalty.post_points(", "loyalty.record_refund(", "loyalty.settle_refund(", "loyalty.record_fee_receipt(",
+                "loyalty.assert_booking(", "loyalty.assert_user(", "loyalty.pay_fee_from_wallet(")) {
+            function(migration, "CREATE OR REPLACE FUNCTION " + redefined);
+        }
     }
 
     private static void assertAddedLinesOnly(String earlier, String migration, String open, String... lines) {

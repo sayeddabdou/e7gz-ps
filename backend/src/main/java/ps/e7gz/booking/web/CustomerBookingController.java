@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -30,6 +31,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import ps.e7gz.booking.internal.BookingAmounts;
 import ps.e7gz.booking.internal.BookingHistoryEntry;
+import ps.e7gz.booking.internal.BookingQuote;
 import ps.e7gz.booking.internal.BookingQuotes;
 import ps.e7gz.booking.internal.ContactVisibility;
 import ps.e7gz.booking.internal.CreatedBooking;
@@ -55,6 +57,7 @@ import ps.e7gz.common.web.MoneyView;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.PageView;
 import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.loyalty.api.BookingFeePayments.FeePayment;
 import ps.e7gz.messaging.api.Idempotency;
 import ps.e7gz.messaging.api.IdempotentResult;
 import ps.e7gz.messaging.api.ResultAggregate;
@@ -141,9 +144,12 @@ public class CustomerBookingController {
     @Operation(operationId = "customerQuoteBooking",
             summary = "The price a booking would have now (FR-BOK-06, FR-BOK-07, FR-PTS-13)",
             description = "The same price the booking would snapshot if created now: hourly price × nominal minutes ÷ "
-                    + "60, half-up to 2 places, plus the booking fee. Not an availability check and not a hold: the "
-                    + "created booking's own amounts are authoritative. PO decision 5 Oct 2026 (E7-39). An unknown "
-                    + "resourceId is NOT_FOUND (PO decision 9 Oct 2026). Implemented by E7-46.")
+                    + "60, half-up to 2 places, plus the booking fee (per booking, or per hour × nominal minutes ÷ "
+                    + "60, PCR-010). bookingFeePayment is how my Points and Wallet would pay that fee now: Points "
+                    + "first, then the Wallet for all of the rest or nothing (PCR-009, PCR-010). Not an availability "
+                    + "check and not a hold: the created booking's own amounts are authoritative. PO decision 5 Oct "
+                    + "2026 (E7-39). An unknown resourceId is NOT_FOUND (PO decision 9 Oct 2026). Implemented by "
+                    + "E7-46; the fee split by E7-68.")
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     @ApiError(status = 422, codes = {ApiErrorCode.BOOKING_DURATION_INVALID, ApiErrorCode.RESOURCE_NOT_ELIGIBLE})
     public DataResponse<CustomerBookingQuote> quote(
@@ -151,9 +157,11 @@ public class CustomerBookingController {
             @Parameter(description = "Required for PLAYSTATION, absent otherwise.") @RequestParam(required = false)
             PlayMode playMode,
             @RequestParam Instant startAt,
-            @RequestParam Integer durationMinutes) {
+            @RequestParam Integer durationMinutes,
+            @AuthenticationPrincipal AuthenticatedSubject customer) {
         // startAt is part of the contract but not of the price: the price is the one in force now (FR-BOK-06).
-        return meta.data(CustomerBookingQuote.of(quotes.quote(resourceId, playMode, durationMinutes)));
+        return meta.data(CustomerBookingQuote.of(quotes.quote(customer.id(), resourceId, playMode,
+                durationMinutes)));
     }
 
     @GetMapping
@@ -253,12 +261,15 @@ public class CustomerBookingController {
             @NotNull @Schema(example = "120") Integer nominalBookedMinutes,
             @NotNull MoneyView venuePriceTotal,
             @NotNull CustomerBookingFee bookingFee,
+            @NotNull @Schema(description = "How my Points and Wallet would pay the fee now (PCR-010).")
+            CustomerBookingFeePayment bookingFeePayment,
             @NotNull MoneyView totalAmount) {
 
-        static CustomerBookingQuote of(BookingAmounts amounts) {
+        static CustomerBookingQuote of(BookingQuote quote) {
+            BookingAmounts amounts = quote.amounts();
             return new CustomerBookingQuote(MoneyView.of(amounts.hourlyPrice()), amounts.nominalBookedMinutes(),
                     MoneyView.of(amounts.venuePriceTotal()), CustomerBookingFee.of(amounts.bookingFee()),
-                    MoneyView.of(amounts.totalAmount()));
+                    CustomerBookingFeePayment.of(quote.feePayment()), MoneyView.of(amounts.totalAmount()));
         }
     }
 
@@ -271,6 +282,25 @@ public class CustomerBookingController {
 
         static CustomerBookingFee of(Money fee) {
             return new CustomerBookingFee(fee.toString(), MoneyView.Currency.EGP, fee.isZero());
+        }
+    }
+
+    /**
+     * How the booking fee is paid (PCR-009, PCR-010): Points first - one fee unit pays an hour of fee, or the whole
+     * fee per booking - then the Wallet for all of the rest or nothing; the payment provider collects what is left
+     * (ADR-018). All zero while the fee is EGP 0.
+     */
+    @Schema(name = "CustomerBookingFeePayment")
+    public record CustomerBookingFeePayment(
+            @NotNull @Schema(description = "Points spent on the fee.", example = "20000") Integer pointsUsed,
+            @NotNull @Schema(description = "The part of the fee the Points pay.") MoneyView paidByPoints,
+            @NotNull @Schema(description = "The part the Wallet pays: all of what Points leave, or nothing.")
+            MoneyView paidByWallet,
+            @NotNull @Schema(description = "The rest, collected by the payment provider.") MoneyView leftToPay) {
+
+        static CustomerBookingFeePayment of(FeePayment payment) {
+            return new CustomerBookingFeePayment(payment.pointsUsed(), MoneyView.of(payment.paidByPoints()),
+                    MoneyView.of(payment.paidByWallet()), MoneyView.of(payment.leftToPay()));
         }
     }
 
@@ -339,6 +369,8 @@ public class CustomerBookingController {
             @NotNull @Schema(example = "120") Integer nominalBookedMinutes,
             @NotNull MoneyView venuePriceTotal,
             @NotNull CustomerBookingFee bookingFee,
+            @NotNull @Schema(description = "How Points and the Wallet paid the fee at creation (PCR-010).")
+            CustomerBookingFeePayment bookingFeePayment,
             @NotNull MoneyView totalAmount,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true,
                     description = "While PENDING: the venue's answer deadline, an instant — never a countdown (NFR-10).",
@@ -364,6 +396,7 @@ public class CustomerBookingController {
                             booking.playMode()),
                     booking.startAt(), booking.endAt(), amounts.nominalBookedMinutes(),
                     MoneyView.of(amounts.venuePriceTotal()), CustomerBookingFee.of(amounts.bookingFee()),
+                    CustomerBookingFeePayment.of(booking.feePayment()),
                     MoneyView.of(amounts.totalAmount()), booking.venueResponseExpiresAt(), false, null, null,
                     List.of(new CustomerBookingHistoryEntry(booking.createdAt(),
                             BookingHistoryEntryKind.STATUS_TRANSITION, null, BookingStatus.PENDING, null, null)));
@@ -381,6 +414,7 @@ public class CustomerBookingController {
                     new CustomerBookingVenue(row.venueId(), row.venueName(), row.venuePhone()),
                     CustomerBookingResource.of(row), row.startAt(), row.endAt(), row.nominalBookedMinutes(),
                     MoneyView.of(row.venuePriceTotal()), CustomerBookingFee.of(row.bookingFee()),
+                    CustomerBookingFeePayment.of(Objects.requireNonNull(row.feePayment(), "feePayment")),
                     MoneyView.of(row.totalAmount()), row.venueResponseExpiresAt(), row.venueResponsePaused(),
                     row.lateConfirmExpiresAt() == null ? null
                             : new CustomerBookingLateConfirm(row.lateConfirmExpiresAt(), row.lateConfirmPaused()),
@@ -391,7 +425,8 @@ public class CustomerBookingController {
         CustomerBookingDetail withoutVenuePhone() {
             return new CustomerBookingDetail(bookingId, status, displayBucket, terminalReason,
                     new CustomerBookingVenue(venue.id(), venue.name(), null), resource, startAt, endAt,
-                    nominalBookedMinutes, venuePriceTotal, bookingFee, totalAmount, venueResponseExpiresAt,
+                    nominalBookedMinutes, venuePriceTotal, bookingFee, bookingFeePayment, totalAmount,
+                    venueResponseExpiresAt,
                     venueResponsePaused, lateConfirm, attendanceResult, history);
         }
     }

@@ -18,8 +18,9 @@ import ps.e7gz.config.api.BookingFees;
 import ps.e7gz.support.IntegrationTest;
 
 /**
- * E7-46 - {@link BookingFees}: the database's {@code config.effective_numeric('booking.fee', at)} as an EGP amount at
- * scale 2, on the command's own transaction - EGP 0 at launch, and a change counts from its own instant onwards.
+ * E7-46, E7-68 - {@link BookingFees}: the database's {@code config.booking_fee_for(nominalMinutes, at)} as an EGP amount
+ * at scale 2, on the command's own transaction - EGP 0 per booking at launch, and a change counts from its own instant
+ * onwards. The per-hour mode of PCR-010 is {@code PointsBookingFeePaymentIntegrationTest}'s.
  */
 class BookingFeesIntegrationTest extends IntegrationTest {
 
@@ -48,12 +49,12 @@ class BookingFeesIntegrationTest extends IntegrationTest {
     }
 
     private Money feeNow() {
-        return runner.run(new TestCommand<>(ctx -> fees.effectiveAt(ctx, ctx.commandNow())));
+        return runner.run(new TestCommand<>(ctx -> fees.forBooking(ctx, 60, ctx.commandNow()).amount()));
     }
 
     @Test
     void theLaunchFeeIsZeroAtScaleTwo() {
-        Money fee = runner.run(new TestCommand<>(ctx -> fees.effectiveAt(ctx, Instant.parse("2020-01-01T00:00:00Z"))));
+        Money fee = runner.run(new TestCommand<>(ctx -> fees.forBooking(ctx, 60, Instant.parse("2020-01-01T00:00:00Z")).amount()));
 
         assertThat(fee).isEqualTo(Money.ZERO);
         assertThat(fee.amount().scale()).isEqualTo(2);
@@ -67,7 +68,7 @@ class BookingFeesIntegrationTest extends IntegrationTest {
         try {
             assertThat(feeNow()).isEqualTo(Money.of("5.50"));
             assertThat(feeNow().amount().scale()).isEqualTo(2);
-            Money atBefore = runner.run(new TestCommand<>(ctx -> fees.effectiveAt(ctx, before)));
+            Money atBefore = runner.run(new TestCommand<>(ctx -> fees.forBooking(ctx, 60, before).amount()));
             assertThat(atBefore).isEqualTo(Money.ZERO);
         } finally {
             BookingFeeConfiguration.change(runner, "0");

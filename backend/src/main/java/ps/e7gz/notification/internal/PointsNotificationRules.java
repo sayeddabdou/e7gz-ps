@@ -25,6 +25,8 @@ import ps.e7gz.notification.api.NotificationRequest;
  *       nothing was deducted and nobody is notified (PO decision 30 Oct 2026).</li>
  *   <li>A COMPENSATION of a booking reward follows an admin attendance correction, which notifies the customer
  *       itself (E7-70).</li>
+ *   <li>BOOKING_FEE_PAYMENT and BOOKING_FEE_REFUND (PCR-010): none. The customer spends Points by booking and sees it
+ *       on the booking; a refund gives them back with the booking's own cancellation notification.</li>
  * </ul>
  */
 final class PointsNotificationRules {
@@ -59,6 +61,7 @@ final class PointsNotificationRules {
                     ? Optional.of(NotificationRequest.of(ADMIN_ACCOUNT_CHANGE, NotificationRecipientType.CUSTOMER,
                             customer, Map.of()))
                     : Optional.empty();
+            case BOOKING_FEE_PAYMENT, BOOKING_FEE_REFUND -> Optional.empty();
         };
     }
 }

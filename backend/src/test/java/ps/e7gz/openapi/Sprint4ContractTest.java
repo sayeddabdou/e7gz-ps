@@ -116,9 +116,10 @@ class Sprint4ContractTest {
     @Test
     void theCustomerRoutesAreReadOnlyAndUseOnlyCustomerSchemas() {
         // arch 09 §1.1: separate DTOs per route group, always; standing, points, referrals and wallet are reads.
-        // Shared: the envelope, Money and the closed code enums of ps.e7gz.common.codes.
+        // Shared: the envelope, Money and the closed code enums of ps.e7gz.common.codes (BookingFeeMode: PCR-010).
         Set<String> shared = Set.of("ResponseMeta", "Money", "Currency", "VerifiedPlayerStatus",
-                "VerifiedPlayerQualification", "PointsTransactionCause", "ReferralStatus", "WalletTransactionCause");
+                "VerifiedPlayerQualification", "PointsTransactionCause", "ReferralStatus", "WalletTransactionCause",
+                "BookingFeeMode");
         SPRINT_4_OPERATIONS.stream().filter(key -> key.contains("/customer/")).forEach(key -> {
             assertThat(key).startsWith("get ");
             assertThat(refs(operation(key))).as(key).map(ref -> ref.replaceFirst("^DataResponse", ""))
@@ -208,15 +209,19 @@ class Sprint4ContractTest {
     }
 
     @Test
-    void configurationCoversExactlyTheFiveA8Values() {
-        // arch 01 §14 A8 and PO decision D3 (17 Oct 2026): two fees on /admin/fees, points and the switch here.
-        assertThat(properties(schema("AdminFees"))).containsExactlyInAnyOrder("bookingFee", "tournamentCreationFee");
+    void configurationCoversExactlyTheEightA8Values() {
+        // arch 01 §14 A8 and PO decision D3 (17 Oct 2026): the fees on /admin/fees, points and the switch here;
+        // PCR-010 (25 Oct 2026) adds the fee mode and the per-hour fee there, the Points per fee unit here.
+        assertThat(properties(schema("AdminFees"))).containsExactlyInAnyOrder("bookingFeeMode", "bookingFee",
+                "bookingFeePerHour", "tournamentCreationFee");
         assertThat(properties(schema("AdminPointsSettings")))
-                .containsExactlyInAnyOrder("attendedPoints", "referralPoints", "walletRefundsEnabled");
+                .containsExactlyInAnyOrder("attendedPoints", "referralPoints", "walletRefundsEnabled", "pointsPerFeeUnit");
         assertThat(properties(requestBody(operation("put /api/v1/admin/fees"))))
-                .containsExactlyInAnyOrder("bookingFee", "tournamentCreationFee", "reason");
+                .containsExactlyInAnyOrder("bookingFeeMode", "bookingFee", "bookingFeePerHour", "tournamentCreationFee",
+                        "reason");
         assertThat(properties(requestBody(operation("put /api/v1/admin/points/settings"))))
-                .containsExactlyInAnyOrder("attendedPoints", "referralPoints", "walletRefundsEnabled", "reason");
+                .containsExactlyInAnyOrder("attendedPoints", "referralPoints", "walletRefundsEnabled", "pointsPerFeeUnit",
+                        "reason");
     }
 
     @Test

@@ -10,6 +10,7 @@ import ps.e7gz.common.codes.BookingTerminalReason;
 import ps.e7gz.common.codes.ConsoleType;
 import ps.e7gz.common.codes.PlayMode;
 import ps.e7gz.common.money.Money;
+import ps.e7gz.loyalty.api.BookingFeePayments.FeePayment;
 
 /**
  * One of the customer's bookings as the Customer App sees it (arch 09 section 3.3), read at the command instant. The
@@ -21,6 +22,8 @@ import ps.e7gz.common.money.Money;
  *                               otherwise {@code null} (E7-58)
  * @param lateConfirmPaused      an emergency pauses that deadline now (FR-OPS-41); never its cause
  * @param history                oldest first; empty in a list (only the detail carries it)
+ * @param feePayment             how Points and the Wallet paid the fee (PCR-010); {@code null} in a list (only the
+ *                               detail carries it)
  */
 public record CustomerBookingRow(UUID bookingId, BookingStatus status, DisplayBucket displayBucket,
                                  BookingTerminalReason terminalReason, UUID venueId, String venueName,
@@ -29,7 +32,7 @@ public record CustomerBookingRow(UUID bookingId, BookingStatus status, DisplayBu
                                  Money venuePriceTotal, Money bookingFee, Money totalAmount,
                                  Instant venueResponseExpiresAt, boolean venueResponsePaused,
                                  Instant lateConfirmExpiresAt, boolean lateConfirmPaused,
-                                 List<BookingHistoryEntry> history) {
+                                 List<BookingHistoryEntry> history, FeePayment feePayment) {
 
     public CustomerBookingRow {
         Objects.requireNonNull(bookingId, "bookingId");
