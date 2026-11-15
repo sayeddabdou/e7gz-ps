@@ -2,6 +2,8 @@ package ps.e7gz.trust.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static ps.e7gz.support.PostgresTestContainer.DATABASE;
+import static ps.e7gz.support.PostgresTestContainer.MIGRATOR;
 import static ps.e7gz.support.fixtures.Fixtures.aUser;
 
 import java.sql.Connection;
@@ -21,6 +23,10 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
+import org.postgresql.Driver;
+import org.springframework.dao.DataAccessException;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.datasource.SimpleDriverDataSource;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import ps.e7gz.attendance.internal.AttendanceFlows;
 import ps.e7gz.booking.internal.BookingFlows;
@@ -32,7 +38,9 @@ import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.support.IntegrationTest;
+import ps.e7gz.support.PostgresTestContainer;
 import ps.e7gz.support.boundary.TestCommands;
+import ps.e7gz.trust.api.BookingOutcomes;
 import ps.e7gz.trust.api.TrustReplay;
 import ps.e7gz.trust.api.TrustReplay.Boundary;
 
@@ -45,6 +53,7 @@ class TrustReplayIntegrationTest extends IntegrationTest {
     @Autowired CommandRunner runner;
     @Autowired DataSource appDataSource;
     @Autowired TrustReplay replay;
+    @Autowired BookingOutcomes outcomes;
     BookingFlows flows;
     AttendanceFlows attendance;
     CorrelationId.Scope correlation;
@@ -59,6 +68,26 @@ class TrustReplayIntegrationTest extends IntegrationTest {
     @AfterEach
     void tearDown() {
         correlation.close();
+    }
+
+    /**
+     * {@code trust.trust_event} is only ever appended (FR-TRS-01): the database refuses an update or a delete even
+     * from the schema owner ({@code tr_trust_event_append_only}), so no correction can rewrite the stream replay reads.
+     */
+    @Test
+    void aTrustEventCanBeNeitherUpdatedNorDeleted() {
+        Booking missed = missed(flows.customer());
+        var event = replay.resolveEffectiveOutcomes(missed.customerId(), null).getFirst();
+        JdbcClient owner = JdbcClient.create(new SimpleDriverDataSource(new Driver(),
+                PostgresTestContainer.jdbcUrl(DATABASE), MIGRATOR, MIGRATOR));
+
+        assertThatThrownBy(() -> owner.sql("UPDATE trust.trust_event SET event_type = 'BOOKING_ATTENDED' WHERE id = :id")
+                .param("id", event.eventId()).update())
+                .isInstanceOf(DataAccessException.class).hasMessageContaining("append-only");
+        assertThatThrownBy(() -> owner.sql("DELETE FROM trust.trust_event WHERE id = :id")
+                .param("id", event.eventId()).update())
+                .isInstanceOf(DataAccessException.class).hasMessageContaining("append-only");
+        assertThat(replay.resolveEffectiveOutcomes(missed.customerId(), null)).containsExactly(event);
     }
 
     @Test
@@ -102,6 +131,65 @@ class TrustReplayIntegrationTest extends IntegrationTest {
             }
             connection.rollback();
         }
+    }
+
+    /** "Seeded replay reproduces history": every past position, and the stored projection as the last one. */
+    @Test
+    void aSeededHistoryReplaysToEveryPastPositionAndToTheStoredProjection() {
+        BookingFlows.Customer customer = flows.customer();
+        Booking first = missed(customer, Duration.ofMinutes(45));
+        Booking second = missed(customer);
+        UUID user = first.customerId();
+
+        var timeline = replay.timeline(user, null);
+        assertThat(timeline).extracting(TrustReplay.Step::effectiveAt)
+                .containsExactly(first.startAt(), second.startAt());
+        assertThat(timeline).extracting(TrustReplay.Step::consecutiveNoShows).containsExactly(1, 2);
+        assertThat(timeline).extracting(TrustReplay.Step::qualificationStage).containsOnlyNulls();
+        assertThat(replay.replay(user, Boundary.at(first.startAt())).consecutiveNoShows()).isOne();
+        assertThat(replay.replay(user, Boundary.at(second.startAt()))).isEqualTo(replay.replay(user, null));
+
+        var state = replay.replay(user, null);
+        assertThat(replay.replay(user, null)).as("deterministic").isEqualTo(state);
+        assertThat(state.lastEffectiveAt()).isEqualTo(second.startAt());
+        var stored = JdbcClient.create(appDataSource).sql("""
+                        SELECT last_event_sequence, consecutive_no_shows, penalty_stage, current_threshold,
+                               completed_attended_count, vp_qualification
+                          FROM trust.trust_projection WHERE user_id = :user
+                        """).param("user", user).query().singleRow();
+        assertThat(stored.get("last_event_sequence")).isEqualTo(state.lastEventSequence());
+        assertThat(stored.get("consecutive_no_shows")).isEqualTo(state.consecutiveNoShows());
+        assertThat(((Number) stored.get("penalty_stage")).intValue()).isEqualTo(state.penaltyStage());
+        assertThat(((Number) stored.get("current_threshold")).intValue()).isEqualTo(state.currentThreshold());
+        assertThat(stored.get("completed_attended_count")).isEqualTo(state.completedAttendedCount());
+        assertThat(stored.get("vp_qualification")).isEqualTo(state.vpQualification().name());
+    }
+
+    /**
+     * The one writer's interruption outcome (arch 07 section 7.3 rule 4): effective at the booking's start, occurred
+     * at the command instant, and the counter resets with no progress. Rolled back: the ACTIVE interruptions that
+     * resolve attendance to ATTENDED_INTERRUPTED are Sprint 5, and the database refuses the event without it at commit.
+     */
+    @Test
+    void anInterruptionOutcomeResetsTheCounterWithoutProgress() {
+        BookingFlows.Customer customer = flows.customer();
+        missed(customer);
+        Booking booking = customer.nextActive(Duration.ofMinutes(5));
+        rollback(booking, command -> {
+            outcomes.recordInterruption(command, booking.customerId(), booking.bookingId(), booking.startAt());
+            var effect = replay.resolveEffectiveOutcomes(command, booking.customerId(), null).getLast();
+            assertThat(effect.type()).isEqualTo(TrustEventType.BOOKING_ATTENDED_INTERRUPTED);
+            assertThat(effect.effectiveAt()).isEqualTo(booking.startAt());
+            assertThat(command.jdbc().sql("SELECT occurred_at FROM trust.trust_event WHERE id = :id")
+                    .param("id", effect.eventId()).query(OffsetDateTime.class).single().toInstant())
+                    .isEqualTo(command.commandNow());
+            var state = replay.replay(command, booking.customerId(), null);
+            assertThat(state.consecutiveNoShows()).isZero();
+            assertThat(state.completedAttendedCount()).isZero();
+            assertThat(command.jdbc().sql("SELECT consecutive_no_shows FROM trust.trust_projection WHERE user_id = :u")
+                    .param("u", booking.customerId()).query(Integer.class).single()).isZero();
+        });
+        assertThat(replay.replay(booking.customerId(), null).consecutiveNoShows()).isOne();
     }
 
     @Test

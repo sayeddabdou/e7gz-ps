@@ -15,7 +15,7 @@ import ps.e7gz.trust.api.BookingOutcomes;
  * {@code trust.trust_event} and {@code trust.trust_projection} on the command's transaction. The database assigns the
  * event sequence and checks the subject, the effective time and the shared command instant
  * ({@code trust.prepare_trust_event_insert}); {@code trust.refresh_projection} recomputes the projection by full replay.
- * Every booking outcome is written by the one statement below (E7-59 no-show, E7-61 completion).
+ * Every booking outcome is written by the one statement below (E7-59 no-show, E7-61 completion, E7-69 interruption).
  */
 @Component
 class JdbcBookingOutcomes implements BookingOutcomes {
@@ -42,6 +42,11 @@ class JdbcBookingOutcomes implements BookingOutcomes {
                     throw new IllegalArgumentException("A completion never resolves to " + result);
         };
         record(command, type, customerId, bookingId, startAt);
+    }
+
+    @Override
+    public void recordInterruption(CommandContext command, UUID customerId, UUID bookingId, Instant startAt) {
+        record(command, TrustEventType.BOOKING_ATTENDED_INTERRUPTED, customerId, bookingId, startAt);
     }
 
     private static void record(CommandContext command, TrustEventType type, UUID customerId, UUID bookingId,
