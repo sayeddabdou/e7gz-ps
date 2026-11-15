@@ -31,6 +31,9 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.error.DatabaseErrorCodes;
+import ps.e7gz.support.CommitFault;
 import ps.e7gz.support.IntegrationTest;
 import ps.e7gz.support.PostgresTestContainer;
 
@@ -254,6 +257,29 @@ class CommandRunnerTest extends IntegrationTest {
                 .isInstanceOf(DataAccessException.class)
                 .satisfies(e -> assertThat(sqlState(e)).isEqualTo("P0001"))
                 .rootCause().hasMessageContaining("Exactly one Tournament command per transaction");
+        assertThat(attempts).hasValue(1);
+    }
+
+    /**
+     * A guard that fires only at COMMIT (a deferred constraint trigger) fails the run with the same DataAccessException
+     * a failed statement gets, its SQLSTATE and guard identifier kept, so the API answers its code - never a
+     * TransactionSystemException answered 500 (PO decision 25 Oct 2026, E7-114 follow-up). Not retried.
+     */
+    @Test
+    void aGuardFailingTheCommitBubblesUpAsADataAccessExceptionWithItsIdentifierAndIsNotRetried() {
+        AtomicInteger attempts = new AtomicInteger();
+
+        try (CommitFault fault = CommitFault.scratch("gd_reservation_conflict_booking")) {
+            assertThatThrownBy(() -> runner.run(command(CommandScope.shared(LockSet.empty()), context -> {
+                attempts.incrementAndGet();
+                fault.armIn(context);
+                return "returned";
+            })))
+                    .isInstanceOf(DataAccessException.class)
+                    .satisfies(e -> assertThat(sqlState(e)).isEqualTo("P0001"))
+                    .satisfies(e -> assertThat(DatabaseErrorCodes.translate(e))
+                            .contains(ApiErrorCode.SLOT_NO_LONGER_AVAILABLE));
+        }
         assertThat(attempts).hasValue(1);
     }
 
