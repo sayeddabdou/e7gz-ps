@@ -134,8 +134,9 @@ class JdbcOwnerPasswordGate implements OwnerPasswordGate {
         } catch (RuntimeException failure) {
             // Q2: the last attempt checked the password and was then refused. Only what the API answers as a refusal
             // is audited, with the code it answers: an ApiException, or a database guard with a code (a
-            // DataAccessException, as GlobalExceptionHandler maps it). A 40001 left after the retries and unexpected
-            // failures - a failed COMMIT (TransactionSystemException) among them, answered 500 - are not.
+            // DataAccessException, as GlobalExceptionHandler maps it), the one that fails the COMMIT included
+            // (CommandRunner, PO decision 25 Oct 2026). A 40001 left after the retries and unexpected failures - a
+            // guard or invariant without a code, at COMMIT too, answered 500 - are not.
             if (attempt.accepted) {
                 Optional<ApiErrorCode> refusal = failure instanceof ApiException api ? Optional.of(api.code())
                         : failure instanceof DataAccessException database ? DatabaseErrorCodes.translate(database)

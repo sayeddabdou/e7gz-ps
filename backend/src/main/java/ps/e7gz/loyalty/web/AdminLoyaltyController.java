@@ -42,14 +42,15 @@ import ps.e7gz.common.web.ResponseMetaFactory;
 import ps.e7gz.loyalty.api.AccountHolders;
 import ps.e7gz.loyalty.internal.LoyaltyLedgers;
 import ps.e7gz.loyalty.internal.PointsAdjustments;
+import ps.e7gz.loyalty.internal.Referrals;
 import ps.e7gz.messaging.api.Idempotency;
 import ps.e7gz.messaging.api.ResultAggregate;
 import ps.e7gz.messaging.api.StoredResponse;
 
 /**
  * Platform Admin Wallet, Points and Referrals modules and the points configuration (arch 09 §5, FR-ADM-09, FR-PTS-09,
- * FR-PTS-11, arch 01 §14 A8): the Sprint 4 contract (E7-65). Wallet and points implemented by E7-66; referrals (E7-67)
- * and settings (E7-68) are stubs until their tasks. The wallet is read-only here too: there is no admin wallet
+ * FR-PTS-11, arch 01 §14 A8): the Sprint 4 contract (E7-65). Wallet and points implemented by E7-66, referrals by E7-67;
+ * settings (E7-68) are stubs until their task. The wallet is read-only here too: there is no admin wallet
  * adjustment (FR-PTS-11, PCR-004). Writes need a reason, are audited (FR-AUD-06), notify the customer (FR-NTF-11) and
  * require the Idempotency-Key (PO decision D6, 17 Oct 2026). Lists are cursor-paged (arch 09 §1.2); {@code q} matches
  * part of the full name, username or email, or the exact phone, trimmed and case-insensitive. A user's history sits
@@ -64,19 +65,28 @@ public class AdminLoyaltyController {
     /** {@code technical.idempotency_record.endpoint} of the points adjustment (arch 08 section 6). */
     static final String ADJUST_ENDPOINT = "POST /api/v1/admin/points/adjust";
 
+    /** {@code technical.idempotency_record.endpoint} of the referral invalidation. */
+    static final String INVALIDATE_ENDPOINT = "POST /api/v1/admin/referrals/{referralId}/invalidate";
+
     private static final StoredResponse<AdminPointsTransaction> ADJUSTED = StoredResponse.of(
             AdminPointsTransaction.class, 200,
             (AdminPointsTransaction posted) -> new ResultAggregate("POINTS_TRANSACTION", posted.transactionId()));
 
+    private static final StoredResponse<AdminReferralInvalidation> INVALIDATED = StoredResponse.of(
+            AdminReferralInvalidation.class, 200,
+            (AdminReferralInvalidation done) -> new ResultAggregate("REFERRAL", done.referral().referralId()));
+
     private final LoyaltyLedgers ledgers;
     private final PointsAdjustments adjustments;
+    private final Referrals referrals;
     private final Idempotency idempotency;
     private final ResponseMetaFactory meta;
 
-    AdminLoyaltyController(LoyaltyLedgers ledgers, PointsAdjustments adjustments, Idempotency idempotency,
-                           ResponseMetaFactory meta) {
+    AdminLoyaltyController(LoyaltyLedgers ledgers, PointsAdjustments adjustments, Referrals referrals,
+                           Idempotency idempotency, ResponseMetaFactory meta) {
         this.ledgers = ledgers;
         this.adjustments = adjustments;
+        this.referrals = referrals;
         this.idempotency = idempotency;
         this.meta = meta;
     }
@@ -164,7 +174,8 @@ public class AdminLoyaltyController {
             @RequestParam(required = false) @Size(max = 100) String q,
             @RequestParam(required = false) String cursor,
             @RequestParam(required = false) @Min(1) @Max(100) Integer limit) {
-        throw NotImplementedYet.stub();
+        LoyaltyLedgers.Page<Referrals.AdminReferral> page = referrals.list(status, q, cursor, limit);
+        return meta.data(new PageView<>(page.items().stream().map(AdminReferral::of).toList(), page.nextCursor()));
     }
 
     @PostMapping("/referrals/{referralId}/invalidate")
@@ -178,8 +189,12 @@ public class AdminLoyaltyController {
     public DataResponse<AdminReferralInvalidation> invalidateReferral(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
             @PathVariable UUID referralId,
-            @Valid @RequestBody AdminReferralInvalidateRequest request) {
-        throw NotImplementedYet.stub();
+            @Valid @RequestBody AdminReferralInvalidateRequest request,
+            @AuthenticationPrincipal AuthenticatedSubject admin) {
+        return meta.data(referrals.invalidate(admin.id(), referralId, request.reason(),
+                idempotency.request(admin, INVALIDATE_ENDPOINT, idempotencyKey, Map.of("referralId", referralId),
+                        request),
+                INVALIDATED, AdminReferralInvalidation::of).body());
     }
 
     @GetMapping("/points/settings")
@@ -321,6 +336,12 @@ public class AdminLoyaltyController {
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) Instant invalidatedAt,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true)
             ReferralInvalidationKind invalidationKind) {
+
+        static AdminReferral of(Referrals.AdminReferral r) {
+            return new AdminReferral(r.referralId(), r.referrerUserId(), r.referrerUsername(), r.code(),
+                    r.referredUserId(), r.referredUsername(), r.signedUpAt(), r.status(), r.rewardPointsApplied(),
+                    r.rewardedAt(), r.invalidatedAt(), r.invalidationKind());
+        }
     }
 
     @Schema(name = "AdminReferralInvalidateRequest")
@@ -333,6 +354,11 @@ public class AdminLoyaltyController {
     public record AdminReferralInvalidation(
             @NotNull AdminReferral referral,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) AdminPointsTransaction reversal) {
+
+        static AdminReferralInvalidation of(Referrals.Invalidation done) {
+            return new AdminReferralInvalidation(AdminReferral.of(done.referral()),
+                    done.reversal() == null ? null : AdminPointsTransaction.of(done.reversal()));
+        }
     }
 
     @Schema(name = "AdminPointsSettings")

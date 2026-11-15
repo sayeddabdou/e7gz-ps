@@ -30,6 +30,9 @@ public interface AccountHolders {
      */
     Set<UUID> search(String q);
 
+    /** The Customer's own Referral Code to share (Product v5.0 §5.7; E7-67); empty when it is not a Customer. */
+    Optional<String> referralCode(UUID userId);
+
     /**
      * @param phone   E.164; {@code null} for an anonymised account, whose phone is no longer a phone number (FR-ACC-10)
      * @param deleted anonymised (FR-ACC-10): its name and email are already empty

@@ -36,6 +36,7 @@ import ps.e7gz.concurrency.ConcurrentRace;
 import ps.e7gz.identity.api.OwnerPasswordAttempts;
 import ps.e7gz.messaging.api.CommandAnswer;
 import ps.e7gz.messaging.api.IntegrationEvents;
+import ps.e7gz.support.CommitFault;
 import ps.e7gz.support.IntegrationTest;
 
 /**
@@ -153,6 +154,33 @@ class VenueCancelConfirmedHttpTest extends IntegrationTest {
         // PO decision Q2: the right PIN, then the refusal - one OWNER_PASSWORD_ACCEPTED row of the gate, not counted
         assertThat(accepted(world.account.id()))
                 .containsExactly("SUCCESS CANCEL_CONFIRMED_ONLINE_BOOKING BOOKING_STATE_CHANGED");
+        assertThat(refusals(world.account.id())).isEmpty();
+        assertThat(failures(world.account.id())).isZero();
+    }
+
+    /**
+     * A database guard firing only at COMMIT (a deferred trigger) after the right PIN: answered with its code, never
+     * 500 (PO decision 25 Oct 2026, E7-114 follow-up); one OWNER_PASSWORD_ACCEPTED row with that code, not counted;
+     * the cancellation, its history, refund decision, events, success row and idempotency record all roll back.
+     */
+    @Test
+    void aGuardFailingTheCommitAfterTheRightPinIsAnsweredWithItsCodeAndNothingIsCancelled() throws Exception {
+        OnlineBookingWorld world = OnlineBookingWorld.create();
+        CreatedBooking created = confirmed(world);
+        String key = UUID.randomUUID().toString();
+        Writes before = writes(world, created, key);
+
+        try (CommitFault ignored = CommitFault.onRowsOf("booking.booking", "id", created.bookingId(),
+                "gd_reservation_conflict_booking")) {
+            mvc.perform(cancel(venue(world), created, key, pin(OWNER_PIN)))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.error.code").value("SLOT_NO_LONGER_AVAILABLE"));
+        }
+
+        assertThat(booking(created.bookingId()).status()).isEqualTo("CONFIRMED");
+        assertThat(writes(world, created, key)).isEqualTo(before);
+        assertThat(accepted(world.account.id()))
+                .containsExactly("SUCCESS CANCEL_CONFIRMED_ONLINE_BOOKING SLOT_NO_LONGER_AVAILABLE");
         assertThat(refusals(world.account.id())).isEmpty();
         assertThat(failures(world.account.id())).isZero();
     }

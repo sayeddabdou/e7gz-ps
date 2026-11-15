@@ -17,10 +17,13 @@ import java.util.concurrent.ThreadLocalRandom;
 import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
+import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.JdbcTransactionManager;
+import org.springframework.jdbc.support.SQLExceptionTranslator;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -37,8 +40,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  *       guard, or at commit - rollback and rerun the whole transaction, bounded and jittered
  *       ({@link CommandRetryProperties}).</li>
  * </ol>
- * Every other exception, guard errors included, propagates exactly as thrown, for the API error mapper. When the
- * retries are exhausted the last {@code 40001} exception propagates, also unchanged.
+ * Every other exception, guard errors included, propagates exactly as thrown, for the API error mapper; a guard that
+ * fails the COMMIT itself (a deferred trigger) as the same {@code DataAccessException} a failed statement gets. When
+ * the retries are exhausted the last {@code 40001} exception propagates, also unchanged.
  */
 public class CommandRunner {
 
@@ -128,11 +132,28 @@ public class CommandRunner {
         private final JdbcClient jdbcClient;
 
         Pool(DataSource dataSource) {
-            this.transaction = new TransactionTemplate(new JdbcTransactionManager(dataSource));
+            this.transaction = new TransactionTemplate(transactionManager(dataSource));
             this.transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
             this.transaction.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
             this.jdbcTemplate = new JdbcTemplate(dataSource);
             this.jdbcClient = JdbcClient.create(jdbcTemplate);
+        }
+
+        /**
+         * A failed COMMIT - a deferred guard's {@code P0001}, a {@code 40001} at commit - as the same
+         * {@link DataAccessException} a failed statement gets, the driver's exception kept as its cause: like
+         * {@link JdbcTemplate}, an error Spring does not classify becomes an {@link UncategorizedSQLException}, where
+         * the transaction manager alone would answer a {@code TransactionSystemException} that the API error mapper and
+         * the Owner Password gate cannot read as a database refusal (PO decision 25 Oct 2026, E7-114 follow-up).
+         */
+        private static JdbcTransactionManager transactionManager(DataSource dataSource) {
+            JdbcTransactionManager manager = new JdbcTransactionManager(dataSource);
+            SQLExceptionTranslator classified = manager.getExceptionTranslator();
+            manager.setExceptionTranslator((task, sql, ex) -> {
+                DataAccessException translated = classified.translate(task, sql, ex);
+                return translated != null ? translated : new UncategorizedSQLException(task, sql, ex);
+            });
+            return manager;
         }
 
         /** Opens the database command context; returns the command instant it sampled. */
