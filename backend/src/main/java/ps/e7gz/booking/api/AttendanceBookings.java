@@ -7,6 +7,7 @@ import java.util.UUID;
 import ps.e7gz.common.codes.BookingEventType;
 import ps.e7gz.common.codes.BookingSource;
 import ps.e7gz.common.codes.BookingStatus;
+import ps.e7gz.common.codes.BookingTerminalReason;
 import ps.e7gz.common.command.CommandContext;
 
 /**
@@ -91,6 +92,12 @@ public interface AttendanceBookings {
      * @return the transition, or empty when the booking is no longer NO_SHOW (nothing written)
      */
     Optional<Reversal> reverseNoShow(CommandContext command, UUID bookingId, Instant at, UUID adminId);
+
+    /**
+     * E7-70: the booking's Booking Reason Code, for the Platform Admin's view of it after an attendance action; empty
+     * when it has none (not terminal, COMPLETED or NO_SHOW) or there is no such booking.
+     */
+    Optional<BookingTerminalReason> terminalReason(CommandContext command, UUID bookingId);
 
     /** The status a no-show reversal moved the booking to and its STATUS_TRANSITION history row. */
     record Reversal(BookingStatus status, UUID historyId) {

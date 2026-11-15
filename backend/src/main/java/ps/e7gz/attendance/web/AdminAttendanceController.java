@@ -9,25 +9,35 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import ps.e7gz.attendance.internal.AttendanceCorrections;
+import ps.e7gz.attendance.internal.AttendanceState;
 import ps.e7gz.common.codes.AttendanceResult;
 import ps.e7gz.common.codes.BookingStatus;
 import ps.e7gz.common.codes.BookingTerminalReason;
 import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.error.ApiException;
+import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
+import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.messaging.api.Idempotency;
+import ps.e7gz.messaging.api.ResultAggregate;
+import ps.e7gz.messaging.api.StoredResponse;
 
 /**
  * Platform Admin attendance remediation (arch 09 §5, arch 07 §7.4, FR-ATT-11, FR-ATT-12, FR-ATT-13). In the Sprint 4
- * contract by PO decision D1 (17 Oct 2026); stubs until E7-70. Only a Platform Admin reverses attendance (FR-ATT-11).
+ * contract by PO decision D1 (17 Oct 2026); filled by E7-70 ({@link AttendanceCorrections}). Only a Platform Admin
+ * reverses attendance (FR-ATT-11).
  * Each action needs a reason, is audited (FR-AUD-06), notifies the customer (FR-NTF-11) and is in ADR-015's scope.
  * Corrections are append-only trust events; released inventory is never resurrected (FR-TRS-24). Evidence that does
  * not exist, a manual booking (no attendance, FR-MAN-04) or a booking whose state does not allow the action is
@@ -38,6 +48,26 @@ import ps.e7gz.common.web.OpenApiConfig;
 @Tag(name = "admin-attendance")
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class AdminAttendanceController {
+
+    /** {@code technical.idempotency_record.endpoint} of each remediation (arch 08 section 6). */
+    static final String REVERSE_CHECK_IN_ENDPOINT = "POST /api/v1/admin/bookings/{bookingId}/attendance/reverse-check-in";
+    static final String REVERSE_LATE_PRESENT_ENDPOINT =
+            "POST /api/v1/admin/bookings/{bookingId}/attendance/reverse-late-present";
+    static final String REVERSE_NO_SHOW_ENDPOINT = "POST /api/v1/admin/bookings/{bookingId}/attendance/reverse-no-show";
+    static final String CORRECT_ENDPOINT = "POST /api/v1/admin/bookings/{bookingId}/attendance/correct";
+
+    private static final StoredResponse<AdminAttendance> ANSWERED = StoredResponse.of(AdminAttendance.class, 200,
+            (AdminAttendance attendance) -> new ResultAggregate("BOOKING", attendance.bookingId()));
+
+    private final AttendanceCorrections corrections;
+    private final Idempotency idempotency;
+    private final ResponseMetaFactory meta;
+
+    AdminAttendanceController(AttendanceCorrections corrections, Idempotency idempotency, ResponseMetaFactory meta) {
+        this.corrections = corrections;
+        this.idempotency = idempotency;
+        this.meta = meta;
+    }
 
     @PostMapping("/reverse-check-in")
     @Operation(operationId = "adminReverseCheckIn", summary = "Reverse a check-in (FR-ATT-12)",
@@ -50,8 +80,12 @@ public class AdminAttendanceController {
     public DataResponse<AdminAttendance> reverseCheckIn(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
             @PathVariable UUID bookingId,
-            @Valid @RequestBody AdminAttendanceReasonRequest request) {
-        throw NotImplementedYet.stub();
+            @Valid @RequestBody AdminAttendanceReasonRequest request,
+            @AuthenticationPrincipal AuthenticatedSubject admin) {
+        return meta.data(corrections.reverseCheckIn(admin.id(), bookingId, request.reason(),
+                idempotency.request(admin, REVERSE_CHECK_IN_ENDPOINT, idempotencyKey, Map.of("bookingId", bookingId),
+                        request),
+                ANSWERED, AdminAttendance::of).body());
     }
 
     @PostMapping("/reverse-late-present")
@@ -63,8 +97,12 @@ public class AdminAttendanceController {
     public DataResponse<AdminAttendance> reverseLatePresent(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
             @PathVariable UUID bookingId,
-            @Valid @RequestBody AdminAttendanceReasonRequest request) {
-        throw NotImplementedYet.stub();
+            @Valid @RequestBody AdminAttendanceReasonRequest request,
+            @AuthenticationPrincipal AuthenticatedSubject admin) {
+        return meta.data(corrections.reverseLatePresent(admin.id(), bookingId, request.reason(),
+                idempotency.request(admin, REVERSE_LATE_PRESENT_ENDPOINT, idempotencyKey,
+                        Map.of("bookingId", bookingId), request),
+                ANSWERED, AdminAttendance::of).body());
     }
 
     @PostMapping("/reverse-no-show")
@@ -78,8 +116,12 @@ public class AdminAttendanceController {
     public DataResponse<AdminAttendance> reverseNoShow(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
             @PathVariable UUID bookingId,
-            @Valid @RequestBody AdminAttendanceReasonRequest request) {
-        throw NotImplementedYet.stub();
+            @Valid @RequestBody AdminAttendanceReasonRequest request,
+            @AuthenticationPrincipal AuthenticatedSubject admin) {
+        return meta.data(corrections.reverseNoShow(admin.id(), bookingId, request.reason(),
+                idempotency.request(admin, REVERSE_NO_SHOW_ENDPOINT, idempotencyKey, Map.of("bookingId", bookingId),
+                        request),
+                ANSWERED, AdminAttendance::of).body());
     }
 
     @PostMapping("/correct")
@@ -96,8 +138,14 @@ public class AdminAttendanceController {
     public DataResponse<AdminAttendance> correct(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
             @PathVariable UUID bookingId,
-            @Valid @RequestBody AdminAttendanceCorrectionRequest request) {
-        throw NotImplementedYet.stub();
+            @Valid @RequestBody AdminAttendanceCorrectionRequest request,
+            @AuthenticationPrincipal AuthenticatedSubject admin) {
+        if (request.correctedOutcome() == AttendanceResult.NOT_APPLICABLE) {
+            throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "correctedOutcome");      // FR-TRS-07
+        }
+        return meta.data(corrections.correct(admin.id(), bookingId, request.correctedOutcome(), request.reason(),
+                idempotency.request(admin, CORRECT_ENDPOINT, idempotencyKey, Map.of("bookingId", bookingId), request),
+                ANSWERED, AdminAttendance::of).body());
     }
 
     /** The mandatory reason of an attendance remediation (FR-AUD-06), kept in its audit row. */
@@ -127,5 +175,10 @@ public class AdminAttendanceController {
             Instant latePresentAt,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true, example = "2026-10-12T18:20:00Z")
             Instant noShowAt) {
+
+        static AdminAttendance of(AttendanceState state) {
+            return new AdminAttendance(state.bookingId(), state.status(), state.terminalReason(), state.result(),
+                    state.checkedInAt(), state.latePresentAt(), state.noShowAt());
+        }
     }
 }

@@ -46,8 +46,19 @@ import ps.e7gz.trust.api.TrustCorrections;
  * ({@code attendance.assert_attendance_action_audit}, {@code attendance.assert_attendance_row},
  * {@code trust.assert_user_integrity}, {@code loyalty.assert_booking}). The public entry points take the
  * Idempotency-Key (ADR-015: both may move points and the reversal money), so a retry returns the first answer.
- * No HTTP route yet: {@code POST /admin/bookings/{id}/attendance/correct} and {@code /reverse-no-show} belong to the
- * Sprint 4 contract (E7-65).
+ * The four routes of the Sprint 4 contract (E7-65, D1) are in {@code attendance.web.AdminAttendanceController}.
+ *
+ * <p><b>Evidence reversal</b> (arch 07 section 7.4, FR-ATT-12) - recorded evidence is never erased; the reversal adds
+ * its marker with the Admin Booking Event and audit row:
+ * <ul>
+ *   <li>a check-in on an ACTIVE, unresolved booking: the booking stays ACTIVE and Mark Present - Late and no-show are
+ *       open again inside their window; nothing was granted yet, so nothing is clawed back;</li>
+ *   <li>a check-in behind a resolved ATTENDED: the result becomes ATTENDANCE_UNCONFIRMED with its
+ *       {@code ATTENDANCE_CORRECTED}, and the reward is compensated (FR-TRS-08, FR-PTS-03);</li>
+ *   <li>a Mark Present - Late on an ACTIVE, unresolved booking before its endAt: no-show is open again.</li>
+ * </ul>
+ * Any other state - no such evidence standing, a check-in behind another result, a Late Present after the booking
+ * ended - is refused: the Admin corrects the outcome instead.
  *
  * <p><b>Correction</b> - a resolved result is replaced at the command instant with its {@code ATTENDANCE_CORRECTED},
  * which supersedes the previous correction, so a chain stays one effective outcome; the reward is granted or compensated
@@ -73,7 +84,7 @@ import ps.e7gz.trust.api.TrustCorrections;
  * <p>Refusals, before anything is written: a blank reason, an outcome outside the allowed ones or a missing service-loss
  * assessment is {@code VALIDATION_FAILED}; an unknown booking is {@code NOT_FOUND}; a Manual Booking, an unresolved
  * attendance, a correction of a standing no-show, a reversal of a booking that is not (or no longer) NO_SHOW - a
- * duplicate reversal - or the result it already has is {@code BOOKING_STATE_CHANGED}.
+ * duplicate reversal - or the result it already has is {@code ADMIN_ACTION_NOT_ALLOWED} (Sprint 4 contract, PO decision D5).
  *
  * <p>E7-71: a reversal or correction that leaves an operational Ban without replay support, or creates a new crossing,
  * is handed to the Ban reconciliation; until it exists the whole command rolls back
@@ -115,18 +126,57 @@ public class AttendanceCorrections {
         this.outbox = outbox;
     }
 
-    /** The correction once per Idempotency-Key. */
+    /** {@code POST .../attendance/correct}: the correction once per Idempotency-Key, answered with the new state. */
     public <R> IdempotentResult<R> correct(UUID adminId, UUID bookingId, AttendanceResult outcome, String reason,
                                            IdempotentRequest key, StoredResponse<R> response,
-                                           Function<CorrectedAttendance, R> view) {
-        return idempotent(correction(adminId, bookingId, outcome, reason), key, response, view);
+                                           Function<AttendanceState, R> view) {
+        return idempotent(thenState(correction(adminId, bookingId, outcome, reason), bookingId), key, response, view);
     }
 
-    /** The no-show reversal once per Idempotency-Key. */
-    public <R> IdempotentResult<R> reverseNoShow(UUID adminId, UUID bookingId, AttendanceResult outcome,
-                                                 Boolean serviceLoss, String reason, IdempotentRequest key,
-                                                 StoredResponse<R> response, Function<ReversedNoShow, R> view) {
+    /**
+     * {@code POST .../attendance/reverse-no-show}: the reversal once per Idempotency-Key. The route takes a reason only
+     * (Sprint 4 contract), so it is the penalty removal alone - ATTENDANCE_UNCONFIRMED; to record that the customer
+     * attended the Admin then uses {@code correct} (FR-ATT-13) - and it establishes no service loss, so the reversal
+     * alone refunds nothing (FRS reason map, {@code ADMIN_NO_SHOW_REVERSAL}).
+     */
+    public <R> IdempotentResult<R> reverseNoShow(UUID adminId, UUID bookingId, String reason, IdempotentRequest key,
+                                                 StoredResponse<R> response, Function<AttendanceState, R> view) {
+        return idempotent(thenState(reversal(adminId, bookingId, AttendanceResult.ATTENDANCE_UNCONFIRMED, false,
+                reason), bookingId), key, response, view);
+    }
+
+    /**
+     * The reversal with the Admin's explicit choices of Product v5.0 section 27.9 - the outcome and the service-loss
+     * assessment - once per Idempotency-Key. Package-private: the Sprint 4 route carries neither (see above), so
+     * nothing outside this package reaches it yet.
+     */
+    <R> IdempotentResult<R> reverseNoShow(UUID adminId, UUID bookingId, AttendanceResult outcome, Boolean serviceLoss,
+                                          String reason, IdempotentRequest key, StoredResponse<R> response,
+                                          Function<ReversedNoShow, R> view) {
         return idempotent(reversal(adminId, bookingId, outcome, serviceLoss, reason), key, response, view);
+    }
+
+    /** {@code POST .../attendance/reverse-check-in}, once per Idempotency-Key. */
+    public <R> IdempotentResult<R> reverseCheckIn(UUID adminId, UUID bookingId, String reason, IdempotentRequest key,
+                                                  StoredResponse<R> response, Function<AttendanceState, R> view) {
+        return idempotent(checkInReversal(adminId, bookingId, reason), key, response, view);
+    }
+
+    /** {@code POST .../attendance/reverse-late-present}, once per Idempotency-Key. */
+    public <R> IdempotentResult<R> reverseLatePresent(UUID adminId, UUID bookingId, String reason,
+                                                      IdempotentRequest key, StoredResponse<R> response,
+                                                      Function<AttendanceState, R> view) {
+        return idempotent(latePresentReversal(adminId, bookingId, reason), key, response, view);
+    }
+
+    /** The check-in reversal without an Idempotency-Key record: package-private, for the tests of this package. */
+    AttendanceState reverseCheckIn(UUID adminId, UUID bookingId, String reason) {
+        return runner.run(checkInReversal(adminId, bookingId, reason));
+    }
+
+    /** The Late Present reversal without an Idempotency-Key record: package-private, for the tests of this package. */
+    AttendanceState reverseLatePresent(UUID adminId, UUID bookingId, String reason) {
+        return runner.run(latePresentReversal(adminId, bookingId, reason));
     }
 
     /** The correction without an Idempotency-Key record: package-private, for this package's tests. */
@@ -168,6 +218,26 @@ public class AttendanceCorrections {
                 context -> reverse(context, adminId, booking, outcome, serviceLoss, why));
     }
 
+    private Command<AttendanceState> checkInReversal(UUID adminId, UUID bookingId, String reason) {
+        String why = reason(reason);
+        Booking booking = onlineBooking(adminId, bookingId);
+        return new Body<>(scopeOf(adminId, booking), context -> reverseCheckIn(context, adminId, booking, why));
+    }
+
+    private Command<AttendanceState> latePresentReversal(UUID adminId, UUID bookingId, String reason) {
+        String why = reason(reason);
+        Booking booking = onlineBooking(adminId, bookingId);
+        return new Body<>(scopeOf(adminId, booking), context -> reverseLatePresent(context, adminId, booking, why));
+    }
+
+    /** The command, then the attendance of the booking as it left it, read in the same transaction. */
+    private <T> Command<AttendanceState> thenState(Command<T> command, UUID bookingId) {
+        return new Body<>(command.scope(), context -> {
+            command.execute(context);
+            return state(context, bookingId);
+        });
+    }
+
     /** FR-ATT-11: mandatory. */
     private static String reason(String reason) {
         if (reason == null || reason.isBlank()) {
@@ -183,7 +253,7 @@ public class AttendanceCorrections {
                         context -> bookings.find(context, bookingId)))
                 .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND));
         if (booking.source() != BookingSource.ONLINE || booking.customerId() == null) {
-            throw new ApiException(ApiErrorCode.BOOKING_STATE_CHANGED);
+            throw new ApiException(ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED);
         }
         return booking;
     }
@@ -200,12 +270,12 @@ public class AttendanceCorrections {
         UUID bookingId = booking.bookingId();
         AttendanceStore.Evidence evidence = store.find(context, bookingId)
                 .filter(found -> found.result() != null)
-                .orElseThrow(() -> new ApiException(ApiErrorCode.BOOKING_STATE_CHANGED));     // not resolved yet
+                .orElseThrow(() -> new ApiException(ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED));     // not resolved yet
         if (evidence.activeNoShow() != null || evidence.result() == outcome) {
-            throw new ApiException(ApiErrorCode.BOOKING_STATE_CHANGED);                       // FR-ATT-12
+            throw new ApiException(ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED);                       // FR-ATT-12
         }
         if (!store.correct(context, bookingId, outcome, now)) {
-            throw new ApiException(ApiErrorCode.BOOKING_STATE_CHANGED);
+            throw new ApiException(ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED);
         }
         recordCorrection(context, adminId, booking, evidence.result(), outcome, reason, now);
         UUID correction = trust.correctAttendance(context, booking.customerId(), bookingId, outcome);
@@ -222,9 +292,9 @@ public class AttendanceCorrections {
         UUID bookingId = booking.bookingId();
         AttendanceStore.Evidence evidence = store.find(context, bookingId)
                 .filter(found -> found.activeNoShow() != null)
-                .orElseThrow(() -> new ApiException(ApiErrorCode.BOOKING_STATE_CHANGED));     // none, or reversed
+                .orElseThrow(() -> new ApiException(ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED));     // none, or reversed
         Reversal reversal = bookings.reverseNoShow(context, bookingId, now, adminId)
-                .orElseThrow(() -> new ApiException(ApiErrorCode.BOOKING_STATE_CHANGED));
+                .orElseThrow(() -> new ApiException(ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED));
         UUID reversedEvent = bookings.recordAdminEvent(context, bookingId, now, BookingEventType.NO_SHOW_REVERSED,
                 adminId);
         audit.write(context, AuditRecord.builder(AttendanceAuditAction.NO_SHOW_REVERSED, AuditActor.admin(adminId),
@@ -240,7 +310,7 @@ public class AttendanceCorrections {
             recordCorrection(context, adminId, booking, evidence.result(), outcome, reason, now);
         }
         if (!store.reverseNoShow(context, bookingId, outcome, now)) {
-            throw new ApiException(ApiErrorCode.BOOKING_STATE_CHANGED);
+            throw new ApiException(ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED);
         }
         UUID reversalEvent = trust.reverseNoShow(context, booking.customerId(), bookingId);
         UUID correctionEvent = corrected
@@ -254,6 +324,76 @@ public class AttendanceCorrections {
         outbox.publish(context, AttendanceEvents.corrected(booking, AttendanceEvents.Correction.NO_SHOW_REVERSED,
                 evidence.result(), outcome, reversal.status(), now));
         return new ReversedNoShow(bookingId, reversal.status(), outcome, reversalEvent, correctionEvent, decision, now);
+    }
+
+    private AttendanceState reverseCheckIn(CommandContext context, UUID adminId, Booking booking, String reason) {
+        Instant now = context.commandNow();
+        UUID bookingId = booking.bookingId();
+        AttendanceStore.Evidence evidence = store.find(context, bookingId)
+                .filter(found -> found.activeCheckIn() != null)
+                .orElseThrow(() -> new ApiException(ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED));  // none, or reversed
+        BookingStatus status = currentStatus(context, bookingId);
+        boolean attended = evidence.result() == AttendanceResult.ATTENDED;
+        if (evidence.result() == null ? status != BookingStatus.ACTIVE : !attended) {
+            throw new ApiException(ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED);                    // correct it instead
+        }
+        recordReversal(context, adminId, booking, BookingEventType.CHECK_IN_REVERSED,
+                AttendanceAuditAction.CHECK_IN_REVERSED, reason, now);
+        if (attended) {
+            // arch 07 section 7.4: ATTENDANCE_CORRECTED, and the points reversed by a compensating transaction
+            recordCorrection(context, adminId, booking, AttendanceResult.ATTENDED,
+                    AttendanceResult.ATTENDANCE_UNCONFIRMED, reason, now);
+            if (!store.reverseAttendedCheckIn(context, bookingId, now)) {
+                throw new ApiException(ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED);
+            }
+            trust.correctAttendance(context, booking.customerId(), bookingId, AttendanceResult.ATTENDANCE_UNCONFIRMED);
+            rewards.reconcileCorrection(context, adminId, booking.customerId(), bookingId);     // FR-TRS-08
+        } else if (!store.reverseCheckIn(context, bookingId, now)) {
+            throw new ApiException(ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED);
+        }
+        outbox.publish(context, AttendanceEvents.corrected(booking, AttendanceEvents.Correction.CHECK_IN_REVERSED,
+                evidence.result(), attended ? AttendanceResult.ATTENDANCE_UNCONFIRMED : null, status, now));
+        return state(context, bookingId);
+    }
+
+    private AttendanceState reverseLatePresent(CommandContext context, UUID adminId, Booking booking, String reason) {
+        Instant now = context.commandNow();
+        UUID bookingId = booking.bookingId();
+        AttendanceStore.Evidence evidence = store.find(context, bookingId)
+                .filter(found -> found.activeLatePresent() != null)
+                .orElseThrow(() -> new ApiException(ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED));  // none, or reversed
+        BookingStatus status = currentStatus(context, bookingId);
+        // arch 07 section 7.4: only before endAt, where it re-opens no-show eligibility
+        if (evidence.result() != null || status != BookingStatus.ACTIVE || !now.isBefore(booking.endAt())) {
+            throw new ApiException(ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED);
+        }
+        recordReversal(context, adminId, booking, BookingEventType.LATE_PRESENT_REVERSED,
+                AttendanceAuditAction.LATE_PRESENT_REVERSED, reason, now);
+        if (!store.reverseLatePresent(context, bookingId, now)) {
+            throw new ApiException(ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED);
+        }
+        outbox.publish(context, AttendanceEvents.corrected(booking, AttendanceEvents.Correction.LATE_PRESENT_REVERSED,
+                null, null, status, now));
+        return state(context, bookingId);
+    }
+
+    /** The Admin Booking Event of an evidence reversal and its audit row with the reason, at the reversal instant. */
+    private void recordReversal(CommandContext context, UUID adminId, Booking booking, BookingEventType event,
+                                AttendanceAuditAction action, String reason, Instant now) {
+        bookings.recordAdminEvent(context, booking.bookingId(), now, event, adminId);
+        audit.write(context, AuditRecord.builder(action, AuditActor.admin(adminId), booking.bookingId(),
+                        CorrelationId.require())
+                .reason(reason)
+                .contextVenue(booking.venueId())
+                .build());
+    }
+
+    private AttendanceState state(CommandContext context, UUID bookingId) {
+        AttendanceStore.Evidence evidence = store.find(context, bookingId)
+                .orElseGet(() -> AttendanceStore.Evidence.none(bookingId));
+        return new AttendanceState(bookingId, currentStatus(context, bookingId),
+                bookings.terminalReason(context, bookingId).orElse(null), evidence.result(),
+                evidence.activeCheckIn(), evidence.activeLatePresent(), evidence.activeNoShow());
     }
 
     /** The Admin {@code ATTENDANCE_CORRECTED} Booking Event and its audit row with the reason, at the same instant. */

@@ -137,6 +137,15 @@ class JdbcAttendanceBookings implements AttendanceBookings {
     }
 
     @Override
+    public Optional<BookingTerminalReason> terminalReason(CommandContext command, UUID bookingId) {
+        return command.jdbc().sql("SELECT b.terminal_reason FROM booking.booking b WHERE b.id = :id")
+                .param("id", Objects.requireNonNull(bookingId, "bookingId"))
+                .query((rs, n) -> Optional.ofNullable(rs.getString("terminal_reason")))
+                .optional()
+                .flatMap(reason -> reason.map(BookingTerminalReason::valueOf));
+    }
+
+    @Override
     public UUID recordAdminEvent(CommandContext command, UUID bookingId, Instant at, BookingEventType event,
                                  UUID adminId) {
         return insertEvent(command, bookingId, at, event, ActorType.ADMIN, Objects.requireNonNull(adminId, "adminId"));

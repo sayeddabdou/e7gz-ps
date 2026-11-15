@@ -228,7 +228,10 @@ final class BookingNotificationRules {
         String correction = event.text("correction");
         return switch (correction == null ? "" : correction) {
             case "NO_SHOW_REVERSED" -> plan(customer("NO_SHOW_REVERSED"));
-            case "ATTENDANCE_CORRECTED" -> plan(customer("ATTENDANCE_CORRECTED"));
+            // §52.2 "Check-in Reversed / Attendance Corrected" is one customer notification; a reversed Mark Present -
+            // Late is the same material change of the customer's attendance (FR-NTF-11)
+            case "ATTENDANCE_CORRECTED", "CHECK_IN_REVERSED", "LATE_PRESENT_REVERSED" ->
+                    plan(customer("ATTENDANCE_CORRECTED"));
             default -> throw new PermanentDeliveryFailure(event.eventType() + " " + event.id()
                     + " has an unknown correction " + correction);
         };

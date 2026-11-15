@@ -30,7 +30,8 @@ import ps.e7gz.support.boundary.DueJobs;
  * ({@code trust.replay_timeline}: ten {@code BOOKING_ATTENDED} make {@code vp_qualification} QUALIFIED), and
  * {@code trust.assert_user_integrity} then refuses to commit any Trust write for a qualified user without an initial
  * VERIFIED transition ("Qualified User requires initial VERIFIED or automatic correction regain before commit"). That
- * transition is E7-72's (Verified Player), not built yet. So today T5 of that tenth booking is refused whole by the
+ * transition is E7-72's (Verified Player), not built yet. Since E7-70 the Trust reconciler finds that transition due and
+ * refuses first ({@code TrustConsequenceUnavailableException}). So today T5 of that tenth booking is refused whole by the
  * database at commit on every attempt: the booking stays ACTIVE with its reservation, nothing of the completion is
  * written, and after its configured attempts (E7-40, {@code e7gz.scheduler.max-attempts} = 5) the BOOKING_COMPLETE job is
  * FAILED. E7-61 may still merge with this (PO decision 19 Oct 2026); the guard is not bypassed or weakened here.
@@ -42,7 +43,8 @@ import ps.e7gz.support.boundary.DueJobs;
 @ExtendWith(OutputCaptureExtension.class)
 class BookingCompletionVerifiedPlayerPinTest extends IntegrationTest {
 
-    private static final String REFUSAL = "Qualified User requires initial VERIFIED";
+    /** Since E7-70 the reconciler finds the VERIFIED transition due and refuses before the commit (arch 07 section 4). */
+    private static final String REFUSAL = "needs E7-72 Verified Player reconciliation";
 
     /** {@code e7gz.scheduler.max-attempts} (application.yml): the attempt that fails it is the last. */
     private static final int MAX_ATTEMPTS = 5;
@@ -84,13 +86,13 @@ class BookingCompletionVerifiedPlayerPinTest extends IntegrationTest {
             DueJobs.JobRow job = DueJobs.job(BookingFlows.bookingCompleteKey(tenth.bookingId()));
             assertThat(job.attempt()).isEqualTo(attempt);
             assertThat(job.status()).isEqualTo(attempt < MAX_ATTEMPTS ? "PENDING" : "FAILED");
-            // a failed COMMIT is a DataAccessException carrying the guard's message (CommandRunner, 25 Oct 2026)
-            assertThat(lastError(tenth)).as("refused at commit, by a deferred database guard")
-                    .contains("JDBC commit").contains(REFUSAL);
+            // E7-70: refused by the Trust reconciler on the command, before the database guard would refuse the commit
+            assertThat(lastError(tenth)).as("refused by the Trust reconciler, before commit")
+                    .contains("TrustConsequenceUnavailableException").contains(REFUSAL);
             assertNothingOfTheCompletion(tenth, historyBefore, outboxBefore);
         }
-        // the worker logs each failed attempt with its cause chain: the guard's own message (E7-40 logFailure)
-        assertThat(output.getAll()).as("refused by trust.assert_user_integrity").contains(REFUSAL);
+        // the worker logs each failed attempt with its cause (E7-40 logFailure)
+        assertThat(output.getAll()).as("refused by the Trust reconciler").contains(REFUSAL);
         assertThat(flows.fireCompletion(tenth)).as("FAILED: never fires again by itself").isFalse();
         assertThat(completedAttended(tenth)).as("still nine").isEqualTo(9);
     }

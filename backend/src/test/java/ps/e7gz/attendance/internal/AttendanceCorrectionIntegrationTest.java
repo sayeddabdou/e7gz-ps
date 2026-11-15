@@ -254,21 +254,21 @@ class AttendanceCorrectionIntegrationTest extends IntegrationTest {
         assertRefused(completed, AttendanceResult.ATTENDED, " ", ApiErrorCode.VALIDATION_FAILED);
         assertRefused(completed, AttendanceResult.NOT_APPLICABLE, "reason", ApiErrorCode.VALIDATION_FAILED);
         assertRefused(completed, AttendanceResult.ATTENDANCE_UNCONFIRMED, "same result",
-                ApiErrorCode.BOOKING_STATE_CHANGED);
+                ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED);
         assertThatThrownBy(() -> corrections.correct(admin, UUID.randomUUID(), AttendanceResult.ATTENDED, "r"))
                 .isInstanceOf(ApiException.class).extracting("code").isEqualTo(ApiErrorCode.NOT_FOUND);
 
         Booking active = flows.active(Duration.ofMinutes(5));
         attendance.checkIn(active.venueAccountId(), active.bookingId());
-        assertRefused(active, AttendanceResult.ATTENDED, "not resolved yet", ApiErrorCode.BOOKING_STATE_CHANGED);
+        assertRefused(active, AttendanceResult.ATTENDED, "not resolved yet", ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED);
 
         Booking missed = flows.active(Duration.ofMinutes(20));
         attendance.noShow(missed.venueAccountId(), missed.bookingId());
         assertRefused(missed, AttendanceResult.ATTENDED, "reverse first (FR-ATT-12)",
-                ApiErrorCode.BOOKING_STATE_CHANGED);
+                ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED);
 
         Booking walkIn = flows.walkIn();
-        assertRefused(walkIn, AttendanceResult.ATTENDED, "manual", ApiErrorCode.BOOKING_STATE_CHANGED);
+        assertRefused(walkIn, AttendanceResult.ATTENDED, "manual", ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED);
     }
 
     private void assertRefused(Booking booking, AttendanceResult outcome, String reason, ApiErrorCode code) {

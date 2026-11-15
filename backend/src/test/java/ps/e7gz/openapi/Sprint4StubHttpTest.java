@@ -32,7 +32,6 @@ class Sprint4StubHttpTest extends IntegrationTest {
     private static final String USER = "/api/v1/admin/users/" + UUID.randomUUID();
     private static final String BAN = USER + "/bans/" + UUID.randomUUID();
     private static final String PLAYER = "/api/v1/admin/verified-players/" + UUID.randomUUID();
-    private static final String ATTENDANCE = "/api/v1/admin/bookings/" + UUID.randomUUID() + "/attendance";
     private static final String REASON = "{\"reason\":\"Venue confirmed the customer was present.\"}";
 
     @Autowired
@@ -74,14 +73,7 @@ class Sprint4StubHttpTest extends IntegrationTest {
         notImplemented(write(post(PLAYER + "/restore"), REASON), admin);            // E7-72
     }
 
-    @Test
-    void adminAttendanceRemediationRoutesAreStubs() throws Exception {
-        notImplemented(write(post(ATTENDANCE + "/reverse-check-in"), REASON), admin);       // E7-70
-        notImplemented(write(post(ATTENDANCE + "/reverse-late-present"), REASON), admin);   // E7-70
-        notImplemented(write(post(ATTENDANCE + "/reverse-no-show"), REASON), admin);        // E7-70
-        notImplemented(write(post(ATTENDANCE + "/correct"),
-                "{\"correctedOutcome\":\"ATTENDED\",\"reason\":\"Present all session.\"}"), admin); // E7-70
-    }
+    // E7-70 filled the four /admin/bookings/{bookingId}/attendance routes: AdminAttendanceHttpTest
 
     @Test
     void adminReferralAndConfigurationRoutesAreStubs() throws Exception {

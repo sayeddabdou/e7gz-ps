@@ -99,6 +99,37 @@ class AttendanceStore {
                AND result = 'ABSENT_NO_SHOW'
             """;
 
+    /**
+     * E7-70: the Platform Admin reverses a check-in that stands on a booking whose attendance is not resolved yet (arch
+     * 07 section 7.4: the booking stays ACTIVE and no-show eligibility re-opens). Only the marker is added.
+     */
+    static final String REVERSE_CHECK_IN = """
+            UPDATE attendance.attendance_record
+               SET check_in_reversed_at = :at
+             WHERE booking_id = :bookingId AND check_in_at IS NOT NULL AND check_in_reversed_at IS NULL
+               AND result IS NULL
+            """;
+
+    /**
+     * E7-70: the Platform Admin reverses the check-in behind a resolved ATTENDED (arch 07 section 7.4): the marker and
+     * the corrected result ATTENDANCE_UNCONFIRMED at the same instant, with the {@code ATTENDANCE_CORRECTED} the caller
+     * writes ({@code attendance.assert_attendance_action_audit}).
+     */
+    static final String REVERSE_CHECK_IN_ATTENDED = """
+            UPDATE attendance.attendance_record
+               SET check_in_reversed_at = :at, result = 'ATTENDANCE_UNCONFIRMED', resolved_at = :at
+             WHERE booking_id = :bookingId AND check_in_at IS NOT NULL AND check_in_reversed_at IS NULL
+               AND result = 'ATTENDED' AND resolved_at < :at
+            """;
+
+    /** E7-70: the Platform Admin reverses a Mark Present - Late that stands on an unresolved booking. */
+    static final String REVERSE_LATE_PRESENT = """
+            UPDATE attendance.attendance_record
+               SET late_present_reversed_at = :at
+             WHERE booking_id = :bookingId AND late_present_at IS NOT NULL AND late_present_reversed_at IS NULL
+               AND result IS NULL
+            """;
+
     Optional<Evidence> find(CommandContext command, UUID bookingId) {
         return command.jdbc().sql(FIND)
                 .param("id", Objects.requireNonNull(bookingId, "bookingId"))
@@ -155,6 +186,28 @@ class AttendanceStore {
         return command.jdbc().sql(REVERSE_NO_SHOW)
                 .param("bookingId", Objects.requireNonNull(bookingId, "bookingId"))
                 .param("result", Objects.requireNonNull(result, "result").name())
+                .param("at", OffsetDateTime.ofInstant(Objects.requireNonNull(at, "at"), ZoneOffset.UTC))
+                .update() == 1;
+    }
+
+    /** Adds the check-in's reversal marker on an unresolved record. @return false when none stands there */
+    boolean reverseCheckIn(CommandContext command, UUID bookingId, Instant at) {
+        return mark(command, REVERSE_CHECK_IN, bookingId, at);
+    }
+
+    /** Reverses the check-in behind a resolved ATTENDED, now ATTENDANCE_UNCONFIRMED. @return false when not so */
+    boolean reverseAttendedCheckIn(CommandContext command, UUID bookingId, Instant at) {
+        return mark(command, REVERSE_CHECK_IN_ATTENDED, bookingId, at);
+    }
+
+    /** Adds the Late Present's reversal marker on an unresolved record. @return false when none stands there */
+    boolean reverseLatePresent(CommandContext command, UUID bookingId, Instant at) {
+        return mark(command, REVERSE_LATE_PRESENT, bookingId, at);
+    }
+
+    private static boolean mark(CommandContext command, String sql, UUID bookingId, Instant at) {
+        return command.jdbc().sql(sql)
+                .param("bookingId", Objects.requireNonNull(bookingId, "bookingId"))
                 .param("at", OffsetDateTime.ofInstant(Objects.requireNonNull(at, "at"), ZoneOffset.UTC))
                 .update() == 1;
     }

@@ -59,6 +59,8 @@ final class AttendanceEvents {
 
     /** What an Admin attendance command did ({@code AttendanceCorrected.correction}). */
     enum Correction {
+        CHECK_IN_REVERSED,
+        LATE_PRESENT_REVERSED,
         NO_SHOW_REVERSED,
         ATTENDANCE_CORRECTED
     }
@@ -78,8 +80,9 @@ final class AttendanceEvents {
         payload.put("startAt", booking.startAt().toString());
         payload.put("endAt", booking.endAt().toString());
         payload.put("correction", correction.name());
-        payload.put("previousResult", previous.name());
-        payload.put("attendanceResult", result.name());
+        // null while the attendance is not resolved yet: an evidence reversal on an ACTIVE booking
+        payload.put("previousResult", previous == null ? null : previous.name());
+        payload.put("attendanceResult", result == null ? null : result.name());
         payload.put("bookingStatus", status.name());
         payload.put("correctedAt", at.toString());
         return new NewOutboxEvent(IntegrationEvents.ATTENDANCE_CORRECTED, BOOKING_AGGREGATE, booking.bookingId(),

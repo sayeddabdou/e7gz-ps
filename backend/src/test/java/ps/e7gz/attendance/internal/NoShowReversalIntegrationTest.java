@@ -255,9 +255,9 @@ class NoShowReversalIntegrationTest extends IntegrationTest {
                 "r")).isInstanceOf(ApiException.class).extracting("code").isEqualTo(ApiErrorCode.NOT_FOUND);
 
         Booking active = flows.active(Duration.ofMinutes(5));
-        assertRefused(active, AttendanceResult.ATTENDED, false, "no no-show", ApiErrorCode.BOOKING_STATE_CHANGED);
+        assertRefused(active, AttendanceResult.ATTENDED, false, "no no-show", ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED);
         Booking walkIn = flows.walkIn();
-        assertRefused(walkIn, AttendanceResult.ATTENDED, false, "manual", ApiErrorCode.BOOKING_STATE_CHANGED);
+        assertRefused(walkIn, AttendanceResult.ATTENDED, false, "manual", ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED);
     }
 
     /** A second reversal is refused: the booking is no longer NO_SHOW, and NO_SHOW_REVERSED exists once. */
@@ -269,7 +269,7 @@ class NoShowReversalIntegrationTest extends IntegrationTest {
 
         assertThatThrownBy(() -> corrections.reverseNoShow(admin, missed.bookingId(), AttendanceResult.ATTENDED, true,
                 "twice")).isInstanceOf(ApiException.class).extracting("code")
-                .isEqualTo(ApiErrorCode.BOOKING_STATE_CHANGED);
+                .isEqualTo(ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED);
         assertThat(trustEvents(missed)).isEqualTo(events);
         assertThat(adminEvidence(missed, "NO_SHOW_REVERSED")).isOne();
         assertThat(events(missed)).hasSize(1);
@@ -295,7 +295,7 @@ class NoShowReversalIntegrationTest extends IntegrationTest {
                 .containsExactly("NO_SHOW_REVERSED ABSENT_NO_SHOW->ATTENDANCE_UNCONFIRMED CANCELLED");
     }
 
-    /** Two Admins at once: the Customer lock serialises them, one reverses, the other is BOOKING_STATE_CHANGED. */
+    /** Two Admins at once: the Customer lock serialises them, one reverses, the other is ADMIN_ACTION_NOT_ALLOWED. */
     @Test
     void concurrentReversalsReverseOnce() {
         Booking missed = missed(flows.active(Duration.ofMinutes(20)));
@@ -311,7 +311,7 @@ class NoShowReversalIntegrationTest extends IntegrationTest {
 
         assertThat(race.values()).hasSize(1);
         assertThat(race.failures()).singleElement().isInstanceOf(ApiException.class)
-                .extracting("code").isEqualTo(ApiErrorCode.BOOKING_STATE_CHANGED);
+                .extracting("code").isEqualTo(ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED);
         assertThat(trustEvents(missed)).containsOnlyOnce("NO_SHOW_REVERSED");
         assertThat(adminEvidence(missed, "NO_SHOW_REVERSED")).isOne();
         assertThat(feeDecisions(missed)).isOne();
