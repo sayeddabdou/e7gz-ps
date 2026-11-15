@@ -184,7 +184,8 @@ Reviews and reporting, account deletion, admin modules, reports, observability, 
 | S7-P0 | E7-98 | Platform | Sprint 7 API contract | Add all Sprint 7 API endpoints as stubs by day 2. | S6-P0 |
 | S7-P1 | E7-99 | Platform | Remaining admin modules | Finish any admin module still missing (20 in total). | S7-P0 |
 | S7-P2 | E7-100 | Platform | Observability, alerts and abuse signals | Monitoring, alert rules and abuse signals. | S3-P2 |
-| S7-P3 | E7-101 | Platform | Deployment, backup and restore drill | Put it online (staging and production), backups and a restore test. | S0-P3 |
+| S7-P3 | E7-101 | Platform | Deployment, backup and restore drill | Put it online (staging and production), backups and a restore test. | S0-P3, S7-P4 |
+| S7-P4 | E7-125 | Platform | Product Owner reviews and approves the Privacy Policy and Terms | The Product Owner reads the two draft texts, corrects them, has them checked, and approves the final versions before deployment. | — |
 | S7-E1 | E7-102 | Engine | Reviews, reporting and moderation | Reviews: write, edit, report, and admin moderation. | S3-E4 |
 | S7-E2 | E7-103 | Engine | Account deletion and O19 | Customer asks to delete the account; admin completes it. | S6-E3 |
 | S7-E3 | E7-104 | Engine | Reports FR-AUD-11/12 and metrics | Admin reports: why bookings end, attendance per venue. | S3-E4, S3-E7 |
@@ -2716,7 +2717,7 @@ Read only these docs for this task:
 - CLAUDE.md §5 (Migration safety)
 
 Do:
-1. Blocked until PCR-013 is approved: it names the version label of the texts.
+1. Blocked until PCR-013 is approved: it names the version label of the texts. The Product Owner approves the texts and sets the label in E7-125.
 2. Database (new migration, next physical model version): store for each customer the version of the texts they accepted and the instant, written once at registration and never changed (a later version is a new acceptance row or column pair, as the PCR decides). Customers that already exist keep an empty value: the migration must not invent an acceptance for them. In the same PR: the .dbm, the change report, the migration-lock.txt line, an upgrade seed and the MigrationFilesTest check.
 3. POST /customer/auth/register gains a required field with the accepted version; a missing value or a version that is not the current one answers 400 VALIDATION_FAILED on that field. The instant is the command instant, never device time.
 4. The Platform Admin user detail (GET /admin/users/{userId}) shows the accepted version and instant.
@@ -3057,7 +3058,7 @@ Read only these docs for this task:
 - FRS §3.1 (Customer Mobile App), §3.2 (Venue Dashboard), §3.3 (Platform Admin)
 
 Do:
-1. Blocked until PCR-013 (Privacy Policy and Terms at launch) is approved and the two texts are final: Claude drafts them, the Product Owner reviews them (PO decision 15 Nov 2026), and the Product Owner gives the two public URLs where they are hosted. Do not change the legal text in this task.
+1. Blocked until PCR-013 (Privacy Policy and Terms at launch) is approved and the two texts are final: Claude drafts them, the Product Owner reviews them (PO decision 15 Nov 2026), and the Product Owner gives the two public URLs where they are hosted. Do not change the legal text in this task. The Product Owner's review and approval is E7-125.
 2. Customer app, sign-up: an "I agree to the Terms and the Privacy Policy" checkbox with a link to each; Register stays disabled until it is ticked. Profile gets the two links. The URLs come from configuration (EXPO_PUBLIC_*), never hard-coded.
 3. Venue Dashboard (EN + AR) and Platform Admin: the two links in the account menu or the footer.
 4. The server stores the acceptance (PO decision 15 Nov 2026): the sign-up request sends the version of the texts the customer agreed to, as E7-124 defines it. E7-124 (Platform) builds the server side.
@@ -3824,7 +3825,7 @@ Finish by running the checks in CLAUDE.md §4, then give me a short summary, the
 
 **What this task does:** Put it online (staging and production), backups and a restore test.
 
-Lane: Platform · Depends on: S0-P3
+Lane: Platform · Depends on: S0-P3, S7-P4
 
 ```text
 Read CLAUDE.md first. You are implementing task S7-P3 — "Deployment, backup and restore drill" (Platform lane) of the E7GZ PS build plan.
@@ -3882,6 +3883,40 @@ PO rules and open items, added 15 Nov 2026 (do these too):
 - Before this task starts, make the GitHub repository private again (CLAUDE.md §5, Secrets; PO rule 13 Oct 2026). Ask the PO to do it and confirm it in the summary.
 - The SMS fallback provider (arch 12 §6.5, risk R8) is still not chosen. Ask the PO before go-live: launch with SMS Misr only, or add a second provider.
 - Set E7GZ_PAYMENTS_FEE_COLLECTION_ENABLED=false in staging and production (PCR-010 item 10).
+- Do not start deployment before E7-125 is done: the Product Owner has reviewed, corrected and approved the Privacy Policy and the Terms of Use, and both pages are published (PCR-013).
+
+Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
+Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
+```
+
+### S7-P4 (E7-125) — Product Owner reviews and approves the Privacy Policy and Terms
+
+**What this task does:** The Product Owner reads the two draft texts, corrects them, has them checked, and approves the final versions before deployment.
+
+Lane: Platform · Depends on: —
+
+```text
+Read CLAUDE.md first. You are implementing task S7-P4 — "Product Owner reviews and approves the Privacy Policy and Terms" (Platform lane) of the E7GZ PS build plan.
+
+Read only these docs for this task:
+- PCR-013 (Privacy Policy and Terms at launch)
+- docs/01-product/legal/Privacy Policy — DRAFT.md and Terms of Use — DRAFT.md (the drafts)
+
+Do:
+1. This is the Product Owner's own task: the drafts are only a first version written by Claude. The Product Owner reads both texts fully and changes anything that is wrong or missing. Claude may help with wording, but never decides legal content.
+2. Fill every blank in [SQUARE BRACKETS]: the company's legal name and address, the privacy contact and the support contact, the minimum age, how long a deletion request takes, the names of the SMS, email and hosting providers, and the no-show ladder in plain words (taken from the approved rules).
+3. Check each statement against what the product really does before approving it, with the team: what location data is kept, what a venue sees and when, what other customers see, what is removed and what is kept when an account is deleted (PCR-002).
+4. Have a lawyer check both texts against Egypt's Personal Data Protection Law (Law 151 of 2020) and consumer law, in particular the liability section and data processed outside Egypt.
+5. Prepare the Arabic versions of both texts.
+6. Decide the version label (a date) and the two public web addresses, and publish the pages there. Rename the files without "DRAFT", set the status in PCR-013 to approved texts, and record the approval date. This task may edit docs/01-product/legal/ and PCR-013.
+
+Done when (write these as tests first where possible):
+- Both texts have no [SQUARE BRACKETS] left, are approved by the Product Owner with a date, and are no longer marked DRAFT.
+- A lawyer's check is recorded (who and when), or the Product Owner records the decision to launch without one.
+- English and Arabic versions exist, and both public web addresses open the approved texts.
+- The version label is written in PCR-013, so E7-124 and E7-122 can use it.
+
+Why this task exists (Product Owner, 15 Nov 2026): the Privacy Policy and the Terms of Use are only drafts. They must be reviewed and edited by the Product Owner before deployment. E7-124 and E7-122 wait for the approved texts, and deployment (E7-101) does not start before this task is done.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
