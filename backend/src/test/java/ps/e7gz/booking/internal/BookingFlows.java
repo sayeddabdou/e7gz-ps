@@ -258,6 +258,18 @@ public final class BookingFlows {
                 booking.venueAccountId(), booking.resourceId(), start, booking.venueResponseExpiresAt());
     }
 
+    /**
+     * E7-70: the booking, ended NO_SHOW by the real command, moved back whole by {@code by}
+     * ({@link BookingStates#shiftNoShowBack}): a no-show of days ago. Returns the booking with its new startAt.
+     */
+    public Booking noShowLongAgo(Booking missed, Duration by) {
+        BookingStates.shiftNoShowBack(missed.bookingId(), by);
+        Instant start = OnlineBookingWorld.OWNER.sql("SELECT start_at FROM booking.booking WHERE id = :id")
+                .param("id", missed.bookingId()).query(OffsetDateTime.class).single().toInstant();
+        return new Booking(missed.bookingId(), missed.customerId(), missed.venueId(), missed.venueName(),
+                missed.venueAccountId(), missed.resourceId(), start, missed.venueResponseExpiresAt());
+    }
+
     /** The booking's stored {@code end_at}. */
     public static Instant endAt(UUID bookingId) {
         return OnlineBookingWorld.OWNER.sql("SELECT end_at FROM booking.booking WHERE id = :id")

@@ -228,6 +228,55 @@ class NoShowReversalIntegrationTest extends IntegrationTest {
         assertThat(booking(second)).containsExactly("NO_SHOW", "-");
     }
 
+    /**
+     * E7-69 carry-forward (PR #102 review, 15 Nov 2026; arch 07 sections 2.3 and 9 "Reordering correction",
+     * FR-TRS-05): a no-show on Monday, reversed on Friday through the real command and committed, changes the Monday
+     * position of {@link TrustReplay} and adds nothing at Friday's own time. Real days apart: the Monday and Wednesday
+     * no-shows are recorded by the real venue command and then moved back whole, four and two days; "Friday" is now.
+     */
+    @Test
+    void aMondayNoShowReversedOnFridayChangesTheMondayPositionAndAddsNothingOnFriday() {
+        BookingFlows.Customer customer = flows.customer();
+        Booking monday = flows.noShowLongAgo(missed(customer.nextActive(Duration.ofMinutes(20))), Duration.ofDays(4));
+        Booking wednesday = flows.noShowLongAgo(missed(customer.nextActive(Duration.ofMinutes(20))),
+                Duration.ofDays(2));
+        UUID user = monday.customerId();
+        Instant tuesday = monday.startAt().plus(Duration.ofDays(1));
+        Instant thursday = wednesday.startAt().plus(Duration.ofDays(1));
+        assertThat(replay.timeline(user, null)).extracting(TrustReplay.Step::consecutiveNoShows).containsExactly(1, 2);
+        assertThat(replay.replay(user, TrustReplay.Boundary.at(tuesday)).consecutiveNoShows())
+                .as("as of Tuesday, before the reversal").isOne();
+        Instant friday = dbNow();
+
+        corrections.reverseNoShow(admin, monday.bookingId(), AttendanceResult.ATTENDANCE_UNCONFIRMED, false,
+                "The customer was there on Monday.");
+
+        // committed: the reversal is an event of Friday that takes effect on Monday
+        assertThat(OWNER.sql("""
+                        SELECT (occurred_at >= :friday) || ' ' || (effective_at = :monday) FROM trust.trust_event
+                         WHERE booking_id = :id AND event_type = 'NO_SHOW_REVERSED'""")
+                .param("friday", OffsetDateTime.ofInstant(friday, java.time.ZoneOffset.UTC))
+                .param("monday", OffsetDateTime.ofInstant(monday.startAt(), java.time.ZoneOffset.UTC))
+                .param("id", monday.bookingId()).query(String.class).single())
+                .as("occurred on Friday, effective on Monday").isEqualTo("true true");
+        assertThat(booking(monday)).as("reversed after its endAt (FR-ATT-12)").containsExactly("COMPLETED", "-");
+        // the Monday position changed ...
+        List<TrustReplay.Effect> effects = replay.resolveEffectiveOutcomes(user, null);
+        assertThat(effects).extracting(TrustReplay.Effect::effectiveAt)
+                .containsExactly(monday.startAt(), wednesday.startAt());
+        assertThat(effects).extracting(TrustReplay.Effect::type)
+                .containsExactly(TrustEventType.BOOKING_ATTENDANCE_UNCONFIRMED, TrustEventType.BOOKING_NO_SHOW);
+        assertThat(replay.timeline(user, null)).extracting(TrustReplay.Step::consecutiveNoShows).containsExactly(0, 1);
+        assertThat(replay.replay(user, TrustReplay.Boundary.at(tuesday)).consecutiveNoShows())
+                .as("as of Tuesday, after the reversal: history itself changed").isZero();
+        // ... and nothing was added at Friday's own time
+        assertThat(replay.replay(user, TrustReplay.Boundary.at(thursday))).as("nothing takes effect after Wednesday")
+                .isEqualTo(replay.replay(user, null));
+        assertThat(replay.timeline(user, null)).extracting(TrustReplay.Step::effectiveAt)
+                .allSatisfy(at -> assertThat(at).isBefore(thursday));
+        assertThat(counter(user)).as("the stored projection").isOne();
+    }
+
     // ---------------------------------------------------------------------------- authorization and refusals
 
     /** FR-ATT-11: only an active Platform Admin; an unknown or deactivated one is refused and nothing is written. */
