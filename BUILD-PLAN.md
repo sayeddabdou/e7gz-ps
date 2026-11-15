@@ -4154,7 +4154,7 @@ Carry-forward from the Sprint 0 review (do these too):
 
 PO decisions 15 Nov 2026 (do these too):
 - Confirm E7GZ_PAYMENTS_FEE_COLLECTION_ENABLED is false in production (PCR-010 item 10): the booking fee stays EGP 0 until the payment task turns collection on together with its adapter.
-- Confirm E7-120 (booking-creation and password-reset limits), E7-121 (Owner PIN lock), E7-122 (Privacy Policy and Terms) and E7-123 (client fixes) are done.
+- Confirm E7-120 (booking-creation and password-reset limits), E7-121 (Owner PIN lock), E7-122 (Privacy Policy and Terms), E7-123 (client fixes) and E7-124 (the recorded acceptance) are done.
 - The two accepted risks stay accepted unless the PO says otherwise here: no two-step login for the Platform Admin, and the API reveals whether a phone number is registered.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
