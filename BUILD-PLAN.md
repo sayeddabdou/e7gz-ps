@@ -125,6 +125,8 @@ Trust events and replay, bans, Verified Player, points, wallet, referrals, confi
 | S4-P2 | E7-67 | Platform | Referrals | Invite a friend: referral rewards and reversals. | S4-P1, S0-P5 |
 | S4-P3 | E7-68 | Platform | Configuration service (fees and points) | Admin changes the booking fee and points values (from a date onward). | S0-E1 |
 | S4-P4 | E7-119 | Platform | Revoke push devices when every session ends | When every session of a customer ends (password reset, a verification through resend, a released unverified account), the server also stops push to all of the customer's phones. | S3-P3, S2-P4 |
+| S4-P5 | E7-120 | Platform | Booking-creation and password-reset limits | One customer cannot flood a venue with booking requests, and one phone cannot flood password resets. | S2-E1, S3-P3 |
+| S4-P6 | E7-121 | Platform | Owner PIN: lock after repeated lockouts | After repeated wrong-PIN lockouts, the venue's PIN-protected actions stay locked until the Platform Admin resets the PIN. | S1-P2, S3-P2 |
 | S4-E1 | E7-69 | Engine | Trust events and replay | Trust history of every customer, recalculated exactly from events. | S3-E4 |
 | S4-E2 | E7-70 | Engine | Reconciler and attendance corrections | Fix attendance mistakes and recalculate trust correctly. | S4-E1 |
 | S4-E3 | E7-71 | Engine | Bans and the ban cascade (O14) | Temporary bans after repeated no-shows, and their effects. | S4-E2 |
@@ -141,6 +143,8 @@ Maintenance, closures, emergencies, owner review, timer pauses, account disable,
 | S4-C1 | E7-74 | Clients | Customer app: standing, points, wallet, referrals | App: my standing, points, wallet and referral code. | S4-P0 |
 | S4-C2 | E7-75 | Clients | Admin: trust, bans, Verified Player, points, configuration | Admin: trust fixes, bans, badges, points, fees. | S4-P0 |
 | S4-C3 | E7-76 | Clients | Dashboard: Arabic RTL review of built modules | Check every dashboard screen in Arabic and fix layout. | S2-C4 |
+| S4-C4 | E7-122 | Clients | Privacy Policy and Terms | The apps show the Privacy Policy and the Terms, and a customer agrees to them at sign-up. | S0-C4 |
+| S4-C5 | E7-123 | Clients | Client fixes from the 5 Nov review | Small fixes in the three apps that the full review of 5 Nov found. | S3-C3 |
 | S5-P0 | E7-77 | Platform | Sprint 5 API contract | Add all Sprint 5 API endpoints as stubs by day 2. | S4-P0 |
 | S5-P1 | E7-78 | Platform | Venue account disable (O10) and attendance protection | Admin disables a venue account and what happens to its bookings. | S3-E4 |
 | S5-P2 | E7-79 | Platform | Fault-injection harness and sellable-gap detector | Tests that break a process halfway and prove nothing is left half-done. | S1-E4 |
@@ -575,7 +579,7 @@ Carry-forward from the Sprint 0 review (do these too):
 - Raise the timeout of the customer test 'Customer app shell › shows the four prototype tabs': it hit the 5 s Jest limit when CI was busy (Sprint 0 review).
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -1071,7 +1075,7 @@ Done when (write these as tests first where possible):
 - Photo add, reorder and remove each ask for the Owner Password; upload progress, failure and retry states shown; checked in EN and AR.
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -1116,7 +1120,7 @@ Done when (write these as tests first where possible):
 - Works in RTL; data from the contract.
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -1160,7 +1164,7 @@ Done when (write these as tests first where possible):
 - Photos can be added, reordered and removed in the wizard and on the venue page, with progress and error states.
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -1222,7 +1226,7 @@ Done when (write these as tests first where possible):
 - Location permission handled; works on the mock then the real API.
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -1694,7 +1698,7 @@ Done when (write these as tests first where possible):
 - Error codes shown via the map; double-tap does not create two bookings.
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -1732,7 +1736,7 @@ Done when (write these as tests first where possible):
 - Push received on a device in dev.
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -1773,7 +1777,7 @@ Done when (write these as tests first where possible):
 - Alert plays once per new request; works in AR.
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -1808,7 +1812,7 @@ Done when (write these as tests first where possible):
 - RTL checked.
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -2288,7 +2292,7 @@ Done when (write these as tests first where possible):
 - Accept answered 409 LATE_CONFIRM_CUSTOMER_CONFLICT shows the localized message, keeps AWAITING and the countdown, and leaves Decline enabled; the message names no status (PCR-008).
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -2345,7 +2349,7 @@ Done when (write these as tests first where possible):
 - Actions disabled outside windows returned by the API.
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -2396,7 +2400,7 @@ Done when (write these as tests first where possible):
 - All error codes mapped.
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -2433,7 +2437,7 @@ Done when (write these as tests first where possible):
 - Every number comes from the API (no sums in the browser); money shown from the API string; RTL checked.
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -2633,6 +2637,69 @@ Constraints: stay inside this task's module(s); do not edit docs/ or V1__baselin
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
 
+### S4-P5 (E7-120) — Booking-creation and password-reset limits
+
+**What this task does:** One customer cannot flood a venue with booking requests, and one phone cannot flood password resets.
+
+Lane: Platform · Depends on: S2-E1, S3-P3
+
+```text
+Read CLAUDE.md first. You are implementing task S4-P5 — "Booking-creation and password-reset limits" (Platform lane) of the E7GZ PS build plan.
+
+Read only these docs for this task:
+- arch 10 §7 (the approved limits table: booking creation 20 per hour per customer; password reset 3 per hour per identity)
+- arch 09 §1.5 (RATE_LIMITED) and §3.1 (password reset)
+- CLAUDE.md §5 (Migration safety)
+
+Do:
+1. Database (new migration, next physical model version): widen ck_rate_limit_limiter_type on iam.security_rate_limit_counter with BOOKING_CREATION and PASSWORD_RESET, and update the column comment. In the same PR: the .dbm, the change report, the migration-lock.txt line and the MigrationFilesTest check. RateLimiterType gains the two values (the enum parity test stays green).
+2. Booking creation: at most 20 created Online Bookings per customer in a rolling hour (arch 10 §7). It is counted in the command that creates the booking, as the LOGIN limiter counts (E7-14); the 21st answers 429 RATE_LIMITED and writes nothing, so the venue gets no request. A replay with the same Idempotency-Key is not counted again. Walk-in and manual bookings are not limited. This is abuse control only: the 4-commitment limit stays the Product rule (FR-BOK-03). Amr reviews the booking-module call.
+3. Password reset: at most 3 requests per phone in a rolling hour (arch 10 §7) on POST /customer/auth/password-reset/request; the 4th answers 429 RATE_LIMITED and sends no SMS. The limit is keyed by the phone number whether or not it is registered, so it reveals nothing new.
+4. OpenAPI: both routes declare 429 RATE_LIMITED; run pnpm api:gen. The app's text for it is E7-123's.
+
+Done when (write these as tests first where possible):
+- One customer creates and cancels bookings: the 20th in an hour is accepted, the 21st answers 429 RATE_LIMITED and no venue notification is written; after the hour (injected Clock) it works again.
+- The 4th password-reset request for one phone in an hour answers 429 and no OTP SMS event is written.
+- A replay with the same Idempotency-Key is not counted twice.
+- ./gradlew check green twice (migration PR).
+
+Why this task exists (review of 5 Nov 2026, finding S1, HIGH; PO decision 15 Nov 2026): arch 10 §7 approved both limits, but no task built them. One customer created and cancelled 25 bookings in a few seconds, and each one rang at the venue.
+
+Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
+Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
+```
+
+### S4-P6 (E7-121) — Owner PIN: lock after repeated lockouts
+
+**What this task does:** After repeated wrong-PIN lockouts, the venue's PIN-protected actions stay locked until the Platform Admin resets the PIN.
+
+Lane: Platform · Depends on: S1-P2, S3-P2
+
+```text
+Read CLAUDE.md first. You are implementing task S4-P6 — "Owner PIN: lock after repeated lockouts" (Platform lane) of the E7GZ PS build plan.
+
+Read only these docs for this task:
+- PCR-006 (Owner Password as a 4-digit PIN)
+- arch 10 §3 (Owner Password)
+- E7-56 (admin alerts: admin.api.AdminAlerts)
+
+Do:
+1. First a PCR that amends PCR-006, approved by the Product Owner before any code. Proposed rule (the PO confirms the numbers in the PCR): after 3 lockouts of the existing kind (5 wrong PINs, 15 minutes) within 24 hours, every Owner-PIN-protected action of that venue stays refused until the Platform Admin resets the Owner PIN.
+2. Build it in the shared Owner Password gate (venue module): the long lock answers the existing Owner Password lockout code (no new rule text from the backend), is audited, and raises a Platform Admin alert through admin.api.AdminAlerts when it starts.
+3. The Platform Admin's existing Owner PIN reset ends the lock. Nothing else does, not the passing of time.
+4. If the counters need a schema change, it is a new migration under CLAUDE.md §5 (Migration safety).
+
+Done when (write these as tests first where possible):
+- Three lockouts within 24 hours: the next attempt is refused even with the right PIN and after the 15 minutes; one admin alert is raised; the admin reset makes the right PIN work again.
+- Two lockouts within 24 hours, or three spread over more than 24 hours: no long lock.
+- Actions that need no PIN (venue photos, PCR-006) are not affected.
+
+Why this task exists (review of 5 Nov 2026, finding S4; PO decision 15 Nov 2026): with 10,000 possible PINs and 5 tries per 15 minutes, someone with Dashboard access can find the PIN in about 10 days. The Dashboard shows the locked state and the Admin sees the alert in the alerts inbox (E7-86).
+
+Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
+Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
+```
+
 ### S4-E1 (E7-69) — Trust events and replay
 
 **What this task does:** Trust history of every customer, recalculated exactly from events.
@@ -2682,6 +2749,9 @@ Carry-forward from E7-65 (Sprint 4 contract, PO decisions 17 Oct 2026, do these 
 
 Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do these too):
 - Build on E7-59's attendance evidence (attendance.attendance_record; reversed evidence is absent from VenueBooking.attendance) and on trust.api.BookingOutcomes.
+
+Carry-forward from E7-69 (PR #102 review, 15 Nov 2026, do this too):
+- Add the committed end-to-end case that E7-69 could only prove inside a rolled-back command: a no-show on a Monday booking, reversed on the Friday through the reconciler and committed, changes the Monday position of trust.api.TrustReplay (the correction takes the original booking's effectiveAt) and adds nothing at Friday's own time. Use real days apart, not minutes.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2831,7 +2901,7 @@ Done when (write these as tests first where possible):
 - Matches API codes; no rule text hard-coded.
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -2888,7 +2958,7 @@ Done when (write these as tests first where possible):
 - Every admin write asks for a reason where the API requires it.
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -2908,6 +2978,9 @@ PO decisions 25 Oct 2026 — PCR-010 (do these too):
 Carry-forward from E7-67, PO decision 5 Nov 2026 (do this too):
 - An Admin Referrals screen (FR-ADM-09) on GET /admin/referrals?status=&q=: newest sign-up first with the cursor; q finds the referrer or the referred user. Each row shows the referrer, the code, the referred user, the sign-up time, the status, the reward points applied, and when it was rewarded or invalidated with the invalidation kind.
 - An Invalidate action on a PENDING or REWARDED referral: POST /admin/referrals/{referralId}/invalidate with a reason (required, 1-500 characters) and an Idempotency-Key. Show the result: the referral is INVALID and, when it had been rewarded, the points asked back, the points taken back and the unrecovered points (never a debt). An INVALID referral has no Invalidate action; 409 ADMIN_ACTION_NOT_ALLOWED means refresh and look again.
+
+PO decision 15 Nov 2026, PCR-010 item 10 (do this too):
+- While no payment provider collects the fee (the launch setting), PUT /admin/fees answers 400 VALIDATION_FAILED with field bookingFee or bookingFeePerHour for a value above 0.00. Show it as an error on that field (text from the client's code map: a booking fee needs payment collection first). The mode, a 0.00 fee and the tournament creation fee still save.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2931,6 +3004,70 @@ Do:
 
 Done when (write these as tests first where possible):
 - Screenshot checklist attached to the PR.
+
+Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
+Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
+```
+
+### S4-C4 (E7-122) — Privacy Policy and Terms
+
+**What this task does:** The apps show the Privacy Policy and the Terms, and a customer agrees to them at sign-up.
+
+Lane: Clients · Depends on: S0-C4
+
+```text
+Read CLAUDE.md first. You are implementing task S4-C4 — "Privacy Policy and Terms" (Clients lane) of the E7GZ PS build plan.
+
+Read only these docs for this task:
+- The PCR for the Privacy Policy and Terms (the Product Owner writes it first; see step 1)
+- FRS §3.1 (Customer Mobile App), §3.2 (Venue Dashboard), §3.3 (Platform Admin)
+
+Do:
+1. Blocked until the Product Owner gives three things: the PCR (Privacy Policy and Terms at launch), the two texts, and the two public URLs where they are hosted. Do not write legal text yourself.
+2. Customer app, sign-up: an "I agree to the Terms and the Privacy Policy" checkbox with a link to each; Register stays disabled until it is ticked. Profile gets the two links. The URLs come from configuration (EXPO_PUBLIC_*), never hard-coded.
+3. Venue Dashboard (EN + AR) and Platform Admin: the two links in the account menu or the footer.
+4. Whether the server stores the acceptance (time and version of the text) is decided in the PCR. If it does, that is a backend change with a migration, owned by the Platform lane; this task then sends the field.
+
+Done when (write these as tests first where possible):
+- Sign-up cannot be submitted before the box is ticked; both links open the configured URLs.
+- The links are in Profile, in the Dashboard (checked in Arabic) and in the Admin.
+- No policy text and no URL is hard-coded.
+
+Why this task exists (review of 5 Nov 2026, finding A1; PO decision 15 Nov 2026): Apple rule 5.1.1 needs a privacy-policy link inside the app and in App Store Connect, and Egypt's data protection law 151/2020 needs it too. Nothing in the requirements had it.
+
+Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
+Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
+```
+
+### S4-C5 (E7-123) — Client fixes from the 5 Nov review
+
+**What this task does:** Small fixes in the three apps that the full review of 5 Nov found.
+
+Lane: Clients · Depends on: S3-C3
+
+```text
+Read CLAUDE.md first. You are implementing task S4-C5 — "Client fixes from the 5 Nov review" (Clients lane) of the E7GZ PS build plan.
+
+Read only these docs for this task:
+- FRS §3.1 (Customer Mobile App)
+- FRS FR-VEN-40 (dashboard language order)
+- arch 09 §1.5 (RATE_LIMITED)
+
+Do:
+1. Customer app, iOS settings (app.json / app.config.ts; no Apple account needed): the expo-location plugin with a clear when-in-use text only (it is used to show venues near the customer), no Always-location and no Motion permission; expo-secure-store with faceIDPermission false; no NSAllowsArbitraryLoads in a production build; a real version and build number; ITSAppUsesNonExemptEncryption false. Check the result with npx expo config --type introspect.
+2. Customer app: hide the Tournaments tab until E7-95 builds it (an empty screen is rejected by Apple); update App.test.tsx.
+3. Venue Dashboard: the header language button also saves languagePreference with PATCH /venue/settings, so the choice survives a reload (today the account's saved preference wins on load, FR-VEN-40).
+4. packages/tokens: pnpm -r test passes on a fresh clone, before any build (a pretest build, or test against src).
+5. Dependencies: update Expo and @react-native-firebase to their patched versions; pnpm audit --prod shows no critical or high advisory, or the summary lists each one that cannot be fixed yet and why.
+6. Customer app: show the RATE_LIMITED text (from the code map) on the booking screen and on the password-reset screen (E7-120).
+
+Done when (write these as tests first where possible):
+- expo config --type introspect shows no NSLocationAlways* key, no NSMotionUsageDescription and no NSFaceIDUsageDescription, and no NSAllowsArbitraryLoads for production.
+- The Tournaments tab is not shown.
+- Dashboard: choose Arabic in the header, reload, still Arabic.
+- pnpm install && pnpm -r test passes on a fresh clone.
+
+Why this task exists (review of 5 Nov 2026, findings A3, A5, B1, B3, S6; PO decision 15 Nov 2026). The first iOS build itself waits for the deployment phase (E7-109): no Apple subscription before then.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -3107,6 +3244,9 @@ Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
 Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do these too):
 - When an Emergency is declared, a booking still CONFIRMED after its startAt because T4 was late must be handled: its valid start at startAt, then the interruption at the Emergency's own time (Spec v5 §31.7). Today E7-60's T4 refuses such a start and writes nothing (Undetermined).
 
+Carry-forward from E7-69 (PR #102 review, 15 Nov 2026, do this too):
+- This task is the first caller of trust.api.BookingOutcomes.recordInterruption (E7-69 added it with no caller): when an Emergency interrupts an ACTIVE Online Booking after a valid check-in, resolve its attendance to ATTENDED_INTERRUPTED and record BOOKING_ATTENDED_INTERRUPTED through it in the same command. Never write trust.trust_event from this module. Add a committed test: the consecutive no-show counter resets, with no Verified Player progress and no points (FR-TRS-11).
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -3165,6 +3305,9 @@ Done when (write these as tests first where possible):
 Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do these too):
 - When an Owner Review starts, a booking still CONFIRMED after its startAt because T4 was late must be handled: its valid start at startAt, then the interruption at the review's own time (Spec v5 §31.7). Today E7-60's T4 refuses such a start and writes nothing (Undetermined).
 
+Carry-forward from E7-69 (PR #102 review, 15 Nov 2026, do this too):
+- An ACTIVE Online Booking that this task interrupts after a valid check-in records BOOKING_ATTENDED_INTERRUPTED through trust.api.BookingOutcomes.recordInterruption, as E7-82 does; never a second writer of trust events.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -3193,7 +3336,7 @@ Done when (write these as tests first where possible):
 - AR checked.
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -3228,7 +3371,7 @@ Done when (write these as tests first where possible):
 - Reasons required where the API requires them.
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -3267,7 +3410,7 @@ Done when (write these as tests first where possible):
 - Every operational code has a message.
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -3473,7 +3616,7 @@ Done when (write these as tests first where possible):
 - Codes mapped.
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -3510,7 +3653,7 @@ Done when (write these as tests first where possible):
 - AR checked.
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -3545,7 +3688,7 @@ Done when (write these as tests first where possible):
 - —
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -3825,7 +3968,7 @@ Done when (write these as tests first where possible):
 - Matches the addendum.
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -3862,7 +4005,7 @@ Done when (write these as tests first where possible):
 - —
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -3895,7 +4038,7 @@ Done when (write these as tests first where possible):
 - Screenshot checklist.
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
@@ -3928,6 +4071,9 @@ Done when (write these as tests first where possible):
 Carry-forward from the Sprint 0 review (do these too):
 - Release builds (Sprint 0 review S-17): Android usesCleartextTraffic=false, iOS App Transport Security with no exceptions, and an https API base URL only.
 
+PO decision 15 Nov 2026 (do this too):
+- Everything that needs the Apple Developer subscription happens in this task, in the deployment phase, not earlier: the first iOS build (the app has never run on an iPhone, so plan time for surprises), TestFlight, the App Privacy labels (phone, name, email, approximate location, booking history, device push token) and the App Review demo account (a verified customer, and a demo venue that accepts the reviewer's booking).
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -3959,6 +4105,11 @@ Carry-forward from E7-13 (do these too):
 Carry-forward from the Sprint 0 review (do these too):
 - Re-confirm two accepted risks from the Sprint 0 review (PO, 2 Oct 2026): (1) no MFA for Platform Admin at launch (S-5); (2) registration and resend reveal whether a phone is registered, accepted for MVP and slowed by the per-IP limit (S-16).
 
+PO decisions 15 Nov 2026 (do these too):
+- Confirm E7GZ_PAYMENTS_FEE_COLLECTION_ENABLED is false in production (PCR-010 item 10): the booking fee stays EGP 0 until the payment task turns collection on together with its adapter.
+- Confirm E7-120 (booking-creation and password-reset limits), E7-121 (Owner PIN lock), E7-122 (Privacy Policy and Terms) and E7-123 (client fixes) are done.
+- The two accepted risks stay accepted unless the PO says otherwise here: no two-step login for the Platform Admin, and the API reveals whether a phone number is registered.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -3985,7 +4136,7 @@ Done when (write these as tests first where possible):
 - Every number comes from the API; date ranges are business dates; RTL checked.
 
 Requirements first, prototype for the look (PO decision 2 Oct 2026):
-- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (PCR-001…PCR-005) overrides the FRS lines it amends.
+- The requirement docs in the read list decide WHAT this task must show and do. The prototype decides only HOW it looks. An approved PCR (every PCR-0xx file in docs/01-product, PCR-001 onward) overrides the FRS lines it amends.
 - Before coding, list every screen, state and action the requirements need for this task (including empty, loading, error, not-allowed/ineligible and banned states) and compare it with the prototype.
 - Anything the requirements need that the prototype does not show: build it anyway, in the same design: @e7gz/tokens, the components and layout patterns already used in this app and in the prototype. Never invent a new visual style.
 - Anything the prototype shows that the requirements do not define (a status, rule, timer, button or message): do not build it; list it as a question for the PO.
