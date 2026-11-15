@@ -3343,7 +3343,7 @@ Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do t
 - When an Owner Review starts, a booking still CONFIRMED after its startAt because T4 was late must be handled: its valid start at startAt, then the interruption at the review's own time (Spec v5 §31.7). Today E7-60's T4 refuses such a start and writes nothing (Undetermined).
 
 Carry-forward from E7-69 (PR #102 review, 15 Nov 2026, do this too):
-- An ACTIVE Online Booking that this task interrupts after a valid check-in records BOOKING_ATTENDED_INTERRUPTED through trust.api.BookingOutcomes.recordInterruption, as E7-82 does; never a second writer of trust events.
+- An ACTIVE Online Booking that this task interrupts after a valid check-in records BOOKING_ATTENDED_INTERRUPTED through trust.api.BookingOutcomes.recordInterruption, as E7-82 does; never a second writer of trust events. PO decision 15 Nov 2026 on two FRS lines that disagree for this case: FR-ATT-10 applies (a qualifying check-in gives ATTENDED_INTERRUPTED and the no-show counter resets); FR-OPS-31's "Attendance is NOT_APPLICABLE with no trust effect" covers only the affected customers with no check-in evidence. Late Present only stays ATTENDANCE_UNCONFIRMED. No customer is penalised and the fee refund is full in every case.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
