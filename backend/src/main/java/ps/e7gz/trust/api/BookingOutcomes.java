@@ -35,4 +35,14 @@ public interface BookingOutcomes {
      */
     void recordCompletion(CommandContext command, UUID customerId, UUID bookingId, Instant startAt,
                           AttendanceResult result);
+
+    /**
+     * Appends {@code BOOKING_ATTENDED_INTERRUPTED} for the Customer's Online Booking - a valid check-in followed by an
+     * interruption of the ACTIVE booking (arch 07 section 7.3 rule 4) - and recomputes the Customer's Trust Projection
+     * by full replay: the consecutive no-show counter resets, with no Verified Player progress and no points
+     * (FR-TRS-11). The attendance record must already hold {@code ATTENDED_INTERRUPTED} resolved at the command
+     * instant. Added by E7-69 so that the interruption commands (emergencies, owner review, admin cancel; Sprint 5)
+     * have no reason to write the event themselves; none calls it yet.
+     */
+    void recordInterruption(CommandContext command, UUID customerId, UUID bookingId, Instant startAt);
 }
