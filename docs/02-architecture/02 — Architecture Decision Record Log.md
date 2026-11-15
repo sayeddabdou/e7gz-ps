@@ -474,9 +474,9 @@ Plus `TournamentTerminalReason` (the twelve of `FR-TRN-32`) and the removed-toke
 
 **Status:** DEFERRED
 
-**Context.** `FR-PTS-13` — global booking fee is EGP 0, per booking, configurable, displayed as FREE; each booking stores the fee applied at creation. `NFR-38` — enabling a non-zero fee must require **no schema or logic redesign**. `PRD §3.4` and `Out-of-Scope §7` exclude payment collection and settlement at launch. `R11` names scope pressure to add payments as a risk.
+**Context.** `FR-PTS-13` — global booking fee is EGP 0, per booking (since PCR-010: per booking or per hour, as the Platform Admin chooses), configurable, displayed as FREE; each booking stores the fee applied at creation. `NFR-38` — enabling a non-zero fee must require **no schema or logic redesign**. `PRD §3.4` and `Out-of-Scope §7` exclude payment collection and settlement at launch. `R11` names scope pressure to add payments as a risk.
 
-**Decision.** Define a `PaymentProvider` port — `authorize`, `capture`, `refund`, `status` — with **no implementation and no caller**. Build everything else now: the fee column on `booking` with its historical snapshot, the closed refund-classification mapping from `FR-PTS-15`/`FR-PTS-16`, the wallet ledger, the points ledger and the compensating-transaction model. Nothing in the booking path imports the port.
+**Decision.** Define a `PaymentProvider` port — `authorize`, `capture`, `refund`, `status` — with **no implementation and no caller**. Build everything else now: the fee column on `booking` with its historical snapshot, the closed refund-classification mapping from `FR-PTS-15`/`FR-PTS-16`, the wallet ledger, the points ledger and the compensating-transaction model — and, since PCR-009 and PCR-010, the Points and Wallet paying the fee at booking creation and getting it back on refund (they are internal ledgers, not a provider). Nothing in the booking path imports the port.
 
 **Consequences.** `NFR-38` is satisfied structurally: enabling a fee is a configuration change plus one adapter plus wiring the refund classification, which already exists and is already tested against the full terminal-reason enum. No refactor.
 

@@ -17,6 +17,7 @@ import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
+import ps.e7gz.loyalty.api.BookingFeePayments;
 import ps.e7gz.messaging.api.Idempotency;
 import ps.e7gz.messaging.api.IdempotentRequest;
 import ps.e7gz.messaging.api.IdempotentResult;
@@ -45,10 +46,12 @@ public class CustomerBookings {
     private final VenueContacts venues;
     private final CustomerCancellation cancellation;
     private final LateConfirmWindows lateConfirms;
+    private final BookingFeePayments payments;
 
     CustomerBookings(CommandRunner runner, Idempotency idempotency, CustomerBookingStore store,
                      VenueAnswerStore bookings, BookingHistoryStore histories, VenueContacts venues,
-                     CustomerCancellation cancellation, LateConfirmWindows lateConfirms) {
+                     CustomerCancellation cancellation, LateConfirmWindows lateConfirms,
+                     BookingFeePayments payments) {
         this.runner = runner;
         this.idempotency = idempotency;
         this.store = store;
@@ -57,6 +60,7 @@ public class CustomerBookings {
         this.venues = venues;
         this.cancellation = cancellation;
         this.lateConfirms = lateConfirms;
+        this.payments = payments;
     }
 
     /** One page of the bucket: Upcoming soonest first, Completed and Cancelled most recent first. */
@@ -71,7 +75,7 @@ public class CustomerBookings {
             List<CustomerBookingStore.Row> shown = rows.stream().limit(size).toList();
             Map<UUID, Instant> deadlines = deadlines(context, shown);
             List<CustomerBookingRow> page = shown.stream()
-                    .map(row -> view(context, row, List.of(), deadlines.get(row.bookingId()))).toList();
+                    .map(row -> view(context, row, List.of(), deadlines.get(row.bookingId()), null)).toList();
             return new CustomerBookingRow.Page(page, more
                     ? BookingCursor.encode(new BookingCursor.Position(page.getLast().startAt(),
                             page.getLast().bookingId()))
@@ -111,12 +115,12 @@ public class CustomerBookings {
         });
     }
 
-    /** The booking as it is now on the command's transaction, with its history. */
+    /** The booking as it is now on the command's transaction, with its history and how its fee was paid (PCR-010). */
     private CustomerBookingRow current(CommandContext context, UUID customerId, UUID bookingId) {
         CustomerBookingStore.Row row = store.one(context, customerId, bookingId)
                 .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND));
         return view(context, row, histories.forCustomer(context, bookingId),
-                deadlines(context, List.of(row)).get(bookingId));
+                deadlines(context, List.of(row)).get(bookingId), payments.paid(context, bookingId));
     }
 
     /**
@@ -124,7 +128,8 @@ public class CustomerBookings {
      * 10 section 5.1; PO decision 11 Oct 2026, E7-49, D1) - absent otherwise. The answer deadline only while PENDING.
      */
     private CustomerBookingRow view(CommandContext context, CustomerBookingStore.Row row,
-                                    List<BookingHistoryEntry> history, Instant lateConfirmExpiresAt) {
+                                    List<BookingHistoryEntry> history, Instant lateConfirmExpiresAt,
+                                    BookingFeePayments.FeePayment feePayment) {
         boolean awaiting = row.status() == BookingStatus.AWAITING_CUSTOMER_CONFIRMATION;
         VenueContacts.Contact venue = venues.find(context, row.venueId())
                 .orElseThrow(() -> new IllegalStateException("Venue " + row.venueId() + " vanished"));
@@ -135,7 +140,7 @@ public class CustomerBookings {
                 row.venuePriceTotal(), row.bookingFee(), row.totalAmount(),
                 row.status() == BookingStatus.PENDING ? row.venueResponseExpiresAt() : null,
                 row.venueResponsePaused(), awaiting ? lateConfirmExpiresAt : null,
-                awaiting && row.lateConfirmPaused(), history);
+                awaiting && row.lateConfirmPaused(), history, feePayment);
     }
 
     /**

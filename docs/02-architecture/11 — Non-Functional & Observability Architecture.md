@@ -243,7 +243,7 @@ check-in rate · check-in reversal rate · Verified Player progress concentratio
 | NFR | Requirement | Mechanism |
 |---|---|---|
 | `NFR-37` | Every value in v5.0 §56 is configurable unless stated otherwise, and every change applies to **future events only** | Configurable values are exactly the registered `config.configuration_key` rows (table below); `config.system_configuration` + append-only `config.configuration_version` with `effective_from`; consumers **snapshot** the value at the moment the requirement names (`03 §17.3`) |
-| `NFR-38` | Enabling a non-zero booking fee requires **no schema or logic redesign** | fee column, refund classification, wallet and points ledgers all built and tested at launch; `PaymentProvider` port defined with **no caller** (`ADR-018`) |
+| `NFR-38` | Enabling a non-zero booking fee requires **no schema or logic redesign** | fee column and fee modes, refund classification, wallet and points ledgers (including Points and Wallet paying the fee, PCR-009/PCR-010) all built and tested at launch; `PaymentProvider` port defined with **no caller** (`ADR-018`) |
 
 **What is configuration, and what is not.**
 
@@ -254,9 +254,11 @@ check-in rate · check-in reversal rate · Verified Player progress concentratio
 | Completed-booking points (200) | The five-minute Late Confirm window |
 | Referral reward (1000) | The 15-minute lead time and check-in window |
 | Loyalty wallet-refunds switch (off) | The 4-commitment limit |
-| Points-to-wallet ratio (deferred — no key until activated) | The 24h-in-48h maintenance threshold |
+| Booking fee mode: per booking or per hour (per booking; PCR-010) | The 24h-in-48h maintenance threshold |
+| Per-hour booking fee (EGP 0; PCR-010) | The 30-minute booking-duration step (`FR-BOK-01`) |
+| Points per fee unit (10,000, even; PCR-010 — replaces the deferred Points-to-wallet ratio) | |
 
-**Scope of `NFR-37` (`01 §14` A8, decided 26 Sep 2026).** Configurable values are exactly the five keys above; the timers, limits and the Verified Player requirement (10) are fixed Product rules held in code and database constraints.
+**Scope of `NFR-37` (`01 §14` A8, decided 26 Sep 2026; extended by PCR-010 on 25 Oct 2026).** Configurable values are exactly the eight keys above; the timers, limits and the Verified Player requirement (10) are fixed Product rules held in code and database constraints.
 
 Core no-show rules remain Product rules rather than normal editable admin values, and are held as constants with a change-control comment.
 

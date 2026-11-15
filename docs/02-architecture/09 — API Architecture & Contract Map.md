@@ -253,7 +253,7 @@ Venues with marketplace `ONBOARDING`, `INACTIVE` or `SUSPENDED` are absent from 
 | Method | Path | Idem. | FR |
 |---|---|---|---|
 | `POST` | `/customer/bookings` | **yes** | `FR-BOK-11` — the 20 conditions |
-| `GET` | `/customer/bookings/quote?resourceId=&playMode=&startAt=&durationMinutes=` | — | `FR-BOK-06`, `FR-BOK-07`, `FR-PTS-13` — the price the booking would snapshot now; not an availability check, holds nothing. Product Owner decision, 5 Oct 2026 (E7-39) |
+| `GET` | `/customer/bookings/quote?resourceId=&playMode=&startAt=&durationMinutes=` | — | `FR-BOK-06`, `FR-BOK-07`, `FR-PTS-13` — the price the booking would snapshot now; not an availability check, holds nothing. Product Owner decision, 5 Oct 2026 (E7-39). Since PCR-010 it also carries `bookingFeePayment`: the Points, Wallet and left-to-pay split the booking would make now |
 | `GET` | `/customer/bookings?bucket=upcoming\|completed\|cancelled` | — | `FR-BOK-19` |
 | `GET` | `/customer/bookings/{id}` | — | `FR-BOK-20`, `FR-PTS-20` |
 | `POST` | `/customer/bookings/{id}/cancel` | **yes** | `FR-BOK-31`, `FR-BOK-32` |
@@ -275,6 +275,12 @@ Venues with marketplace `ONBOARDING`, `INACTIVE` or `SUSPENDED` are absent from 
   "nominalBookedMinutes": 120,
   "venuePriceTotal": { "amount": "160.00", "currency": "EGP" },
   "bookingFee":      { "amount": "0.00",   "currency": "EGP", "displayAsFree": true },  // FR-PTS-13
+  "bookingFeePayment": {                        // PCR-010: how the fee was paid at creation
+    "pointsUsed":   0,
+    "paidByPoints": { "amount": "0.00", "currency": "EGP" },
+    "paidByWallet": { "amount": "0.00", "currency": "EGP" },     // PCR-009
+    "leftToPay":    { "amount": "0.00", "currency": "EGP" }      // collected by the payment provider (ADR-018)
+  },
   "totalAmount":     { "amount": "160.00", "currency": "EGP" },
   "lateConfirm": {
     "expiresAt": "2026-09-19T19:31:00Z",        // an INSTANT, never a countdown — NFR-10
@@ -309,13 +315,13 @@ Venues with marketplace `ONBOARDING`, `INACTIVE` or `SUSPENDED` are absent from 
 
 **Participant cause is not a new public status.** The alignment does not add a customer- or venue-facing status token. Domain logic and audit retain `BAN | ACCOUNT_DELETED` as the cause of `INELIGIBLE`; a surface must not invent a new enum member or response status to represent either cause.
 | `POST` | `/customer/tournaments/{id}/cancel` — creator, before the checkpoint only | `FR-TRN-21` |
-| `GET` | `/customer/points` · `/customer/referrals` | `FR-PTS-01`, `FR-PTS-06` |
+| `GET` | `/customer/points` · `/customer/referrals` — a Points item's `cause` includes `BOOKING_FEE_PAYMENT` (spent on a Booking Fee) and `BOOKING_FEE_REFUND` (given back by its refund), PCR-010 | `FR-PTS-01`, `FR-PTS-06`, PCR-010 |
 | `GET` | `/customer/wallet` — balance + transactions, read-only | `FR-PTS-10`, `FR-PTS-11` as amended by PCR-004 and PCR-009 |
 | `POST` `PATCH` `DELETE` | `/customer/venues/{id}/review` | `FR-REV-01`…`FR-REV-07` |
 | `GET` `POST` | `/customer/notifications` · `/{id}/read` · `/devices` | `FR-NTF-02` |
 | `POST` | `/customer/notifications/devices/{id}/revoke` — revoked, never deleted (`08 §4`) | Product Owner decision, 5 Oct 2026 (E7-39) |
 
-> The customer wallet is **read-only** at launch (PCR-004): no top-up, no withdrawal. `POST /admin/wallet/adjust` still does not exist (`FR-PTS-11`). Since PCR-009 the Wallet pays the whole Booking Fee of a new Online Booking when it holds at least that fee, inside `POST /customer/bookings` (no new route or field); a Wallet item's `amount` is how much moved and its `cause` (`BOOKING_FEE_REFUND` or `BOOKING_FEE_PAYMENT`) whether it was credited or spent.
+> The customer wallet is **read-only** at launch (PCR-004): no top-up, no withdrawal. `POST /admin/wallet/adjust` still does not exist (`FR-PTS-11`). Since PCR-009 the Wallet pays the Booking Fee of a new Online Booking inside `POST /customer/bookings` (no new route or request field); since PCR-010 Points pay first and the Wallet pays what Points leave, only when it holds all of it; a Wallet item's `amount` is how much moved and its `cause` (`BOOKING_FEE_REFUND` or `BOOKING_FEE_PAYMENT`) whether it was credited or spent.
 
 ---
 
@@ -440,8 +446,8 @@ Rules (`ADR-011`): the Owner Password is a PIN of exactly 4 digits (PCR-006). Bo
 | Trust | `POST /admin/users/{id}/trust-adjustment` `{counterAfter, penaltyStageAfter, reason}` · `POST /admin/users/{id}/bans/{banId}/lift` `{reason}` · `/shorten` `{endsAt, reason}` · `/correct` `{reason}` — ban routes sit under the user; `/correct` kept (Product Owner decision D2, 17 Oct 2026, E7-65) | `FR-TRS-27` |
 | Tournaments | `GET /admin/tournaments` · `POST /{id}/cancel` | `FR-ADM-08` |
 | Wallet · Points · Referrals | `GET /admin/wallet` · `/points` · `GET /admin/users/{id}/wallet` · `/points` (one user's history) · `POST /points/adjust` `{userId, amount, reason}` · `GET /referrals` · `POST /referrals/{id}/invalidate` `{reason}` | `FR-ADM-09`, `FR-PTS-09`, `FR-PTS-11` |
-| Fees | `GET PUT /admin/fees` — global booking fee, tournament creation fee | `FR-ADM-10` |
-| Points settings | `GET PUT /admin/points/settings` — completed-booking points, referral points, wallet-refund switch, through `loyalty.configure` (Product Owner decision D3, 17 Oct 2026, E7-65) | `FR-PTS-01`, `FR-PTS-07`, `01 §14` A8 |
+| Fees | `GET PUT /admin/fees` — global booking fee: its mode (`bookingFeeMode`: `PER_BOOKING` · `PER_HOUR`), the per-booking amount (`bookingFee`) and the per-hour amount (`bookingFeePerHour`); tournament creation fee | `FR-ADM-10`, PCR-010 |
+| Points settings | `GET PUT /admin/points/settings` — completed-booking points, referral points, wallet-refund switch, and the Points per fee unit (`pointsPerFeeUnit`, even, from 2; PCR-010), through `loyalty.configure` (Product Owner decision D3, 17 Oct 2026, E7-65) | `FR-PTS-01`, `FR-PTS-07`, `01 §14` A8, PCR-010 |
 | Global rules | `GET /admin/global-rules` — **read-only** for the no-show ladder; in the Sprint 4 contract (Product Owner decision D7, 20 Oct 2026, E7-65) | `FR-TRS-13`, `NFR-37` |
 | Notifications | `GET /admin/notifications` · `/alerts` | `FR-NTF-10` |
 | Admin alerts | `GET /admin/alerts?acknowledged=&kind=&severity=&cursor=&limit=` — open alerts by default, newest first, cursor paging · `POST /admin/alerts/{alertId}/acknowledge` `{reason?}` → 200 the alert; the same admin again returns it, another admin → 409 `ADMIN_ALERT_ALREADY_ACKNOWLEDGED` | `NFR-29`, `11 §5.4`, `12 §6` — Product Owner decision, 15 Oct 2026 (E7-56) |

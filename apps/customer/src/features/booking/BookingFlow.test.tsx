@@ -31,11 +31,18 @@ const quote: components["schemas"]["CustomerBookingQuote"] = {
   nominalBookedMinutes: 120,
   venuePriceTotal: { amount: "341.00", currency: "EGP" },
   bookingFee: { amount: "0.00", currency: "EGP", displayAsFree: true },
+  bookingFeePayment: {
+    pointsUsed: 0,
+    paidByPoints: { amount: "0.00", currency: "EGP" },
+    paidByWallet: { amount: "0.00", currency: "EGP" },
+    leftToPay: { amount: "0.00", currency: "EGP" },
+  },
   totalAmount: { amount: "341.00", currency: "EGP" },
 };
 const booking: components["schemas"]["CustomerBookingDetail"] = {
   attendanceResult: null,
   bookingFee: quote.bookingFee,
+  bookingFeePayment: quote.bookingFeePayment,
   bookingId: "018f3c2a-7b1e-7c4d-9e0f-1a2b3c4d5e6f",
   displayBucket: "upcoming",
   endAt: "2026-10-12T17:00:00Z",
