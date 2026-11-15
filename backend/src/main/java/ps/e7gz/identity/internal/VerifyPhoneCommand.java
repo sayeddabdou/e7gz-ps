@@ -10,6 +10,7 @@ import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
+import ps.e7gz.loyalty.api.ReferralSettlement;
 import ps.e7gz.notification.api.CustomerPushDevices;
 
 /**
@@ -26,11 +27,15 @@ import ps.e7gz.notification.api.CustomerPushDevices;
  * decision 24 Oct 2026, E7-119). The registration's own code was issued in the registration's command, at its
  * {@code joined_at}; any other code was issued later.
  *
+ * <p>A PENDING referral is settled with the verification (FR-PTS-06, E7-67): {@code referrerId}, read before the
+ * command, is locked with the User, and {@link ReferralSettlement} rewards the referrer or invalidates it - the
+ * database refuses a verification that leaves it PENDING.
+ *
  * <p>The outcome is <b>returned</b>, never thrown: a wrong code must commit its attempt, or the 5-attempt limit would
  * never be reached. The caller turns the outcome into the API error after the commit.
  */
 record VerifyPhoneCommand(UUID userId, UUID challengeId, String code, String newPasswordHash,
-                          CustomerPushDevices pushDevices)
+                          CustomerPushDevices pushDevices, UUID referrerId, ReferralSettlement referrals)
         implements Command<VerifyPhoneCommand.Outcome> {
 
     enum Outcome { VERIFIED, INVALID, EXPIRED, ATTEMPTS_EXCEEDED, ACCOUNT_DELETED, PASSWORD_REQUIRED }
@@ -46,7 +51,11 @@ record VerifyPhoneCommand(UUID userId, UUID challengeId, String code, String new
 
     @Override
     public CommandScope scope() {
-        return CommandScope.shared(LockSet.builder().users(userId).build());
+        LockSet.Builder locks = LockSet.builder().users(userId);
+        if (referrerId != null) {
+            locks.users(referrerId);
+        }
+        return CommandScope.shared(locks.build());
     }
 
     @Override
@@ -90,6 +99,9 @@ record VerifyPhoneCommand(UUID userId, UUID challengeId, String code, String new
                 .param("now", OtpChallenges.utc(ctx.commandNow()))
                 .param("id", userId)
                 .update();
+        if (referrerId != null) {
+            referrals.settle(ctx, userId, referrerId);                                  // FR-PTS-06, E7-67
+        }
         if (newPasswordHash != null) {
             ctx.jdbc().sql("UPDATE iam.user_account SET password_hash = :hash WHERE id = :id")
                     .param("hash", newPasswordHash).param("id", userId).update();

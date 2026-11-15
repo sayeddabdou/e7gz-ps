@@ -33,6 +33,7 @@ import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.security.owner.OwnerProtected;
+import ps.e7gz.support.CommitFault;
 import ps.e7gz.support.IntegrationTest;
 import ps.e7gz.venue.api.OwnerPasswordGate;
 
@@ -160,6 +161,40 @@ class OwnerPasswordGateIntegrationTest extends IntegrationTest {
         }), account, PIN, CorrelationId.require())).isInstanceOf(DataAccessException.class);
 
         assertThat(accepted()).containsExactly("SUCCESS " + ACTION + " SLOT_NO_LONGER_AVAILABLE");
+        assertThat(failures()).isZero();
+    }
+
+    /**
+     * The same guard firing only at COMMIT (a deferred constraint trigger), after the body returned: still a refusal
+     * with a code, so audited once with it and not counted (PO decision 25 Oct 2026, E7-114 follow-up).
+     */
+    @Test
+    void aDatabaseGuardAtCommitAfterARightPinIsAuditedOnceWithItsCode() {
+        try (CommitFault fault = CommitFault.scratch("gd_reservation_conflict_booking")) {
+            assertThatThrownBy(() -> gate.run(probe(context -> {
+                gate.verified(context, account);
+                fault.armIn(context);
+                return "returned";
+            }), account, PIN, CorrelationId.require())).isInstanceOf(DataAccessException.class);
+        }
+
+        assertThat(accepted()).containsExactly("SUCCESS " + ACTION + " SLOT_NO_LONGER_AVAILABLE");
+        assertThat(failures()).isZero();
+    }
+
+    /** An internal invariant failing the COMMIT (no guard identifier) has no code: an unexpected failure, not audited. */
+    @Test
+    void anInvariantFailingTheCommitAfterARightPinIsNotAuditedAsARefusal() {
+        try (CommitFault fault = CommitFault.scratch(null)) {
+            assertThatThrownBy(() -> gate.run(probe(context -> {
+                gate.verified(context, account);
+                fault.armIn(context);
+                return "returned";
+            }), account, PIN, CorrelationId.require())).isInstanceOf(DataAccessException.class);
+        }
+
+        assertThat(accepted()).isEmpty();
+        assertThat(refusals()).isZero();
         assertThat(failures()).isZero();
     }
 

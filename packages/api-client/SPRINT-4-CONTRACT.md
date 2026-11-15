@@ -30,6 +30,8 @@ New shared code enum: `WalletTransactionCause` (`BOOKING_FEE_REFUND`, the only v
 
 PCR-010 (E7-68, Product Owner decisions 25 Oct 2026) adds to the contract, additively: the booking fee mode and the per-hour fee on `/admin/fees`, the Points per fee unit on `/admin/points/settings`, `feeUnit` on `GET /customer/points`, `bookingFeePayment` (Points used, paid by Points, paid by the Wallet, left to pay) on the booking quote and the customer booking (`POST /customer/bookings`, `GET /customer/bookings/{id}`, the cancel answer), the shared code enum `BookingFeeMode` (`PER_BOOKING`, `PER_HOUR`) and two `PointsTransactionCause` members, `BOOKING_FEE_PAYMENT` and `BOOKING_FEE_REFUND`; a Points item of either names its booking in `bookingId`.
 
+E7-67 (referrals) adds one optional request field outside this list: `referralCode` on `POST /customer/auth/register` (the inviting friend's code; an unknown code or a self-referral is recorded as an INVALID referral and never blocks the registration). The referral shapes above are unchanged.
+
 Not in Sprint 4: `GET /admin/no-shows` (Sprint 7, S7-P1 "remaining admin modules"); account deletion and anonymisation (Sprint 7); `POST /admin/wallet/adjust` **never** exists (FR-PTS-11, PCR-004).
 
 ## 1. PO decisions (17 Oct 2026)

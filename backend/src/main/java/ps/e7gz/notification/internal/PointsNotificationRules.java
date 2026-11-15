@@ -18,8 +18,13 @@ import ps.e7gz.notification.api.NotificationRequest;
  *   <li>ADMIN that changed the balance: ADMIN_ACCOUNT_CHANGE (In-App + Email), FR-NTF-11 ("the Customer is notified
  *       whenever an Admin materially changes ... Points"). A deduction from a zero balance changes nothing and
  *       notifies nobody.</li>
- *   <li>No other cause here: REFERRAL_SIGNUP is E7-67's; a COMPENSATION follows an admin attendance correction or a
- *       referral invalidation, which notify the customer themselves (E7-70, E7-67).</li>
+ *   <li>REFERRAL_SIGNUP that applied points (E7-67): POINTS_EARNED to the referrer, with {@code points} - a referral
+ *       reward is points earned (Spec v5 section 52.2, FR-PTS-06).</li>
+ *   <li>A COMPENSATION of a referral (it names the referral) that took points back: ADMIN_ACCOUNT_CHANGE (In-App +
+ *       Email) - only an admin invalidates a rewarded referral (FR-NTF-11, FR-PTS-09; E7-67). At a zero balance
+ *       nothing was deducted and nobody is notified (PO decision 30 Oct 2026).</li>
+ *   <li>A COMPENSATION of a booking reward follows an admin attendance correction, which notifies the customer
+ *       itself (E7-70).</li>
  *   <li>BOOKING_FEE_PAYMENT and BOOKING_FEE_REFUND (PCR-010): none. The customer spends Points by booking and sees it
  *       on the booking; a refund gives them back with the booking's own cancellation notification.</li>
  * </ul>
@@ -48,7 +53,15 @@ final class PointsNotificationRules {
                     ? Optional.of(NotificationRequest.of(ADMIN_ACCOUNT_CHANGE, NotificationRecipientType.CUSTOMER,
                             customer, Map.of()))
                     : Optional.empty();
-            case REFERRAL_SIGNUP, COMPENSATION, BOOKING_FEE_PAYMENT, BOOKING_FEE_REFUND -> Optional.empty();
+            case REFERRAL_SIGNUP -> applied > 0
+                    ? Optional.of(NotificationRequest.of(POINTS_EARNED, NotificationRecipientType.CUSTOMER, customer,
+                            Map.of(POINTS, applied)))
+                    : Optional.empty();
+            case COMPENSATION -> applied != 0 && event.payload().path("referralId").isTextual()
+                    ? Optional.of(NotificationRequest.of(ADMIN_ACCOUNT_CHANGE, NotificationRecipientType.CUSTOMER,
+                            customer, Map.of()))
+                    : Optional.empty();
+            case BOOKING_FEE_PAYMENT, BOOKING_FEE_REFUND -> Optional.empty();
         };
     }
 }
