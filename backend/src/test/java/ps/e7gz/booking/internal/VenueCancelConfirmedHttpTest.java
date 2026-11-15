@@ -101,7 +101,8 @@ class VenueCancelConfirmedHttpTest extends IntegrationTest {
         assertThat(data.get("terminalReason").asText()).isEqualTo("VENUE_CANCELLED_CONFIRMED_BOOKING");
         assertThat(data.at("/customer/username").isTextual()).isTrue();
         assertThat(data.has("ownerPassword")).isFalse();
-        assertThat(first.getResponse().getContentAsString()).doesNotContain(OWNER_PIN);
+        // The quoted value, not the bare digits: a random id or a timestamp in the answer can hold "4321" by chance.
+        assertThat(first.getResponse().getContentAsString()).doesNotContain("\"" + OWNER_PIN + "\"");
         assertThat(body(replay).get("data")).isEqualTo(data);
         assertThat(history(created.bookingId())).as("ran once").hasSize(3);
         assertThat(events(IntegrationEvents.BOOKING_CANCELLED, created.bookingId())).hasSize(1);
@@ -273,7 +274,8 @@ class VenueCancelConfirmedHttpTest extends IntegrationTest {
                         SELECT coalesce(string_agg(coalesce(payload::text, '') || coalesce(reason, ''), '|'), '')
                           FROM audit.audit_event WHERE actor_id = :account""")
                 .param("account", world.account.id()).query(String.class).single();
-        assertThat(audit).doesNotContain(OWNER_PIN).doesNotContain("9999").doesNotContain("ownerPassword");
+        assertThat(audit).doesNotContain("\"" + OWNER_PIN + "\"").doesNotContain("\"9999\"")
+                .doesNotContain("ownerPassword");
         String events = OWNER.sql("""
                         SELECT coalesce(string_agg(payload::text, '|'), '') FROM technical.outbox_event
                          WHERE aggregate_id IN (:booking, :reservation)""")
