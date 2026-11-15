@@ -127,6 +127,7 @@ Trust events and replay, bans, Verified Player, points, wallet, referrals, confi
 | S4-P4 | E7-119 | Platform | Revoke push devices when every session ends | When every session of a customer ends (password reset, a verification through resend, a released unverified account), the server also stops push to all of the customer's phones. | S3-P3, S2-P4 |
 | S4-P5 | E7-120 | Platform | Booking-creation and password-reset limits | One customer cannot flood a venue with booking requests, and one phone cannot flood password resets. | S2-E1, S3-P3 |
 | S4-P6 | E7-121 | Platform | Owner PIN: lock after repeated lockouts | After repeated wrong-PIN lockouts, the venue's PIN-protected actions stay locked until the Platform Admin resets the PIN. | S1-P2, S3-P2 |
+| S4-P7 | E7-124 | Platform | Record the Terms and Privacy Policy acceptance at sign-up | The server keeps proof that each customer agreed to the Terms and the Privacy Policy, and when. | S0-P5 |
 | S4-E1 | E7-69 | Engine | Trust events and replay | Trust history of every customer, recalculated exactly from events. | S3-E4 |
 | S4-E2 | E7-70 | Engine | Reconciler and attendance corrections | Fix attendance mistakes and recalculate trust correctly. | S4-E1 |
 | S4-E3 | E7-71 | Engine | Bans and the ban cascade (O14) | Temporary bans after repeated no-shows, and their effects. | S4-E2 |
@@ -143,7 +144,7 @@ Maintenance, closures, emergencies, owner review, timer pauses, account disable,
 | S4-C1 | E7-74 | Clients | Customer app: standing, points, wallet, referrals | App: my standing, points, wallet and referral code. | S4-P0 |
 | S4-C2 | E7-75 | Clients | Admin: trust, bans, Verified Player, points, configuration | Admin: trust fixes, bans, badges, points, fees. | S4-P0 |
 | S4-C3 | E7-76 | Clients | Dashboard: Arabic RTL review of built modules | Check every dashboard screen in Arabic and fix layout. | S2-C4 |
-| S4-C4 | E7-122 | Clients | Privacy Policy and Terms | The apps show the Privacy Policy and the Terms, and a customer agrees to them at sign-up. | S0-C4 |
+| S4-C4 | E7-122 | Clients | Privacy Policy and Terms | The apps show the Privacy Policy and the Terms, and a customer agrees to them at sign-up. | S0-C4, S4-P7 |
 | S4-C5 | E7-123 | Clients | Client fixes from the 5 Nov review | Small fixes in the three apps that the full review of 5 Nov found. | S3-C3 |
 | S5-P0 | E7-77 | Platform | Sprint 5 API contract | Add all Sprint 5 API endpoints as stubs by day 2. | S4-P0 |
 | S5-P1 | E7-78 | Platform | Venue account disable (O10) and attendance protection | Admin disables a venue account and what happens to its bookings. | S3-E4 |
@@ -2684,7 +2685,7 @@ Read only these docs for this task:
 - E7-56 (admin alerts: admin.api.AdminAlerts)
 
 Do:
-1. First a PCR that amends PCR-006, approved by the Product Owner before any code. Proposed rule (the PO confirms the numbers in the PCR): after 3 lockouts of the existing kind (5 wrong PINs, 15 minutes) within 24 hours, every Owner-PIN-protected action of that venue stays refused until the Platform Admin resets the Owner PIN.
+1. First PCR-012, which amends PCR-006 (the Product Owner confirmed the numbers on 15 Nov 2026; this task may add the PCR file). The rule: after 3 lockouts of the existing kind (5 wrong PINs, 15 minutes) within 24 hours, every Owner-PIN-protected action of that venue stays refused until the Platform Admin resets the Owner PIN.
 2. Build it in the shared Owner Password gate (venue module): the long lock answers the existing Owner Password lockout code (no new rule text from the backend), is audited, and raises a Platform Admin alert through admin.api.AdminAlerts when it starts.
 3. The Platform Admin's existing Owner PIN reset ends the lock. Nothing else does, not the passing of time.
 4. If the counters need a schema change, it is a new migration under CLAUDE.md §5 (Migration safety).
@@ -2695,6 +2696,39 @@ Done when (write these as tests first where possible):
 - Actions that need no PIN (venue photos, PCR-006) are not affected.
 
 Why this task exists (review of 5 Nov 2026, finding S4; PO decision 15 Nov 2026): with 10,000 possible PINs and 5 tries per 15 minutes, someone with Dashboard access can find the PIN in about 10 days. The Dashboard shows the locked state and the Admin sees the alert in the alerts inbox (E7-86).
+
+Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
+Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
+```
+
+### S4-P7 (E7-124) — Record the Terms and Privacy Policy acceptance at sign-up
+
+**What this task does:** The server keeps proof that each customer agreed to the Terms and the Privacy Policy, and when.
+
+Lane: Platform · Depends on: S0-P5
+
+```text
+Read CLAUDE.md first. You are implementing task S4-P7 — "Record the Terms and Privacy Policy acceptance at sign-up" (Platform lane) of the E7GZ PS build plan.
+
+Read only these docs for this task:
+- PCR-013 (Privacy Policy and Terms at launch)
+- arch 09 §3.1 (customer registration)
+- CLAUDE.md §5 (Migration safety)
+
+Do:
+1. Blocked until PCR-013 is approved: it names the version label of the texts.
+2. Database (new migration, next physical model version): store for each customer the version of the texts they accepted and the instant, written once at registration and never changed (a later version is a new acceptance row or column pair, as the PCR decides). Customers that already exist keep an empty value: the migration must not invent an acceptance for them. In the same PR: the .dbm, the change report, the migration-lock.txt line, an upgrade seed and the MigrationFilesTest check.
+3. POST /customer/auth/register gains a required field with the accepted version; a missing value or a version that is not the current one answers 400 VALIDATION_FAILED on that field. The instant is the command instant, never device time.
+4. The Platform Admin user detail (GET /admin/users/{userId}) shows the accepted version and instant.
+5. OpenAPI regenerated (pnpm api:gen); the app sends the field in E7-122.
+
+Done when (write these as tests first where possible):
+- A sign-up without the field, or with an old version, is refused with VALIDATION_FAILED on the field and creates no account.
+- A sign-up with the current version stores the version and the command instant; they cannot be changed afterwards.
+- The migration runs on the upgrade seed with existing customers and loses no row.
+- ./gradlew check green twice (migration PR).
+
+Why this task exists (PO decision 15 Nov 2026): Egypt's data protection law 151/2020 expects proof of consent; a checkbox in the app alone leaves no record.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -3013,20 +3047,20 @@ Finish by running the checks in CLAUDE.md §4, then give me a short summary, the
 
 **What this task does:** The apps show the Privacy Policy and the Terms, and a customer agrees to them at sign-up.
 
-Lane: Clients · Depends on: S0-C4
+Lane: Clients · Depends on: S0-C4, S4-P7
 
 ```text
 Read CLAUDE.md first. You are implementing task S4-C4 — "Privacy Policy and Terms" (Clients lane) of the E7GZ PS build plan.
 
 Read only these docs for this task:
-- The PCR for the Privacy Policy and Terms (the Product Owner writes it first; see step 1)
+- PCR-013 (Privacy Policy and Terms at launch; see step 1)
 - FRS §3.1 (Customer Mobile App), §3.2 (Venue Dashboard), §3.3 (Platform Admin)
 
 Do:
-1. Blocked until the Product Owner gives three things: the PCR (Privacy Policy and Terms at launch), the two texts, and the two public URLs where they are hosted. Do not write legal text yourself.
+1. Blocked until PCR-013 (Privacy Policy and Terms at launch) is approved and the two texts are final: Claude drafts them, the Product Owner reviews them (PO decision 15 Nov 2026), and the Product Owner gives the two public URLs where they are hosted. Do not change the legal text in this task.
 2. Customer app, sign-up: an "I agree to the Terms and the Privacy Policy" checkbox with a link to each; Register stays disabled until it is ticked. Profile gets the two links. The URLs come from configuration (EXPO_PUBLIC_*), never hard-coded.
 3. Venue Dashboard (EN + AR) and Platform Admin: the two links in the account menu or the footer.
-4. Whether the server stores the acceptance (time and version of the text) is decided in the PCR. If it does, that is a backend change with a migration, owned by the Platform lane; this task then sends the field.
+4. The server stores the acceptance (PO decision 15 Nov 2026): the sign-up request sends the version of the texts the customer agreed to, as E7-124 defines it. E7-124 (Platform) builds the server side.
 
 Done when (write these as tests first where possible):
 - Sign-up cannot be submitted before the box is ticked; both links open the configured URLs.
@@ -3164,6 +3198,7 @@ Read CLAUDE.md first. You are implementing task S5-P3 — "Operational notificat
 
 Read only these docs for this task:
 - Spec v5 §52.2 (operational), §52.5, §52.6
+- PCR-009 and PCR-010 (a refunded Booking Fee goes back to the wallet, or as Points when Points paid it; never to a card)
 
 Do:
 1. Wire the operational customer codes, venue codes and admin codes (emergencies, owner review, maintenance starting soon, refunds).
@@ -3197,6 +3232,7 @@ Read only these docs for this task:
 - arch 04 §9.7
 - ADR-010
 - A1 (overlapping maintenance allowed)
+- PCR-006 (the Owner Password is a PIN of exactly 4 digits)
 
 Do:
 1. Maintenance windows in Layer 1 with the range_agg rolling threshold (Owner Password over the threshold).
@@ -3295,6 +3331,7 @@ Read CLAUDE.md first. You are implementing task S5-E4 — "Owner review cascade 
 
 Read only these docs for this task:
 - arch 06 §2.7
+- PCR-006 (the Owner Password is a PIN of exactly 4 digits)
 
 Do:
 1. Owner review entry and cascade (no Owner Password anywhere in it), including tournaments.
@@ -3328,6 +3365,7 @@ Read only these docs for this task:
 - FRS §4.9 (Maintenance, Emergencies and Operational Restrictions)
 - FRS §2.4 (Owner Password authorization)
 - arch 09 §4.2, §4.3
+- PCR-006 (the Owner Password is a PIN of exactly 4 digits)
 
 Do:
 1. Maintenance, closures, venue/resource emergency declare/end, owner review banner; Owner Password prompts.
@@ -3402,6 +3440,7 @@ Read only these docs for this task:
 - FRS §4.9 (Operational Restrictions)
 - FRS §2.12 (notification matrix)
 - arch 09 §3.3
+- PCR-009 and PCR-010 (a refunded Booking Fee goes back to the wallet, or as Points when Points paid it; never to a card)
 
 Do:
 1. Show operational cancellations, interruptions, paused timers and refunds using the codes.
@@ -3459,6 +3498,7 @@ Read CLAUDE.md first. You are implementing task S6-P1 — "Tournament Owner Pass
 Read only these docs for this task:
 - arch 10 §3.2
 - Spec v5 §52 tournament codes
+- PCR-006 (the Owner Password is a PIN of exactly 4 digits)
 
 Do:
 1. @OwnerProtected on the tournament actions listed in the matrix; wire tournament notifications and abuse alerts.
@@ -3645,6 +3685,7 @@ Read only these docs for this task:
 - FRS §4.10 (Tournaments)
 - FRS §2.4 (Owner Password authorization)
 - arch 09 §4.1–§4.3
+- PCR-006 (the Owner Password is a PIN of exactly 4 digits)
 
 Do:
 1. Incoming tournament requests with audible alert + approve/reject, venue-hosted creation, participants view.
@@ -3712,6 +3753,7 @@ Read CLAUDE.md first. You are implementing task S7-P0 — "Sprint 7 API contract
 Read only these docs for this task:
 - arch 09 §3.4, §5
 - docs/03-design Compliance UI Addendum
+- PCR-002 (customer-initiated account deletion) and PCR-003 (customer reporting of reviews)
 
 Do:
 1. Stubs + DTOs for reviews, review reports, account deletion, remaining admin modules, reports FR-AUD-11/12; regenerate client.
@@ -3835,6 +3877,11 @@ Carry-forward from E7-43 (PO decision 10 Oct 2026, do these too):
 Carry-forward from E7-44 (PO decisions 10 Oct 2026, do these too):
 - Venue Web Push: generate one VAPID key pair per environment (staging and production, never the dev key) and put E7GZ_VAPID_PUBLIC_KEY and E7GZ_VAPID_PRIVATE_KEY in the secret store, the same pair on every replica; set the Web Push provider to 'vapid'. Changing the pair later makes every venue browser subscribe again.
 - VAPID subject: ask the PO for the contact address (a team address such as support@..., created before launch) and set E7GZ_VAPID_SUBJECT to mailto:<it>. Release smoke test: one real Web Push reaches a closed Venue Dashboard in Chrome.
+
+PO rules and open items, added 15 Nov 2026 (do these too):
+- Before this task starts, make the GitHub repository private again (CLAUDE.md §5, Secrets; PO rule 13 Oct 2026). Ask the PO to do it and confirm it in the summary.
+- The SMS fallback provider (arch 12 §6.5, risk R8) is still not chosen. Ask the PO before go-live: launch with SMS Misr only, or add a second provider.
+- Set E7GZ_PAYMENTS_FEE_COLLECTION_ENABLED=false in staging and production (PCR-010 item 10).
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
