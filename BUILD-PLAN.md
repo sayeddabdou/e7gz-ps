@@ -145,11 +145,11 @@ Maintenance, closures, emergencies, owner review, timer pauses, account disable,
 | S4-C2 | E7-75 | Clients | Admin: trust, bans, Verified Player, points, configuration | Admin: trust fixes, bans, badges, points, fees. | S4-P0 |
 | S4-C3 | E7-76 | Clients | Dashboard: Arabic RTL review of built modules | Check every dashboard screen in Arabic and fix layout. | S2-C4 |
 | S4-C4 | E7-122 | Clients | Privacy Policy and Terms | The apps show the Privacy Policy and the Terms, and a customer agrees to them at sign-up. | S0-C4, S4-P7 |
-| S4-C5 | E7-123 | Clients | Client fixes from the 5 Nov review | Small fixes in the three apps that the full review of 5 Nov found. | S3-C3 |
+| S4-C5 | E7-123 | Clients | Client fixes from the 5 Nov review | Small fixes in the three apps that the full review of 5 Nov found. | S3-C3, S4-P5, S4-P6 |
 | S5-P0 | E7-77 | Platform | Sprint 5 API contract | Add all Sprint 5 API endpoints as stubs by day 2. | S4-P0 |
-| S5-P1 | E7-78 | Platform | Venue account disable (O10) and attendance protection | Admin disables a venue account and what happens to its bookings. | S3-E4 |
+| S5-P1 | E7-78 | Platform | Venue account disable (O10) and attendance protection | Admin disables a venue account and what happens to its bookings. | S3-E4, S4-E5 |
 | S5-P2 | E7-79 | Platform | Fault-injection harness and sellable-gap detector | Tests that break a process halfway and prove nothing is left half-done. | S1-E4 |
-| S5-P3 | E7-80 | Platform | Operational notifications | Notifications for emergencies, closures, refunds and admin events. | S2-P4 |
+| S5-P3 | E7-80 | Platform | Operational notifications | Notifications for emergencies, closures, refunds and admin events. | S2-P4, S5-E1, S5-E2, S5-E4 |
 | S5-E1 | E7-81 | Engine | Maintenance and closures | Maintenance windows and venue closures block the calendar. | S1-E2, S3-E5 |
 | S5-E2 | E7-82 | Engine | Emergencies and cascades (O7/O8) | Venue or room emergency: cancel or pause affected bookings safely. | S5-E1, S5-P2 |
 | S5-E3 | E7-83 | Engine | Timer pause/resume and feasibility | Pause and resume timers during emergencies (30-minute limits). | S5-E2 |
@@ -165,7 +165,7 @@ Full tournament lifecycle, approval, checkpoint, participants, resource loss. Ro
 | S5-C2 | E7-86 | Clients | Admin: owner review, disable, alerts | Admin: owner review, disable venue account, alerts inbox. | S5-P0 |
 | S5-C3 | E7-87 | Clients | Customer app: operational states | App: show emergency cancellations, pauses and refunds. | S5-P0, S5-P1 |
 | S6-P0 | E7-88 | Platform | Sprint 6 API contract | Add all Sprint 6 API endpoints as stubs by day 2. | S5-P0 |
-| S6-P1 | E7-89 | Platform | Tournament Owner Password matrix and notifications | Owner Password rules and notifications for tournaments. | S2-P4, S1-P2 |
+| S6-P1 | E7-89 | Platform | Tournament Owner Password matrix and notifications | Owner Password rules and notifications for tournaments. | S2-P4, S1-P2, S6-E1, S6-E2, S6-E3 |
 | S6-P2 | E7-90 | Platform | Tournament reachability and boundary tests | Tests proving every tournament outcome can happen and happens in the right order. | S2-P6 |
 | S6-E1 | E7-91 | Engine | Tournament creation and holds (O16 part 1) | Create a tournament (by a player or a venue) and hold the rooms. | S4-E5, S6-P0 |
 | S6-E2 | E7-92 | Engine | Approval, rejection, timeout (T7–T9) | The venue approves or rejects in time; otherwise it is cancelled. | S6-E1 |
@@ -2684,10 +2684,11 @@ Read only these docs for this task:
 - PCR-006 (Owner Password as a 4-digit PIN)
 - arch 10 §3 (Owner Password)
 - E7-56 (admin alerts: admin.api.AdminAlerts)
+- PCR-012 (Owner PIN stays locked after repeated lockouts)
 
 Do:
-1. First PCR-012, which amends PCR-006 (the Product Owner confirmed the numbers on 15 Nov 2026; this task may add the PCR file). The rule: after 3 lockouts of the existing kind (5 wrong PINs, 15 minutes) within 24 hours, every Owner-PIN-protected action of that venue stays refused until the Platform Admin resets the Owner PIN.
-2. Build it in the shared Owner Password gate (venue module): the long lock answers the existing Owner Password lockout code (no new rule text from the backend), is audited, and raises a Platform Admin alert through admin.api.AdminAlerts when it starts.
+1. The rule is PCR-012, which amends PCR-006 (the Product Owner confirmed the numbers on 15 Nov 2026): after 3 lockouts of the existing kind (5 wrong PINs, 15 minutes) within 24 hours, every Owner-PIN-protected action of that venue stays refused until the Platform Admin resets the Owner PIN.
+2. Build it in the shared Owner Password gate (venue module): the long lock answers a new error code, OWNER_PASSWORD_LOCKED (add it to ApiErrorCode, arch 09 §1.5; a code, never rule text), the same for a right and a wrong PIN, while the 15-minute lockout keeps RATE_LIMITED (PO decision 16 Nov 2026); it is audited, and raises a Platform Admin alert through admin.api.AdminAlerts when it starts.
 3. The Platform Admin's existing Owner PIN reset ends the lock. Nothing else does, not the passing of time.
 4. If the counters need a schema change, it is a new migration under CLAUDE.md §5 (Migration safety).
 
@@ -2695,8 +2696,9 @@ Done when (write these as tests first where possible):
 - Three lockouts within 24 hours: the next attempt is refused even with the right PIN and after the 15 minutes; one admin alert is raised; the admin reset makes the right PIN work again.
 - Two lockouts within 24 hours, or three spread over more than 24 hours: no long lock.
 - Actions that need no PIN (venue photos, PCR-006) are not affected.
+- The long lock answers OWNER_PASSWORD_LOCKED and the 15-minute lockout still answers RATE_LIMITED; OpenAPI is regenerated (pnpm api:gen).
 
-Why this task exists (review of 5 Nov 2026, finding S4; PO decision 15 Nov 2026): with 10,000 possible PINs and 5 tries per 15 minutes, someone with Dashboard access can find the PIN in about 10 days. The Dashboard shows the locked state and the Admin sees the alert in the alerts inbox (E7-86).
+Why this task exists (review of 5 Nov 2026, finding S4; PO decision 15 Nov 2026): with 10,000 possible PINs and 5 tries per 15 minutes, someone with Dashboard access can find the PIN in about 10 days. The Dashboard shows the locked state (E7-123) and the Admin sees the alert in the alerts inbox (E7-86).
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -2717,7 +2719,7 @@ Read only these docs for this task:
 - CLAUDE.md §5 (Migration safety)
 
 Do:
-1. Blocked until PCR-013 is approved: it names the version label of the texts. The Product Owner approves the texts and sets the label in E7-125.
+1. Not blocked on the final texts (PO decision 16 Nov 2026): the current version label is a setting, e7gz.legal.terms-version (E7GZ_LEGAL_TERMS_VERSION), and so are the two public addresses (E7GZ_LEGAL_TERMS_URL, E7GZ_LEGAL_PRIVACY_URL). Development and tests use a placeholder label such as dev; the Product Owner sets the real values for deployment (E7-125, E7-101). Add the three names with empty values to .env.example and a README line. Add a public read, GET /api/v1/customer/legal -> {version, termsUrl, privacyUrl}, so the app and the server never disagree about the current version.
 2. Database (new migration, next physical model version): store for each customer the version of the texts they accepted and the instant, written once at registration and never changed (a later version is a new acceptance row or column pair, as the PCR decides). Customers that already exist keep an empty value: the migration must not invent an acceptance for them. In the same PR: the .dbm, the change report, the migration-lock.txt line, an upgrade seed and the MigrationFilesTest check.
 3. POST /customer/auth/register gains a required field with the accepted version; a missing value or a version that is not the current one answers 400 VALIDATION_FAILED on that field. The instant is the command instant, never device time.
 4. The Platform Admin user detail (GET /admin/users/{userId}) shows the accepted version and instant.
@@ -2728,6 +2730,7 @@ Done when (write these as tests first where possible):
 - A sign-up with the current version stores the version and the command instant; they cannot be changed afterwards.
 - The migration runs on the upgrade seed with existing customers and loses no row.
 - ./gradlew check green twice (migration PR).
+- GET /customer/legal answers the configured version and the two addresses without a token.
 
 Why this task exists (PO decision 15 Nov 2026): Egypt's data protection law 151/2020 expects proof of consent; a checkbox in the app alone leaves no record.
 
@@ -2985,6 +2988,7 @@ Read only these docs for this task:
 - FRS §4.11, §4.12, §4.14
 - FRS §2.10 (actor / action authorization)
 - PCR-010 (Points pay the Booking Fee; per-booking or per-hour Booking Fee)
+- PCR-013 (Privacy Policy and Terms at launch)
 
 Do:
 1. Trust corrections, ban lift, Verified Player actions, points adjustment, fees/points configuration with effective-from display.
@@ -3016,6 +3020,10 @@ Carry-forward from E7-67, PO decision 5 Nov 2026 (do this too):
 
 PO decision 15 Nov 2026, PCR-010 item 10 (do this too):
 - While no payment provider collects the fee (the launch setting), PUT /admin/fees answers 400 VALIDATION_FAILED with field bookingFee or bookingFeePerHour for a value above 0.00. Show it as an error on that field (text from the client's code map: a booking fee needs payment collection first). The mode, a 0.00 fee and the tournament creation fee still save.
+
+PO decisions 16 Nov 2026 (do these too):
+- The user page (GET /admin/users/{userId}) shows the version of the Terms and Privacy Policy the customer accepted and when (PCR-013, E7-124); an account from before the rule shows that nothing is recorded.
+- PCR-010 item 11: once E7-91 is merged, PUT /admin/fees also answers 400 VALIDATION_FAILED with field tournamentCreationFee for a value above 0.00. Show it on that field, like the booking-fee error.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -3058,9 +3066,9 @@ Read only these docs for this task:
 - FRS §3.1 (Customer Mobile App), §3.2 (Venue Dashboard), §3.3 (Platform Admin)
 
 Do:
-1. Blocked until PCR-013 (Privacy Policy and Terms at launch) is approved and the two texts are final: Claude drafts them, the Product Owner reviews them (PO decision 15 Nov 2026), and the Product Owner gives the two public URLs where they are hosted. Do not change the legal text in this task. The Product Owner's review and approval is E7-125.
-2. Customer app, sign-up: an "I agree to the Terms and the Privacy Policy" checkbox with a link to each; Register stays disabled until it is ticked. Profile gets the two links. The URLs come from configuration (EXPO_PUBLIC_*), never hard-coded.
-3. Venue Dashboard (EN + AR) and Platform Admin: the two links in the account menu or the footer.
+1. Not blocked on the final texts (PO decision 16 Nov 2026): the texts stay drafts until the Product Owner approves them in E7-125, before deployment. Do not change the legal text in this task. The customer app reads the current version and the two public URLs from GET /customer/legal (E7-124).
+2. Customer app, sign-up: an "I agree to the Terms and the Privacy Policy" checkbox with a link to each; Register stays disabled until it is ticked. Profile gets the two links. The URLs and the version come from GET /customer/legal (E7-124), never hard-coded.
+3. Venue Dashboard (EN + AR) and Platform Admin: the two links in the account menu or the footer. Their two URLs come from each app's own environment settings (VITE_*, public by nature), never hard-coded.
 4. The server stores the acceptance (PO decision 15 Nov 2026): the sign-up request sends the version of the texts the customer agreed to, as E7-124 defines it. E7-124 (Platform) builds the server side.
 
 Done when (write these as tests first where possible):
@@ -3078,7 +3086,7 @@ Finish by running the checks in CLAUDE.md §4, then give me a short summary, the
 
 **What this task does:** Small fixes in the three apps that the full review of 5 Nov found.
 
-Lane: Clients · Depends on: S3-C3
+Lane: Clients · Depends on: S3-C3, S4-P5, S4-P6
 
 ```text
 Read CLAUDE.md first. You are implementing task S4-C5 — "Client fixes from the 5 Nov review" (Clients lane) of the E7GZ PS build plan.
@@ -3087,6 +3095,7 @@ Read only these docs for this task:
 - FRS §3.1 (Customer Mobile App)
 - FRS FR-VEN-40 (dashboard language order)
 - arch 09 §1.5 (RATE_LIMITED)
+- PCR-012 (Owner PIN stays locked after repeated lockouts)
 
 Do:
 1. Customer app, iOS settings (app.json / app.config.ts; no Apple account needed): the expo-location plugin with a clear when-in-use text only (it is used to show venues near the customer), no Always-location and no Motion permission; expo-secure-store with faceIDPermission false; no NSAllowsArbitraryLoads in a production build; a real version and build number; ITSAppUsesNonExemptEncryption false. Check the result with npx expo config --type introspect.
@@ -3095,14 +3104,19 @@ Do:
 4. packages/tokens: pnpm -r test passes on a fresh clone, before any build (a pretest build, or test against src).
 5. Dependencies: update Expo and @react-native-firebase to their patched versions; pnpm audit --prod shows no critical or high advisory, or the summary lists each one that cannot be fixed yet and why.
 6. Customer app: show the RATE_LIMITED text (from the code map) on the booking screen and on the password-reset screen (E7-120).
+7. Venue Dashboard (PO decision 16 Nov 2026, PCR-012 item 5): when an Owner-PIN-protected action answers OWNER_PASSWORD_LOCKED (E7-121), show that the Owner PIN is locked and that the venue must contact E7GZ support, in English and Arabic, from the code map. Keep the existing try-again-later text for RATE_LIMITED (the 15-minute lockout).
 
 Done when (write these as tests first where possible):
 - expo config --type introspect shows no NSLocationAlways* key, no NSMotionUsageDescription and no NSFaceIDUsageDescription, and no NSAllowsArbitraryLoads for production.
 - The Tournaments tab is not shown.
 - Dashboard: choose Arabic in the header, reload, still Arabic.
 - pnpm install && pnpm -r test passes on a fresh clone.
+- A venue whose Owner PIN is long-locked sees the contact-support text in English and Arabic; the 15-minute lockout still shows the try-later text.
 
 Why this task exists (review of 5 Nov 2026, findings A3, A5, B1, B3, S6; PO decision 15 Nov 2026). The first iOS build itself waits for the deployment phase (E7-109): no Apple subscription before then.
+
+Plan review 16 Nov 2026 (order):
+- Steps 1 to 5 can start now. Step 6 waits for E7-120 (RATE_LIMITED on booking and password reset) and step 7 waits for E7-121 (OWNER_PASSWORD_LOCKED).
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -3137,7 +3151,7 @@ Finish by running the checks in CLAUDE.md §4, then give me a short summary, the
 
 **What this task does:** Admin disables a venue account and what happens to its bookings.
 
-Lane: Platform · Depends on: S3-E4
+Lane: Platform · Depends on: S3-E4, S4-E5
 
 ```text
 Read CLAUDE.md first. You are implementing task S5-P1 — "Venue account disable (O10) and attendance protection" (Platform lane) of the E7GZ PS build plan.
@@ -3160,6 +3174,9 @@ Carry-forward from E7-37 (PO decision 4 Oct 2026, do these too):
 
 Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
 - Customer copy must tell the causes apart (FR-NTF-06): an ordinary expiry is 'Venue did not respond in time', but a PENDING expired by a venue account disable (FR-VEN-09) is 'Venue is temporarily unable to confirm this booking'. No contract change is needed: on that PENDING -> VENUE_RESPONSE_EXPIRED transition write the booking history event VENUE_RESPONSE_INTERRUPTED_BY_ACCOUNT_DISABLE (already in BookingEventType and returned in CustomerBookingDetail.history). Test: the customer booking detail of a booking expired by a disable carries that event; an ordinary expiry does not. E7-87 shows the text.
+
+Plan review 16 Nov 2026 (order):
+- This task cancels PENDING_VENUE_APPROVAL tournaments, so it waits for E7-73 (the tournament aggregate).
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -3192,7 +3209,7 @@ Finish by running the checks in CLAUDE.md §4, then give me a short summary, the
 
 **What this task does:** Notifications for emergencies, closures, refunds and admin events.
 
-Lane: Platform · Depends on: S2-P4
+Lane: Platform · Depends on: S2-P4, S5-E1, S5-E2, S5-E4
 
 ```text
 Read CLAUDE.md first. You are implementing task S5-P3 — "Operational notifications" (Platform lane) of the E7GZ PS build plan.
@@ -3215,6 +3232,9 @@ Carry-forward from E7-44 (PO decision 10 Oct 2026, do this too):
 
 Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
 - VENUE_BOOKING_AUTO_CANCELLED split (PO decision 12 Oct 2026): E7-55 already sends it for an Accept stopped by an operational cause (FR-BOK-16) and the start-time revalidation cancellations (E7-60). This task adds it for the emergency, owner-review and closure cascades, through the same code path, once per cancelled booking - never a second notification for a cancellation E7-55 already covers. Test: each cascade cancellation gives exactly one VENUE_BOOKING_AUTO_CANCELLED.
+
+Plan review 16 Nov 2026 (order):
+- This task wires the codes of the cascades that E7-81 (maintenance and closures), E7-82 (emergencies) and E7-84 (owner review) build, so it waits for them; its exactly-once tests run against their real cascades.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -3402,6 +3422,7 @@ Read only these docs for this task:
 - FRS F-22, F-23, F-24 (owner review, venue account disable, attendance protection)
 - FRS §4.9, §4.14
 - arch 09 §5
+- PCR-012 (Owner PIN stays locked after repeated lockouts)
 
 Do:
 1. Owner review queue, venue account disable/enable, emergencies monitor, admin alerts inbox with acknowledge.
@@ -3420,6 +3441,9 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 
 Carry-forward from E7-37 (PO decision 4 Oct 2026, do these too):
 - Venue accounts page (/venue-accounts, replaces the E7-37 placeholder): list every venue account from GET /admin/venue-accounts (venue name, login, status, language) with a status filter, 'Load more' paging (cursor) and empty, loading and error states. A row opens that venue's page. Disable/enable from this page uses the same required-reason dialog as the venue page.
+
+PO decisions 16 Nov 2026 (do these too):
+- The alerts inbox shows the Owner PIN long-lock alert (PCR-012, raised by E7-121) with a link to that venue's page, where the Owner PIN reset is.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -3491,7 +3515,7 @@ Finish by running the checks in CLAUDE.md §4, then give me a short summary, the
 
 **What this task does:** Owner Password rules and notifications for tournaments.
 
-Lane: Platform · Depends on: S2-P4, S1-P2
+Lane: Platform · Depends on: S2-P4, S1-P2, S6-E1, S6-E2, S6-E3
 
 ```text
 Read CLAUDE.md first. You are implementing task S6-P1 — "Tournament Owner Password matrix and notifications" (Platform lane) of the E7GZ PS build plan.
@@ -3500,6 +3524,7 @@ Read only these docs for this task:
 - arch 10 §3.2
 - Spec v5 §52 tournament codes
 - PCR-006 (the Owner Password is a PIN of exactly 4 digits)
+- PCR-012 (Owner PIN stays locked after repeated lockouts)
 
 Do:
 1. @OwnerProtected on the tournament actions listed in the matrix; wire tournament notifications and abuse alerts.
@@ -3512,6 +3537,9 @@ Carry-forward from E7-43 (PO decision 10 Oct 2026, do this too):
 
 Carry-forward from E7-44 (PO decision 10 Oct 2026, do this too):
 - Venue notifications are Web Push in the venue account's language (FR-VEN-40), so for every VENUE notification code this task emits add both the English and the Arabic push copy (title/body) to the template catalogue (templates_en / templates_ar). Until a code has its copy, its venue push is closed TEMPLATE_MISSING and only the in-Dashboard list shows it. The PO reviews both wordings in the PR.
+
+Plan review 16 Nov 2026 (order):
+- The actions this task protects are created by E7-91, E7-92 and E7-93, so it waits for them. The PCR-012 long lock applies through the shared Owner Password gate: add no second lock.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -3552,12 +3580,16 @@ Read only these docs for this task:
 - arch 06 §3.4
 - arch 05 §3.2
 - arch 03 §7
+- PCR-010 (item 11: no Tournament Creation Fee above EGP 0 before a payment provider)
 
 Do:
 1. Player- and venue-hosted creation; cost snapshot; creation fee; Approval Hold → Tournament Hold; one pending request per creator.
 
 Done when (write these as tests first where possible):
 - A player request against a resource with a confirmed booking fails and the booking is untouched.
+
+PO decision 16 Nov 2026, PCR-010 item 11 (do this too):
+- In config/internal/PlatformFees, refuse a tournamentCreationFee above 0.00 while e7gz.payments.fee-collection-enabled is false: 400 VALIDATION_FAILED with field tournamentCreationFee, before any idempotency record, exactly as the Booking Fee is refused (PCR-010 item 10). Update the class comment (it says the Tournament Creation Fee is not part of the rule) and add the tests. A fee of 0.00 still saves. config is Platform lane: list it in the PR for Sayed's review.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -3755,6 +3787,7 @@ Read only these docs for this task:
 - arch 09 §3.4, §5
 - docs/03-design Compliance UI Addendum
 - PCR-002 (customer-initiated account deletion) and PCR-003 (customer reporting of reviews)
+- PCR-014 (a Customer blocks a reviewer) and PCR-015 (Wallet and Points at account deletion)
 
 Do:
 1. Stubs + DTOs for reviews, review reports, account deletion, remaining admin modules, reports FR-AUD-11/12; regenerate client.
@@ -3764,6 +3797,10 @@ Done when (write these as tests first where possible):
 
 Carry-forward from E7-39 review (do these too):
 - Contract for the plan gap (PO decision 6 Oct 2026 (E7-39 review: arch 09 §4.1 lists the route, but no task owned it)): add the stub GET /venue/revenue?from=&to=&breakdown=activity (business dates, inclusive) -> totals for online, manual and tournament revenue per business date with an optional activity breakdown; no payment-method fields (FR-VEN-36). Used by E7-104 and S7-C6.
+
+PO decisions 16 Nov 2026 (do these too):
+- PCR-014: stubs for the customer to block the author of a review, to unblock, and to list my blocked users.
+- PCR-015: the customer's account-deletion request view carries the wallet balance and the points balance that will be lost.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -3885,6 +3922,9 @@ PO rules and open items, added 15 Nov 2026 (do these too):
 - Set E7GZ_PAYMENTS_FEE_COLLECTION_ENABLED=false in staging and production (PCR-010 item 10).
 - Do not start deployment before E7-125 is done: the Product Owner has reviewed, corrected and approved the Privacy Policy and the Terms of Use, and both pages are published (PCR-013).
 
+PO decision 16 Nov 2026 (do this too):
+- Set E7GZ_LEGAL_TERMS_VERSION, E7GZ_LEGAL_TERMS_URL and E7GZ_LEGAL_PRIVACY_URL to the values the Product Owner approved in E7-125; never the placeholder label (PCR-013, E7-124).
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -3901,10 +3941,11 @@ Read CLAUDE.md first. You are implementing task S7-P4 — "Product Owner reviews
 Read only these docs for this task:
 - PCR-013 (Privacy Policy and Terms at launch)
 - docs/01-product/legal/Privacy Policy — DRAFT.md and Terms of Use — DRAFT.md (the drafts)
+- PCR-015 (Wallet and Points at account deletion)
 
 Do:
 1. This is the Product Owner's own task: the drafts are only a first version written by Claude. The Product Owner reads both texts fully and changes anything that is wrong or missing. Claude may help with wording, but never decides legal content.
-2. Fill every blank in [SQUARE BRACKETS]: the company's legal name and address, the privacy contact and the support contact, the minimum age, how long a deletion request takes, the names of the SMS, email and hosting providers, and the no-show ladder in plain words (taken from the approved rules).
+2. Fill every blank in [SQUARE BRACKETS]: the company's legal name and address, the privacy contact and the support contact, the minimum age, how long a deletion request takes, the names of the SMS, email and hosting providers, and the no-show ladder in plain words (taken from the approved rules). Keep the sentence that points and any wallet balance are lost when the account is deleted (PCR-015).
 3. Check each statement against what the product really does before approving it, with the team: what location data is kept, what a venue sees and when, what other customers see, what is removed and what is kept when an account is deleted (PCR-002).
 4. Have a lawyer check both texts against Egypt's Personal Data Protection Law (Law 151 of 2020) and consumer law, in particular the liability section and data processed outside Egypt.
 5. Prepare the Arabic versions of both texts.
@@ -3914,9 +3955,9 @@ Done when (write these as tests first where possible):
 - Both texts have no [SQUARE BRACKETS] left, are approved by the Product Owner with a date, and are no longer marked DRAFT.
 - A lawyer's check is recorded (who and when), or the Product Owner records the decision to launch without one.
 - English and Arabic versions exist, and both public web addresses open the approved texts.
-- The version label is written in PCR-013, so E7-124 and E7-122 can use it.
+- The version label is written in PCR-013, and the label and the two addresses are given to E7-101 as the production settings (E7GZ_LEGAL_*).
 
-Why this task exists (Product Owner, 15 Nov 2026): the Privacy Policy and the Terms of Use are only drafts. They must be reviewed and edited by the Product Owner before deployment. E7-124 and E7-122 wait for the approved texts, and deployment (E7-101) does not start before this task is done.
+Why this task exists (Product Owner, 15 Nov 2026): the Privacy Policy and the Terms of Use are only drafts. They must be reviewed and edited by the Product Owner before deployment. E7-124 and E7-122 are built before it with a placeholder version label (PO decision 16 Nov 2026); deployment (E7-101) does not start before this task is done.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -3935,12 +3976,17 @@ Read only these docs for this task:
 - ADR-025
 - arch 04 §4.7
 - PCR-003
+- PCR-014 (a Customer blocks a reviewer)
 
 Do:
 1. create/edit/delete own review, report (one open report per reporter), admin moderate/resolve via the review.* producers; rating projection.
 
 Done when (write these as tests first where possible):
 - Duplicate open report → REVIEW_REPORT_ALREADY_OPEN.
+- A blocks B: A sees no review by B on any venue, C still sees them and the rating is the same; after unblock A sees them again.
+
+PO decision 16 Nov 2026, PCR-014 (do this too):
+- Block (PCR-014): a new migration (CLAUDE.md §5, Migration safety) for the block table (the customer, the blocked user, the instant); block, unblock and list my blocked users; every customer read of reviews leaves out reviews by users the reader blocked. The venue's rating, the review's status, moderation and every other reader are unchanged, and the author is never told.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -3959,6 +4005,7 @@ Read only these docs for this task:
 - ADR-024
 - PCR-002
 - arch 10 (anonymisation)
+- PCR-015 (Wallet and Points at account deletion)
 
 Do:
 1. Customer request: call iam.request_account_deletion.
@@ -3973,6 +4020,10 @@ Carry-forward from E7-13 (do these too):
 
 PO decision 24 Oct 2026 (E7-64 review, do this too):
 - In the same command as iam.anonymise_user, also revoke the customer's push devices through notification.api.CustomerPushDevices.revokeAll (E7-119): deletion ends every session, so no phone keeps getting the account's pushes. Test it with the deleted-account test.
+
+PO decisions 16 Nov 2026 (do these too):
+- PCR-015: the deletion request answers the wallet balance and the points balance that will be lost. Deletion writes no ledger row: the ledgers stay, anonymised with the account.
+- A phone that registers again after a deletion is a new account that starts at zero, and a referral for it follows the normal rules: keep no fingerprint of the deleted account's phone.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -4042,6 +4093,8 @@ Read only these docs for this task:
 - FRS F-01A (account deletion), F-36 (reviews)
 - FRS §4.13 (Reviews)
 - arch 09 §3.4
+- PCR-014 (a Customer blocks a reviewer)
+- PCR-015 (Wallet and Points at account deletion)
 
 Do:
 1. Write/edit/delete review, report review, Delete Account flow.
@@ -4057,6 +4110,10 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 - Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.
 - Customer app is English at launch, all text in the i18n resource files (FRS §3.1).
 - In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.
+
+PO decisions 16 Nov 2026 (do these too):
+- PCR-014: a Block this user action on a review, with a confirmation; a Blocked users list in Profile with Unblock. A blocked user's reviews are not shown.
+- PCR-015: the Delete Account screen shows the wallet balance and the points and says both are lost, before the customer confirms.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -4156,6 +4213,9 @@ Carry-forward from the Sprint 0 review (do these too):
 PO decision 15 Nov 2026 (do this too):
 - Everything that needs the Apple Developer subscription happens in this task, in the deployment phase, not earlier: the first iOS build (the app has never run on an iPhone, so plan time for surprises), TestFlight, the App Privacy labels (phone, name, email, approximate location, booking history, device push token) and the App Review demo account (a verified customer, and a demo venue that accepts the reviewer's booking).
 
+PO decision 16 Nov 2026 (do this too):
+- The App Review notes name the Report and Block functions for reviews (guideline 1.2; PCR-003, PCR-014) and the in-app account deletion (guideline 5.1.1(v); PCR-002).
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -4191,6 +4251,9 @@ PO decisions 15 Nov 2026 (do these too):
 - Confirm E7GZ_PAYMENTS_FEE_COLLECTION_ENABLED is false in production (PCR-010 item 10): the booking fee stays EGP 0 until the payment task turns collection on together with its adapter.
 - Confirm E7-120 (booking-creation and password-reset limits), E7-121 (Owner PIN lock), E7-122 (Privacy Policy and Terms), E7-123 (client fixes) and E7-124 (the recorded acceptance) are done.
 - The two accepted risks stay accepted unless the PO says otherwise here: no two-step login for the Platform Admin, and the API reveals whether a phone number is registered.
+
+PO decisions 16 Nov 2026 (do these too):
+- Confirm the Tournament Creation Fee block (PCR-010 item 11, E7-91), the reviewer Block (PCR-014) and the deletion warning (PCR-015) are built, that E7-125 is done, and that the production Terms version is not the placeholder.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
