@@ -113,7 +113,9 @@ public class CustomerBookingController {
                     + "(FR-AVL-11). Duration and lead time are product rules, answered with their 422 codes, not "
                     + "VALIDATION_FAILED. playMode is required for PLAYSTATION and absent otherwise. A venue with no "
                     + "price for the activity fails under FR-BOK-11 item 20 as RESOURCE_NOT_ELIGIBLE (PO decision 5 Oct "
-                    + "2026). An unknown resourceId is NOT_FOUND (PO decision 9 Oct 2026). Implemented by E7-46.")
+                    + "2026). An unknown resourceId is NOT_FOUND (PO decision 9 Oct 2026). Implemented by E7-46. "
+                    + "The 21st booking one customer creates within 60 minutes is 429 RATE_LIMITED, checked before "
+                    + "every other condition; cancelled bookings count too (arch 10 §7, E7-120).")
     @ApiError(status = 403, codes = {ApiErrorCode.PHONE_VERIFICATION_REQUIRED, ApiErrorCode.ACCOUNT_BANNED_FOR_THIS_ACTION,
             ApiErrorCode.ACCOUNT_DELETED})
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
@@ -124,6 +126,7 @@ public class CustomerBookingController {
             ApiErrorCode.VENUE_NOT_ELIGIBLE_FOR_NEW_ACTIVITY, ApiErrorCode.RESOURCE_NOT_ELIGIBLE,
             ApiErrorCode.VENUE_SELLING_BLOCK_ACTIVE, ApiErrorCode.RESOURCE_SELLING_BLOCK_ACTIVE,
             ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
+    @ApiError(status = 429, codes = ApiErrorCode.RATE_LIMITED)
     public ResponseEntity<DataResponse<CustomerBookingDetail>> create(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
             @Valid @RequestBody CustomerBookingCreateRequest request,

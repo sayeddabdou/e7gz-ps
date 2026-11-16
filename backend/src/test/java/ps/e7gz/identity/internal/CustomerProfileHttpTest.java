@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -30,6 +31,7 @@ import ps.e7gz.common.codes.AuthSubjectType;
 import ps.e7gz.common.security.AccessTokens;
 import ps.e7gz.messaging.internal.OutboxDrain;
 import ps.e7gz.support.IntegrationTest;
+import ps.e7gz.support.PostgresTestContainer;
 
 /**
  * E7-57 (Spec v5 §7.5, §7.6; FR-ACC-06…09; contract E7-54): the customer's profile - full name, username with its
@@ -304,7 +306,93 @@ class CustomerProfileHttpTest extends IntegrationTest {
         assertThat(TestCustomers.activePushDevices(db, me.id())).isOne();
     }
 
+    /**
+     * E7-120 (arch 10 §7; PO decision 16 Nov 2026): at most 3 reset codes per phone in the last 60 minutes, counted
+     * exactly from {@code iam.otp_challenge}. The 4th is {@code 429 RATE_LIMITED} and sends no SMS; once the first is 60
+     * minutes old the next is accepted. Earlier codes are moved back past the triggers (60 s apart for FR-ACC-04's
+     * resend guard), because command instants come from the database clock.
+     */
+    @Test
+    void theFourthResetForOnePhoneInSixtyMinutesIsRateLimitedAndSendsNoSms() throws Exception {
+        UUID first = challengeId(requestReset(me.localPhone()).andExpect(status().isCreated()));
+        issuedAgo(first, "50 minutes");
+        UUID second = challengeId(requestReset(me.localPhone()).andExpect(status().isCreated()));
+        issuedAgo(second, "40 minutes");
+        UUID third = challengeId(requestReset(me.localPhone()).andExpect(status().isCreated()));
+        issuedAgo(third, "30 minutes");
+        String lastSent = sms.lastCode.get(me.phoneE164());
+        long events = otpEvents(me.phoneE164());
+
+        requestReset(me.localPhone())
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.error.code").value("RATE_LIMITED"));
+
+        assertThat(resetCodes(me.phoneE164())).isEqualTo(3);
+        assertThat(otpEvents(me.phoneE164())).as("no OTP SMS event").isEqualTo(events);
+        assertThat(sms.lastCode.get(me.phoneE164())).as("no SMS").isEqualTo(lastSent);
+
+        issuedAgo(first, "59 minutes");
+        requestReset(me.localPhone()).andExpect(status().isTooManyRequests());
+
+        issuedAgo(first, "60 minutes");
+        UUID fourth = challengeId(requestReset(me.localPhone()).andExpect(status().isCreated()));
+        assertThat(sms.lastCode.get(me.phoneE164())).as("sent").isNotEqualTo(lastSent).isNotNull();
+        assertThat(resetCodes(me.phoneE164())).isEqualTo(4);
+        assertThat(fourth).isNotIn(first, second, third);
+    }
+
+    /** E7-120 (PO decision 16 Nov 2026): a phone with no verified account stays 404 and is never counted. */
+    @Test
+    void aPhoneWithNoVerifiedAccountStaysNotFoundAndIsNotCounted() throws Exception {
+        String unknown = randomLocalPhone();
+        String unverified = TestCustomers.insert(db, false, passwordHash).localPhone();
+        for (int i = 0; i < 5; i++) {
+            requestReset(unknown).andExpect(status().isNotFound());
+            requestReset(unverified).andExpect(status().isNotFound());
+        }
+    }
+
     // ------------------------------------------------------------------------------------------------ helpers
+
+    private long resetCodes(String phoneE164) {
+        return db.sql("SELECT count(*) FROM iam.otp_challenge WHERE destination = :phone AND purpose = 'PASSWORD_RESET'")
+                .param("phone", phoneE164).query(Long.class).single();
+    }
+
+    private long otpEvents(String phoneE164) {
+        return db.sql("""
+                        SELECT count(*) FROM technical.outbox_event e
+                          JOIN iam.otp_challenge o ON o.id = e.aggregate_id
+                         WHERE e.event_type = 'PhoneOtpIssued' AND o.destination = :phone""")
+                .param("phone", phoneE164).query(Long.class).single();
+    }
+
+    /**
+     * TEST-ONLY: puts the challenge's {@code issued_at} (and its 5-minute {@code expires_at}, {@code ck_otp_validity})
+     * {@code ago} before the database clock, past the trigger that keeps them fixed.
+     */
+    private static void issuedAgo(UUID challengeId, String ago) {
+        SingleConnectionDataSource owner = new SingleConnectionDataSource(
+                PostgresTestContainer.jdbcUrl(PostgresTestContainer.DATABASE), PostgresTestContainer.MIGRATOR,
+                PostgresTestContainer.MIGRATOR, true);
+        try {
+            JdbcClient jdbc = JdbcClient.create(owner);
+            jdbc.sql("SET session_replication_role = replica").update();
+            int changed = jdbc.sql("""
+                            UPDATE iam.otp_challenge o
+                               SET issued_at = t.at,
+                                   expires_at = t.at + interval '5 minutes',
+                                   superseded_at = CASE WHEN o.superseded_at IS NULL THEN NULL
+                                                        ELSE GREATEST(o.superseded_at, t.at) END
+                              FROM (SELECT clock_timestamp() - CAST(:ago AS interval) AS at) t
+                             WHERE o.id = :id""")
+                    .param("ago", ago).param("id", challengeId).update();
+            jdbc.sql("SET session_replication_role = origin").update();
+            assertThat(changed).isEqualTo(1);
+        } finally {
+            owner.destroy();
+        }
+    }
 
     private ResultActions startPhoneChange(String phone) throws Exception {
         ResultActions result = mvc.perform(authed(json(post(PROFILE + "/phone"), Map.of("phone", phone))));
