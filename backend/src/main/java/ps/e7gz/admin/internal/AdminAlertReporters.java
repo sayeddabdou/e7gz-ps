@@ -1,5 +1,6 @@
 package ps.e7gz.admin.internal;
 
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -11,20 +12,22 @@ import ps.e7gz.admin.api.AdminAlertKind;
 import ps.e7gz.admin.api.AdminAlertSeverity;
 import ps.e7gz.admin.api.NewAdminAlert;
 import ps.e7gz.common.codes.AuthSubjectType;
+import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.identity.api.SecurityAlerts;
 import ps.e7gz.inventory.sweep.api.InvariantViolation;
 import ps.e7gz.inventory.sweep.api.InvariantViolationReporter;
 import ps.e7gz.messaging.api.DeadLetterAlerts;
 import ps.e7gz.messaging.api.OutboxEvent;
+import ps.e7gz.trust.api.BanAlerts;
 
 /**
  * The Platform Administration side of the alert ports other modules declare (E7-56): the nightly invariant sweep
- * (PO decision 4 Oct 2026), the outbox dead letter (PO decision 12 Oct 2026) and refresh-token reuse (Sprint 0 review
- * S-9). Each port lives in its caller's {@code api} so no module depends on Administration in a cycle.
+ * (PO decision 4 Oct 2026), the outbox dead letter (PO decision 12 Oct 2026), refresh-token reuse (Sprint 0 review
+ * S-9) and a Ban activation (Product v5.0 section 52.6; E7-71, PO decision 20 Oct 2026). Each port lives in its caller's {@code api} so no module depends on Administration in a cycle.
  */
 @Component
-class AdminAlertReporters implements InvariantViolationReporter, DeadLetterAlerts, SecurityAlerts {
+class AdminAlertReporters implements InvariantViolationReporter, DeadLetterAlerts, SecurityAlerts, BanAlerts {
 
     private static final Logger log = LoggerFactory.getLogger(AdminAlertReporters.class);
 
@@ -97,6 +100,17 @@ class AdminAlertReporters implements InvariantViolationReporter, DeadLetterAlert
         } catch (RuntimeException failure) {
             log.error("Login limit on {} {} raised no admin alert", audience, accountId, failure);
         }
+    }
+
+    /**
+     * ADMIN_USER_BAN_ACTIVATED, SEV_3, about the User, in the activating command: the alert inbox only, no per-admin
+     * notification (PO decision 20 Oct 2026). A failure here rolls the activation back with it, like any write of it.
+     */
+    @Override
+    public void banActivated(CommandContext command, UUID userId, UUID banId, int penaltyStage, Instant activatedAt,
+                             Instant endsAt, int cancelledBookings, UUID correlationId) {
+        alerts.raise(command, NewAdminAlert.userBanActivated(userId, banId, penaltyStage, activatedAt, endsAt,
+                cancelledBookings, correlationId));
     }
 
     /** The account table each audience lives in, as audit subject types name them. */

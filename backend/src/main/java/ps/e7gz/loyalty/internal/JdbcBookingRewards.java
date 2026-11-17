@@ -35,14 +35,20 @@ class JdbcBookingRewards implements BookingRewards {
 
     @Override
     public UUID reconcileCorrection(CommandContext command, UUID adminId, UUID customerId, UUID bookingId) {
+        beginCorrection(command, adminId, customerId);
+        return command.jdbc().sql(RECONCILE)
+                .param("booking", Objects.requireNonNull(bookingId, "bookingId"))
+                .query(UUID.class).single();
+    }
+
+    /** {@code loyalty.start_command} returns the open context unchanged when called again with the same arguments. */
+    @Override
+    public void beginCorrection(CommandContext command, UUID adminId, UUID customerId) {
         Objects.requireNonNull(command, "command");
         command.jdbc().sql(BEGIN_ADMIN)
                 .param("user", Objects.requireNonNull(customerId, "customerId"))
                 .param("admin", Objects.requireNonNull(adminId, "adminId"))
                 .param("correlation", CorrelationId.require())
                 .query().singleRow();
-        return command.jdbc().sql(RECONCILE)
-                .param("booking", Objects.requireNonNull(bookingId, "bookingId"))
-                .query(UUID.class).single();
     }
 }

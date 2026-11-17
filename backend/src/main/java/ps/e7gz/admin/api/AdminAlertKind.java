@@ -18,5 +18,10 @@ public enum AdminAlertKind {
     /** arch 10 section 2.3: a rotated refresh token was used again and its whole chain was revoked. */
     REFRESH_TOKEN_REUSE,
     /** An account reached the per-account login limit (raised by E7-57). */
-    ACCOUNT_LOGIN_LIMIT_REACHED
+    ACCOUNT_LOGIN_LIMIT_REACHED,
+    /**
+     * Product v5.0 section 52.6 "User Temporary Ban Activated": a replay threshold crossing activated a Ban (raised by
+     * E7-71 in the activating command). The admin alert inbox only - no per-admin notification (PO decision 20 Oct 2026).
+     */
+    ADMIN_USER_BAN_ACTIVATED
 }

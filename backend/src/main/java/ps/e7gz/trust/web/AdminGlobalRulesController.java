@@ -10,13 +10,15 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import ps.e7gz.common.web.DataResponse;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
+import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.trust.internal.PenaltyLadder;
 
 /**
  * Platform Admin Global Rules: the no-show ladder, read-only (arch 09 §5, FR-TRS-13, NFR-37; arch 01 §14 A8: a fixed
- * Product rule, never configuration). In the Sprint 4 contract by PO decision 20 Oct 2026 (E7-65), so the admin trust
- * screen (E7-75) has its data; a stub until E7-71, which owns the ladder constants. There is no write route.
+ * Product rule, never configuration). In the Sprint 4 contract by PO decision 20 Oct 2026 (E7-65, D7), so the admin
+ * trust screen (E7-75) has its data; filled by E7-71 from the very database functions every Ban uses
+ * ({@link PenaltyLadder}). There is no write route.
  */
 @RestController
 @RequestMapping("/api/v1/admin/global-rules")
@@ -24,13 +26,24 @@ import ps.e7gz.common.web.OpenApiConfig;
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class AdminGlobalRulesController {
 
+    private final PenaltyLadder ladder;
+    private final ResponseMetaFactory meta;
+
+    AdminGlobalRulesController(PenaltyLadder ladder, ResponseMetaFactory meta) {
+        this.ladder = ladder;
+        this.meta = meta;
+    }
+
     @GetMapping
     @Operation(operationId = "adminGetGlobalRules", summary = "The no-show ladder, read-only (FR-TRS-13)",
             description = "One row per penalty stage, in order: at that stage, consecutiveNoShows eligible no-shows in "
                     + "a row start a ban of banDuration and advance the stage (FR-TRS-14). The last row is recurring: "
-                    + "from that stage on, every consecutiveNoShows give the same ban. Implemented by E7-71.")
+                    + "from that stage on, every consecutiveNoShows give the same ban.")
     public DataResponse<AdminGlobalRules> get() {
-        throw NotImplementedYet.stub();
+        return meta.data(new AdminGlobalRules(ladder.steps().stream()
+                .map(step -> new AdminNoShowLadderStep(step.penaltyStage(), step.consecutiveNoShows(),
+                        step.banDuration().toString(), step.recurring()))
+                .toList()));
     }
 
     @Schema(name = "AdminGlobalRules")

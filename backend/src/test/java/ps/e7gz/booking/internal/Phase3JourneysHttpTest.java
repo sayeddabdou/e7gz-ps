@@ -49,12 +49,9 @@ import ps.e7gz.support.boundary.TestCommands;
  * ACTIVE booking is moved back whole past its end ({@link BookingFlows#pastItsEnd}) after its evidence was recorded, so
  * the real T5 completes it. Nothing else is written past the commands.
  *
- * <p><b>J4 is PARTIAL.</b> Its third-consecutive-no-show step - the 7-day ban, the cancellation of the customer's pending
- * and future confirmed bookings, an active session left alone - is E7-71's (O14, the ban cascade). Until E7-71 the
- * database refuses that third no-show whole ({@code trust.assert_user_integrity}: a replayed qualification without its
- * exactly-once operational consequence), as E7-59's
- * {@code AttendanceIntegrationTest.theThirdConsecutiveNoShowNeedsE771sBanAndUntilThenRollsBackWhole} pins; E7-71 replaces
- * that test and completes J4 here.
+ * <p>J4's third-consecutive-no-show step - the 7-day ban and the cancellation of the customer's pending and future
+ * confirmed bookings (O14, the ban cascade) - is E7-71's: {@link #j4TheThirdConsecutiveNoShowBansTheCustomer}. An ACTIVE
+ * session left alone is covered where the customer can hold one beside the ban ({@code BanConsequencesIntegrationTest}).
  */
 @AutoConfigureMockMvc
 class Phase3JourneysHttpTest extends IntegrationTest {
@@ -193,10 +190,10 @@ class Phase3JourneysHttpTest extends IntegrationTest {
     /**
      * J4 (PRD), PARTIAL - the steps E7-61 can complete: fifteen minutes past the start the room is empty; staff mark the
      * no-show; the remaining interval is released at once and sold to a walk-in; the customer's counter increments; the
-     * booking's T5 never completes it. The third-no-show ban and cascade are E7-71's (see the class comment).
+     * booking's T5 never completes it. The third-no-show ban and cascade: {@link #j4TheThirdConsecutiveNoShowBansTheCustomer}.
      */
     @Test
-    void j4NobodyShowsUpPartialUntilE771() throws Exception {
+    void j4NobodyShowsUp() throws Exception {
         OnlineBookingWorld world = OnlineBookingWorld.create();
         UUID id = book(world, world.start(), 60);
         accept(world, id);
@@ -226,6 +223,58 @@ class Phase3JourneysHttpTest extends IntegrationTest {
         assertThat(VenueAnswerDb.outboxTypes(id)).doesNotContain(IntegrationEvents.BOOKING_COMPLETED);
         notifications.drain();
         assertThat(notifications.notifications(id)).containsOnlyOnce("CUSTOMER NO_SHOW_RECORDED " + world.customer.id());
+    }
+
+    /**
+     * J4 (PRD), the third consecutive no-show (E7-71, O14; FR-TRS-13..21): the venue's no-show answers as any other;
+     * the customer is banned at stage 0's 7 days, activated now; the pending and the future confirmed booking are
+     * CANCELLED with USER_BANNED and their customer told once each; the customer sees the ban on their Account Standing
+     * and can no longer book (FR-ACC-17), while their booking history stays open.
+     */
+    @Test
+    void j4TheThirdConsecutiveNoShowBansTheCustomer() throws Exception {
+        OnlineBookingWorld world = OnlineBookingWorld.create();
+        for (int i = 0; i < 2; i++) {
+            UUID missed = book(world, world.start(), 60);
+            accept(world, missed);
+            started(world, missed, Duration.ofMinutes(20));
+            noShow(world, missed).andExpect(status().isOk());
+        }
+        UUID pending = book(world, world.start().plus(Duration.ofHours(3)), 60);
+        UUID confirmed = book(world, world.start().plus(Duration.ofHours(5)), 60);
+        accept(world, confirmed);
+        UUID third = book(world, world.start(), 60);
+        accept(world, third);
+        started(world, third, Duration.ofMinutes(20));
+
+        assertThat(body(noShow(world, third).andExpect(status().isOk())).at("/data/status").asText())
+                .isEqualTo("NO_SHOW");
+
+        assertThat(OWNER.sql("""
+                        SELECT status || ' ' || penalty_stage || ' ' || (ends_at - activated_at = interval '7 days')
+                          FROM trust.ban_instance WHERE user_id = :id""")
+                .param("id", world.customer.id()).query(String.class).list())
+                .as("one Ban of 7 days, activated now").containsExactly("ACTIVE 1 true");
+        for (UUID cancelled : List.of(pending, confirmed)) {
+            JsonNode detail = read(get("/api/v1/customer/bookings/" + cancelled), customer(world));
+            assertThat(detail.at("/data/status").asText()).isEqualTo("CANCELLED");
+            assertThat(OWNER.sql("SELECT terminal_reason FROM booking.booking WHERE id = :id").param("id", cancelled)
+                    .query(String.class).single()).isEqualTo("USER_BANNED");
+        }
+        JsonNode standing = read(get("/api/v1/customer/account-standing"), customer(world));
+        assertThat(standing.at("/data/consecutiveNoShows").asInt()).isZero();
+        assertThat(standing.at("/data/penaltyStage").asInt()).isOne();
+        assertThat(standing.at("/data/currentBan/banId").isTextual()).isTrue();
+        assertThat(body(perform(post("/api/v1/customer/bookings").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"resourceId\": \"" + world.room.id() + "\", \"playMode\": \"SINGLE\", \"startAt\": \""
+                                + world.start().plus(Duration.ofHours(4)) + "\", \"durationMinutes\": 60}"),
+                customer(world)).andExpect(status().isForbidden())).at("/error/code").asText())
+                .isEqualTo("ACCOUNT_BANNED_FOR_THIS_ACTION");
+        notifications.drain();
+        assertThat(notifications.notifications(pending)).containsOnlyOnce(
+                "CUSTOMER BOOKING_CANCELLED_BAN " + world.customer.id());
+        assertThat(notifications.notifications(confirmed)).containsOnlyOnce(
+                "CUSTOMER BOOKING_CANCELLED_BAN " + world.customer.id());
     }
 
     /**

@@ -44,6 +44,7 @@ class BookingFeeRefundBatchTest {
 
     private final List<Call> calls = new ArrayList<>();
     private final Map<UUID, UUID> refundIds = new LinkedHashMap<>();
+    private boolean contextOpen;
     private final JdbcBookingFeeRefunds refunds = new JdbcBookingFeeRefunds();
     private CommandContext command;
     private CorrelationId.Scope correlation;
@@ -152,6 +153,23 @@ class BookingFeeRefundBatchTest {
         }
     }
 
+    /**
+     * E7-71: a Ban cascade inside an Admin correction - the command opened the Admin's Loyalty context first - joins it:
+     * no second begin_command (one immutable context per transaction), the same records in the same order.
+     */
+    @Test
+    void aBatchJoinsTheCommandsOpenLoyaltyContext() {
+        contextOpen = true;
+        List<Decision> decisions = List.of(new Decision(CUSTOMER_A, BOOKING_2, HISTORY_2),
+                new Decision(CUSTOMER_A, BOOKING_1, HISTORY_1));
+
+        refunds.recordDecisions(command, decisions);
+
+        assertThat(calls).extracting(Call::sql).containsExactly(JdbcBookingFeeRefunds.RECORD,
+                JdbcBookingFeeRefunds.RECORD);
+        assertThat(calls).extracting(c -> c.params().get("booking")).containsExactly(BOOKING_1, BOOKING_2);
+    }
+
     @Test
     void theSingleCustomerDecisionIsUnchanged() {
         UUID refund = refunds.recordDecision(command, CUSTOMER_A, BOOKING_1, HISTORY_1);
@@ -193,6 +211,14 @@ class BookingFeeRefundBatchTest {
                 JdbcClient.ResultQuerySpec rows = mock(JdbcClient.ResultQuerySpec.class);
                 when(rows.singleRow()).thenReturn(Map.of());
                 return rows;
+            }
+            if (method.equals("query") && args.length == 1 && args[0] == Boolean.class
+                    && sql.equals(JdbcBookingFeeRefunds.CONTEXT_OPEN)) {
+                // E7-71: whether the command already opened its Loyalty context; read, never recorded as a write
+                @SuppressWarnings("unchecked")
+                JdbcClient.MappedQuerySpec<Boolean> mapped = mock(JdbcClient.MappedQuerySpec.class);
+                when(mapped.single()).thenReturn(contextOpen);
+                return mapped;
             }
             if (method.equals("query") && args.length == 1 && args[0] == UUID.class) {
                 calls.add(call);
