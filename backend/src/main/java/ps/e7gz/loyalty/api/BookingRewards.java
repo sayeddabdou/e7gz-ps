@@ -31,4 +31,12 @@ public interface BookingRewards {
      * {@link BookingFeeRefunds#recordAdminDecision} by the same Admin and Customer (the same immutable context).
      */
     UUID reconcileCorrection(CommandContext command, UUID adminId, UUID customerId, UUID bookingId);
+
+    /**
+     * E7-71: opens the correcting Admin's Loyalty command ({@code loyalty.begin_admin_command}) before the command's
+     * Trust write, so a Ban that the corrected replay activates records its cascade's fee decisions in it
+     * ({@link BookingFeeRefunds#recordDecisions} joins it). {@link #reconcileCorrection} and
+     * {@link BookingFeeRefunds#recordAdminDecision} by the same Admin and Customer then reuse the same context.
+     */
+    void beginCorrection(CommandContext command, UUID adminId, UUID customerId);
 }

@@ -72,6 +72,10 @@ class BookingNotificationRulesTest extends IntegrationTest {
                     .as(operational).containsExactly("CUSTOMER BOOKING_AUTO_CANCELLED",
                             "VENUE VENUE_BOOKING_AUTO_CANCELLED");
         }
+        // E7-71: a Ban cascade's cancellation - §52.2 "Booking cancelled due to Ban" and §52.5 "Booking Auto Cancelled"
+        assertThat(plan(IntegrationEvents.BOOKING_CANCELLED, Map.of("terminalReason", "USER_BANNED")))
+                .isEqualTo(new Plan(List.of(new Send(Recipient.CUSTOMER, "BOOKING_CANCELLED_BAN"),
+                        new Send(Recipient.VENUE, "VENUE_BOOKING_AUTO_CANCELLED")), Optional.empty()));
     }
 
     /**
@@ -211,7 +215,8 @@ class BookingNotificationRulesTest extends IntegrationTest {
         Properties english = new NotificationTemplates().all().get(Language.EN);
         for (String code : List.of("LATE_CONFIRMATION_RECEIVED", "LATE_CONFIRMATION_EXPIRING",
                 "CUSTOMER_CONFIRMATION_EXPIRED", "VENUE_OPENING_HOURS_CHANGED", "CHECK_IN_RECORDED",
-                "NO_SHOW_RECORDED", "ATTENDANCE_UNCONFIRMED_COMPLETION", "NO_SHOW_REVERSED", "ATTENDANCE_CORRECTED")) {
+                "NO_SHOW_RECORDED", "ATTENDANCE_UNCONFIRMED_COMPLETION", "NO_SHOW_REVERSED", "ATTENDANCE_CORRECTED",
+                "BOOKING_CANCELLED_BAN", "TEMPORARY_BAN_ACTIVATED", "BAN_EXPIRED")) {
             String body = english.getProperty(code + ".push.body");
             assertThat(app).as(code).contains(code + ": \"" + body + "\"");
         }
@@ -232,7 +237,7 @@ class BookingNotificationRulesTest extends IntegrationTest {
     /** A cancellation reason no task has wired yet sends nothing until its producer task adds it. */
     @Test
     void aReasonNotWiredYetSendsNothingAndAMalformedOneIsAProducerDefect() {
-        assertThat(plan(IntegrationEvents.BOOKING_CANCELLED, Map.of("terminalReason", "USER_BANNED")).isEmpty())
+        assertThat(plan(IntegrationEvents.BOOKING_CANCELLED, Map.of("terminalReason", "ADMIN_CANCELLED")).isEmpty())
                 .isTrue();
         assertThatThrownBy(() -> plan(IntegrationEvents.BOOKING_CANCELLED, Map.of("terminalReason", "NOPE")))
                 .isInstanceOf(PermanentDeliveryFailure.class);

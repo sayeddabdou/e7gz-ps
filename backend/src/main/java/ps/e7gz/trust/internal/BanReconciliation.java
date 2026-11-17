@@ -7,9 +7,9 @@ import ps.e7gz.trust.api.TrustReconciler.OutstandingQualification;
 import ps.e7gz.trust.api.TrustReconciler.UnsupportedBan;
 
 /**
- * The integration boundary E7-71 implements (arch 07 sections 4, 5.2-5.6): the operational Ban consequence of what
- * {@link JdbcTrustReconciler} found newly derived, on the reconciling command's transaction. Not implemented yet - until
- * a bean exists, the reconciler refuses such work ({@code TrustConsequenceUnavailableException}).
+ * The integration boundary E7-71 implements ({@link JdbcBanReconciliation}; arch 07 sections 4, 5.2-5.6): the
+ * operational Ban consequence of what {@link JdbcTrustReconciler} found newly derived, on the reconciling command's
+ * transaction. Without a bean the reconciler refuses such work ({@code TrustConsequenceUnavailableException}).
  *
  * <p>The implementation must, in order and exactly once per key:
  * <ul>

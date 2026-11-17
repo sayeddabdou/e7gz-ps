@@ -22,10 +22,11 @@ import ps.e7gz.trust.api.AccountStandings;
 import ps.e7gz.trust.api.VerifiedPlayers;
 
 /**
- * The customer's own Account Standing (arch 09 §3.1, FR-TRS-15, FR-ACC-11), read from the trust projection through the
- * same read ports as the Platform Admin's user pages ({@link AccountStandings}, {@link VerifiedPlayers}; E7-66). Filled
- * whole by E7-72: the ban part only reads Ban Instances, which E7-71 produces. Open to every customer state, banned and
- * unverified included (FR-ACC-17, FRS §2.11).
+ * The customer's own Account Standing (arch 09 §3.1, FR-TRS-15, FR-ACC-11). In the Sprint 4 contract (E7-65); the
+ * no-show counter, stage, threshold and current ban filled by E7-71 from the trust projection ({@link AccountStandings},
+ * the same reader as the Platform Admin's user page). Open to every customer state, banned and unverified included
+ * (FR-ACC-17, FRS §2.11): a ban never blocks reading it. The Verified Player part (E7-72) is read from
+ * {@link VerifiedPlayers} as the admin user page reads it, out of {@link VerifiedPlayers#REQUIRED_COMPLETED_BOOKINGS}.
  */
 @RestController
 @RequestMapping("/api/v1/customer/account-standing")
@@ -51,9 +52,9 @@ public class CustomerAccountStandingController {
                     + "against meta.serverTime: no remaining seconds are sent (NFR-10). Verified Player qualification "
                     + "progress and operational status are two separate fields (FR-ACC-11).")
     public DataResponse<CustomerAccountStanding> get(@AuthenticationPrincipal AuthenticatedSubject customer) {
-        List<UUID> me = List.of(customer.id());
-        AccountStandings.Standing standing = standings.of(me).get(customer.id());
-        VerifiedPlayers.VerifiedPlayer player = verifiedPlayers.of(me).get(customer.id());
+        UUID id = customer.id();
+        AccountStandings.Standing standing = standings.of(List.of(id)).get(id);
+        VerifiedPlayers.VerifiedPlayer player = verifiedPlayers.of(List.of(id)).get(id);
         AccountStandings.Ban ban = standing.activeBan();
         return meta.data(new CustomerAccountStanding(standing.consecutiveNoShows(), standing.penaltyStage(),
                 standing.currentThreshold(),

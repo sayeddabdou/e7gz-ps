@@ -10,7 +10,7 @@ Sources: arch 09 §1, §3.1, §3.4, §5 · arch 07 §5, §6, §7.4, §8 · arch 
 
 | Surface | Endpoint | Controller | Implemented by |
 |---|---|---|---|
-| Customer | `GET /customer/account-standing` | `trust/web/CustomerAccountStandingController` | E7-72 (whole route, from the trust projection; the ban part reads the Ban Instances E7-71 produces) |
+| Customer | `GET /customer/account-standing` | `trust/web/CustomerAccountStandingController` | E7-71 (counter, stage, ban), E7-72 (Verified Player) |
 | Customer | `GET /customer/points?cursor=&limit=` | `loyalty/web/CustomerLoyaltyController` | E7-66 |
 | Customer | `GET /customer/referrals?cursor=&limit=` | `loyalty/web/CustomerLoyaltyController` | E7-67 |
 | Customer | `GET /customer/wallet?cursor=&limit=` — read-only (PCR-004) | `loyalty/web/CustomerLoyaltyController` | E7-66 |
@@ -31,6 +31,8 @@ New shared code enum: `WalletTransactionCause` (`BOOKING_FEE_REFUND`, the only v
 PCR-010 (E7-68, Product Owner decisions 25 Oct 2026) adds to the contract, additively: the booking fee mode and the per-hour fee on `/admin/fees`, the Points per fee unit on `/admin/points/settings`, `feeUnit` on `GET /customer/points`, `bookingFeePayment` (Points used, paid by Points, paid by the Wallet, left to pay) on the booking quote and the customer booking (`POST /customer/bookings`, `GET /customer/bookings/{id}`, the cancel answer), the shared code enum `BookingFeeMode` (`PER_BOOKING`, `PER_HOUR`) and two `PointsTransactionCause` members, `BOOKING_FEE_PAYMENT` and `BOOKING_FEE_REFUND`; a Points item of either names its booking in `bookingId`.
 
 PCR-010 item 10 (Product Owner decision 15 Nov 2026): while no payment provider collects the fee (the launch setting), `PUT /admin/fees` answers 400 `VALIDATION_FAILED` with `field` = `bookingFee` or `bookingFeePerHour` for a value above 0.00. The mode, a 0.00 fee and the tournament creation fee still change. The Admin fees screen (E7-75) shows this as a field error.
+
+E7-71 (bans, 17 Nov 2026) fills the account standing, the trust adjustment, the three ban routes and the global rules, without changing a shape: `penaltyStageAfter` is 0 to 3 (the ADMIN_TRUST_ADJUSTMENT v1 schema; 4 or more → `400` on it); `AdminBan.qualificationAt` is the crossing of the ban's current stage; `/correct` (D2) answers `CORRECTED` only when the customer's corrected trust history no longer supports the ban - in practice the attendance correction that removes the support already corrects (or shortens) the ban in its own command, so for a ban that is still ACTIVE `/correct` is `409 ADMIN_ACTION_NOT_ALLOWED` and the Admin lifts or shortens it instead. Every ban change and trust adjustment tells the customer with `ADMIN_TRUST_CORRECTION` (param `change`: `BAN_LIFTED`, `BAN_SHORTENED`, `BAN_CORRECTED`, `TRUST_ADJUSTED`); a ban extension with `BAN_EXTENDED`.
 
 E7-67 (referrals) adds one optional request field outside this list: `referralCode` on `POST /customer/auth/register` (the inviting friend's code; an unknown code or a self-referral is recorded as an INVALID referral and never blocks the registration). The referral shapes above are unchanged.
 
