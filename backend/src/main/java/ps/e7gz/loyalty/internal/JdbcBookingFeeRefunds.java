@@ -31,6 +31,7 @@ class JdbcBookingFeeRefunds implements BookingFeeRefunds {
      */
     static final String BEGIN_MANY = "SELECT loyalty.begin_command(CAST(:users AS uuid[]), :correlation)";
     static final String RECORD = "SELECT loyalty.record_refund(:booking, :history, NULL)";
+    static final String CONTEXT_OPEN = "SELECT to_regclass('pg_temp.e7gz_loyalty_command_context') IS NOT NULL";
 
     /** E7-70, admin runtime only: the explicit service-loss assessment of an Admin reason and the decision on it. */
     static final String ASSESS = "SELECT loyalty.assess_service_loss(:booking, :history, :loss, :reason)";
@@ -60,10 +61,15 @@ class JdbcBookingFeeRefunds implements BookingFeeRefunds {
         if (ordered.isEmpty()) {
             return Map.of();
         }
-        command.jdbc().sql(BEGIN_MANY)
-                .param("users", ordered.stream().map(Decision::customerId).distinct().sorted().toArray(UUID[]::new))
-                .param("correlation", CorrelationId.require())
-                .query().singleRow();
+        // E7-71: a Ban cascade inside an Admin correction joins the Admin's Loyalty context, which that command opened
+        // before its Trust write; one immutable context per transaction (loyalty.start_command), so never a second one
+        if (!loyaltyCommandOpen(command)) {
+            command.jdbc().sql(BEGIN_MANY)
+                    .param("users", ordered.stream().map(Decision::customerId).distinct().sorted()
+                            .toArray(UUID[]::new))
+                    .param("correlation", CorrelationId.require())
+                    .query().singleRow();
+        }
         Map<UUID, UUID> refunds = new LinkedHashMap<>();
         for (Decision decision : ordered) {
             refunds.put(decision.bookingId(), command.jdbc().sql(RECORD)
@@ -92,6 +98,15 @@ class JdbcBookingFeeRefunds implements BookingFeeRefunds {
         return command.jdbc().sql(RECORD_ASSESSED)
                 .param("booking", bookingId).param("history", historyId).param("assessment", assessment)
                 .query(UUID.class).single();
+    }
+
+    /**
+     * Whether this transaction already opened its Loyalty command: the context table is created ON COMMIT DROP by
+     * {@code loyalty.start_command}, so its existence means this transaction's context. Its Customers must still cover
+     * the batch - {@code loyalty.record_refund} refuses otherwise ({@code loyalty.command_context}).
+     */
+    static boolean loyaltyCommandOpen(CommandContext command) {
+        return Boolean.TRUE.equals(command.jdbc().sql(CONTEXT_OPEN).query(Boolean.class).single());
     }
 
     /** The whole batch checked before any SQL, in recording order; a booking twice is a caller defect. */

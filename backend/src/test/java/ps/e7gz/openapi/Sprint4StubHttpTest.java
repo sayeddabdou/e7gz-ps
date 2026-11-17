@@ -40,32 +40,20 @@ class Sprint4StubHttpTest extends IntegrationTest {
     AccessTokens accessTokens;
 
     private String customer;
-    private String unverified;
     private String admin;
 
     @BeforeEach
     void signIn() {
         customer = bearer(AuthSubjectType.CUSTOMER, Fixtures.aUser().verified().create().id());
-        unverified = bearer(AuthSubjectType.CUSTOMER, Fixtures.aUser().create().id());
         admin = bearer(AuthSubjectType.ADMIN, Fixtures.anAdmin().create().id());
     }
 
-    @Test
-    void customerStandingIsAStub() throws Exception {
-        notImplemented(get("/api/v1/customer/account-standing"), customer);         // E7-71, E7-72
-        // E7-67 filled /customer/referrals: ReferralHttpTest
-        // FRS §2.11: standing and history are open to every customer state, unverified included.
-        notImplemented(get("/api/v1/customer/account-standing"), unverified);
-    }
+    // E7-71 filled /customer/account-standing (E7-72 owns its Verified Player rules): TrustRoutesHttpTest
+    // E7-67 filled /customer/referrals: ReferralHttpTest
 
     @Test
-    void adminTrustAndVerifiedPlayerRoutesAreStubs() throws Exception {
-        notImplemented(write(post(USER + "/trust-adjustment"),
-                "{\"counterAfter\":0,\"penaltyStageAfter\":0,\"reason\":\"Wrong no-show.\"}"), admin); // E7-71
-        notImplemented(write(post(BAN + "/lift"), REASON), admin);                  // E7-71
-        notImplemented(write(post(BAN + "/shorten"),
-                "{\"endsAt\":\"2026-11-01T10:00:00Z\",\"reason\":\"Shortened.\"}"), admin);      // E7-71
-        notImplemented(write(post(BAN + "/correct"), REASON), admin);               // E7-71
+    void adminVerifiedPlayerRoutesAreStubs() throws Exception {
+        // E7-71 filled the trust adjustment and the ban lift / shorten / correct: TrustRoutesHttpTest
         notImplemented(get("/api/v1/admin/verified-players"), admin);               // E7-72
         notImplemented(write(post(PLAYER + "/suspend"), REASON), admin);            // E7-72
         notImplemented(write(post(PLAYER + "/revoke"), REASON), admin);             // E7-72
@@ -74,12 +62,9 @@ class Sprint4StubHttpTest extends IntegrationTest {
 
     // E7-70 filled the four /admin/bookings/{bookingId}/attendance routes: AdminAttendanceHttpTest
 
-    @Test
-    void adminGlobalRulesRouteIsAStub() throws Exception {
-        // E7-67 filled /admin/referrals and its invalidation: ReferralHttpTest
-        notImplemented(get("/api/v1/admin/global-rules"), admin);                   // E7-71 (PO 20 Oct)
-        // E7-68 filled /admin/fees and /admin/points/settings: AdminConfigurationHttpTest
-    }
+    // E7-67 filled /admin/referrals and its invalidation: ReferralHttpTest
+    // E7-71 filled /admin/global-rules (PO 20 Oct): TrustRoutesHttpTest
+    // E7-68 filled /admin/fees and /admin/points/settings: AdminConfigurationHttpTest
 
     @Test
     void eachRouteGroupRefusesTheOtherAudience() throws Exception {
