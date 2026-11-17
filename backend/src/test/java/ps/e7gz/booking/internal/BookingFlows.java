@@ -182,6 +182,26 @@ public final class BookingFlows {
             accept(booking);
             return booking;
         }
+
+        /**
+         * E7-71: as {@link BookingFlows#confirmedWithOverdueStart}, for this customer and room: accepted in time, its
+         * startAt {@code startedAgo} before the database clock, still CONFIRMED because its T4 has not run yet.
+         */
+        public Booking nextConfirmedWithOverdueStart(Duration startedAgo) {
+            Booking booking = nextConfirmed(Duration.ofHours(4));
+            Instant start = OnlineBookingWorld.dbNow().minus(startedAgo);
+            BookingStates.startOverdue(booking.bookingId(), start);
+            return new Booking(booking.bookingId(), booking.customerId(), booking.venueId(), booking.venueName(),
+                    booking.venueAccountId(), booking.resourceId(), start, booking.venueResponseExpiresAt());
+        }
+
+        /**
+         * E7-71: as {@link BookingFlows#lateConfirmed()}, for this customer and room, starting {@code later} after the
+         * room's usual start: AWAITING_CUSTOMER_CONFIRMATION with its Late Confirmation Hold - a Ban cascade target.
+         */
+        public Booking nextLateConfirmed(Duration later) {
+            return initiate(world, lateConfirms.expired(world, world.start().plus(later), 60));
+        }
     }
 
     /**

@@ -20,6 +20,7 @@ import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.scheduling.api.NewJob;
 import ps.e7gz.scheduling.api.ScheduledJobs;
+import ps.e7gz.trust.api.BanAlerts;
 import ps.e7gz.trust.api.BanCascadeBookings;
 import ps.e7gz.trust.api.TrustConsequenceUnavailableException;
 import ps.e7gz.trust.api.TrustReconciler.OutstandingQualification;
@@ -44,7 +45,17 @@ import ps.e7gz.trust.api.TrustReconciler.UnsupportedBan;
  *       repeated (FR-TRS-22).</li>
  * </ol>
  * T10 ({@code BAN_EXPIRY:{banId}}, arch 08 section 1) is scheduled at activation; an extension leaves it at the old end
- * and {@link BanExpiryHandler} moves it on when it fires.
+ * and {@link BanExpiryHandler} moves it on when it fires; a shortening schedules one at the new end
+ * ({@link #expiryJob}) - a job that fires after the Ban already ended is superseded by the handler.
+ *
+ * <p>Every activation also raises {@code ADMIN_USER_BAN_ACTIVATED} (Product v5.0 section 52.6) in the admin alert inbox
+ * only - no per-admin notification (PO decision 20 Oct 2026) - in the same command, so it commits with the Ban.
+ *
+ * <p>A Ban left with replay support only until a later instant (FR-TRS-25; e.g. its extension's no-show was reversed
+ * while the first stage's days still run) is shortened to that instant. The database allows a shortening only in a
+ * Platform Admin trust command ({@code trust.require_admin_command}); every Trust correction is one (E7-70), so it is
+ * written under the correcting Admin, with a reason that names the correction. Anywhere else it is refused
+ * ({@link TrustConsequenceUnavailableException}), never guessed.
  */
 @Component
 class JdbcBanReconciliation implements BanReconciliation {
@@ -118,6 +129,19 @@ class JdbcBanReconciliation implements BanReconciliation {
              ORDER BY event_sequence DESC LIMIT 1
             """;
 
+    /** Whether this transaction runs as a Platform Admin command ({@code admin.begin_command}); never raises. */
+    static final String IN_ADMIN_COMMAND = "SELECT to_regclass('pg_temp.e7gz_admin_command_context') IS NOT NULL";
+
+    static final String ADMIN = "SELECT admin_id FROM admin.command_context()";
+
+    static final String BEGIN_ADMIN = "SELECT trust.begin_admin_command(:user, :admin)";
+
+    /** The guard keeps the stage and qualification and recomputes the duration (FR-TRS-25). */
+    static final String SHORTEN = """
+            UPDATE trust.ban_instance SET ends_at = :endsAt WHERE id = :ban AND status = 'ACTIVE'
+            RETURNING penalty_stage, ends_at
+            """;
+
     static final String CORRECT = """
             UPDATE trust.ban_instance SET status = 'CORRECTED' WHERE id = :ban AND status = 'ACTIVE'
             RETURNING penalty_stage, ends_at
@@ -127,12 +151,15 @@ class JdbcBanReconciliation implements BanReconciliation {
     private final AuditWriter audit;
     private final Outbox outbox;
     private final ScheduledJobs jobs;
+    private final BanAlerts alerts;
 
-    JdbcBanReconciliation(BanCascadeBookings cascade, AuditWriter audit, Outbox outbox, ScheduledJobs jobs) {
+    JdbcBanReconciliation(BanCascadeBookings cascade, AuditWriter audit, Outbox outbox, ScheduledJobs jobs,
+                          BanAlerts alerts) {
         this.cascade = cascade;
         this.audit = audit;
         this.outbox = outbox;
         this.jobs = jobs;
+        this.alerts = alerts;
     }
 
     @Override
@@ -224,6 +251,7 @@ class JdbcBanReconciliation implements BanReconciliation {
                         "endsAt", endsAt.toString()))
                 .build());
         outbox.publish(command, BanEvents.activated(userId, banId, due.penaltyStage(), now, endsAt, targets.size()));
+        alerts.banActivated(command, userId, banId, due.penaltyStage(), now, endsAt, targets.size(), correlation);
         jobs.schedule(command, NewJob.of(BAN_EXPIRY, BAN_SUBJECT, banId, endsAt));
     }
 
@@ -257,15 +285,14 @@ class JdbcBanReconciliation implements BanReconciliation {
      */
     private void correct(CommandContext command, UUID userId, UnsupportedBan ban) {
         Instant now = command.commandNow();
-        if (ban.supportedUntil() != null && ban.supportedUntil().isAfter(now)) {
-            throw new TrustConsequenceUnavailableException(userId,
-                    "a Platform Admin trust command to shorten Ban " + ban.banInstanceId() + " to "
-                            + ban.supportedUntil() + " (FR-TRS-25)", null);
-        }
         UUID correction = command.jdbc().sql(CORRECTION_EVENT).param("user", userId).param("now", utc(now))
                 .query(UUID.class).optional()
                 .orElseThrow(() -> new IllegalStateException("Ban " + ban.banInstanceId()
                         + " lost its support without a correction in this command"));
+        if (ban.supportedUntil() != null && ban.supportedUntil().isAfter(now)) {
+            shorten(command, userId, ban, correction);
+            return;
+        }
         Corrected corrected = command.jdbc().sql(CORRECT).param("ban", ban.banInstanceId())
                 .query((rs, n) -> new Corrected(rs.getInt("penalty_stage"), instant(rs, "ends_at"))).single();
         audit.write(command, AuditRecord.builder(TrustAuditAction.BAN_CORRECTED, AuditActor.system(), userId,
@@ -278,6 +305,60 @@ class JdbcBanReconciliation implements BanReconciliation {
         outbox.publish(command, BanEvents.corrected(userId, ban.banInstanceId(), corrected.stage(), corrected.endsAt(),
                 correction));
         jobs.supersede(command, expiryKey(ban.banInstanceId()));
+    }
+
+    /**
+     * FR-TRS-25: the Ban keeps only the part replay still supports - it ends at {@code supportedUntil}, still ACTIVE
+     * until then - under the Admin whose correction took the rest away ({@code BAN_SHORTENED}, ADMIN).
+     */
+    private void shorten(CommandContext command, UUID userId, UnsupportedBan ban, UUID correction) {
+        UUID admin = currentAdmin(command).orElseThrow(() -> new TrustConsequenceUnavailableException(userId,
+                "a Platform Admin trust command to shorten Ban " + ban.banInstanceId() + " to "
+                        + ban.supportedUntil() + " (FR-TRS-25)", null));
+        command.jdbc().sql(BEGIN_ADMIN).param("user", userId).param("admin", admin).query().singleRow();
+        Shortened shortened = command.jdbc().sql(SHORTEN).param("ban", ban.banInstanceId())
+                .param("endsAt", utc(ban.supportedUntil()))
+                .query((rs, n) -> new Shortened(rs.getInt("penalty_stage"), instant(rs, "ends_at"))).single();
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("banInstanceId", ban.banInstanceId());
+        payload.put("penaltyStage", shortened.stage());
+        payload.put("previousEndsAt", ban.endsAt().toString());
+        payload.put("newEndsAt", shortened.endsAt().toString());
+        payload.put("correctionEventId", correction);
+        audit.write(command, AuditRecord.builder(TrustAuditAction.BAN_SHORTENED, AuditActor.admin(admin), userId,
+                        CorrelationId.require())
+                .reason("Corrected trust history supports this Ban only until its new end (FR-TRS-25)")
+                .payload(payload)
+                .build());
+        outbox.publish(command, BanEvents.shortened(userId, ban.banInstanceId(), shortened.stage(), ban.endsAt(),
+                shortened.endsAt(), correction));
+        rescheduleExpiry(command, ban.banInstanceId(), shortened.endsAt());
+    }
+
+    /**
+     * T10 at a Ban's new, earlier end: the job at the old end is withdrawn (or, leased right now, superseded by its own
+     * handler, which finds the Ban ended or not yet due) and a new one keyed by the new end is scheduled.
+     */
+    void rescheduleExpiry(CommandContext command, UUID banId, Instant endsAt) {
+        jobs.supersede(command, expiryKey(banId));
+        jobs.schedule(command, expiryJob(banId, endsAt));
+    }
+
+    /** T10 of a Ban that ended before its {@code endsAt} (lifted, corrected): withdrawn, unless leased right now. */
+    void withdrawExpiry(CommandContext command, UUID banId) {
+        jobs.supersede(command, expiryKey(banId));
+    }
+
+    static NewJob expiryJob(UUID banId, Instant endsAt) {
+        return new NewJob(BAN_EXPIRY, BAN_SUBJECT, banId, endsAt, expiryKey(banId) + ":" + endsAt);
+    }
+
+    /** The Platform Admin of this command, when it is one ({@code admin.command_context}). */
+    static Optional<UUID> currentAdmin(CommandContext command) {
+        if (!Boolean.TRUE.equals(command.jdbc().sql(IN_ADMIN_COMMAND).query(Boolean.class).single())) {
+            return Optional.empty();
+        }
+        return Optional.of(command.jdbc().sql(ADMIN).query(UUID.class).single());
     }
 
     private static void consume(CommandContext command, UUID banId, UUID qualificationId, String type,
@@ -304,4 +385,6 @@ class JdbcBanReconciliation implements BanReconciliation {
     private record Expired(UUID id, int stage, Instant endsAt) { }
 
     private record Corrected(int stage, Instant endsAt) { }
+
+    private record Shortened(int stage, Instant endsAt) { }
 }

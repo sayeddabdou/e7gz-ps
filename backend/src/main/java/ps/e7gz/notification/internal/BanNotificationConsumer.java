@@ -28,6 +28,10 @@ import ps.e7gz.notification.api.NotificationRequest;
  * is "Ban Expired" ({@code BAN_EXPIRED}). Each code is about the account (reference {@code NONE}), In-App + Push. The
  * bookings a Ban cancels are told by their own {@code BookingCancelled} through {@link BookingNotificationConsumer}.
  *
+ * <p>A change a Platform Admin made, directly or through an attendance correction - {@code BanLifted},
+ * {@code BanShortened}, {@code BanCorrected}, {@code TrustAdjusted} - is "Admin Trust correction"
+ * ({@code ADMIN_TRUST_CORRECTION}, section 52.3, In-App + Email; FR-NTF-11), with {@code change} naming which one.
+ *
  * <p>Params, never prose (ADR-021): the stage and the end the Ban now has; an extension also carries
  * {@code previousEndsAt} and {@code endsAtChanged}, false when the stage advanced but the end stayed (FR-TRS-22: MAX),
  * so no surface claims a longer restriction than there is.
@@ -40,10 +44,23 @@ import ps.e7gz.notification.api.NotificationRequest;
 @Profile("worker")
 class BanNotificationConsumer implements OutboxConsumer {
 
+    static final String ADMIN_TRUST_CORRECTION = "ADMIN_TRUST_CORRECTION";
+
     static final Map<String, String> CODES = Map.of(
             IntegrationEvents.BAN_ACTIVATED, "TEMPORARY_BAN_ACTIVATED",
             IntegrationEvents.BAN_EXTENDED, "BAN_EXTENDED",
-            IntegrationEvents.BAN_EXPIRED, "BAN_EXPIRED");
+            IntegrationEvents.BAN_EXPIRED, "BAN_EXPIRED",
+            IntegrationEvents.BAN_LIFTED, ADMIN_TRUST_CORRECTION,
+            IntegrationEvents.BAN_SHORTENED, ADMIN_TRUST_CORRECTION,
+            IntegrationEvents.BAN_CORRECTED, ADMIN_TRUST_CORRECTION,
+            IntegrationEvents.TRUST_ADJUSTED, ADMIN_TRUST_CORRECTION);
+
+    /** The {@code change} param of an ADMIN_TRUST_CORRECTION, by event. */
+    static final Map<String, String> CHANGES = Map.of(
+            IntegrationEvents.BAN_LIFTED, "BAN_LIFTED",
+            IntegrationEvents.BAN_SHORTENED, "BAN_SHORTENED",
+            IntegrationEvents.BAN_CORRECTED, "BAN_CORRECTED",
+            IntegrationEvents.TRUST_ADJUSTED, "TRUST_ADJUSTED");
 
     private final CommandRunner runner;
     private final NotificationService notifications;
@@ -70,6 +87,17 @@ class BanNotificationConsumer implements OutboxConsumer {
             throw new IllegalArgumentException("No Ban notification for " + event.eventType());
         }
         Map<String, Object> params = new LinkedHashMap<>();
+        if (code.equals(ADMIN_TRUST_CORRECTION)) {
+            params.put("change", CHANGES.get(event.eventType()));
+            if (event.eventType().equals(IntegrationEvents.TRUST_ADJUSTED)) {
+                params.put("consecutiveNoShows", event.payload().path("counterAfter").asInt());
+                params.put("penaltyStage", event.payload().path("penaltyStageAfter").asInt());
+            } else {
+                params.put("penaltyStage", event.payload().path("penaltyStage").asInt());
+                params.put("endsAt", event.text("endsAt"));
+            }
+            return NotificationRequest.of(code, NotificationRecipientType.CUSTOMER, event.uuid("userId"), params);
+        }
         if (!event.eventType().equals(IntegrationEvents.BAN_EXPIRED)) {
             params.put("penaltyStage", event.payload().path("penaltyStage").asInt());
             params.put("endsAt", event.text("endsAt"));

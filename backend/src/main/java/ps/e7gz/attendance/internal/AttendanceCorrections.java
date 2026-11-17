@@ -87,8 +87,8 @@ import ps.e7gz.trust.api.TrustCorrections;
  * duplicate reversal - or the result it already has is {@code ADMIN_ACTION_NOT_ALLOWED} (Sprint 4 contract, PO decision D5).
  *
  * <p>E7-71: a reversal or correction that leaves an operational Ban without replay support, or creates a new crossing,
- * is handed to the Ban reconciliation; until it exists the whole command rolls back
- * ({@code TrustConsequenceUnavailableException}).
+ * is handed to the Ban reconciliation in the same command: the Ban is CORRECTED, shortened to what replay still
+ * supports (under this Admin), activated or extended, with its cascade once.
  */
 @Component
 public class AttendanceCorrections {

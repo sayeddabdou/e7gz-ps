@@ -184,7 +184,7 @@ class BanCascadeIntegrationTest extends IntegrationTest {
         Booking third = banned(customer);
         long before = bookingsOf(third.customerId());
 
-        assertThatThrownBy(() -> customer.nextPending(Duration.ofHours(6)));
+        assertThatThrownBy(() -> customer.nextPending(Duration.ofHours(6))).hasMessageContaining("BANNED");
 
         assertThat(bookingsOf(third.customerId())).isEqualTo(before);
     }

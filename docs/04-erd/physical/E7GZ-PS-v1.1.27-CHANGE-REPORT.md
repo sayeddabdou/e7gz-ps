@@ -327,6 +327,18 @@ Additive only: the catalogue is append-only (`tr_125_catalogue_append_only` refu
 
 - Tests: `MigrationSafetyTest` (the migration on the seeded database); the `.dbm`/migration identity check in `MigrationFilesTest`; the Ban notification tests of E7-71.
 
+### v1.1.42 — a Ban does not stop a late start (E7-71, 17 Nov 2026)
+
+**Product Owner decision, 19 Oct 2026 (Sayed), the E7-59/E7-60 review** (Spec v5 section 48.6 does not cover it): a booking still CONFIRMED after its startAt because its T4 is late is treated as started - the Ban does not cancel it - and the late T4 still starts it. The cascade already leaves it (`trust.register_ban_cascade_targets` takes only CONFIRMED bookings whose startAt is in the future), but `trust.guard_booking_ban_eligibility` refused the start itself: it refused every move of a banned customer's Online Booking into PENDING, AWAITING_CUSTOMER_CONFIRMATION, CONFIRMED or ACTIVE. `.dbm` block `v1_1_42_ban_guard_lets_a_confirmed_booking_start` = Flyway `V202611171300__ban_guard_lets_a_confirmed_booking_start.sql`, byte for byte. Amr Heiba's delegated decision for E7-71 on how to meet the PO decision. **For Product Owner review.**
+
+| Object | Change |
+|---|---|
+| `trust.guard_booking_ban_eligibility()` | Its V1 definition plus one block: `CONFIRMED -> ACTIVE` (a start) is let through. Creation, a venue accept (`PENDING -> CONFIRMED`) and a Late Confirm accept (`AWAITING_CUSTOMER_CONFIRMATION -> CONFIRMED`) stay refused for a banned customer (FR-ACC-17) |
+
+No table, column, constraint, trigger or grant changes; `tr_05_booking_ban_eligibility` keeps calling the same function. No backfill and no upgrade seed: the change only lets through a transition that was refused before. A banned customer cannot hold a future CONFIRMED booking (the cascade cancels it, and creation and accept stay refused), so the only CONFIRMED booking that can start under a Ban is one whose startAt had passed when the Ban was activated.
+
+- Tests: `BanConsequencesIntegrationTest.aLateStartBookingContinuesUnderTheBanAndItsLateT4StillStartsIt` (the real T4 starts it under the Ban; a future booking of the same customer is cancelled); `MigrationSafetyTest`; the `.dbm`/migration identity and added-lines checks in `MigrationFilesTest`.
+
 ## Product Owner decisions (26 Sep 2026)
 
 A1 overlapping Maintenance allowed · A2 booking horizon is a deployment setting, default 120 days · A4 rate-limit table approved · A5 reports FR-AUD-11/12 at launch · A6 venue alerts = live + Web Push + audible alert · A8 configurable = fees and points only · A9 Venue never returns to ONBOARDING · A10 login limits stored as `LOGIN` rate-limit rows · A11 read-only customer wallet screen (PCR-004, no DB change) · review self-reporting allowed, duplicate open reports blocked.

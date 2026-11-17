@@ -212,6 +212,26 @@ public final class IntegrationEvents {
     public static final String BAN_CORRECTED = "BanCorrected";
 
     /**
+     * {@code {userId, banInstanceId, penaltyStage, previousEndsAt, endsAt}}, aggregate {@code BAN_INSTANCE}: a Platform
+     * Admin lifted the ACTIVE Ban now (FR-TRS-23, FR-TRS-27; E7-71). Cancelled bookings do not return.
+     */
+    public static final String BAN_LIFTED = "BanLifted";
+
+    /**
+     * {@code {userId, banInstanceId, penaltyStage, previousEndsAt, endsAt, correctionEventId?}}, aggregate
+     * {@code BAN_INSTANCE}: the ACTIVE Ban's end was brought forward - by a Platform Admin, or by the Admin attendance
+     * correction that left it replay support only until {@code endsAt} (then {@code correctionEventId}; FR-TRS-25,
+     * FR-TRS-27; E7-71). It stays ACTIVE until then.
+     */
+    public static final String BAN_SHORTENED = "BanShortened";
+
+    /**
+     * {@code {userId, trustEventId, counterAfter, penaltyStageAfter}}, aggregate {@code USER}: a Platform Admin set the
+     * customer's no-show counter and penalty stage (ADMIN_TRUST_ADJUSTMENT, FR-TRS-27; E7-71).
+     */
+    public static final String TRUST_ADJUSTED = "TrustAdjusted";
+
+    /**
      * {@code {venueId, resourceId}}, aggregate {@code RESOURCE}: the venue disabled a room (FR-VEN-03; E7-26, published
      * since E7-56, PO decision 12 Oct 2026). Its four siblings below carry the same payload.
      */

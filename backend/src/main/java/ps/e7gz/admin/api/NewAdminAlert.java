@@ -59,4 +59,24 @@ public record NewAdminAlert(AdminAlertKind kind, AdminAlertSeverity severity, St
         return new NewAdminAlert(AdminAlertKind.BOOKING_INTEGRITY_FAILURE, AdminAlertSeverity.SEV_1, "BOOKING",
                 bookingId, payload, correlationId);
     }
+
+    /**
+     * Product v5.0 section 52.6, E7-71 (PO decision 20 Oct 2026: the alert inbox only): a Ban was activated. SEV_3 -
+     * information for the Platform Admin, nothing is broken. Subject: the User; ids, stage and instants only.
+     *
+     * @param cancelledBookings how many bookings the Ban's cascade cancelled (FR-TRS-20)
+     */
+    public static NewAdminAlert userBanActivated(UUID userId, UUID banId, int penaltyStage, Instant activatedAt,
+                                                 Instant endsAt, int cancelledBookings, UUID correlationId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("userId", Objects.requireNonNull(userId, "userId").toString());
+        payload.put("banInstanceId", Objects.requireNonNull(banId, "banId").toString());
+        payload.put("penaltyStage", penaltyStage);
+        payload.put("activatedAt", Objects.requireNonNull(activatedAt, "activatedAt").toString());
+        payload.put("endsAt", Objects.requireNonNull(endsAt, "endsAt").toString());
+        payload.put("cancelledBookings", cancelledBookings);
+        payload.put("correlationId", Objects.requireNonNull(correlationId, "correlationId").toString());
+        return new NewAdminAlert(AdminAlertKind.ADMIN_USER_BAN_ACTIVATED, AdminAlertSeverity.SEV_3, "USER", userId,
+                payload, correlationId);
+    }
 }

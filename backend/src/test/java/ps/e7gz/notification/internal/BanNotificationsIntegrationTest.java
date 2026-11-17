@@ -174,6 +174,48 @@ class BanNotificationsIntegrationTest extends IntegrationTest {
         assertThat(BanNotificationConsumer.request(kept).code()).isEqualTo("BAN_EXTENDED");
     }
 
+    /**
+     * FR-NTF-11, section 52.3: a Platform Admin's Ban change is "Admin Trust correction" (ADMIN_TRUST_CORRECTION), once
+     * per event, naming the change - a lift with the stage and the end it now has.
+     */
+    @Test
+    void anAdminBanChangeTellsTheCustomerOnceAsAnAdminTrustCorrection() {
+        Booking third = missed(flows.customer(), Duration.ofMinutes(20));
+        UUID user = third.customerId();
+        String end = Instant.now().toString();
+        OutboxEvent lifted = new OutboxEvent(Long.MAX_VALUE - 11, IntegrationEvents.BAN_LIFTED, "BAN_INSTANCE",
+                UUID.randomUUID(), json.valueToTree(Map.of("userId", user.toString(), "penaltyStage", 1,
+                        "previousEndsAt", end, "endsAt", end)), UUID.randomUUID(), Instant.now(), 0);
+
+        bans.handle(lifted);
+        bans.handle(lifted);
+
+        assertThat(codes(user, "ADMIN_TRUST_CORRECTION")).hasSize(1);
+        assertThat(param(user, "ADMIN_TRUST_CORRECTION", "change")).isEqualTo("BAN_LIFTED");
+        assertThat(param(user, "ADMIN_TRUST_CORRECTION", "endsAt")).isEqualTo(end);
+    }
+
+    /** Each Admin trust change names itself; a trust adjustment carries the values it set. */
+    @Test
+    void eachAdminTrustChangeNamesItself() {
+        UUID user = UUID.randomUUID();
+        String end = "2026-12-01T10:00:00Z";
+        for (String type : List.of(IntegrationEvents.BAN_SHORTENED, IntegrationEvents.BAN_CORRECTED)) {
+            OutboxEvent event = new OutboxEvent(1, type, "BAN_INSTANCE", UUID.randomUUID(),
+                    json.valueToTree(Map.of("userId", user.toString(), "penaltyStage", 2, "endsAt", end)),
+                    UUID.randomUUID(), Instant.now(), 0);
+            assertThat(BanNotificationConsumer.request(event).code()).isEqualTo("ADMIN_TRUST_CORRECTION");
+            assertThat(BanNotificationConsumer.request(event).params()).containsEntry("endsAt", end)
+                    .containsEntry("change", type.equals(IntegrationEvents.BAN_SHORTENED) ? "BAN_SHORTENED"
+                            : "BAN_CORRECTED");
+        }
+        OutboxEvent adjusted = new OutboxEvent(2, IntegrationEvents.TRUST_ADJUSTED, "USER", user,
+                json.valueToTree(Map.of("userId", user.toString(), "trustEventId", UUID.randomUUID().toString(),
+                        "counterAfter", 1, "penaltyStageAfter", 2)), UUID.randomUUID(), Instant.now(), 0);
+        assertThat(BanNotificationConsumer.request(adjusted).params()).containsEntry("change", "TRUST_ADJUSTED")
+                .containsEntry("consecutiveNoShows", 1).containsEntry("penaltyStage", 2);
+    }
+
     // ----------------------------------------------------------------------------------------------------- support
 
     private Booking missed(BookingFlows.Customer customer, Duration startedAgo) {

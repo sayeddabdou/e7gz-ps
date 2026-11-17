@@ -339,6 +339,37 @@ class MigrationFilesTest {
                 .doesNotContain("GRANT");
     }
 
+    /**
+     * v1.1.42 (E7-71, PO decision 19 Oct 2026): the migration is the model's own block, byte for byte, and redefines
+     * only {@code trust.guard_booking_ban_eligibility}: V1's final definition plus exactly the start block.
+     */
+    @Test
+    void banGuardMigrationIsTheModelsV1142Block() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String open = "<genericsql name=\"v1_1_42_ban_guard_lets_a_confirmed_booking_start\">\n\t<definition> <![CDATA[\n";
+        int start = model.indexOf(open);
+        assertThat(start).as("v1.1.42 block in the .dbm").isPositive();
+        String block = model.substring(start + open.length(), model.indexOf("]]> </definition>", start));
+        String migration = classpath("db/migration/V202611171300__ban_guard_lets_a_confirmed_booking_start.sql");
+        assertThat(migration).isEqualTo(block);
+        String guard = "CREATE OR REPLACE FUNCTION trust.guard_booking_ban_eligibility()";
+        String baseline = classpath("db/migration/V1__baseline.sql");
+        String previous = baseline.substring(baseline.lastIndexOf(guard));
+        previous = previous.substring(0, previous.indexOf("$function$;\n") + "$function$;\n".length());
+        String added = """
+                    -- v1.1.42 (E7-71, PO decision 19 Oct 2026): a start is not a new or stronger commitment - a CONFIRMED booking the
+                    -- Ban cascade left (its startAt was not in the future) is treated as started and its late T4 still starts it.
+                    IF TG_OP = 'UPDATE' AND OLD.status = 'CONFIRMED' AND NEW.status = 'ACTIVE' THEN
+                        RETURN NEW;
+                    END IF;
+                """;
+        String migrated = function(migration, guard);
+        assertThat(migrated).containsOnlyOnce(added);
+        assertThat(migrated.replace(added, "")).isEqualTo(previous);
+        assertThat(migration.substring(migration.indexOf(guard) + guard.length()))
+                .doesNotContain("CREATE ").doesNotContain("DROP ").doesNotContain("ALTER ").doesNotContain("GRANT");
+    }
+
     /** {@code open}'s definition in {@code migration} is its definition in {@code earlier} plus exactly {@code lines}. */
     /**
      * v1.1.39 (E7-66 PR 3, PCR-009): the migration is the model's own block, byte for byte; the table model has the
