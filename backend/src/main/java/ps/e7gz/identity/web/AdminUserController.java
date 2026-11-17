@@ -63,7 +63,9 @@ public class AdminUserController {
     @GetMapping("/{userId}")
     @Operation(operationId = "adminGetUser",
             summary = "One customer: profile, standing, active ban, Verified Player, points and wallet (FR-ADM-04)",
-            description = "activeBan is the one ACTIVE ban, or null; its banId is what the ban routes take.")
+            description = "activeBan is the one ACTIVE ban, or null; its banId is what the ban routes take. "
+                    + "termsAcceptance is the Terms and Privacy Policy version accepted at registration and when, or "
+                    + "null for an account from before that rule (PCR-013, E7-124).")
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     public DataResponse<AdminUserDetail> get(@PathVariable UUID userId) {
         return meta.data(AdminUserDetail.of(users.detail(userId)
@@ -108,14 +110,31 @@ public class AdminUserController {
             @NotNull VerifiedPlayerQualification verifiedPlayerQualification,
             @NotNull @Schema(example = "1200") Integer pointsBalance,
             @NotNull MoneyView walletBalance,
-            @NotNull @Schema(example = "K7M3QX9P") String referralCode) {
+            @NotNull @Schema(example = "K7M3QX9P") String referralCode,
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true,
+                    description = "Recorded at registration (PCR-013); null for an account from before that rule.")
+            AdminUserTermsAcceptance termsAcceptance) {
 
         static AdminUserDetail of(AdminUsers.Detail detail) {
             AdminUsers.User user = detail.user();
             return new AdminUserDetail(AdminUserSummary.of(user), user.account().emailVerified(),
                     user.standing().currentThreshold(), AdminUserActiveBan.of(user.standing().activeBan()),
                     user.verifiedPlayer().qualification(), detail.balances().points(),
-                    MoneyView.of(detail.balances().wallet()), user.account().referralCode());
+                    MoneyView.of(detail.balances().wallet()), user.account().referralCode(),
+                    AdminUserTermsAcceptance.of(detail.termsAcceptance()));
+        }
+    }
+
+    /** The Terms of Use and Privacy Policy version a customer accepted at registration, and when (PCR-013 item 4). */
+    @Schema(name = "AdminUserTermsAcceptance")
+    public record AdminUserTermsAcceptance(
+            @NotNull @Schema(example = "2026-11-15") String version,
+            @NotNull @Schema(description = "The registration's server instant.", example = "2026-11-17T10:00:00Z")
+            Instant acceptedAt) {
+
+        /** {@code null} when nothing was recorded. */
+        static AdminUserTermsAcceptance of(AdminUsers.TermsAcceptance acceptance) {
+            return acceptance == null ? null : new AdminUserTermsAcceptance(acceptance.version(), acceptance.acceptedAt());
         }
     }
 

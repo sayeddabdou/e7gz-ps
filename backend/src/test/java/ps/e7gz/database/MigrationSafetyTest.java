@@ -207,6 +207,15 @@ class MigrationSafetyTest {
                 SELECT count(*) FROM booking.booking
                  WHERE id = '5afe0000-0000-4000-8000-000000000207' AND operating_session_id IS NULL"""))
                 .as("the walk-in in the old window only is out of hours").isEqualTo(1L);
+        // v1.1.43 (E7-124, PCR-013 item 6): the V1 customer got no invented acceptance; the later one kept theirs.
+        assertThat(count("SELECT count(*) FROM iam.terms_acceptance"
+                + " WHERE user_id = '5afe0000-0000-4000-8000-000000000041'"))
+                .as("no acceptance invented for a customer from before PCR-013").isZero();
+        assertThat(count("""
+                SELECT count(*) FROM iam.terms_acceptance t JOIN iam.user_account u ON u.id = t.user_id
+                 WHERE t.user_id = '5afe0000-0000-4000-8000-000000000241' AND t.terms_version = '2026-11-15'
+                   AND t.accepted_at = u.joined_at"""))
+                .as("the seeded acceptance survived every later migration").isEqualTo(1L);
     }
 
     private static long count(String sql) throws SQLException {

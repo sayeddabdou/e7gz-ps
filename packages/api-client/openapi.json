@@ -1207,6 +1207,17 @@
             "example": "K7M3QX9P",
             "type": "string"
           },
+          "termsAcceptance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdminUserTermsAcceptance"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Recorded at registration (PCR-013); null for an account from before that rule."
+          },
           "user": {
             "$ref": "#/components/schemas/AdminUserSummary"
           },
@@ -1223,6 +1234,7 @@
           "emailVerified",
           "pointsBalance",
           "referralCode",
+          "termsAcceptance",
           "user",
           "verifiedPlayerQualification",
           "walletBalance"
@@ -1302,6 +1314,25 @@
           "userId",
           "username",
           "verifiedPlayerStatus"
+        ],
+        "type": "object"
+      },
+      "AdminUserTermsAcceptance": {
+        "properties": {
+          "acceptedAt": {
+            "description": "The registration's server instant.",
+            "example": "2026-11-17T10:00:00Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "example": "2026-11-15",
+            "type": "string"
+          }
+        },
+        "required": [
+          "acceptedAt",
+          "version"
         ],
         "type": "object"
       },
@@ -2701,6 +2732,31 @@
         ],
         "type": "object"
       },
+      "CustomerLegalTexts": {
+        "properties": {
+          "privacyUrl": {
+            "description": "Public address of the Privacy Policy.",
+            "example": "https://e7gz.example/privacy",
+            "type": "string"
+          },
+          "termsUrl": {
+            "description": "Public address of the Terms of Use.",
+            "example": "https://e7gz.example/terms",
+            "type": "string"
+          },
+          "version": {
+            "description": "The version label of the current pair of texts (PCR-013 item 5).",
+            "example": "2026-11-15",
+            "type": "string"
+          }
+        },
+        "required": [
+          "privacyUrl",
+          "termsUrl",
+          "version"
+        ],
+        "type": "object"
+      },
       "CustomerLoginRequest": {
         "properties": {
           "password": {
@@ -3162,6 +3218,13 @@
       },
       "CustomerRegisterRequest": {
         "properties": {
+          "acceptedTermsVersion": {
+            "description": "The version of the Terms of Use and the Privacy Policy the customer agreed to: the version of GET /customer/legal (PCR-013). Missing, or not the current version: 400 VALIDATION_FAILED on field acceptedTermsVersion, and no account is created.",
+            "example": "2026-11-15",
+            "maxLength": 64,
+            "minLength": 0,
+            "type": "string"
+          },
           "email": {
             "example": "omar@example.com",
             "format": "email",
@@ -3208,6 +3271,7 @@
           }
         },
         "required": [
+          "acceptedTermsVersion",
           "email",
           "fullName",
           "password",
@@ -4150,6 +4214,21 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/CustomerLateConfirmOutcome"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "DataResponseCustomerLegalTexts": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CustomerLegalTexts"
           },
           "meta": {
             "$ref": "#/components/schemas/ResponseMeta"
@@ -14566,7 +14645,7 @@
     },
     "/api/v1/admin/users/{userId}": {
       "get": {
-        "description": "activeBan is the one ACTIVE ban, or null; its banId is what the ban routes take.",
+        "description": "activeBan is the one ACTIVE ban, or null; its banId is what the ban routes take. termsAcceptance is the Terms and Privacy Policy version accepted at registration and when, or null for an account from before that rule (PCR-013, E7-124).",
         "operationId": "adminGetUser",
         "parameters": [
           {
@@ -26528,7 +26607,7 @@
     },
     "/api/v1/customer/auth/register": {
       "post": {
-        "description": "A phone or username held by an account that never verified its phone is taken over: that account is released and can no longer log in (Sprint 0 review S-3, E7-57). A verified holder keeps them: PHONE_TAKEN / USERNAME_TAKEN. A referralCode makes a PENDING referral of the friend who owns it; the phone OTP verification settles it (FR-PTS-06, E7-67).",
+        "description": "A phone or username held by an account that never verified its phone is taken over: that account is released and can no longer log in (Sprint 0 review S-3, E7-57). A verified holder keeps them: PHONE_TAKEN / USERNAME_TAKEN. A referralCode makes a PENDING referral of the friend who owns it; the phone OTP verification settles it (FR-PTS-06, E7-67). acceptedTermsVersion must be the current version of GET /customer/legal; it is recorded with the command instant and never changed (PCR-013, E7-124).",
         "operationId": "customerRegister",
         "parameters": [
           {
@@ -29631,6 +29710,106 @@
         "summary": "Resources free for the whole requested interval; no price filter (FR-DIS-12)",
         "tags": [
           "customer-discovery"
+        ]
+      }
+    },
+    "/api/v1/customer/legal": {
+      "get": {
+        "description": "Send version as acceptedTermsVersion when registering. No token needed.",
+        "operationId": "customerGetLegalTexts",
+        "parameters": [
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseCustomerLegalTexts"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The current Terms of Use and Privacy Policy: their version and public addresses (PCR-013)",
+        "tags": [
+          "customer-legal"
         ]
       }
     },

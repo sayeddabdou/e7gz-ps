@@ -63,7 +63,8 @@ class OpenApiProductionContractTest extends IntegrationTest {
      * The only operations without a Bearer token (arch 09 §1.2: registration, login, OTP and public discovery). Every
      * other operation — venue, admin, and any authenticated customer route such as profile or bookings — needs one.
      * Registration and phone OTP are E7-13's; login, refresh and logout of the three route groups E7-14's. Customer
-     * password reset (arch 09 section 3.1) is in the Sprint 3 contract (E7-54) and built by E7-57.
+     * password reset (arch 09 section 3.1) is in the Sprint 3 contract (E7-54) and built by E7-57. The current Terms
+     * and Privacy Policy are public too: the sign-up screen reads them (PCR-013, E7-124).
      */
     static final Set<String> PUBLIC_OPERATIONS = Set.of(
             "post /api/v1/customer/auth/register",
@@ -84,7 +85,8 @@ class OpenApiProductionContractTest extends IntegrationTest {
             "get /api/v1/customer/venues",
             "get /api/v1/customer/venues/map",
             "get /api/v1/customer/venues/{venueId}",
-            "get /api/v1/customer/find-available");
+            "get /api/v1/customer/find-available",
+            "get /api/v1/customer/legal");
 
     /** Why an operation breaks the security rule, or null when it follows it. */
     static String securityViolation(String key, JsonNode operation) {

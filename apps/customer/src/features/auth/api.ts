@@ -4,7 +4,11 @@ import type { AppConfig } from "../../config";
 import { errorCodeOf } from "../../api";
 import type { ApiErrorCode } from "./errorMessages";
 
-type RegisterRequest = components["schemas"]["CustomerRegisterRequest"];
+// E7-124 made acceptedTermsVersion required on the server (PCR-013); the sign-up screen sends it from GET
+// /customer/legal in E7-122. Until then it stays optional here, and the server refuses a sign-up without it.
+type RegisterRequest = Omit<components["schemas"]["CustomerRegisterRequest"], "acceptedTermsVersion"> & {
+  acceptedTermsVersion?: string;
+};
 type LoginRequest = components["schemas"]["CustomerLoginRequest"];
 
 export type AuthResult<T> =
@@ -28,7 +32,9 @@ export function createCustomerAuthApi(config: AppConfig, tokenStore: TokenStore)
   const client = createApiClient({ baseUrl: config.apiBaseUrl });
   return {
     async register(request) {
-      const { data, error } = await client.POST("/api/v1/customer/auth/register", { body: request });
+      // Until E7-122 the field may be missing (see RegisterRequest); the server then answers VALIDATION_FAILED.
+      const body = request as components["schemas"]["CustomerRegisterRequest"];
+      const { data, error } = await client.POST("/api/v1/customer/auth/register", { body });
       if (data) return { ok: true, value: { phone: request.phone, challengeId: data.data.otpChallengeId }, serverTime: data.meta.serverTime };
       return { ok: false, code: codeFrom(error), serverTime: error?.meta.serverTime };
     },
