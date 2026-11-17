@@ -182,6 +182,14 @@ public final class IntegrationEvents {
     public static final String ATTENDANCE_CORRECTED = "AttendanceCorrected";
 
     /**
+     * {@code {userId, transitionId, fromStatus, toStatus, cause}}, aggregate {@code USER}: one operational Verified Player
+     * transition (arch 08 section 3.2; Spec v5 sections 8.4-8.9, FR-ACC-12; E7-72) - automatic
+     * ({@code TRUST_QUALIFICATION}, {@code TRUST_CORRECTION}) or a Platform Admin's ({@code ADMIN}). One event per
+     * {@code transitionId}, written in the transition's transaction; the customer's notification follows from it.
+     */
+    public static final String VERIFIED_PLAYER_TRANSITIONED = "VerifiedPlayerTransitioned";
+
+    /**
      * {@code {userId, banInstanceId, penaltyStage, activatedAt, endsAt, cancelledBookings}}, aggregate
      * {@code BAN_INSTANCE}: a replay threshold crossing activated a Ban (FR-TRS-14..18, arch 07 section 5; E7-71), in
      * the command that crossed it, with its booking cascade already executed (each cancelled booking also has its own

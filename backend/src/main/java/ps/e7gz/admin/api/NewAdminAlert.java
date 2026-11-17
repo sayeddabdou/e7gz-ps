@@ -61,6 +61,22 @@ public record NewAdminAlert(AdminAlertKind kind, AdminAlertSeverity severity, St
     }
 
     /**
+     * Spec v5 section 52.6 "Verified Player Revoked" (E7-72; PO decision 19 Oct 2026: admin alert inbox only). SEV_3,
+     * informational: the revocation and its tournament cascade are already done in the same command. About the USER,
+     * with the transition ID and its cause (ADMIN or TRUST_CORRECTION); never a name or a reason text.
+     */
+    public static NewAdminAlert verifiedPlayerRevoked(UUID userId, UUID transitionId, String cause,
+                                                      UUID correlationId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("userId", Objects.requireNonNull(userId, "userId").toString());
+        payload.put("transitionId", Objects.requireNonNull(transitionId, "transitionId").toString());
+        payload.put("cause", Objects.requireNonNull(cause, "cause"));
+        payload.put("correlationId", Objects.requireNonNull(correlationId, "correlationId").toString());
+        return new NewAdminAlert(AdminAlertKind.ADMIN_VERIFIED_PLAYER_REVOKED, AdminAlertSeverity.SEV_3, "USER", userId,
+                payload, correlationId);
+    }
+
+    /**
      * Product v5.0 section 52.6, E7-71 (PO decision 20 Oct 2026: the alert inbox only): a Ban was activated. SEV_3 -
      * information for the Platform Admin, nothing is broken. Subject: the User; ids, stage and instants only.
      *

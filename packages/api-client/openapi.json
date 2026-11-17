@@ -23314,7 +23314,7 @@
     },
     "/api/v1/admin/verified-players": {
       "get": {
-        "description": "Every customer whose operational status is not NOT_VERIFIED, or who ever had a Verified Player transition; status filters exactly. Newest status change first, cursor paging (arch 09 §1.2). Implemented by E7-72.",
+        "description": "Every customer whose operational status is not NOT_VERIFIED, or who ever had a Verified Player transition; status filters exactly. Newest status change first, cursor paging (arch 09 §1.2).",
         "operationId": "adminListVerifiedPlayers",
         "parameters": [
           {
@@ -23575,7 +23575,7 @@
     },
     "/api/v1/admin/verified-players/{userId}/restore": {
       "post": {
-        "description": "Any other current status is ADMIN_ACTION_NOT_ALLOWED. Implemented by E7-72.",
+        "description": "Any other current status is ADMIN_ACTION_NOT_ALLOWED. Never resurrects a cancelled tournament (FR-TRN-20).",
         "operationId": "adminRestoreVerifiedPlayer",
         "parameters": [
           {
@@ -23967,7 +23967,7 @@
     },
     "/api/v1/admin/verified-players/{userId}/revoke": {
       "post": {
-        "description": "Only from VERIFIED (arch 07 §6.2); otherwise ADMIN_ACTION_NOT_ALLOWED. An admin REVOKED is never restored automatically (FR-ACC-15). Implemented by E7-72.",
+        "description": "Only from VERIFIED (arch 07 §6.2); otherwise ADMIN_ACTION_NOT_ALLOWED. Runs the pending / waiting tournament cascade once for its transition (FR-TRN-20). An admin REVOKED is never restored automatically (FR-ACC-15).",
         "operationId": "adminRevokeVerifiedPlayer",
         "parameters": [
           {
@@ -24359,7 +24359,7 @@
     },
     "/api/v1/admin/verified-players/{userId}/suspend": {
       "post": {
-        "description": "Only from VERIFIED (arch 07 §6.2); otherwise ADMIN_ACTION_NOT_ALLOWED. Runs the pending / waiting tournament cascade once. Implemented by E7-72.",
+        "description": "Only from VERIFIED (arch 07 §6.2); otherwise ADMIN_ACTION_NOT_ALLOWED. Blocks creating new player-hosted tournaments and cancels nothing existing (FR-TRN-20).",
         "operationId": "adminSuspendVerifiedPlayer",
         "parameters": [
           {

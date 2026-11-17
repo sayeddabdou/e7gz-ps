@@ -171,10 +171,13 @@ class JdbcTrustReconciler implements TrustReconciler {
                 .query((rs, n) -> new UnsupportedBan(rs.getObject("id", UUID.class), instant(rs, "ends_at"),
                         instant(rs, "valid_until")))
                 .list();
-        VerifiedPlayerChange change = command.jdbc().sql(VERIFIED_PLAYER).param("user", userId)
-                .query((rs, n) -> verifiedPlayerChange(qualification, rs.getString("to_status"), rs.getString("cause")))
+        // Read the latest transition first, then decide: a mapper returning "no change" (null) must not read as "no
+        // transition" (E7-72 found that the earlier optional().orElseGet re-asked VERIFY of a VERIFIED User).
+        String[] latest = command.jdbc().sql(VERIFIED_PLAYER).param("user", userId)
+                .query((rs, n) -> new String[] {rs.getString("to_status"), rs.getString("cause")})
                 .optional()
-                .orElseGet(() -> verifiedPlayerChange(qualification, null, null));
+                .orElse(new String[] {null, null});
+        VerifiedPlayerChange change = verifiedPlayerChange(qualification, latest[0], latest[1]);
         return new Reconciliation(refreshed, qualification, outstanding, unsupported, change);
     }
 

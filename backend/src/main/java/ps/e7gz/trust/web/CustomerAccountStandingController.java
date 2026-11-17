@@ -25,20 +25,14 @@ import ps.e7gz.trust.api.VerifiedPlayers;
  * The customer's own Account Standing (arch 09 §3.1, FR-TRS-15, FR-ACC-11). In the Sprint 4 contract (E7-65); the
  * no-show counter, stage, threshold and current ban filled by E7-71 from the trust projection ({@link AccountStandings},
  * the same reader as the Platform Admin's user page). Open to every customer state, banned and unverified included
- * (FR-ACC-17, FRS §2.11): a ban never blocks reading it. The Verified Player part is read from {@link VerifiedPlayers}
- * as the admin user page reads it; E7-72 owns its rules.
+ * (FR-ACC-17, FRS §2.11): a ban never blocks reading it. The Verified Player part (E7-72) is read from
+ * {@link VerifiedPlayers} as the admin user page reads it, out of {@link VerifiedPlayers#REQUIRED_COMPLETED_BOOKINGS}.
  */
 @RestController
 @RequestMapping("/api/v1/customer/account-standing")
 @Tag(name = "customer-standing")
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class CustomerAccountStandingController {
-
-    /**
-     * FR-ACC-11: completed attended bookings that qualify a Verified Player - the database's own rule
-     * ({@code ck_trust_projection_vp_progress_qualification}: QUALIFIED exactly when the count is at least 10).
-     */
-    static final int VERIFIED_PLAYER_REQUIRED_BOOKINGS = 10;
 
     private final AccountStandings standings;
     private final VerifiedPlayers verifiedPlayers;
@@ -67,7 +61,7 @@ public class CustomerAccountStandingController {
                 ban == null ? null : new CustomerCurrentBan(ban.banId(), ban.penaltyStage(), ban.activatedAt(),
                         ban.endsAt()),
                 new CustomerVerifiedPlayer(player.qualification(), player.completedBookings(),
-                        VERIFIED_PLAYER_REQUIRED_BOOKINGS, player.status())));
+                        VerifiedPlayers.REQUIRED_COMPLETED_BOOKINGS, player.status())));
     }
 
     @Schema(name = "CustomerAccountStanding")

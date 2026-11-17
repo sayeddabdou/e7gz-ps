@@ -12,6 +12,7 @@ import ps.e7gz.admin.api.AdminAlertKind;
 import ps.e7gz.admin.api.AdminAlertSeverity;
 import ps.e7gz.admin.api.NewAdminAlert;
 import ps.e7gz.common.codes.AuthSubjectType;
+import ps.e7gz.common.codes.VerifiedPlayerTransitionCause;
 import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.identity.api.SecurityAlerts;
@@ -20,14 +21,18 @@ import ps.e7gz.inventory.sweep.api.InvariantViolationReporter;
 import ps.e7gz.messaging.api.DeadLetterAlerts;
 import ps.e7gz.messaging.api.OutboxEvent;
 import ps.e7gz.trust.api.BanAlerts;
+import ps.e7gz.trust.api.VerifiedPlayerAlerts;
 
 /**
  * The Platform Administration side of the alert ports other modules declare (E7-56): the nightly invariant sweep
  * (PO decision 4 Oct 2026), the outbox dead letter (PO decision 12 Oct 2026), refresh-token reuse (Sprint 0 review
- * S-9) and a Ban activation (Product v5.0 section 52.6; E7-71, PO decision 20 Oct 2026). Each port lives in its caller's {@code api} so no module depends on Administration in a cycle.
+ * S-9), a Ban activation (Product v5.0 section 52.6; E7-71, PO decision 20 Oct 2026) and a Verified Player
+ * revocation (section 52.6; E7-72). Each port lives in its caller's {@code api} so no module depends on
+ * Administration in a cycle.
  */
 @Component
-class AdminAlertReporters implements InvariantViolationReporter, DeadLetterAlerts, SecurityAlerts, BanAlerts {
+class AdminAlertReporters implements InvariantViolationReporter, DeadLetterAlerts, SecurityAlerts, BanAlerts,
+        VerifiedPlayerAlerts {
 
     private static final Logger log = LoggerFactory.getLogger(AdminAlertReporters.class);
 
@@ -35,6 +40,16 @@ class AdminAlertReporters implements InvariantViolationReporter, DeadLetterAlert
 
     AdminAlertReporters(JdbcAdminAlerts alerts) {
         this.alerts = alerts;
+    }
+
+    /**
+     * ADMIN_VERIFIED_PLAYER_REVOKED, SEV_3 (Spec v5 section 52.6; PO decision 19 Oct 2026: the inbox only), in the
+     * revoking command: it commits with the revocation or not at all.
+     */
+    @Override
+    public void revoked(CommandContext command, UUID userId, UUID transitionId, VerifiedPlayerTransitionCause cause) {
+        alerts.raise(command, NewAdminAlert.verifiedPlayerRevoked(userId, transitionId, cause.name(),
+                CorrelationId.require()));
     }
 
     /**
