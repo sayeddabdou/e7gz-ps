@@ -232,6 +232,18 @@ function BookingDetailScreen({
           <DetailRow label={t.myBookings.time} value={formatTimeRange(booking.startAt, booking.endAt)} />
           <DetailRow label={t.myBookings.duration} value={t.booking.durationValue(booking.nominalBookedMinutes)} />
           <DetailRow label={t.booking.total} value={formatMoney(booking.totalAmount) ?? ""} strong />
+          <DetailRow
+            label={t.booking.bookingFee}
+            value={booking.bookingFee.displayAsFree ? t.booking.free : (formatMoney(booking.bookingFee) ?? "")}
+          />
+          {!booking.bookingFee.displayAsFree ? (
+            <>
+              <DetailRow label={t.booking.pointsUsed} value={`${booking.bookingFeePayment.pointsUsed.toLocaleString("en")} ${t.rewards.points.unit}`} />
+              <DetailRow label={t.booking.paidByPoints} value={formatMoney(booking.bookingFeePayment.paidByPoints) ?? ""} />
+              <DetailRow label={t.booking.paidByWallet} value={formatMoney(booking.bookingFeePayment.paidByWallet) ?? ""} />
+              <DetailRow label={t.booking.leftToPay} value={formatMoney(booking.bookingFeePayment.leftToPay) ?? ""} />
+            </>
+          ) : null}
           {reason ? <DetailRow label={t.myBookings.reason} value={reason} /> : null}
           {booking.status === "PENDING" && booking.venueResponsePaused ? (
             <DetailRow label={t.myBookings.venueResponse} value={t.myBookings.responsePaused} />

@@ -232,6 +232,7 @@ export function BookingFlow({
         <View style={styles.summaryCard}>
           <SummaryRow label={t.booking.venuePrice} value={formatMoney(quote.venuePriceTotal) ?? ""} />
           <SummaryRow label={t.booking.bookingFee} value={quote.bookingFee.displayAsFree ? t.booking.free : formatMoney(quote.bookingFee) ?? ""} />
+          {!quote.bookingFee.displayAsFree ? <BookingFeePaymentRows payment={quote.bookingFeePayment} /> : null}
           <SummaryRow emphasis label={t.booking.total} value={formatMoney(quote.totalAmount) ?? ""} />
         </View>
         <Text style={styles.notice}>{t.booking.quoteNotice}</Text>
@@ -421,6 +422,17 @@ function PendingBooking({ api, booking: initialBooking, serverTime: initialServe
 
 function SummaryRow({ label, value, emphasis = false }: { label: string; value: string; emphasis?: boolean }) {
   return <View style={styles.summaryRow}><Text style={emphasis ? styles.summaryStrong : styles.muted}>{label}</Text><Text style={emphasis ? styles.total : styles.summaryValue}>{value}</Text></View>;
+}
+
+function BookingFeePaymentRows({ payment }: { payment: components["schemas"]["CustomerBookingFeePayment"] }) {
+  return (
+    <>
+      <SummaryRow label={t.booking.pointsUsed} value={`${payment.pointsUsed.toLocaleString("en")} ${t.rewards.points.unit}`} />
+      <SummaryRow label={t.booking.paidByPoints} value={formatMoney(payment.paidByPoints) ?? ""} />
+      <SummaryRow label={t.booking.paidByWallet} value={formatMoney(payment.paidByWallet) ?? ""} />
+      <SummaryRow label={t.booking.leftToPay} value={formatMoney(payment.leftToPay) ?? ""} />
+    </>
+  );
 }
 
 function Choice({ accessibilityLabel, label, selected, wide = false, onPress }: { accessibilityLabel?: string; label: string; selected: boolean; wide?: boolean; onPress(): void }) {

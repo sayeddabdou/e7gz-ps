@@ -132,4 +132,27 @@ describe("customer authentication", () => {
     await waitFor(() => expect(api.verifyPhone).toHaveBeenCalledWith("resend-1", "482913", "replacement1"));
     now.mockRestore();
   });
+
+  it("sends the optional referral code without treating it as a local validation rule", async () => {
+    const api = authApi({
+      register: jest.fn().mockResolvedValue({
+        ok: true,
+        value: { phone: "+201001234567", challengeId: "registration-1" },
+        serverTime: "2026-11-17T10:00:00Z",
+      }),
+    });
+    render(<AuthFlow api={api} tokenStore={tokenStore} onAuthenticated={jest.fn()} />);
+
+    fireEvent.press(screen.getByRole("button", { name: "Create an account" }));
+    fireEvent.changeText(screen.getByLabelText("Full name"), "Omar Hassan");
+    fireEvent.changeText(screen.getByLabelText("Phone number"), "+201001234567");
+    fireEvent.changeText(screen.getByLabelText("Email"), "omar@example.com");
+    fireEvent.changeText(screen.getByLabelText("Username or phone"), "omar_h");
+    fireEvent.changeText(screen.getByLabelText("Password"), "password1");
+    fireEvent.changeText(screen.getByLabelText("Referral code (optional)"), "  k7m3qx9p  ");
+    fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() => expect(api.register).toHaveBeenCalledWith(expect.objectContaining({ referralCode: "  k7m3qx9p  " })));
+    expect(await screen.findByRole("header", { name: "Verify your phone" })).toBeTruthy();
+  });
 });

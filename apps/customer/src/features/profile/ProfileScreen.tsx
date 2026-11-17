@@ -19,7 +19,23 @@ export function profileInitials(fullName: string): string {
   return fullName.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 }
 
-export function ProfileScreen({ api, onLogout, onPasswordResetComplete = onLogout }: { api: CustomerProfileApi; onLogout(): void | Promise<void>; onPasswordResetComplete?(): void | Promise<void> }) {
+export function ProfileScreen({
+  api,
+  onLogout,
+  onPasswordResetComplete = onLogout,
+  onOpenStanding,
+  onOpenPoints,
+  onOpenWallet,
+  onOpenReferrals,
+}: {
+  api: CustomerProfileApi;
+  onLogout(): void | Promise<void>;
+  onPasswordResetComplete?(): void | Promise<void>;
+  onOpenStanding?(): void;
+  onOpenPoints?(): void;
+  onOpenWallet?(): void;
+  onOpenReferrals?(): void;
+}) {
   const [profile, setProfile] = useState<CustomerProfile>();
   const [mode, setMode] = useState<Mode>("summary");
   const [busy, setBusy] = useState(false);
@@ -187,6 +203,10 @@ export function ProfileScreen({ api, onLogout, onPasswordResetComplete = onLogou
         </Pressable>
       </View>
       <View style={styles.menu}>
+        {onOpenStanding ? <ActionRow label={t.profile.accountStanding} onPress={onOpenStanding} /> : null}
+        {onOpenPoints ? <ActionRow label={t.profile.points} onPress={onOpenPoints} /> : null}
+        {onOpenWallet ? <ActionRow label={t.profile.wallet} onPress={onOpenWallet} /> : null}
+        {onOpenReferrals ? <ActionRow label={t.profile.referrals} onPress={onOpenReferrals} /> : null}
         <ActionRow
           label={t.profile.changeUsername}
           value={profile.username}
