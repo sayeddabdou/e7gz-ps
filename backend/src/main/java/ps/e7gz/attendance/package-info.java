@@ -14,6 +14,7 @@
  *   <li>E7-59 Check-in, late present, no-show (O13)</li>
  *   <li>E7-61 Completion and attendance defaults (O12)</li>
  *   <li>E7-78 Attendance protection (Sayed)</li>
+ *   <li>E7-118 as-of Venue Account restriction read for T6 (booking.api.VenueAccountRestrictionsAt)</li>
  *   <li>web/ stubs: E7-22, E7-39, E7-54, E7-65, E7-77, E7-88, E7-98 (Sx-P0 contract stubs)</li>
  * </ul>
  */

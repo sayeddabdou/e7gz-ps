@@ -15,6 +15,7 @@
  *   <li>E7-48 Walk-in / manual booking (O4)</li>
  *   <li>E7-49 Cancellation, customer buckets, contact visibility</li>
  *   <li>E7-60 Start-time revalidation (O11)</li>
+ *   <li>E7-118 Unanswered booking at start time (T6, FR-BOK-23)</li>
  *   <li>web/ stubs: E7-22, E7-39, E7-54, E7-65, E7-77, E7-88, E7-98 (Sx-P0 contract stubs)</li>
  * </ul>
  */
