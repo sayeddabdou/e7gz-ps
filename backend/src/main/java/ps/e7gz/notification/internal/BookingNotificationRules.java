@@ -111,7 +111,11 @@ final class BookingNotificationRules {
             BookingTerminalReason.VENUE_CANCELLED_CONFIRMED_BOOKING, plan(customer("BOOKING_CANCELLED")),
             // E7-113 (O5, FR-VEN-23 step 9, FR-VEN-28): §52.2 "Venue Opening Hours Changed", one per cancelled booking.
             // The customer only: the venue made the change itself. A Manual Booking gets nothing (cancelled(event)).
-            BookingTerminalReason.VENUE_OPENING_HOURS_CHANGED, plan(customer("VENUE_OPENING_HOURS_CHANGED")));
+            BookingTerminalReason.VENUE_OPENING_HOURS_CHANGED, plan(customer("VENUE_OPENING_HOURS_CHANGED")),
+            // E7-71 (O14, FR-TRS-20: the customer is notified): §52.2 "Booking cancelled due to Ban" to the customer, and
+            // §52.5 "Booking Auto Cancelled" to the venue - a system cancellation of one of its bookings
+            BookingTerminalReason.USER_BANNED,
+            plan(customer("BOOKING_CANCELLED_BAN"), venue("VENUE_BOOKING_AUTO_CANCELLED")));
 
     /** One entry per integration event this module turns into booking notifications. */
     static final Map<String, Function<OutboxEvent, Plan>> RULES = Map.ofEntries(

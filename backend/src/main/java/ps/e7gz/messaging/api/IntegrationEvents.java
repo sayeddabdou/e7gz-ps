@@ -182,6 +182,36 @@ public final class IntegrationEvents {
     public static final String ATTENDANCE_CORRECTED = "AttendanceCorrected";
 
     /**
+     * {@code {userId, banInstanceId, penaltyStage, activatedAt, endsAt, cancelledBookings}}, aggregate
+     * {@code BAN_INSTANCE}: a replay threshold crossing activated a Ban (FR-TRS-14..18, arch 07 section 5; E7-71), in
+     * the command that crossed it, with its booking cascade already executed (each cancelled booking also has its own
+     * {@code BookingCancelled} / USER_BANNED). One per Ban Instance.
+     */
+    public static final String BAN_ACTIVATED = "BanActivated";
+
+    /**
+     * {@code {userId, banInstanceId, previousPenaltyStage, penaltyStage, previousEndsAt, endsAt}}, aggregate
+     * {@code BAN_INSTANCE}: a further qualification while banned advanced the stage and extended the same instance to
+     * {@code MAX(previousEndsAt, now + stage duration)} (FR-TRS-22; E7-71) - {@code endsAt} may equal
+     * {@code previousEndsAt}. One per consumed qualification; the cascade is never repeated.
+     */
+    public static final String BAN_EXTENDED = "BanExtended";
+
+    /**
+     * {@code {userId, banInstanceId, penaltyStage, endsAt}}, aggregate {@code BAN_INSTANCE}: the Ban reached its
+     * {@code endsAt} and is EXPIRED (FR-TRS-23; T10, arch 08 section 1; E7-71). Previously cancelled bookings do not
+     * return.
+     */
+    public static final String BAN_EXPIRED = "BanExpired";
+
+    /**
+     * {@code {userId, banInstanceId, penaltyStage, endsAt, correctionEventId}}, aggregate {@code BAN_INSTANCE}: an
+     * attendance correction left the ACTIVE Ban without replay-valid support, so it is CORRECTED now (FR-TRS-24,
+     * FR-TRS-25; E7-71). Cancelled bookings and sold slots do not return.
+     */
+    public static final String BAN_CORRECTED = "BanCorrected";
+
+    /**
      * {@code {venueId, resourceId}}, aggregate {@code RESOURCE}: the venue disabled a room (FR-VEN-03; E7-26, published
      * since E7-56, PO decision 12 Oct 2026). Its four siblings below carry the same payload.
      */

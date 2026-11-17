@@ -167,6 +167,21 @@ public final class BookingFlows {
         public Booking nextActive(Duration startedAgo) {
             return started(pending(world, world.start()), startedAgo);
         }
+
+        /**
+         * E7-71: a PENDING Online Booking of the same customer and room, starting {@code later} after the room's usual
+         * start ({@link OnlineBookingWorld#start}), through the real command - a Ban cascade target.
+         */
+        public Booking nextPending(Duration later) {
+            return pending(world, world.start().plus(later));
+        }
+
+        /** E7-71: as {@link #nextPending}, accepted by the venue: a future CONFIRMED booking. */
+        public Booking nextConfirmed(Duration later) {
+            Booking booking = pending(world, world.start().plus(later));
+            accept(booking);
+            return booking;
+        }
     }
 
     /**

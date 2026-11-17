@@ -274,6 +274,8 @@ public class AttendanceCorrections {
         if (evidence.activeNoShow() != null || evidence.result() == outcome) {
             throw new ApiException(ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED);                       // FR-ATT-12
         }
+        // E7-71: the Admin's Loyalty context first - a Ban the corrected replay activates records its fee decisions in it
+        rewards.beginCorrection(context, adminId, booking.customerId());
         if (!store.correct(context, bookingId, outcome, now)) {
             throw new ApiException(ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED);
         }
@@ -293,6 +295,7 @@ public class AttendanceCorrections {
         AttendanceStore.Evidence evidence = store.find(context, bookingId)
                 .filter(found -> found.activeNoShow() != null)
                 .orElseThrow(() -> new ApiException(ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED));     // none, or reversed
+        rewards.beginCorrection(context, adminId, booking.customerId());                    // E7-71, as correct()
         Reversal reversal = bookings.reverseNoShow(context, bookingId, now, adminId)
                 .orElseThrow(() -> new ApiException(ApiErrorCode.ADMIN_ACTION_NOT_ALLOWED));
         UUID reversedEvent = bookings.recordAdminEvent(context, bookingId, now, BookingEventType.NO_SHOW_REVERSED,

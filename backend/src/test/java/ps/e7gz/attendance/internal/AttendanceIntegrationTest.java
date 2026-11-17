@@ -37,7 +37,6 @@ import ps.e7gz.support.IntegrationTest;
 import ps.e7gz.support.PostgresTestContainer;
 import ps.e7gz.support.boundary.DueJobs;
 import ps.e7gz.support.fixtures.Fixtures;
-import ps.e7gz.trust.api.TrustConsequenceUnavailableException;
 
 /**
  * E7-59 against the real database: each attendance action writes its evidence, history, audit and one integration event
@@ -249,39 +248,60 @@ class AttendanceIntegrationTest extends IntegrationTest {
     }
 
     /**
-     * The third-consecutive-no-show boundary (arch 07 sections 3.1, 4 and 5.1; FR-TRS-13, FR-TRS-14): at stage 0 the
-     * third {@code BOOKING_NO_SHOW} brings the replayed counter to the threshold 3, so replay derives a Ban
-     * Qualification. {@code trust.assert_user_integrity} (via {@code tr_trust_event_projection_current}) then requires
-     * its exactly-once operational consequence - a Ban Instance consuming it, with its cancellation cascade - in the
-     * same transaction. E7-70's reconciler finds the outstanding qualification and hands it to E7-71's Ban
-     * reconciliation, not built yet, so today the reconciler refuses it ({@code TrustConsequenceUnavailableException},
-     * before the database would refuse the commit) and the whole no-show rolls back: nothing partial is left. E7-71
-     * replaces this test's expectation with the ban.
+     * The third-consecutive-no-show boundary (arch 07 sections 3.1, 4, 5.1-5.4; FR-TRS-13, FR-TRS-14, FR-TRS-18,
+     * FR-TRS-20, FR-TRS-21; E7-71): at stage 0 the third {@code BOOKING_NO_SHOW} brings the replayed counter to the
+     * threshold 3. The no-show's own command then activates one Ban Instance now - stage 1, seven days, never
+     * back-dated - and runs its cascade once: the customer's PENDING and future CONFIRMED bookings end CANCELLED /
+     * USER_BANNED with their reservations released at the activation instant, the counter resets and the projection
+     * points at the Ban. Everything commits together, and the database's exactly-once proofs accept it.
      */
     @Test
-    void theThirdConsecutiveNoShowNeedsE771sBanAndUntilThenRollsBackWhole() {
+    void theThirdConsecutiveNoShowActivatesOneBanAndCancelsTheFutureBookingsOnce() {
         BookingFlows.Customer customer = flows.customer();
         for (int i = 0; i < 2; i++) {
             Booking earlier = customer.nextActive(Duration.ofMinutes(20));
             assertThat(record(AttendanceAction.NO_SHOW, earlier).status()).isEqualTo(BookingStatus.NO_SHOW);
         }
+        Booking pending = customer.nextPending(Duration.ofHours(3));
+        Booking confirmed = customer.nextConfirmed(Duration.ofHours(5));
         Booking third = customer.nextActive(Duration.ofMinutes(20));
         assertThat(consecutiveNoShows(third)).isEqualTo(2);
 
-        assertThatThrownBy(() -> record(AttendanceAction.NO_SHOW, third))
-                .isInstanceOf(TrustConsequenceUnavailableException.class)
-                .hasMessageContaining("E7-71 Ban reconciliation");
+        assertThat(record(AttendanceAction.NO_SHOW, third).status()).isEqualTo(BookingStatus.NO_SHOW);
 
-        assertThat(status(third)).isEqualTo("ACTIVE");
-        assertThat(activeReservations(third)).isOne();
-        assertThat(record(third)).isEmpty();
-        assertThat(venueEvents(third)).isEmpty();
-        assertThat(audits(third)).isEmpty();
-        assertThat(trustEvents(third)).isZero();
-        assertThat(eventTypes(third)).doesNotContain(IntegrationEvents.NO_SHOW_RECORDED);
-        assertThat(consecutiveNoShows(third)).as("the projection is unchanged").isEqualTo(2);
-        assertThat(OWNER.sql("SELECT count(*) FROM trust.ban_instance WHERE user_id = :id")
-                .param("id", third.customerId()).query(Long.class).single()).isZero();
+        List<Map<String, Object>> bans = OWNER.sql("""
+                        SELECT id, status, penalty_stage, ends_at - activated_at AS length,
+                               cascade_executed_at = activated_at AS cascaded,
+                               activated_at = (SELECT no_show_at FROM attendance.attendance_record
+                                                WHERE booking_id = :third) AS now
+                          FROM trust.ban_instance WHERE user_id = :id""")
+                .param("id", third.customerId()).param("third", third.bookingId()).query().listOfRows();
+        assertThat(bans).singleElement().satisfies(ban -> {
+            assertThat(ban.get("status")).isEqualTo("ACTIVE");
+            assertThat(((Number) ban.get("penalty_stage")).intValue()).isOne();
+            assertThat(ban.get("length").toString()).contains("7 days");
+            assertThat(ban.get("cascaded")).isEqualTo(true);
+            assertThat(ban.get("now")).as("activated at the no-show instant, never back-dated").isEqualTo(true);
+        });
+        for (Booking target : List.of(pending, confirmed)) {
+            assertThat(OWNER.sql("SELECT status || '/' || terminal_reason FROM booking.booking WHERE id = :id")
+                    .param("id", target.bookingId()).query(String.class).single())
+                    .isEqualTo("CANCELLED/USER_BANNED");
+            assertThat(activeReservations(target)).isZero();
+            assertThat(eventTypes(target)).containsOnlyOnce(IntegrationEvents.BOOKING_CANCELLED);
+        }
+        assertThat(status(third)).isEqualTo("NO_SHOW");
+        assertThat(OWNER.sql("""
+                        SELECT consecutive_no_shows || '/' || penalty_stage || '/' || (active_ban_instance_id = :ban)
+                          FROM trust.trust_projection WHERE user_id = :id""")
+                .param("id", third.customerId()).param("ban", bans.getFirst().get("id"))
+                .query(String.class).single()).as("counter reset, stage 1, pointing at the Ban").isEqualTo("0/1/true");
+        assertThat(OWNER.sql("""
+                        SELECT count(*) FROM technical.outbox_event
+                         WHERE event_type = 'BanActivated' AND aggregate_id = :ban""")
+                .param("ban", bans.getFirst().get("id")).query(Long.class).single()).isOne();
+        assertThat(OWNER.sql("SELECT count(*) FROM trust.cascade_execution WHERE subject_user_id = :id")
+                .param("id", third.customerId()).query(Long.class).single()).isOne();
     }
 
     // ---------- the delayed-start race (Amr Heiba, 17 Oct 2026; PO decision 19 Oct 2026, R1: all three actions)

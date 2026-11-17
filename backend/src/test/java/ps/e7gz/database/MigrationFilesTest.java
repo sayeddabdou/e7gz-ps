@@ -314,6 +314,31 @@ class MigrationFilesTest {
                 "s.session_period @> NEW.created_at\n", "s.session_period @> NEW.created_at AND s.superseded_at IS NULL\n"));
     }
 
+    /**
+     * v1.1.41 (E7-71): the migration is the model's own block, byte for byte, and only adds the BAN_EXTENDED catalogue
+     * row - the catalogue is append-only, so nothing is updated, deleted or redefined.
+     */
+    @Test
+    void banExtendedNotificationMigrationIsTheModelsV1141Block() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String open = "<genericsql name=\"v1_1_41_ban_extended_notification\">\n\t<definition> <![CDATA[\n";
+        int start = model.indexOf(open);
+        assertThat(start).as("v1.1.41 block in the .dbm").isPositive();
+        String block = model.substring(start + open.length(), model.indexOf("]]> </definition>", start));
+        String migration = classpath("db/migration/V202611171200__ban_extended_notification.sql");
+        assertThat(migration).isEqualTo(block);
+        assertThat(migration.substring(migration.indexOf("INSERT INTO")))
+                .startsWith("INSERT INTO notification.notification_catalogue(")
+                .containsOnlyOnce("('BAN_EXTENDED','NONE',ARRAY['CUSTOMER']::text[],ARRAY['IN_APP','PUSH']::text[],"
+                        + "ARRAY['IN_APP','PUSH']::text[],false,")
+                .doesNotContain("UPDATE ")
+                .doesNotContain("DELETE ")
+                .doesNotContain("CREATE ")
+                .doesNotContain("DROP ")
+                .doesNotContain("ALTER ")
+                .doesNotContain("GRANT");
+    }
+
     /** {@code open}'s definition in {@code migration} is its definition in {@code earlier} plus exactly {@code lines}. */
     /**
      * v1.1.39 (E7-66 PR 3, PCR-009): the migration is the model's own block, byte for byte; the table model has the

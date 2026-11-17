@@ -317,6 +317,16 @@ The baseline gains a `deferred` list, handled like `internal` (EXECUTE revoked f
 
 - Tests: `PointsBookingFeePaymentIntegrationTest` (both PO examples; the Wallet paying what Points leave and a refund giving both back; the quote, the booking detail and the Points history; a fee change affects only later bookings; a higher fee; a Manual Booking uses no Points; nothing at the launch values); `AdminConfigurationHttpTest` (both settings routes); `BookingFeeModeTest`; `MigrationSafetyTest`; the `.dbm`/migration identity check in `MigrationFilesTest`; `ClosedValueContract` (two Points causes, the fee mode).
 
+### v1.1.41 — the customer notification of a Ban extension (E7-71, 17 Nov 2026)
+
+Amr Heiba's delegated decision for E7-71 (first drafted 18 Oct 2026, renumbered 17 Nov 2026 after v1.1.40) (Sayed remains the Product Owner); FR-TRS-22, arch 07 section 4. `.dbm` block `v1_1_41_ban_extended_notification` = Flyway `V202611171200__ban_extended_notification.sql`, byte for byte. **For Product Owner review.**
+
+One new `notification.notification_catalogue` row, `BAN_EXTENDED`: reference `NONE`, recipient `CUSTOMER`, In-App + Push required and allowed - the same policy as `TEMPORARY_BAN_ACTIVATED`. The launch catalogue (Product v5.0 section 52.2) had no code for a further qualification during an ACTIVE Ban, and the activation code must not be reused for it.
+
+Additive only: the catalogue is append-only (`tr_125_catalogue_append_only` refuses UPDATE and DELETE, not INSERT); no table, column, constraint, trigger, function or grant changes, and no backfill (E7-71 adds the first Ban producer). No upgrade seed: the migration adds no column. Platform-lane table (Notification): needs its Code Owner's review.
+
+- Tests: `MigrationSafetyTest` (the migration on the seeded database); the `.dbm`/migration identity check in `MigrationFilesTest`; the Ban notification tests of E7-71.
+
 ## Product Owner decisions (26 Sep 2026)
 
 A1 overlapping Maintenance allowed · A2 booking horizon is a deployment setting, default 120 days · A4 rate-limit table approved · A5 reports FR-AUD-11/12 at launch · A6 venue alerts = live + Web Push + audible alert · A8 configurable = fees and points only · A9 Venue never returns to ONBOARDING · A10 login limits stored as `LOGIN` rate-limit rows · A11 read-only customer wallet screen (PCR-004, no DB change) · review self-reporting allowed, duplicate open reports blocked.
