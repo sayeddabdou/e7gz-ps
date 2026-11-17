@@ -183,7 +183,9 @@ class OpenApiProductionContractTest extends IntegrationTest {
         JsonNode responses = operations().get("post /api/v1/venue/resources/{resourceId}/disable").path("responses");
 
         assertThat(narrowedCodes(responses.path("422"))).containsExactly("RESOURCE_HAS_BLOCKING_RESERVATIONS");
-        assertThat(narrowedCodes(responses.path("423"))).containsExactly("OWNER_PASSWORD_REQUIRED", "OWNER_PASSWORD_INVALID");
+        // PCR-012 (E7-121): every Owner-PIN route also gains the long lock
+        assertThat(narrowedCodes(responses.path("423")))
+                .containsExactly("OWNER_PASSWORD_REQUIRED", "OWNER_PASSWORD_INVALID", "OWNER_PASSWORD_LOCKED");
         // The general codes approved in E7-12 (arch 09 §1.5) on every secured operation with a path parameter.
         assertThat(narrowedCodes(responses.path("401"))).containsExactly("UNAUTHENTICATED");
         assertThat(narrowedCodes(responses.path("403"))).containsExactly("FORBIDDEN");

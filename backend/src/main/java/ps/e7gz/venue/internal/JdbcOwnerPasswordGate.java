@@ -7,6 +7,10 @@ import java.util.UUID;
 import org.springframework.dao.DataAccessException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import ps.e7gz.admin.api.AdminAlertKind;
+import ps.e7gz.admin.api.AdminAlertSeverity;
+import ps.e7gz.admin.api.AdminAlerts;
+import ps.e7gz.admin.api.NewAdminAlert;
 import ps.e7gz.audit.api.AuditActor;
 import ps.e7gz.audit.api.AuditRecord;
 import ps.e7gz.audit.api.AuditWriter;
@@ -22,6 +26,8 @@ import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.error.DatabaseErrorCodes;
 import ps.e7gz.common.security.owner.OwnerProtected;
 import ps.e7gz.identity.api.OwnerPasswordAttempts;
+import ps.e7gz.identity.api.OwnerPasswordAttempts.Failure;
+import ps.e7gz.identity.api.OwnerPasswordAttempts.Lock;
 import ps.e7gz.venue.api.OwnerPasswordGate;
 
 /**
@@ -51,13 +57,15 @@ class JdbcOwnerPasswordGate implements OwnerPasswordGate {
     private final PasswordEncoder passwords;
     private final OwnerPasswordAttempts attempts;
     private final AuditWriter audit;
+    private final AdminAlerts alerts;
 
     JdbcOwnerPasswordGate(CommandRunner runner, PasswordEncoder passwords, OwnerPasswordAttempts attempts,
-                          AuditWriter audit) {
+                          AuditWriter audit, AdminAlerts alerts) {
         this.runner = runner;
         this.passwords = passwords;
         this.attempts = attempts;
         this.audit = audit;
+        this.alerts = alerts;
     }
 
     @Override
@@ -69,8 +77,11 @@ class JdbcOwnerPasswordGate implements OwnerPasswordGate {
         if (suppliedPassword == null || suppliedPassword.isBlank()) {
             throw new ApiException(ApiErrorCode.OWNER_PASSWORD_REQUIRED);
         }
-        if (attempts.lockedOut(command, venueAccountId)) {
-            throw new OwnerPasswordRefused(venueAccountId, true);
+        // NFR-16's short lockout and PCR-012's long lock: refused without checking the password, so the answer is the
+        // same for a right and a wrong one (PCR-012 item 5)
+        Lock lock = attempts.lock(command, venueAccountId);
+        if (lock != Lock.NONE) {
+            throw new OwnerPasswordRefused(venueAccountId, lock);
         }
         // FOR SHARE: a change of the secret still in flight finishes first, so the value checked is the current one.
         String hash = command.jdbc().sql("""
@@ -78,7 +89,7 @@ class JdbcOwnerPasswordGate implements OwnerPasswordGate {
                          WHERE venue_account_id = :account FOR SHARE""")
                 .param("account", venueAccountId).query(String.class).optional().orElse(null);
         if (hash == null || !passwords.matches(suppliedPassword, hash)) {
-            throw new OwnerPasswordRefused(venueAccountId, false);
+            throw new OwnerPasswordRefused(venueAccountId, Lock.NONE);
         }
         Attempt executing = EXECUTING.get();
         if (executing != null && executing.isOf(command, venueAccountId)) {
@@ -128,9 +139,15 @@ class JdbcOwnerPasswordGate implements OwnerPasswordGate {
             if (!refused.venueAccountId().equals(venueAccountId)) {
                 throw new IllegalStateException("Owner Password checked for another venue account than the actor's");
             }
-            runner.run(new RecordRefusal(venueAccountId, correlationId, protection.value(), refused.lockedOut(),
-                    attempts, audit));
-            throw new ApiException(refused.lockedOut() ? ApiErrorCode.RATE_LIMITED : ApiErrorCode.OWNER_PASSWORD_INVALID);
+            runner.run(new RecordRefusal(venueAccountId, correlationId, protection.value(), refused.lock(),
+                    attempts, audit, alerts));
+            // PCR-012: the long lock answers its own code; the 15-minute lockout keeps RATE_LIMITED (PO decision 16 Nov
+            // 2026). The wrong password that starts a lock is still answered as wrong, like the 5th one always was.
+            throw new ApiException(switch (refused.lock()) {
+                case NONE -> ApiErrorCode.OWNER_PASSWORD_INVALID;
+                case LOCKED_OUT -> ApiErrorCode.RATE_LIMITED;
+                case LONG_LOCKED -> ApiErrorCode.OWNER_PASSWORD_LOCKED;
+            });
         } catch (RuntimeException failure) {
             // Q2: the last attempt checked the password and was then refused. Only what the API answers as a refusal
             // is audited, with the code it answers: an ApiException, or a database guard with a code (a
@@ -238,10 +255,13 @@ class JdbcOwnerPasswordGate implements OwnerPasswordGate {
     /**
      * The refused attempt, committed on its own: an audit row with owner_password_outcome = FAILURE, the venue as
      * actor and the protected action's id; a wrong password also counts towards the lockout. An attempt refused because
-     * the account was already locked out is audited but not counted again.
+     * the account was already locked (short or long) is audited but not counted again. The wrong password that starts
+     * the long lock (PCR-012 item 4, E7-121) also writes an {@code OWNER_PASSWORD_LONG_LOCKED} audit row and raises one
+     * Platform Admin alert, in this same transaction.
      */
-    record RecordRefusal(UUID venueAccountId, UUID correlationId, String protectedAction, boolean lockedOut,
-                         OwnerPasswordAttempts attempts, AuditWriter audit) implements Command<Void> {
+    record RecordRefusal(UUID venueAccountId, UUID correlationId, String protectedAction, Lock lock,
+                         OwnerPasswordAttempts attempts, AuditWriter audit, AdminAlerts alerts)
+            implements Command<Void> {
 
         @Override
         public EligibilityCategory eligibilityCategory() {
@@ -256,14 +276,23 @@ class JdbcOwnerPasswordGate implements OwnerPasswordGate {
 
         @Override
         public Void execute(CommandContext context) {
-            if (!lockedOut) {
-                attempts.recordFailure(context, venueAccountId);
-            }
+            Failure failure = lock == Lock.NONE ? attempts.recordFailure(context, venueAccountId) : null;
             audit.write(context, AuditRecord.builder(VenueAccountAuditAction.OWNER_PASSWORD_REFUSED,
                             AuditActor.venue(venueAccountId), venueAccountId, correlationId)
                     .ownerPasswordCheck(OwnerPasswordCheck.failed())
-                    .payload(Map.of("protectedAction", protectedAction, "lockedOut", lockedOut))
+                    .payload(Map.of("protectedAction", protectedAction, "lockedOut", lock != Lock.NONE,
+                            "longLocked", lock == Lock.LONG_LOCKED))
                     .build());
+            if (failure == Failure.LONG_LOCK_STARTED) {
+                audit.write(context, AuditRecord.builder(VenueAccountAuditAction.OWNER_PASSWORD_LONG_LOCKED,
+                                AuditActor.venue(venueAccountId), venueAccountId, correlationId)
+                        .payload(Map.of("protectedAction", protectedAction,
+                                "lockouts", OwnerPasswordAttempts.LOCKOUTS_BEFORE_LONG_LOCK))
+                        .build());
+                alerts.raise(context, new NewAdminAlert(AdminAlertKind.OWNER_PASSWORD_LONG_LOCK,
+                        AdminAlertSeverity.SEV_2, "VENUE_ACCOUNT", venueAccountId,
+                        Map.of("lockouts", OwnerPasswordAttempts.LOCKOUTS_BEFORE_LONG_LOCK), correlationId));
+            }
             return null;
         }
     }

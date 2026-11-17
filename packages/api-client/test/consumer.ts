@@ -31,7 +31,8 @@ export async function documentedCallsCompile(): Promise<void> {
     // E7-12), across its error statuses. A 500 has no `error` at all: only meta.
     expectType<Equal<typeof disabled.error.error.code,
       | "RESOURCE_HAS_BLOCKING_RESERVATIONS" | "OWNER_PASSWORD_REQUIRED" | "OWNER_PASSWORD_INVALID"
-      | "VALIDATION_FAILED" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "RATE_LIMITED">>();
+      | "OWNER_PASSWORD_LOCKED" | "VALIDATION_FAILED" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND"
+      | "RATE_LIMITED">>();
   }
 }
 
@@ -39,9 +40,10 @@ type DisableResponses = paths["/api/v1/venue/resources/{resourceId}/disable"]["p
 type Disable422 = DisableResponses[422]["content"]["application/json"];
 type Disable423 = DisableResponses[423]["content"]["application/json"];
 
-// Per status: one code for 422, two for 423.
+// Per status: one code for 422, three for 423 (the long lock of PCR-012 added by every Owner-PIN route, E7-121).
 expectType<Equal<Disable422["error"]["code"], "RESOURCE_HAS_BLOCKING_RESERVATIONS">>();
-expectType<Equal<Disable423["error"]["code"], "OWNER_PASSWORD_REQUIRED" | "OWNER_PASSWORD_INVALID">>();
+expectType<Equal<Disable423["error"]["code"],
+  "OWNER_PASSWORD_REQUIRED" | "OWNER_PASSWORD_INVALID" | "OWNER_PASSWORD_LOCKED">>();
 // The shared envelope is kept: meta, field and details as ErrorResponse defines them.
 expectType<Equal<Disable423["meta"], Schemas["ResponseMeta"]>>();
 expectType<Equal<Disable423["error"]["details"], Schemas["ErrorBody"]["details"]>>();

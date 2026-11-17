@@ -20,7 +20,9 @@ import ps.e7gz.common.command.CommandContext;
  * {@link OwnerPasswordCheck}. A wrong one rolls the command back; the gate then records the failure in a separate
  * transaction (audit row and attempt counter, arch 10 §3.1) and answers {@code 423 OWNER_PASSWORD_INVALID}. While the
  * account is locked out (5 wrong passwords in 15 minutes) every protected action answers {@code 429 RATE_LIMITED}
- * without checking the password. A right password whose action is then refused - after the check, in the same attempt,
+ * without checking the password. After 3 such lockouts within 24 hours the long lock (PCR-012, E7-121) answers
+ * {@code 423 OWNER_PASSWORD_LOCKED} instead, also without checking it, until the Platform Admin resets the Owner
+ * Password; it starts with an audit row and one Platform Admin alert. A right password whose action is then refused - after the check, in the same attempt,
  * with a code the API answers (an {@code ApiException}, at commit included, or a database guard with a code) - rolls
  * back too; the gate then records one {@code OWNER_PASSWORD_ACCEPTED} audit row with that code in a separate
  * transaction, not counted as an attempt (PO decision Q2, 24 Oct 2026). An unexpected failure (HTTP 500) is not a
