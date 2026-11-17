@@ -26114,7 +26114,7 @@
     },
     "/api/v1/customer/auth/password-reset/request": {
       "post": {
-        "description": "By phone OTP only: reset by email waits for email verification (PO decision 11 Oct 2026, E7-54). A phone with no account, or whose account never verified it, is NOT_FOUND, like otp/send. The OTP limits of FR-ACC-04 apply; a new code supersedes the previous one.",
+        "description": "By phone OTP only: reset by email waits for email verification (PO decision 11 Oct 2026, E7-54). A phone with no account, or whose account never verified it, is NOT_FOUND, like otp/send. The OTP limits of FR-ACC-04 apply; a new code supersedes the previous one. The 4th request for one phone within 60 minutes is 429 RATE_LIMITED and sends no SMS (arch 10 §7, E7-120).",
         "operationId": "customerRequestPasswordReset",
         "parameters": [
           {
@@ -27246,7 +27246,7 @@
         ]
       },
       "post": {
-        "description": "Checks the twenty creation conditions of FR-BOK-11 in one transaction. Displayed availability is not a promise: a slot taken meanwhile is 409 SLOT_NO_LONGER_AVAILABLE (FR-AVL-11). Duration and lead time are product rules, answered with their 422 codes, not VALIDATION_FAILED. playMode is required for PLAYSTATION and absent otherwise. A venue with no price for the activity fails under FR-BOK-11 item 20 as RESOURCE_NOT_ELIGIBLE (PO decision 5 Oct 2026). An unknown resourceId is NOT_FOUND (PO decision 9 Oct 2026). Implemented by E7-46.",
+        "description": "Checks the twenty creation conditions of FR-BOK-11 in one transaction. Displayed availability is not a promise: a slot taken meanwhile is 409 SLOT_NO_LONGER_AVAILABLE (FR-AVL-11). Duration and lead time are product rules, answered with their 422 codes, not VALIDATION_FAILED. playMode is required for PLAYSTATION and absent otherwise. A venue with no price for the activity fails under FR-BOK-11 item 20 as RESOURCE_NOT_ELIGIBLE (PO decision 5 Oct 2026). An unknown resourceId is NOT_FOUND (PO decision 9 Oct 2026). Implemented by E7-46. The 21st booking one customer creates within 60 minutes is 429 RATE_LIMITED, checked before every other condition; cancelled bookings count too (arch 10 §7, E7-120).",
         "operationId": "customerCreateBooking",
         "parameters": [
           {

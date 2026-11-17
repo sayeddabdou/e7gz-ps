@@ -1,5 +1,6 @@
 package ps.e7gz.identity.internal;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -199,8 +200,18 @@ public class CustomerProfiles {
     // ------------------------------------------------------------------------------------------------- reset
 
     /**
+     * arch 10 §7 (E7-120): at most 3 password-reset codes per phone in the last 60 minutes, counted exactly from
+     * {@code iam.otp_challenge} (PO decision 16 Nov 2026).
+     */
+    static final int MAX_PASSWORD_RESETS_PER_WINDOW = 3;
+    static final Duration PASSWORD_RESET_LIMIT_WINDOW = Duration.ofMinutes(60);
+
+    /**
      * FR-ACC-09: a {@code PASSWORD_RESET} code to the account's verified phone. A phone with no account, or whose
-     * account never verified it, is {@code NOT_FOUND}, like {@code /otp/send} (PO decision 11 Oct 2026, E7-54).
+     * account never verified it, is {@code NOT_FOUND}, like {@code /otp/send} (PO decision 11 Oct 2026, E7-54), and is
+     * not counted. The 4th request for one phone within 60 minutes is {@code 429 RATE_LIMITED} and sends no SMS (arch
+     * 10 §7, E7-120); it is checked in the command that issues the code, with the account locked, so two requests at
+     * once cannot both pass.
      */
     public UUID requestPasswordReset(String rawPhone) {
         String phone = e164(rawPhone);
@@ -215,6 +226,11 @@ public class CustomerProfiles {
                               FROM iam.user_account WHERE id = :id""")
                     .param("phone", phone).param("id", userId).query(Boolean.class).single());
             if (stillVerified) {
+                // arch 10 §7 (E7-120): the 4th reset for this phone in the last 60 minutes sends nothing
+                if (OtpChallenges.countIssuedSince(ctx, phone, OtpPurpose.PASSWORD_RESET,
+                        ctx.commandNow().minus(PASSWORD_RESET_LIMIT_WINDOW)) >= MAX_PASSWORD_RESETS_PER_WINDOW) {
+                    throw new ApiException(ApiErrorCode.RATE_LIMITED);
+                }
                 OtpChallenges.issue(ctx, outbox, challengeId, userId, OtpPurpose.PASSWORD_RESET, phone, codeHash,
                         sealed);
             }

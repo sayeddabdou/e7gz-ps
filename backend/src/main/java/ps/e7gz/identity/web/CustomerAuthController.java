@@ -132,9 +132,12 @@ public class CustomerAuthController {
             summary = "Send a password reset code to the account's verified phone (FR-ACC-09)",
             description = "By phone OTP only: reset by email waits for email verification (PO decision 11 Oct 2026, "
                     + "E7-54). A phone with no account, or whose account never verified it, is NOT_FOUND, like "
-                    + "otp/send. The OTP limits of FR-ACC-04 apply; a new code supersedes the previous one.")
+                    + "otp/send. The OTP limits of FR-ACC-04 apply; a new code supersedes the previous one. The 4th "
+                    + "request for one phone within 60 minutes is 429 RATE_LIMITED and sends no SMS (arch 10 §7, "
+                    + "E7-120).")
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
-    @ApiError(status = 429, codes = {ApiErrorCode.OTP_RESEND_TOO_SOON, ApiErrorCode.OTP_HOURLY_LIMIT_REACHED})
+    @ApiError(status = 429, codes = {ApiErrorCode.OTP_RESEND_TOO_SOON, ApiErrorCode.OTP_HOURLY_LIMIT_REACHED,
+            ApiErrorCode.RATE_LIMITED})
     public DataResponse<CustomerOtpChallengeView> requestPasswordReset(
             @Valid @RequestBody CustomerPasswordResetRequest request) {
         return meta.data(new CustomerOtpChallengeView(profiles.requestPasswordReset(request.phone())));
