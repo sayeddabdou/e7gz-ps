@@ -30,7 +30,6 @@ class Sprint4StubHttpTest extends IntegrationTest {
 
     private static final String USER = "/api/v1/admin/users/" + UUID.randomUUID();
     private static final String BAN = USER + "/bans/" + UUID.randomUUID();
-    private static final String PLAYER = "/api/v1/admin/verified-players/" + UUID.randomUUID();
     private static final String REASON = "{\"reason\":\"Venue confirmed the customer was present.\"}";
 
     @Autowired
@@ -48,17 +47,9 @@ class Sprint4StubHttpTest extends IntegrationTest {
         admin = bearer(AuthSubjectType.ADMIN, Fixtures.anAdmin().create().id());
     }
 
-    // E7-71 filled /customer/account-standing (E7-72 owns its Verified Player rules): TrustRoutesHttpTest
-    // E7-67 filled /customer/referrals: ReferralHttpTest
-
-    @Test
-    void adminVerifiedPlayerRoutesAreStubs() throws Exception {
-        // E7-71 filled the trust adjustment and the ban lift / shorten / correct: TrustRoutesHttpTest
-        notImplemented(get("/api/v1/admin/verified-players"), admin);               // E7-72
-        notImplemented(write(post(PLAYER + "/suspend"), REASON), admin);            // E7-72
-        notImplemented(write(post(PLAYER + "/revoke"), REASON), admin);             // E7-72
-        notImplemented(write(post(PLAYER + "/restore"), REASON), admin);            // E7-72
-    }
+    // E7-71 filled /customer/account-standing, the trust adjustment and the ban lift / shorten / correct:
+    // TrustRoutesHttpTest. E7-72 filled the Verified Player part of the standing and the four /admin/verified-players
+    // routes: AdminVerifiedPlayerHttpTest. E7-67 filled /customer/referrals: ReferralHttpTest
 
     // E7-70 filled the four /admin/bookings/{bookingId}/attendance routes: AdminAttendanceHttpTest
 

@@ -20,6 +20,11 @@ public enum AdminAlertKind {
     /** An account reached the per-account login limit (raised by E7-57). */
     ACCOUNT_LOGIN_LIMIT_REACHED,
     /**
+     * Spec v5 section 52.6 "Verified Player Revoked" (FR-NTF-10): a VERIFIED -> REVOKED transition, by an admin or by a
+     * trust correction (raised by E7-72; PO decision 19 Oct 2026: the admin alert inbox only).
+     */
+    ADMIN_VERIFIED_PLAYER_REVOKED,
+    /**
      * Product v5.0 section 52.6 "User Temporary Ban Activated": a replay threshold crossing activated a Ban (raised by
      * E7-71 in the activating command). The admin alert inbox only - no per-admin notification (PO decision 20 Oct 2026).
      */
