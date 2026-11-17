@@ -10,11 +10,13 @@ import ps.e7gz.common.codes.AttendanceResult;
 import ps.e7gz.common.codes.TrustEventType;
 import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.trust.api.BookingOutcomes;
+import ps.e7gz.trust.api.TrustReconciler;
 
 /**
  * {@code trust.trust_event} and {@code trust.trust_projection} on the command's transaction. The database assigns the
  * event sequence and checks the subject, the effective time and the shared command instant
- * ({@code trust.prepare_trust_event_insert}); {@code trust.refresh_projection} recomputes the projection by full replay.
+ * ({@code trust.prepare_trust_event_insert}); the {@link TrustReconciler} then recomputes the projection by full replay
+ * and settles every newly derived consequence (E7-70, arch 07 section 4).
  * Every booking outcome is written by the one statement below (E7-59 no-show, E7-61 completion, E7-69 interruption).
  */
 @Component
@@ -25,11 +27,15 @@ class JdbcBookingOutcomes implements BookingOutcomes {
             VALUES (:id, :type, :userId, :occurredAt, :effectiveAt, :bookingId)
             """;
 
-    static final String REFRESH_PROJECTION = "SELECT trust.refresh_projection(:userId)";
-
     @Override
     public void recordNoShow(CommandContext command, UUID customerId, UUID bookingId, Instant startAt) {
         record(command, TrustEventType.BOOKING_NO_SHOW, customerId, bookingId, startAt);
+    }
+
+    private final TrustReconciler reconciler;
+
+    JdbcBookingOutcomes(TrustReconciler reconciler) {
+        this.reconciler = reconciler;
     }
 
     @Override
@@ -49,7 +55,7 @@ class JdbcBookingOutcomes implements BookingOutcomes {
         record(command, TrustEventType.BOOKING_ATTENDED_INTERRUPTED, customerId, bookingId, startAt);
     }
 
-    private static void record(CommandContext command, TrustEventType type, UUID customerId, UUID bookingId,
+    private void record(CommandContext command, TrustEventType type, UUID customerId, UUID bookingId,
                                Instant startAt) {
         Objects.requireNonNull(customerId, "customerId");
         command.jdbc().sql(INSERT_OUTCOME)
@@ -60,7 +66,7 @@ class JdbcBookingOutcomes implements BookingOutcomes {
                 .param("effectiveAt", utc(startAt))
                 .param("bookingId", Objects.requireNonNull(bookingId, "bookingId"))
                 .update();
-        command.jdbc().sql(REFRESH_PROJECTION).param("userId", customerId).query().singleRow();
+        reconciler.reconcile(command, customerId);                                       // arch 07 section 4
     }
 
     private static OffsetDateTime utc(Instant instant) {

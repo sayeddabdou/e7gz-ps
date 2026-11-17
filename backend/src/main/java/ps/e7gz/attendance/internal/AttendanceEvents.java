@@ -6,6 +6,7 @@ import java.util.Map;
 import ps.e7gz.booking.api.AttendanceBookings.Booking;
 import ps.e7gz.common.codes.AttendanceResult;
 import ps.e7gz.common.codes.BookingSource;
+import ps.e7gz.common.codes.BookingStatus;
 import ps.e7gz.messaging.api.IntegrationEvents;
 import ps.e7gz.messaging.api.NewOutboxEvent;
 
@@ -18,7 +19,8 @@ import ps.e7gz.messaging.api.NewOutboxEvent;
  * {@code bookingId, customerId, venueId, resourceId, startAt, endAt} - on aggregate {@code BOOKING} with the Booking ID,
  * so every consumer deep-links to the same booking (FR-NTF-04); a Manual Booking's also carries {@code source} MANUAL
  * and a null {@code customerId}, as every Manual Booking event does (E7-48, D6). The outbox adds {@code correlationId}
- * and {@code occurredAt}. Instants are ISO-8601 UTC strings.
+ * and {@code occurredAt}. Instants are ISO-8601 UTC strings. {@code AttendanceCorrected} (E7-70) is the Platform
+ * Admin's correction or no-show reversal.
  */
 final class AttendanceEvents {
 
@@ -53,5 +55,37 @@ final class AttendanceEvents {
         payload.put("startAt", booking.startAt().toString());
         payload.put("endAt", booking.endAt().toString());
         return payload;
+    }
+
+    /** What an Admin attendance command did ({@code AttendanceCorrected.correction}). */
+    enum Correction {
+        CHECK_IN_REVERSED,
+        LATE_PRESENT_REVERSED,
+        NO_SHOW_REVERSED,
+        ATTENDANCE_CORRECTED
+    }
+
+    /**
+     * {@code AttendanceCorrected} of an Admin correction or no-show reversal (E7-70): the {@code BookingCreated} fields
+     * plus {@code correction}, {@code previousResult}, {@code attendanceResult}, {@code bookingStatus} and
+     * {@code correctedAt}. Only Online Bookings are corrected, so {@code customerId} is always present.
+     */
+    static NewOutboxEvent corrected(Booking booking, Correction correction, AttendanceResult previous,
+                                    AttendanceResult result, BookingStatus status, Instant at) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("bookingId", booking.bookingId());
+        payload.put("customerId", booking.customerId());
+        payload.put("venueId", booking.venueId());
+        payload.put("resourceId", booking.resourceId());
+        payload.put("startAt", booking.startAt().toString());
+        payload.put("endAt", booking.endAt().toString());
+        payload.put("correction", correction.name());
+        // null while the attendance is not resolved yet: an evidence reversal on an ACTIVE booking
+        payload.put("previousResult", previous == null ? null : previous.name());
+        payload.put("attendanceResult", result == null ? null : result.name());
+        payload.put("bookingStatus", status.name());
+        payload.put("correctedAt", at.toString());
+        return new NewOutboxEvent(IntegrationEvents.ATTENDANCE_CORRECTED, BOOKING_AGGREGATE, booking.bookingId(),
+                payload);
     }
 }

@@ -12,6 +12,7 @@ import ps.e7gz.common.codes.ActorType;
 import ps.e7gz.common.codes.BookingEventType;
 import ps.e7gz.common.codes.BookingSource;
 import ps.e7gz.common.codes.BookingStatus;
+import ps.e7gz.common.codes.BookingTerminalReason;
 import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.scheduling.api.ScheduledJobs;
@@ -39,6 +40,16 @@ class JdbcAttendanceBookings implements AttendanceBookings {
             UPDATE booking.booking
                SET status = 'NO_SHOW', terminal_at = :at, version = version + 1
              WHERE id = :id AND status = :from AND source = 'ONLINE'
+            """;
+
+    /**
+     * E7-70: NO_SHOW -> COMPLETED after the original endAt (FR-ATT-12): terminal with no Booking Reason Code and no fee
+     * treatment, dated at the reversal; the planned interval is not rewritten.
+     */
+    static final String COMPLETE_REVERSED_NO_SHOW = """
+            UPDATE booking.booking
+               SET status = 'COMPLETED', terminal_at = :at, version = version + 1
+             WHERE id = :id AND status = 'NO_SHOW' AND source = 'ONLINE'
             """;
 
     private final VenueAnswerStore answers;
@@ -90,15 +101,69 @@ class JdbcAttendanceBookings implements AttendanceBookings {
     @Override
     public void recordVenueEvent(CommandContext command, UUID bookingId, Instant at, BookingEventType event,
                                  UUID venueAccountId) {
+        insertEvent(command, bookingId, at, event, ActorType.VENUE,
+                Objects.requireNonNull(venueAccountId, "venueAccountId"));
+    }
+
+    @Override
+    public Optional<Reversal> reverseNoShow(CommandContext command, UUID bookingId, Instant at, UUID adminId) {
+        Objects.requireNonNull(adminId, "adminId");
+        Booking booking = find(command, bookingId).orElse(null);
+        if (booking == null || booking.status() != BookingStatus.NO_SHOW) {
+            return Optional.empty();
+        }
+        boolean beforeEnd = reversalTarget(at, booking.endAt()) == BookingStatus.CANCELLED;
+        boolean moved = beforeEnd
+                ? answers.terminate(command, bookingId, BookingStatus.NO_SHOW, BookingStatus.CANCELLED,
+                        BookingTerminalReason.ADMIN_NO_SHOW_REVERSAL, at, null)
+                : command.jdbc().sql(COMPLETE_REVERSED_NO_SHOW).param("id", bookingId).param("at", utc(at))
+                        .update() == 1;
+        if (!moved) {
+            return Optional.empty();
+        }
+        BookingStatus to = beforeEnd ? BookingStatus.CANCELLED : BookingStatus.COMPLETED;
+        UUID history = answers.insertTransition(command, bookingId, at, BookingStatus.NO_SHOW, to,
+                beforeEnd ? BookingTerminalReason.ADMIN_NO_SHOW_REVERSAL : null, ActorType.ADMIN, adminId,
+                CorrelationId.require());
+        return Optional.of(new Reversal(to, history));
+    }
+
+    /**
+     * FRS section 2.1 ({@code tr_03_booking_transition_guard}): a no-show reversed before the original endAt is
+     * CANCELLED, at or after it COMPLETED - endAt itself belongs to "after" (half-open, as every deadline, FR-AVL-15).
+     */
+    static BookingStatus reversalTarget(Instant at, Instant endAt) {
+        return at.isBefore(endAt) ? BookingStatus.CANCELLED : BookingStatus.COMPLETED;
+    }
+
+    @Override
+    public Optional<BookingTerminalReason> terminalReason(CommandContext command, UUID bookingId) {
+        return command.jdbc().sql("SELECT b.terminal_reason FROM booking.booking b WHERE b.id = :id")
+                .param("id", Objects.requireNonNull(bookingId, "bookingId"))
+                .query((rs, n) -> Optional.ofNullable(rs.getString("terminal_reason")))
+                .optional()
+                .flatMap(reason -> reason.map(BookingTerminalReason::valueOf));
+    }
+
+    @Override
+    public UUID recordAdminEvent(CommandContext command, UUID bookingId, Instant at, BookingEventType event,
+                                 UUID adminId) {
+        return insertEvent(command, bookingId, at, event, ActorType.ADMIN, Objects.requireNonNull(adminId, "adminId"));
+    }
+
+    private static UUID insertEvent(CommandContext command, UUID bookingId, Instant at, BookingEventType event,
+                                    ActorType actorType, UUID actorId) {
+        UUID id = UUID.randomUUID();
         command.jdbc().sql(JdbcLateConfirmBookings.INSERT_EVENT)
-                .param("id", UUID.randomUUID())
+                .param("id", id)
                 .param("bookingId", Objects.requireNonNull(bookingId, "bookingId"))
                 .param("occurredAt", utc(at))
                 .param("eventType", Objects.requireNonNull(event, "event").name())
-                .param("actorType", ActorType.VENUE.name())
-                .param("actorId", Objects.requireNonNull(venueAccountId, "venueAccountId"))
+                .param("actorType", actorType.name())
+                .param("actorId", actorId)
                 .param("correlationId", CorrelationId.require())
                 .update();
+        return id;
     }
 
     private static OffsetDateTime utc(Instant instant) {

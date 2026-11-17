@@ -17,8 +17,9 @@ import ps.e7gz.loyalty.api.BookingFeeRefunds;
 
 /**
  * {@code loyalty.begin_command} and {@code loyalty.record_refund} on the command's transaction: the producer functions
- * are the only writers of {@code loyalty.booking_fee_refund} (ADR-026). No admin service-loss assessment: the reasons
- * a venue answer ends in are never ADMIN_*.
+ * are the only writers of {@code loyalty.booking_fee_refund} (ADR-026). A venue answer never ends in an ADMIN_* reason,
+ * so it needs no service-loss assessment; the Admin no-show reversal (E7-70) records one with
+ * {@code loyalty.assess_service_loss}.
  */
 @Component
 class JdbcBookingFeeRefunds implements BookingFeeRefunds {
@@ -30,6 +31,10 @@ class JdbcBookingFeeRefunds implements BookingFeeRefunds {
      */
     static final String BEGIN_MANY = "SELECT loyalty.begin_command(CAST(:users AS uuid[]), :correlation)";
     static final String RECORD = "SELECT loyalty.record_refund(:booking, :history, NULL)";
+
+    /** E7-70, admin runtime only: the explicit service-loss assessment of an Admin reason and the decision on it. */
+    static final String ASSESS = "SELECT loyalty.assess_service_loss(:booking, :history, :loss, :reason)";
+    static final String RECORD_ASSESSED = "SELECT loyalty.record_refund(:booking, :history, :assessment)";
 
     /** The order a batch is recorded in: by Customer, as the lock set orders them, then by booking. */
     static final Comparator<Decision> ORDER =
@@ -67,6 +72,26 @@ class JdbcBookingFeeRefunds implements BookingFeeRefunds {
                     .query(UUID.class).single());
         }
         return Collections.unmodifiableMap(refunds);
+    }
+
+    @Override
+    public UUID recordAdminDecision(CommandContext command, UUID adminId, UUID customerId, UUID bookingId,
+                                    UUID historyId, boolean serviceLoss, String reason) {
+        Objects.requireNonNull(command, "command");
+        Objects.requireNonNull(bookingId, "bookingId");
+        Objects.requireNonNull(historyId, "historyId");
+        command.jdbc().sql(JdbcBookingRewards.BEGIN_ADMIN)
+                .param("user", Objects.requireNonNull(customerId, "customerId"))
+                .param("admin", Objects.requireNonNull(adminId, "adminId"))
+                .param("correlation", CorrelationId.require())
+                .query().singleRow();
+        UUID assessment = command.jdbc().sql(ASSESS)
+                .param("booking", bookingId).param("history", historyId).param("loss", serviceLoss)
+                .param("reason", Objects.requireNonNull(reason, "reason"))
+                .query(UUID.class).single();
+        return command.jdbc().sql(RECORD_ASSESSED)
+                .param("booking", bookingId).param("history", historyId).param("assessment", assessment)
+                .query(UUID.class).single();
     }
 
     /** The whole batch checked before any SQL, in recording order; a booking twice is a caller defect. */

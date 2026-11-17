@@ -187,6 +187,61 @@ final class BookingStates {
         });
     }
 
+    /**
+     * E7-70 (E7-69 carry-forward): a booking the real command ended NO_SHOW, moved back in time by {@code by}, whole -
+     * its interval and terminal instant, its released BOOKING reservation, its no-show evidence and resolution, its
+     * history rows, its canonical Trust outcome and the reward application anchored on it
+     * ({@code loyalty.booking_completion_anchor}) together - so the no-show lies days in the past, as a no-show
+     * recorded on that day would. Every instant keeps its distance to the others, so every guard that compares them
+     * (the release at the no-show instant, the outcome at the booking's start) still holds when a later command
+     * commits. The Trust Projection is left as it is: the next reconciliation of the Customer recomputes it. Its jobs
+     * and audit rows are left as they are, as {@link #shiftBack} leaves them.
+     */
+    static void shiftNoShowBack(UUID bookingId, Duration by) {
+        double seconds = by.toNanos() / 1e9;
+        VenueAnswerDb.withoutTriggers(jdbc -> {
+            jdbc.sql("""
+                            UPDATE booking.booking
+                               SET start_at = start_at - make_interval(secs => :by),
+                                   end_at = end_at - make_interval(secs => :by),
+                                   terminal_at = terminal_at - make_interval(secs => :by)
+                             WHERE id = :id AND status = 'NO_SHOW'""")
+                    .param("by", seconds).param("id", bookingId).update();
+            jdbc.sql("""
+                            UPDATE inventory.resource_reservation
+                               SET planned_start = planned_start - make_interval(secs => :by),
+                                   planned_end = planned_end - make_interval(secs => :by),
+                                   planned_range = tstzrange(planned_start - make_interval(secs => :by),
+                                                             planned_end - make_interval(secs => :by), '[)'),
+                                   actual_reservation_start = actual_reservation_start - make_interval(secs => :by),
+                                   actual_reservation_release_at =
+                                       actual_reservation_release_at - make_interval(secs => :by)
+                             WHERE booking_id = :id AND reservation_type = 'BOOKING'""")
+                    .param("by", seconds).param("id", bookingId).update();
+            jdbc.sql("""
+                            UPDATE attendance.attendance_record
+                               SET no_show_at = no_show_at - make_interval(secs => :by),
+                                   resolved_at = resolved_at - make_interval(secs => :by)
+                             WHERE booking_id = :id""")
+                    .param("by", seconds).param("id", bookingId).update();
+            jdbc.sql("""
+                            UPDATE booking.booking_history SET occurred_at = occurred_at - make_interval(secs => :by)
+                             WHERE booking_id = :id""")
+                    .param("by", seconds).param("id", bookingId).update();
+            jdbc.sql("""
+                            UPDATE trust.trust_event
+                               SET occurred_at = occurred_at - make_interval(secs => :by),
+                                   effective_at = effective_at - make_interval(secs => :by)
+                             WHERE booking_id = :id""")
+                    .param("by", seconds).param("id", bookingId).update();
+            jdbc.sql("""
+                            UPDATE loyalty.reward_application
+                               SET configuration_as_of = configuration_as_of - make_interval(secs => :by)
+                             WHERE booking_id = :id""")
+                    .param("by", seconds).param("id", bookingId).update();
+        });
+    }
+
     private static void moveInterval(org.springframework.jdbc.core.simple.JdbcClient jdbc, UUID bookingId,
                                      Instant startAt, String status) {
         jdbc.sql("""

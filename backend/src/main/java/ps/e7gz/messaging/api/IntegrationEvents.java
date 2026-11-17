@@ -171,6 +171,17 @@ public final class IntegrationEvents {
     public static final String ATTENDANCE_RESOLVED = "AttendanceResolved";
 
     /**
+     * {@code {bookingId, customerId, venueId, resourceId, startAt, endAt, correction, previousResult, attendanceResult,
+     * bookingStatus, correctedAt}}, aggregate {@code BOOKING}: a Platform Admin changed the booking's attendance
+     * (arch 03 section 13, arch 08 section 3.2; FR-ATT-11..13; E7-70). {@code correction} is {@code NO_SHOW_REVERSED}
+     * - the no-show was reversed, the booking moved NO_SHOW -> {@code bookingStatus} (CANCELLED before the original
+     * endAt, COMPLETED at or after it) and resolved {@code attendanceResult} - or {@code ATTENDANCE_CORRECTED}, a resolved
+     * result replaced with the status unchanged. One event per Admin command, written in its transaction; there is no
+     * separate {@code BookingCancelled} or {@code BookingCompleted} for a reversal (one fact, one event).
+     */
+    public static final String ATTENDANCE_CORRECTED = "AttendanceCorrected";
+
+    /**
      * {@code {venueId, resourceId}}, aggregate {@code RESOURCE}: the venue disabled a room (FR-VEN-03; E7-26, published
      * since E7-56, PO decision 12 Oct 2026). Its four siblings below carry the same payload.
      */
