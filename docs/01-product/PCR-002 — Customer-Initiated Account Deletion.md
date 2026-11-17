@@ -2,6 +2,7 @@
 # Customer-Initiated Account Deletion
 
 **Status:** APPROVED / INCORPORATED  
+**Amended by:** PCR-015 (16 November 2026) — the Wallet balance and the Points are lost at deletion, and the Customer is told first  
 **Date:** 25 September 2026  
 **Applies to:** Product Specification v5.0 §§7.7, 53.5; `FR-ACC-10`
 

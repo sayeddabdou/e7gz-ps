@@ -34,6 +34,18 @@ class OnlineBookingStore {
             """;
 
     /**
+     * The Customer's Online Bookings created after {@code :since} (arch 10 §7 booking-creation limit, E7-120): every
+     * status counts, a cancelled one too; Manual Bookings hold no customer. On {@code ix_booking_customer_status_start}.
+     */
+    static final String COUNT_CREATED_SINCE = """
+            SELECT count(*)
+              FROM booking.booking b
+             WHERE b.customer_id = :customerId
+               AND b.source = 'ONLINE'
+               AND b.created_at > CAST(:since AS timestamptz)
+            """;
+
+    /**
      * FR-BOK-04 on the same column {@code ex_customer_no_overlap} uses; half-open, so back-to-back does not overlap.
      * Every counted commitment, AWAITING_CUSTOMER_CONFIRMATION included: the constraint exempts AWAITING (E7-58 D1).
      */
@@ -73,6 +85,13 @@ class OnlineBookingStore {
     long countCommitments(CommandContext command, UUID customerId) {
         return command.jdbc().sql(COUNT_COMMITMENTS)
                 .param("customerId", Objects.requireNonNull(customerId, "customerId"))
+                .query(Long.class).single();
+    }
+
+    long countCreatedSince(CommandContext command, UUID customerId, Instant since) {
+        return command.jdbc().sql(COUNT_CREATED_SINCE)
+                .param("customerId", Objects.requireNonNull(customerId, "customerId"))
+                .param("since", utc(since))
                 .query(Long.class).single();
     }
 

@@ -56,6 +56,23 @@ final class OtpChallenges {
                 Map.of("challengeId", id, "sealedCode", sealedCode)));
     }
 
+    /**
+     * The codes of {@code purpose} sent to {@code destination} after {@code since}, superseded or used ones too (arch
+     * 10 §7 password-reset limit, E7-120). On {@code ix_otp_destination_issued}.
+     */
+    static long countIssuedSince(CommandContext ctx, String destination, OtpPurpose purpose, Instant since) {
+        return ctx.jdbc().sql("""
+                        SELECT count(*)
+                          FROM iam.otp_challenge
+                         WHERE destination = :destination AND purpose = :purpose
+                           AND issued_at > CAST(:since AS timestamptz)
+                        """)
+                .param("destination", destination)
+                .param("purpose", purpose.name())
+                .param("since", utc(since))
+                .query(Long.class).single();
+    }
+
     static Optional<Challenge> find(CommandContext ctx, UUID id, OtpPurpose purpose) {
         return ctx.jdbc().sql("""
                         SELECT user_id, destination, code_hash, issued_at, expires_at, attempts, consumed_at, superseded_at

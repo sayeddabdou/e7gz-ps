@@ -14,6 +14,8 @@ import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.correlation.CorrelationId;
+import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.money.Money;
 import ps.e7gz.inventory.ledger.api.NewReservation;
 import ps.e7gz.inventory.ledger.api.ReservationLedger;
@@ -31,7 +33,7 @@ import ps.e7gz.venue.api.VenueContacts;
 
 /**
  * — → PENDING (arch 06 §1.2, FR-BOK-11, FR-BOK-13, arch 01 §11.1): in one {@code READ COMMITTED} command transaction,
- * the twenty conditions, then the PENDING Online Booking with its snapshots, its BOOKING reservation (and the ledger's
+ * the booking-creation limit (arch 10 §7, E7-120), the twenty conditions, then the PENDING Online Booking with its snapshots, its BOOKING reservation (and the ledger's
  * {@code ReservationHeld}), the first history row, the venue response deadline job (T1) and the {@code BookingCreated}
  * event. All commit together or not at all (I2, EC-AVAI-001). When the stored Booking Fee is above zero, the Customer's
  * Points pay what they cover and the Wallet pays the rest if it holds all of it, in the same transaction (PCR-009,
@@ -50,6 +52,13 @@ final class CreateOnlineBookingCommand implements Command<CreatedBooking> {
 
     /** FR-BOK-13, Product v5.0 §23.1: the venue has 10 minutes; {@code tr_21_booking_online_intake} requires exactly this. */
     static final Duration VENUE_RESPONSE_WINDOW = Duration.ofMinutes(10);
+
+    /**
+     * arch 10 §7 (E7-120): at most 20 Online Bookings created per Customer in the last 60 minutes, counted exactly
+     * (PO decision 16 Nov 2026). Abuse control only: the Product limit stays FR-BOK-03's 4 commitments.
+     */
+    static final int MAX_CREATED_PER_WINDOW = 20;
+    static final Duration CREATION_LIMIT_WINDOW = Duration.ofMinutes(60);
 
     /** T1 (arch 08 §2): the job E7-47 fires at {@code venue_response_expires_at}. */
     static final String VENUE_RESPONSE_EXPIRY = "VENUE_RESPONSE_EXPIRY";
@@ -102,6 +111,7 @@ final class CreateOnlineBookingCommand implements Command<CreatedBooking> {
     @Override
     public CreatedBooking execute(CommandContext context) {
         Instant now = context.commandNow();
+        refuseBeyondCreationLimit(context, now);
         Approval approval = predicate.check(context, request, resource);
         Session session = approval.session();
         UUID bookingId = UUID.randomUUID();
@@ -130,6 +140,19 @@ final class CreateOnlineBookingCommand implements Command<CreatedBooking> {
                 resource.resourceId(), request.startAt(), approval.endAt(), expiresAt, approval.amounts(), now,
                 venue.name(), venue.phone(), approval.resourceName(), resource.activity(), resource.consoleType(),
                 request.playMode(), feePayment);
+    }
+
+    /**
+     * arch 10 §7, E7-120: the 21st Online Booking a Customer creates within 60 minutes is {@code 429 RATE_LIMITED}.
+     * It is checked before every creation condition (PO decision 16 Nov 2026), so it answers even when another rule
+     * would refuse too, and nothing is written: the venue gets no request. The Customer is in this command's lock set,
+     * so two requests at once cannot both pass; a replay with the same Idempotency-Key never runs this command.
+     */
+    private void refuseBeyondCreationLimit(CommandContext context, Instant now) {
+        long created = store.countCreatedSince(context, request.customerId(), now.minus(CREATION_LIMIT_WINDOW));
+        if (created >= MAX_CREATED_PER_WINDOW) {
+            throw new ApiException(ApiErrorCode.RATE_LIMITED);
+        }
     }
 
     /**

@@ -38,6 +38,6 @@ With this rule a guesser gets at most 15 tries before the PIN is frozen and the 
 | PCR-006 | Amended: the long lock is added to the Owner PIN rules |
 | `NFR-16`, architecture 10 §3 and §7 | The 5-per-15-minutes limit stays; the long lock is added after it |
 | `FR-ADM-03` | Unchanged; the existing reset also ends the long lock |
-| API | No new route. A locked PIN answers the existing Owner Password refusal; the Dashboard needs to tell the long lock from the short one (decided in E7-121 with the Clients lane) |
+| API | No new route. The long lock answers its own error code, `OWNER_PASSWORD_LOCKED`, the same for a right and a wrong PIN; the short lockout keeps `RATE_LIMITED` (decided 16 November 2026) |
 | Database | Possibly a counter or a lock marker on the venue account: a new migration if needed (E7-121) |
-| Build plan | E7-121 (backend); the Dashboard text and the Admin alert view follow in the client tasks |
+| Build plan | E7-121 (backend); E7-123 (the Dashboard text, English and Arabic); E7-86 (the Admin alert inbox) |

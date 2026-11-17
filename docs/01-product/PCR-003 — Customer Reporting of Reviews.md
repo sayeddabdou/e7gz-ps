@@ -2,6 +2,7 @@
 # Customer Reporting of Reviews
 
 **Status:** APPROVED / INCORPORATED  
+**Added to by:** PCR-014 (16 November 2026) — a Customer can also block a reviewer  
 **Date:** 25 September 2026  
 **Applies to:** Product Specification v5.0 §49; new requirement `FR-REV-11`
 

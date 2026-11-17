@@ -43,6 +43,7 @@ By creating an account you agree to these Terms and to the Privacy Policy.
 - You may earn points, for example for attended bookings and for inviting friends. Points have **no cash value**, cannot be bought, sold or transferred, and can only be used inside E7GZ PS as the app describes.
 - A referral reward is given once per new friend who verifies their account. Fake or self-made referrals are cancelled and their points removed.
 - The wallet holds booking-fee refunds only. You cannot add money to it or withdraw from it.
+- If you delete your account, your points and any wallet balance are lost. The app shows both before you confirm.
 - Verified Player is a status you earn by attending bookings. It can be suspended or removed if you break these Terms.
 - E7GZ may change how points and rewards work for the future. Changes do not take away what a past booking already gave you, except when a reward was earned by abuse.
 
