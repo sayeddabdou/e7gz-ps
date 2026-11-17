@@ -13,6 +13,7 @@ import { DiscoveryScreen } from "../features/discovery";
 import { AuthFlow, createCustomerAuthApi } from "../features/auth";
 import type { CustomerAuthApi } from "../features/auth/api";
 import { MyBookingsScreen } from "../features/my-bookings";
+import { AccountStandingScreen, PointsScreen, ReferralsScreen, WalletScreen } from "../features/rewards";
 import { createCustomerProfileApi, PasswordResetFlow, ProfileScreen, type CustomerProfileApi } from "../features/profile";
 import {
   createExpoPushAdapter,
@@ -117,6 +118,39 @@ function BookingsScreen({
         onOpenBookingConsumed={onOpenBookingConsumed}
       />
     </SafeAreaView>
+  );
+}
+
+type ProfilePage = "profile" | "standing" | "points" | "wallet" | "referrals";
+
+function ProfileTabScreen({
+  api,
+  profileApi,
+  onLogout,
+  onPasswordResetComplete,
+  onOpenBooking,
+}: {
+  api: ApiClient;
+  profileApi: CustomerProfileApi;
+  onLogout(): void | Promise<void>;
+  onPasswordResetComplete(): void | Promise<void>;
+  onOpenBooking(bookingId: string): void;
+}) {
+  const [page, setPage] = useState<ProfilePage>("profile");
+  if (page === "standing") return <AccountStandingScreen api={api} onBack={() => setPage("profile")} />;
+  if (page === "points") return <PointsScreen api={api} onBack={() => setPage("profile")} onOpenBooking={onOpenBooking} />;
+  if (page === "wallet") return <WalletScreen api={api} onBack={() => setPage("profile")} onOpenBooking={onOpenBooking} />;
+  if (page === "referrals") return <ReferralsScreen api={api} onBack={() => setPage("profile")} />;
+  return (
+    <ProfileScreen
+      api={profileApi}
+      onLogout={onLogout}
+      onPasswordResetComplete={onPasswordResetComplete}
+      onOpenStanding={() => setPage("standing")}
+      onOpenPoints={() => setPage("points")}
+      onOpenWallet={() => setPage("wallet")}
+      onOpenReferrals={() => setPage("referrals")}
+    />
   );
 }
 
@@ -316,7 +350,16 @@ export function App({
             >
               {() => (
                 <SafeAreaView edges={["top"]} style={styles.screen}>
-                  <ProfileScreen api={activeProfileApi} onLogout={logout} onPasswordResetComplete={finishPasswordReset} />
+                  <ProfileTabScreen
+                    api={api}
+                    profileApi={activeProfileApi}
+                    onLogout={logout}
+                    onPasswordResetComplete={finishPasswordReset}
+                    onOpenBooking={(bookingId) => {
+                      setPushBookingId(bookingId);
+                      navigationRef.navigate("bookings");
+                    }}
+                  />
                 </SafeAreaView>
               )}
             </Tab.Screen>

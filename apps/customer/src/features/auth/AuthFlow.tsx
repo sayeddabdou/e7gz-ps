@@ -13,7 +13,7 @@ export function AuthFlow({ api, tokenStore, notice, onAuthenticated, onForgotPas
   const [step, setStep] = useState<Step>("login");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
-  const [form, setForm] = useState({ fullName: "", username: "", phone: "", email: "", password: "", code: "" });
+  const [form, setForm] = useState({ fullName: "", username: "", phone: "", email: "", password: "", code: "", referralCode: "" });
   const [challengeId, setChallengeId] = useState("");
   const [deadline, setDeadline] = useState<string>();
   const [clockOffset, setClockOffset] = useState(0);
@@ -56,7 +56,14 @@ export function AuthFlow({ api, tokenStore, notice, onAuthenticated, onForgotPas
     if (result.ok) await finish(result.value); else setError(authErrorMessage(result.code));
   });
   const submitRegistration = () => run(async () => {
-    const result = await api.register({ fullName: form.fullName, username: form.username, phone: form.phone, email: form.email, password: form.password });
+    const result = await api.register({
+      fullName: form.fullName,
+      username: form.username,
+      phone: form.phone,
+      email: form.email,
+      password: form.password,
+      ...(form.referralCode ? { referralCode: form.referralCode } : {}),
+    });
     if (result.ok) {
       setChallengeId(result.value.challengeId);
       startResendCountdown(result.serverTime);
@@ -94,6 +101,7 @@ export function AuthFlow({ api, tokenStore, notice, onAuthenticated, onForgotPas
               <Field label={t.auth.fields.fullName} value={form.fullName} onChangeText={update("fullName")} />
               <Field label={t.auth.fields.phone} value={form.phone} onChangeText={update("phone")} keyboardType="phone-pad" />
               <Field label={t.auth.fields.email} value={form.email} onChangeText={update("email")} keyboardType="email-address" />
+              <Field label={t.auth.fields.referralCode} value={form.referralCode} onChangeText={update("referralCode")} autoCapitalize="characters" />
             </>
           ) : null}
           {step !== "otp" ? (

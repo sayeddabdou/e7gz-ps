@@ -25,6 +25,12 @@ const detail = {
   nominalBookedMinutes: 120,
   venuePriceTotal: { amount: "400.00", currency: "EGP" as const },
   bookingFee: { amount: "0.00", currency: "EGP" as const, displayAsFree: true },
+  bookingFeePayment: {
+    pointsUsed: 0,
+    paidByPoints: { amount: "0.00", currency: "EGP" as const },
+    paidByWallet: { amount: "0.00", currency: "EGP" as const },
+    leftToPay: { amount: "0.00", currency: "EGP" as const },
+  },
   venueResponsePaused: false,
   lateConfirm: null,
   attendanceResult: null,
@@ -65,6 +71,7 @@ describe("MyBookingsScreen", () => {
 
     fireEvent.press(await screen.findByText("Game Zone"));
     expect(await screen.findByText("+201001234567")).toBeTruthy();
+    expect(screen.queryByText("Points used")).toBeNull();
     view.unmount();
     includePhone = false;
     render(<MyBookingsScreen api={api} />);
@@ -72,6 +79,43 @@ describe("MyBookingsScreen", () => {
     await screen.findByText("Booking details");
     expect(screen.queryByText("Venue phone")).toBeNull();
     expect(screen.queryByText(/contact is no longer/iu)).toBeNull();
+  });
+
+  it("shows the stored fee split on a paid booking detail", async () => {
+    const paidDetail = {
+      ...detail,
+      bookingFee: { amount: "25.00", currency: "EGP" as const, displayAsFree: false },
+      bookingFeePayment: {
+        pointsUsed: 20000,
+        paidByPoints: { amount: "20.00", currency: "EGP" as const },
+        paidByWallet: { amount: "5.00", currency: "EGP" as const },
+        leftToPay: { amount: "0.00", currency: "EGP" as const },
+      },
+    };
+    const api = createCustomerApiClient(config, async (request: Request) => request.url.includes("/bookings/b-1")
+      ? response(paidDetail)
+      : response({ items: [{ ...booking, status: "CONFIRMED", displayBucket: "upcoming" }], nextCursor: null }));
+    render(<MyBookingsScreen api={api} />);
+
+    fireEvent.press(await screen.findByText("Game Zone"));
+    expect(await screen.findByText("20,000 points")).toBeTruthy();
+    expect(screen.getByText("Points used")).toBeTruthy();
+    expect(screen.getByText("Paid by wallet")).toBeTruthy();
+  });
+
+  it("shows a free booking fee without a payment split", async () => {
+    const api = createCustomerApiClient(config, async (request: Request) => request.url.includes("/bookings/b-1")
+      ? response(detail)
+      : response({ items: [booking], nextCursor: null }));
+    render(<MyBookingsScreen api={api} openBookingId="b-1" />);
+
+    await screen.findByText("Booking details");
+    expect(screen.getByText("Booking fee")).toBeTruthy();
+    expect(screen.getByText("Free")).toBeTruthy();
+    expect(screen.queryByText("Points used")).toBeNull();
+    expect(screen.queryByText("Paid by points")).toBeNull();
+    expect(screen.queryByText("Paid by wallet")).toBeNull();
+    expect(screen.queryByText("Left to pay")).toBeNull();
   });
 
   it("opens the exact booking supplied by a push notification", async () => {

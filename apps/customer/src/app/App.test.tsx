@@ -78,6 +78,28 @@ describe("Customer app shell", () => {
     expect(await screen.findByTestId("profile-name")).toBeTruthy();
   });
 
+  it("opens the requirement-driven account screens from Profile", async () => {
+    (globalThis.fetch as jest.Mock).mockImplementation(async (request) => {
+      const url = request instanceof Request ? request.url : String(request);
+      const data = url.endsWith("/api/v1/customer/account-standing") ? {
+        consecutiveNoShows: 0,
+        penaltyStage: 0,
+        currentThreshold: 3,
+        currentBan: null,
+        verifiedPlayer: { qualification: "NOT_QUALIFIED", completedBookings: 2, requiredBookings: 10, status: "NOT_VERIFIED" },
+      } : [];
+      return new Response(JSON.stringify({ data, meta }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    render(<App config={config} tokenStore={tokenStore} profileApi={profileApi} />);
+
+    fireEvent.press(await screen.findByText("Profile"));
+    expect(await screen.findByTestId("profile-name")).toBeTruthy();
+    fireEvent.press(screen.getByRole("button", { name: "Account standing" }));
+
+    expect(await screen.findByRole("header", { name: "Account Standing" })).toBeTruthy();
+    expect(screen.getByText("2 / 10 completed bookings")).toBeTruthy();
+  });
+
   it("logs out even when push-device revocation fails offline", async () => {
     const logout = jest.fn().mockResolvedValue(undefined);
     const pushRegistration: PushRegistration = {

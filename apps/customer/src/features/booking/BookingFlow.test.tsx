@@ -170,6 +170,7 @@ describe("BookingFlow", () => {
     expect(screen.getByText("170.50 EGP")).toBeTruthy();
     expect(screen.getAllByText("341.00 EGP")).toHaveLength(2);
     expect(screen.getByText("Free")).toBeTruthy();
+    expect(screen.queryByText("Points used")).toBeNull();
     expect(screen.getByText("Room 1 · PS5")).toBeTruthy();
     expect(screen.getByText("Mon, Oct 12, 2026")).toBeTruthy();
     expect(screen.getByText("6:00 PM")).toBeTruthy();
@@ -179,6 +180,27 @@ describe("BookingFlow", () => {
     expect(requests[0]!.url).toContain("playMode=SINGLE");
     expect(requests[0]!.url).toContain("startAt=2026-10-12T15%3A00%3A00.000Z");
     expect(requests[0]!.url).toContain("durationMinutes=120");
+  });
+
+  it("shows the API fee split only when the booking fee is above zero", async () => {
+    const paidQuote = {
+      ...quote,
+      bookingFee: { amount: "25.00", currency: "EGP" as const, displayAsFree: false },
+      bookingFeePayment: {
+        pointsUsed: 20000,
+        paidByPoints: { amount: "20.00", currency: "EGP" as const },
+        paidByWallet: { amount: "5.00", currency: "EGP" as const },
+        leftToPay: { amount: "0.00", currency: "EGP" as const },
+      },
+      totalAmount: { amount: "366.00", currency: "EGP" as const },
+    };
+    renderFlow(jest.fn(async () => ok(paidQuote)));
+    await reachSummary();
+
+    expect(screen.getByText("20,000 points")).toBeTruthy();
+    expect(screen.getByText("20.00 EGP")).toBeTruthy();
+    expect(screen.getByText("5.00 EGP")).toBeTruthy();
+    expect(screen.getByText("0.00 EGP")).toBeTruthy();
   });
 
   it("moves an after-midnight time onto the next calendar date", async () => {
