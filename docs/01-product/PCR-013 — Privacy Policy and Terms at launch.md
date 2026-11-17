@@ -18,7 +18,7 @@ Nothing in the requirements asked for a Privacy Policy or Terms of Use. Both are
 2. **Public pages — NEW.** Both documents are published at two public web addresses that the Product Owner provides. The apps link to these addresses; they do not carry a copy of the text.
 3. **Agreement at sign-up — NEW.** Customer registration (`FR-ACC-01`) shows "I agree to the Terms of Use and the Privacy Policy" with a link to each. A customer cannot register without agreeing.
 4. **Recorded acceptance — NEW.** The server stores, for each customer, which version of the texts they accepted and when. The record is written once at registration and is never changed. A registration without it, or with a version that is not the current one, is refused.
-5. **Version label — NEW.** Each published pair of texts has one version label, a date such as `2026-11-15`. The first approved texts get the date of their approval. When a text changes, the Product Owner sets a new label; whether existing customers must agree again is decided then, in a new PCR.
+5. **Version label — NEW.** Each published pair of texts has one version label, a date such as `2026-11-15`. The first approved texts get the date of their approval. The current label and the two public web addresses are deployment settings; development uses a placeholder label. When a text changes, the Product Owner sets a new label; whether existing customers must agree again is decided then, in a new PCR.
 6. **Existing accounts — NEW.** Accounts created before this change have no recorded acceptance. Nothing is invented for them. (At launch there are none: the product is not live yet.)
 7. **Links everywhere — NEW.** The Customer App shows both links in Profile. The Venue Dashboard (English and Arabic) and the Platform Admin show both links in the account menu or the footer.
 8. **Venue accounts — UNCHANGED.** Venue accounts are created by the Platform Admin under an agreement between E7GZ and the venue; there is no sign-up screen and no in-app acceptance for them.
@@ -28,7 +28,7 @@ Nothing in the requirements asked for a Privacy Policy or Terms of Use. Both are
 
 | Item | Needed before |
 |---|---|
-| Approve the two texts (and ideally a lawyer's check) | E7-122 and E7-124 start |
+| Approve the two texts (and ideally a lawyer's check) | Deployment (E7-101). E7-124 and E7-122 are built before it, with a placeholder version label (Product Owner decision, 16 November 2026) |
 | The legal name and address of the company behind E7GZ PS, and a contact email for privacy requests | The texts can be approved |
 | The two public web addresses | E7-122 is finished |
 | Arabic versions of the two texts (the Venue Dashboard is bilingual; customers are in Egypt) | Launch |
