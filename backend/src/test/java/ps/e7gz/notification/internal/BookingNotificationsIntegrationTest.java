@@ -226,6 +226,21 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
                 "CUSTOMER BOOKING_AUTO_CANCELLED " + booking.customerId());
     }
 
+    /** FR-NTF-06: the same T6 under VENUE_ACCOUNT_DISABLED tells the customer once with that cause's own code. */
+    @Test
+    void anExpiredRequestOfADisabledVenueCancelledAtItsStartTellsTheCustomerOnceWithItsOwnCode() {
+        Booking booking = flows.expiredWithOverdueStart(Duration.ofSeconds(30));
+        flows.venueAccountDisabledSince(booking, booking.startAt().minus(Duration.ofMinutes(1)));
+        assertThat(flows.fireExpiredResolution(booking)).isTrue();
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_CANCELLED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.BOOKING_CANCELLED,
+                "CUSTOMER BOOKING_CANCELLED_VENUE_ACCOUNT_DISABLED " + booking.customerId());
+        assertThat(customerCodes(booking)).doesNotContain("BOOKING_AUTO_CANCELLED");
+        assertThat(venueCodes(booking)).containsExactly("VENUE_NEW_BOOKING_REQUEST");
+    }
+
     @Test
     void aCustomerCancelledBookingTellsTheCustomerOnce() {
         Booking booking = flows.pending();

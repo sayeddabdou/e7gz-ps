@@ -264,6 +264,16 @@ public final class BookingFlows {
         return due && resolutions().fire(key);
     }
 
+    /** The venue's account disabled from {@code disabledAt}, still disabled: an open restriction interval (E7-78's). */
+    public void venueAccountDisabledSince(Booking booking, Instant disabledAt) {
+        VenueAnswerDb.withoutTriggers(jdbc -> jdbc.sql("""
+                        INSERT INTO iam.venue_account_restriction_interval (id, venue_id, disabled_at, source, reason,
+                                                                            correlation_id)
+                        VALUES (gen_random_uuid(), :venue, :disabled, 'SYSTEM', 'E7-118 test', gen_random_uuid())""")
+                .param("venue", booking.venueId())
+                .param("disabled", OffsetDateTime.ofInstant(disabledAt, java.time.ZoneOffset.UTC)).update());
+    }
+
     /** The idempotency key of the booking's T6 job. */
     public static String expiredResolutionKey(UUID bookingId) {
         return ExpiredRequestResolutions.resolutionKey(bookingId);

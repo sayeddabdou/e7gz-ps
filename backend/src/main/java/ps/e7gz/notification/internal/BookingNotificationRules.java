@@ -104,12 +104,15 @@ final class BookingNotificationRules {
                     plan(customer("BOOKING_AUTO_CANCELLED"), venue("VENUE_BOOKING_AUTO_CANCELLED"))),
             Map.entry(BookingTerminalReason.SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR,
                     plan(customer("BOOKING_AUTO_CANCELLED"), venue("VENUE_BOOKING_AUTO_CANCELLED"))),
-            // E7-118 T6 (FR-BOK-23): a request still VENUE_RESPONSE_EXPIRED cancelled at its original start. PO decision
-            // D2 (20 Oct 2026): the customer gets the one generic BOOKING_AUTO_CANCELLED, although told at expiry that
-            // the venue did not respond; the venue never answered the request and gets nothing. T6's three operational
-            // reasons use their entries above.
+            // E7-118 T6 (FR-BOK-23): a request still VENUE_RESPONSE_EXPIRED cancelled at its original start, the customer
+            // only - the venue never answered the request. PO decision D2 (20 Oct 2026): ordinary non-response has no
+            // code of its own, so the one generic BOOKING_AUTO_CANCELLED. A Venue Account disable does have one, and
+            // FR-NTF-06 / Spec v5 section 24.3 forbid presenting it as ordinary non-response (Amr Heiba 17 Nov 2026,
+            // subject to PO review): §52.2 BOOKING_CANCELLED_VENUE_ACCOUNT_DISABLED. E7-78's AWAITING -> CANCELLED under
+            // the same reason gets the same code. T6's three operational reasons use their entries above.
             Map.entry(BookingTerminalReason.VENUE_DID_NOT_RESPOND_IN_TIME, plan(customer("BOOKING_AUTO_CANCELLED"))),
-            Map.entry(BookingTerminalReason.VENUE_ACCOUNT_DISABLED, plan(customer("BOOKING_AUTO_CANCELLED"))),
+            Map.entry(BookingTerminalReason.VENUE_ACCOUNT_DISABLED,
+                    plan(customer("BOOKING_CANCELLED_VENUE_ACCOUNT_DISABLED"))),
             // E7-48: the venue cancelled its own Manual Booking; there is no customer to tell
             Map.entry(BookingTerminalReason.VENUE_CANCELLED_MANUAL_BOOKING, Plan.NONE),
             // E7-114 (FR-VEN-03): the venue cancelled a CONFIRMED Online Booking with the Owner Password. §52.2 "Booking
