@@ -182,6 +182,14 @@ public final class IntegrationEvents {
     public static final String ATTENDANCE_CORRECTED = "AttendanceCorrected";
 
     /**
+     * {@code {userId, transitionId, fromStatus, toStatus, cause}}, aggregate {@code USER}: one operational Verified Player
+     * transition (arch 08 section 3.2; Spec v5 sections 8.4-8.9, FR-ACC-12; E7-72) - automatic
+     * ({@code TRUST_QUALIFICATION}, {@code TRUST_CORRECTION}) or a Platform Admin's ({@code ADMIN}). One event per
+     * {@code transitionId}, written in the transition's transaction; the customer's notification follows from it.
+     */
+    public static final String VERIFIED_PLAYER_TRANSITIONED = "VerifiedPlayerTransitioned";
+
+    /**
      * {@code {venueId, resourceId}}, aggregate {@code RESOURCE}: the venue disabled a room (FR-VEN-03; E7-26, published
      * since E7-56, PO decision 12 Oct 2026). Its four siblings below carry the same payload.
      */

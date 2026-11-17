@@ -10,7 +10,7 @@ Sources: arch 09 §1, §3.1, §3.4, §5 · arch 07 §5, §6, §7.4, §8 · arch 
 
 | Surface | Endpoint | Controller | Implemented by |
 |---|---|---|---|
-| Customer | `GET /customer/account-standing` | `trust/web/CustomerAccountStandingController` | E7-71 (counter, stage, ban), E7-72 (Verified Player) |
+| Customer | `GET /customer/account-standing` | `trust/web/CustomerAccountStandingController` | E7-72 (whole route, from the trust projection; the ban part reads the Ban Instances E7-71 produces) |
 | Customer | `GET /customer/points?cursor=&limit=` | `loyalty/web/CustomerLoyaltyController` | E7-66 |
 | Customer | `GET /customer/referrals?cursor=&limit=` | `loyalty/web/CustomerLoyaltyController` | E7-67 |
 | Customer | `GET /customer/wallet?cursor=&limit=` — read-only (PCR-004) | `loyalty/web/CustomerLoyaltyController` | E7-66 |

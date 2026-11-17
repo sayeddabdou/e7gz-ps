@@ -18,5 +18,10 @@ public enum AdminAlertKind {
     /** arch 10 section 2.3: a rotated refresh token was used again and its whole chain was revoked. */
     REFRESH_TOKEN_REUSE,
     /** An account reached the per-account login limit (raised by E7-57). */
-    ACCOUNT_LOGIN_LIMIT_REACHED
+    ACCOUNT_LOGIN_LIMIT_REACHED,
+    /**
+     * Spec v5 section 52.6 "Verified Player Revoked" (FR-NTF-10): a VERIFIED -> REVOKED transition, by an admin or by a
+     * trust correction (raised by E7-72; PO decision 19 Oct 2026: the admin alert inbox only).
+     */
+    ADMIN_VERIFIED_PLAYER_REVOKED
 }

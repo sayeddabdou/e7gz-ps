@@ -59,4 +59,20 @@ public record NewAdminAlert(AdminAlertKind kind, AdminAlertSeverity severity, St
         return new NewAdminAlert(AdminAlertKind.BOOKING_INTEGRITY_FAILURE, AdminAlertSeverity.SEV_1, "BOOKING",
                 bookingId, payload, correlationId);
     }
+
+    /**
+     * Spec v5 section 52.6 "Verified Player Revoked" (E7-72; PO decision 19 Oct 2026: admin alert inbox only). SEV_3,
+     * informational: the revocation and its tournament cascade are already done in the same command. About the USER,
+     * with the transition ID and its cause (ADMIN or TRUST_CORRECTION); never a name or a reason text.
+     */
+    public static NewAdminAlert verifiedPlayerRevoked(UUID userId, UUID transitionId, String cause,
+                                                      UUID correlationId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("userId", Objects.requireNonNull(userId, "userId").toString());
+        payload.put("transitionId", Objects.requireNonNull(transitionId, "transitionId").toString());
+        payload.put("cause", Objects.requireNonNull(cause, "cause"));
+        payload.put("correlationId", Objects.requireNonNull(correlationId, "correlationId").toString());
+        return new NewAdminAlert(AdminAlertKind.ADMIN_VERIFIED_PLAYER_REVOKED, AdminAlertSeverity.SEV_3, "USER", userId,
+                payload, correlationId);
+    }
 }
