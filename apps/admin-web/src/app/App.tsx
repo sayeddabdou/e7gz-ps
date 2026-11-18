@@ -5,6 +5,12 @@ import type { ConfigResult } from "../config";
 import { AreaList } from "../features/areas/AreaList";
 import { ActivityList } from "../features/activities/ActivityList";
 import { AdminLoginScreen, createAdminSessionApi, type AdminSessionApi } from "../features/auth";
+import { FeesScreen, GlobalRulesScreen } from "../features/configuration";
+import { PointsScreen } from "../features/points";
+import { ReferralsScreen } from "../features/referrals";
+import { AttendanceCorrectionScreen } from "../features/trust";
+import { UserDetailScreen, UsersScreen } from "../features/users";
+import { VerifiedPlayersScreen } from "../features/verified-players";
 import { Onboarding } from "../features/venues/Onboarding";
 import { VenueDetail } from "../features/venues/VenueDetail";
 import { VenueList } from "../features/venues/VenueList";
@@ -91,9 +97,17 @@ function ProtectedShell({
               if (module.path === "/venues") content = <VenueList api={api} />;
               if (module.path === "/venue-onboarding") content = <Onboarding api={api} />;
               if (module.path === "/activities") content = <ActivityList api={api} />;
+              if (module.path === "/users") content = <UsersScreen api={api} />;
+              if (module.path === "/verified-players") content = <VerifiedPlayersScreen api={api} />;
+              if (module.path === "/no-shows") content = <AttendanceCorrectionScreen api={api} />;
+              if (module.path === "/points") content = <PointsScreen api={api} />;
+              if (module.path === "/referrals") content = <ReferralsScreen api={api} />;
+              if (module.path === "/fees") content = <FeesScreen api={api} />;
+              if (module.path === "/global-rules") content = <GlobalRulesScreen api={api} />;
               return <Route key={module.path} path={module.path} element={content} />;
             })}
             <Route path="/venues/:venueId" element={<VenueDetail api={api} />} />
+            <Route path="/users/:userId" element={<UserDetailScreen api={api} />} />
             <Route path="*" element={<Navigate replace to="/" />} />
           </Routes>
         </section>

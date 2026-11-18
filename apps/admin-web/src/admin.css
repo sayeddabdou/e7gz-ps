@@ -693,6 +693,35 @@ legend {
   gap: var(--e7gz-space-xl);
 }
 
+.filter-bar {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--e7gz-space-xl);
+  margin-block-end: var(--e7gz-space-3xl);
+}
+
+.filter-bar label,
+.filter-control {
+  min-width: 210px;
+}
+
+.filter-control {
+  margin-block-end: var(--e7gz-space-3xl);
+}
+
+label small,
+td small {
+  color: var(--e7gz-color-text-subtle);
+  font-size: var(--e7gz-font-size-caption);
+  font-weight: var(--e7gz-font-weight-regular);
+}
+
+textarea {
+  padding-block: var(--e7gz-space-lg);
+  resize: vertical;
+}
+
 .inline-form {
   align-items: end;
   grid-template-columns: repeat(2, minmax(0, 1fr)) auto;

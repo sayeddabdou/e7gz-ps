@@ -1,2 +1,1 @@
-// Filled by E7-75.
-export {};
+export { FeesScreen, GlobalRulesScreen } from "./ConfigurationScreens";

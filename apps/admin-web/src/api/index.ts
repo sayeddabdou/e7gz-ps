@@ -33,4 +33,6 @@ export function errorFieldOf(body: unknown): string | undefined {
   return undefined;
 }
 
-export const idempotencyHeaders = () => ({ "Idempotency-Key": crypto.randomUUID() });
+export const createIdempotencyKey = () => crypto.randomUUID();
+
+export const idempotencyHeaders = (key = createIdempotencyKey()) => ({ "Idempotency-Key": key });
