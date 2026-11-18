@@ -57,7 +57,7 @@ class HoursChangeNotificationRuleTest {
                         new Send(Recipient.VENUE, "VENUE_BOOKING_AUTO_CANCELLED"));
         assertThat(plan(Map.of("terminalReason", "VENUE_CANCELLED_MANUAL_BOOKING", "source", "MANUAL")).isEmpty())
                 .isTrue();
-        assertThat(plan(Map.of("terminalReason", "USER_BANNED")).isEmpty()).isTrue();
+        assertThat(plan(Map.of("terminalReason", "ADMIN_CANCELLED")).isEmpty()).isTrue();
     }
 
     /** Each event is its own origin, so two cancelled bookings of one customer get two notification ids. */

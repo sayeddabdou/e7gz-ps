@@ -18,6 +18,13 @@ import ps.e7gz.common.codes.VerifiedPlayerStatus;
  */
 public interface VerifiedPlayers {
 
+    /**
+     * Completed attended bookings that make a Customer QUALIFIED (Spec v5 section 8.2, FR-ACC-11): a fixed Product rule,
+     * not configuration. The count itself is the database replay's ({@code trust.replay_state}); this is the "of 10" the
+     * surfaces show next to it.
+     */
+    int REQUIRED_COMPLETED_BOOKINGS = 10;
+
     /** Each of {@code userIds} (Customers the caller found): one entry per distinct id. */
     Map<UUID, VerifiedPlayer> of(Collection<UUID> userIds);
 

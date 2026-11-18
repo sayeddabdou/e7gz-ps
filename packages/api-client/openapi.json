@@ -343,7 +343,7 @@
             "type": "integer"
           },
           "qualificationAt": {
-            "description": "When history says the threshold was crossed.",
+            "description": "When history says the threshold of the ban's current stage was crossed.",
             "example": "2026-10-30T18:00:00Z",
             "format": "date-time",
             "type": "string"
@@ -1073,6 +1073,7 @@
           "penaltyStageAfter": {
             "example": 1,
             "format": "int32",
+            "maximum": 3,
             "minimum": 0,
             "type": "integer"
           },
@@ -12019,7 +12020,7 @@
     },
     "/api/v1/admin/global-rules": {
       "get": {
-        "description": "One row per penalty stage, in order: at that stage, consecutiveNoShows eligible no-shows in a row start a ban of banDuration and advance the stage (FR-TRS-14). The last row is recurring: from that stage on, every consecutiveNoShows give the same ban. Implemented by E7-71.",
+        "description": "One row per penalty stage, in order: at that stage, consecutiveNoShows eligible no-shows in a row start a ban of banDuration and advance the stage (FR-TRS-14). The last row is recurring: from that stage on, every consecutiveNoShows give the same ban.",
         "operationId": "adminGetGlobalRules",
         "parameters": [
           {
@@ -14851,7 +14852,7 @@
     },
     "/api/v1/admin/users/{userId}/bans/{banId}/correct": {
       "post": {
-        "description": "Kept by PO decision D2 (17 Oct 2026). The database accepts CORRECTED only when corrected trust history no longer supports the ban (trust.assert_ban_lifecycle_audit); otherwise, or when the ban is no longer ACTIVE, it is ADMIN_ACTION_NOT_ALLOWED. Previously cancelled bookings do not return. E7-71 decides how this route meets that rule.",
+        "description": "Kept by PO decision D2 (17 Oct 2026). CORRECTED needs corrected trust history that no longer supports the ban (trust.assert_ban_lifecycle_audit). That history is corrected through the attendance routes, and the command that corrects it also corrects the ban - or shortens it to the part still supported. This route reconciles the customer and answers the ban as CORRECTED only when that reconciliation corrected it; a ban the history still supports, or one no longer ACTIVE, is ADMIN_ACTION_NOT_ALLOWED (lift or shorten it instead). Previously cancelled bookings do not return.",
         "operationId": "adminCorrectBan",
         "parameters": [
           {
@@ -15251,7 +15252,7 @@
     },
     "/api/v1/admin/users/{userId}/bans/{banId}/lift": {
       "post": {
-        "description": "Restrictions stop at once; previously cancelled bookings do not return (FR-TRS-25). A ban that is no longer ACTIVE is ADMIN_ACTION_NOT_ALLOWED; a ban of another user is NOT_FOUND. Implemented by E7-71.",
+        "description": "Restrictions stop at once; previously cancelled bookings do not return (FR-TRS-25). A ban that is no longer ACTIVE is ADMIN_ACTION_NOT_ALLOWED; a ban of another user is NOT_FOUND.",
         "operationId": "adminLiftBan",
         "parameters": [
           {
@@ -15651,7 +15652,7 @@
     },
     "/api/v1/admin/users/{userId}/bans/{banId}/shorten": {
       "post": {
-        "description": "endsAt must be after now and before the current end, otherwise VALIDATION_FAILED on endsAt; the ban stays ACTIVE until then (endsAt = activatedAt + duration). A ban that is no longer ACTIVE is ADMIN_ACTION_NOT_ALLOWED. Implemented by E7-71.",
+        "description": "endsAt must be after now and before the current end, otherwise VALIDATION_FAILED on endsAt; the ban stays ACTIVE until then (endsAt = activatedAt + duration). A ban that is no longer ACTIVE is ADMIN_ACTION_NOT_ALLOWED.",
         "operationId": "adminShortenBan",
         "parameters": [
           {
@@ -16356,7 +16357,7 @@
     },
     "/api/v1/admin/users/{userId}/trust-adjustment": {
       "post": {
-        "description": "An absolute override, effective now (FR-TRS-05): counterAfter must stay below the threshold of penaltyStageAfter (FR-TRS-13), otherwise VALIDATION_FAILED on counterAfter. An anonymised account is ACCOUNT_DELETED. Returns the standing after replay. Implemented by E7-71.",
+        "description": "An absolute override, effective now (FR-TRS-05): counterAfter must stay below the threshold of penaltyStageAfter (FR-TRS-13), otherwise VALIDATION_FAILED on counterAfter. An anonymised account is ACCOUNT_DELETED. It changes no Ban: lift or shorten one separately. Returns the standing after replay.",
         "operationId": "adminAdjustTrust",
         "parameters": [
           {
@@ -23313,7 +23314,7 @@
     },
     "/api/v1/admin/verified-players": {
       "get": {
-        "description": "Every customer whose operational status is not NOT_VERIFIED, or who ever had a Verified Player transition; status filters exactly. Newest status change first, cursor paging (arch 09 §1.2). Implemented by E7-72.",
+        "description": "Every customer whose operational status is not NOT_VERIFIED, or who ever had a Verified Player transition; status filters exactly. Newest status change first, cursor paging (arch 09 §1.2).",
         "operationId": "adminListVerifiedPlayers",
         "parameters": [
           {
@@ -23574,7 +23575,7 @@
     },
     "/api/v1/admin/verified-players/{userId}/restore": {
       "post": {
-        "description": "Any other current status is ADMIN_ACTION_NOT_ALLOWED. Implemented by E7-72.",
+        "description": "Any other current status is ADMIN_ACTION_NOT_ALLOWED. Never resurrects a cancelled tournament (FR-TRN-20).",
         "operationId": "adminRestoreVerifiedPlayer",
         "parameters": [
           {
@@ -23966,7 +23967,7 @@
     },
     "/api/v1/admin/verified-players/{userId}/revoke": {
       "post": {
-        "description": "Only from VERIFIED (arch 07 §6.2); otherwise ADMIN_ACTION_NOT_ALLOWED. An admin REVOKED is never restored automatically (FR-ACC-15). Implemented by E7-72.",
+        "description": "Only from VERIFIED (arch 07 §6.2); otherwise ADMIN_ACTION_NOT_ALLOWED. Runs the pending / waiting tournament cascade once for its transition (FR-TRN-20). An admin REVOKED is never restored automatically (FR-ACC-15).",
         "operationId": "adminRevokeVerifiedPlayer",
         "parameters": [
           {
@@ -24358,7 +24359,7 @@
     },
     "/api/v1/admin/verified-players/{userId}/suspend": {
       "post": {
-        "description": "Only from VERIFIED (arch 07 §6.2); otherwise ADMIN_ACTION_NOT_ALLOWED. Runs the pending / waiting tournament cascade once. Implemented by E7-72.",
+        "description": "Only from VERIFIED (arch 07 §6.2); otherwise ADMIN_ACTION_NOT_ALLOWED. Blocks creating new player-hosted tournaments and cancels nothing existing (FR-TRN-20).",
         "operationId": "adminSuspendVerifiedPlayer",
         "parameters": [
           {
@@ -25013,7 +25014,7 @@
     },
     "/api/v1/customer/account-standing": {
       "get": {
-        "description": "Exactly one current ban, or null (FR-TRS-15). The remaining ban time is currentBan.endsAt against meta.serverTime: no remaining seconds are sent (NFR-10). Verified Player qualification progress and operational status are two separate fields (FR-ACC-11). Implemented by E7-71 and E7-72.",
+        "description": "Exactly one current ban, or null (FR-TRS-15). The remaining ban time is currentBan.endsAt against meta.serverTime: no remaining seconds are sent (NFR-10). Verified Player qualification progress and operational status are two separate fields (FR-ACC-11).",
         "operationId": "customerGetAccountStanding",
         "parameters": [
           {
