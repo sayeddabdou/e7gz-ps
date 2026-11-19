@@ -134,7 +134,8 @@ class VenueCancelConfirmedHttpTest extends IntegrationTest {
         MvcResult wrong = mvc.perform(cancel(venue(world), created, key, pin("9999")))
                 .andExpect(status().isLocked())
                 .andExpect(jsonPath("$.error.code").value("OWNER_PASSWORD_INVALID")).andReturn();
-        assertThat(wrong.getResponse().getContentAsString()).doesNotContain("9999");
+        // The quoted value, not the bare digits: the random correlation id in the answer can hold "9999" by chance.
+        assertThat(wrong.getResponse().getContentAsString()).doesNotContain("\"9999\"");
         assertThat(booking(created.bookingId()).status()).isEqualTo("CONFIRMED");
 
         mvc.perform(cancel(venue(world), created, key, pin(OWNER_PIN)))

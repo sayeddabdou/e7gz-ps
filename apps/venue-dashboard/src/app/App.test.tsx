@@ -107,10 +107,20 @@ describe("Venue Dashboard shell", () => {
   });
 
   it("uses the stored language, switches direction, and persists the choice", async () => {
+    // The account also says Arabic: the settings answer arrives at an unknown moment and the
+    // account language wins (test above), so a different account language made this test flaky.
+    let settingsAnswered = false;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith("/api/v1/venue/settings")) settingsAnswered = true;
+      return defaultResponse(input, "ar");
+    }));
     window.localStorage.setItem("e7gz.venue.language", "ar");
     render(<App config={readyConfig} />);
 
     await waitFor(() => expect(screen.getByTestId("venue-sidebar")).toBeTruthy());
+    await waitFor(() => expect(settingsAnswered).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.getByRole("main").getAttribute("dir")).toBe("rtl");
     fireEvent.click(screen.getByRole("button", { name: "English" }));
     expect(screen.getByRole("main").getAttribute("dir")).toBe("ltr");
