@@ -10,7 +10,7 @@
 **Updated:** 15 October 2026 — E7-56 decisions: admin alert list and acknowledge routes (`§5`) and `ADMIN_ALERT_ALREADY_ACKNOWLEDGED` (`§1.5`).
 **Updated:** 16 October 2026 — E7-57: `verify-phone` takes `password` for a code from `otp/send` (`§3.1`).
 **Updated:** 17 October 2026 — Sprint 4 contract decisions (E7-65): `ADMIN_ACTION_NOT_ALLOWED` (`§1.5`); admin users, trust, ban, attendance, wallet, points, referral and points-settings routes (`§5`); global rules joined on 20 October 2026 (`§5`).
-**Updated:** 19 November 2026 — Sprint 5 contract decision (E7-77): `OPERATIONAL_STATE_CHANGED` (`§1.5`). The Sprint 5 routes this contract adds to `§4.2` and `§5` are listed in `packages/api-client/SPRINT-5-CONTRACT.md`; they join this map in a later docs change (Product Owner decision, 19 Nov 2026).
+**Updated:** 19 November 2026 — Sprint 5 contract decisions (E7-77): `OPERATIONAL_STATE_CHANGED` (`§1.5`); venue lists of closures, maintenance and emergencies, preview + commit for closures and for emergency extend and convert, an Emergency's opening-hours change through the hours commit (`§4.2`); read-only admin owner-review and emergency lists, the venue-account list, and the `Idempotency-Key` on venue-account disable and enable (`§5`). Details: `packages/api-client/SPRINT-5-CONTRACT.md`.
 
 **Style.** REST + JSON over HTTPS, base `/api/v1`, OpenAPI 3.1 generated from code, typed TypeScript clients generated for all three surfaces (`ADR-012`).
 
@@ -383,14 +383,18 @@ The venue- and room-side failures of the same route (`FR-LCF-02`, `FR-LCF-03`) r
 | `PUT` `DELETE` | `/venue/resources/{id}/price-override` | **yes** | `FR-VEN-03`, `FR-VEN-43` |
 | `GET` | `/venue/opening-hours` | — | `FR-VEN-17` |
 | `POST` | `/venue/opening-hours/preview` → `{previewToken, affected[]}` | — | `FR-VEN-23` steps 1–5 |
-| `POST` | `/venue/opening-hours/commit` `{proposal, previewToken, ownerPassword?}` | conditional | `FR-VEN-23` steps 6–9, `FR-VEN-25`, `FR-VEN-26` |
-| `POST` `PATCH` `DELETE` | `/venue/closures` | conditional | `FR-VEN-30` |
+| `POST` | `/venue/opening-hours/commit` `{proposal, previewToken, ownerPassword?, emergencyId?}` — with `emergencyId` the change also converts that venue Emergency (`FR-OPS-23`; Product Owner decision D5, 19 Nov 2026, E7-77) | conditional | `FR-VEN-23` steps 6–9, `FR-VEN-25`, `FR-VEN-26` |
+| `GET` | `/venue/closures` · `/venue/maintenance?resourceId=` — rows not yet ended, each with its id (Product Owner decision D1, 19 Nov 2026, E7-77) | — | `FR-VEN-30`, `FR-OPS-02` |
+| `POST` | `/venue/closures/preview` `{closureId?, proposal}` → `{previewToken, affected[], ownerPasswordRequired}` (Product Owner decision D2, 19 Nov 2026, E7-77) | — | `FR-VEN-30` |
+| `POST` `PATCH` `DELETE` | `/venue/closures` — create and edit send `{proposal, previewToken, ownerPassword?}`; `409 AFFECTED_SET_CHANGED_REFRESH_PREVIEW` when the set grew | conditional | `FR-VEN-30` |
 | `POST` `PATCH` `DELETE` | `/venue/maintenance` | conditional | `FR-OPS-03`, `FR-OPS-04` |
+| `GET` | `/venue/emergencies` — ACTIVE and AWAITING_CONFIRMATION, each with its id (D1) | — | `FR-OPS-19` |
 | `POST` | `/venue/emergencies/venue-closure` `{reason, expectedEndAt}` | **no** | `FR-OPS-06`, `FR-OPS-07` |
 | `POST` | `/venue/emergencies/resource-outage` `{resourceId, reason, expectedReturnAt}` | **no** | `FR-OPS-11` |
-| `POST` | `/venue/emergencies/{id}/extend` · `/end` · `/convert` | **no** | `FR-OPS-19`…`FR-OPS-24` |
+| `POST` | `/venue/emergencies/{id}/extend/preview` `{expectedEndAt}` → impact preview · `/extend` `{expectedEndAt, previewToken}` (D2) · `/end` | **no** | `FR-OPS-19`…`FR-OPS-22` |
+| `POST` | `/venue/emergencies/{id}/convert/preview` `{target, closure?, maintenance?}` · `/convert` `{conversion, previewToken, ownerPassword?}` — CLOSURE (venue) or MAINTENANCE · DISABLED · ARCHIVED (resource); an opening-hours change goes through the hours commit (D2, D5) | conditional — the target action's own rule | `FR-OPS-23`, `FR-OPS-24` |
 | `GET` | `/venue/owner-reviews` | — | `FR-OPS-43` |
-| `POST` | `/venue/owner-reviews/{resourceId}/resolve` `{action, ownerPassword}` | **yes** | `FR-OPS-33` |
+| `POST` | `/venue/owner-reviews/{resourceId}/resolve` `{action, maintenance?, ownerPassword}` | **yes** | `FR-OPS-33` |
 | `POST` | `/venue/owner-password` `{current, next}` | **yes** | `FR-VEN-46` |
 | `GET` | `/venue/reviews` — **view only** | — | `FR-VEN-39` |
 | `GET` `POST` | `/venue/tournaments` · `/{id}/approve` · `/reject` · `/cancel` · `/operational-termination` | conditional | `FR-TRN-21`, `FR-TRN-23`, `FR-TRN-24` |
@@ -436,7 +440,8 @@ Rules (`ADR-011`): the Owner Password is a PIN of exactly 4 digits (PCR-006). Bo
 | Areas | `GET POST PATCH /admin/areas` · `POST /{id}/activate` · `/deactivate` | `FR-VEN-12`, `FR-VEN-47` |
 | Venues & onboarding | `GET POST PATCH /admin/venues` · `GET /admin/venues/{id}` (with its venue account) · `POST /admin/venues/{id}/onboarding/complete` (ONBOARDING → INACTIVE) · `POST /{id}/activate` · `/deactivate` · `/suspend` `{reason}` — while a venue is ONBOARDING, completing onboarding is its only status action (Product Owner decision, 2 Oct 2026); `PATCH` with `activities` replaces the venue's list · `GET POST /admin/venues/{id}/resources` `{activity, consoleType?}` | `FR-ADM-02`, `FR-VEN-07`, `FR-VEN-41` — status actions and admin resource creation: Product Owner decision, 2 Oct 2026 |
 | Venue photos | `GET POST /admin/venues/{id}/images` · `POST /admin/venues/{id}/images/{imageId}/confirm` · `PUT /admin/venues/{id}/images/order` `{imageIds}` · `POST /admin/venues/{id}/images/{imageId}/remove` — same two-step upload as §4.2, no Owner Password | `FR-ADM-02`, PCR-005 — Product Owner decision, 2 Oct 2026 |
-| Venue accounts | `POST /admin/venues/{id}/venue-account` `{loginIdentifier, password, initialOwnerPassword, languagePreference?}` · `POST /admin/venue-accounts/{id}/disable` · `/enable` · `/reset-login-password` · `/reset-owner-password` | `FR-ADM-02`, `FR-ADM-03`, `FR-VEN-01` |
+| Venue accounts | `POST /admin/venues/{id}/venue-account` `{loginIdentifier, password, initialOwnerPassword, languagePreference?}` · `POST /admin/venue-accounts/{id}/disable` · `/enable` — both require the `Idempotency-Key` (Product Owner decision D4, 19 Nov 2026, E7-77) · `/reset-login-password` · `/reset-owner-password` · `GET /admin/venue-accounts?accountStatus=&cursor=&limit=` — read-only, ordered by venue name (E7-37, E7-77) | `FR-ADM-02`, `FR-ADM-03`, `FR-VEN-01` |
+| Operations monitors | `GET /admin/owner-reviews?venueId=&resolved=&cursor=&limit=` · `GET /admin/emergencies?venueId=&status=&cursor=&limit=` — **read-only**, newest first, cursor paging; an Owner Review is resolved only by the venue with its Owner Password (Product Owner decision D3, 19 Nov 2026, E7-77) | `FR-OPS-33`, `FR-ADM-03` |
 | Activities | `GET /admin/activities` — **view only**: the three activities and how many venues offer each; a venue's activities are set on the venue | `FR-ADM-01` — Product Owner decision, 2 Oct 2026 |
 | Users | `GET /admin/users?q=&cursor=&limit=` · `/{id}` — in the Sprint 4 contract (Product Owner decision D4, 17 Oct 2026, E7-65) · `GET /account-deletion-requests` · `POST /{id}/anonymise` — anonymisation can complete a linked Customer request and executes O19, including Tournament `ACCOUNT_DELETED` precedence | `FR-ADM-04`, `FR-ACC-10`, `FR-TRN-26` |
 | Verified Players | `GET /admin/verified-players` · `POST /{userId}/suspend` · `/revoke` · `/restore` | `FR-ADM-05`, `FR-ACC-15` |

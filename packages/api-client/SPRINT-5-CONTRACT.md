@@ -37,7 +37,7 @@ Not in Sprint 5: the customer side needs no new route; E7-87 shows the operation
 | D5 | Converting a venue Emergency into an opening-hours change (FR-OPS-23) | **Through the hours commit** with an optional `emergencyId`; `/convert` takes CLOSURE (venue) or MAINTENANCE · DISABLED · ARCHIVED (resource) | `VenueOpeningHoursCommitRequest.emergencyId`; `/convert` with OPENING_HOURS_CHANGE → `422 CONVERSION_TARGET_NOT_ALLOWED` |
 | D6 | No code covers "this Emergency or Owner Review is no longer in the state the action needs" (staff A extends what staff B ended a second earlier) | **New general code `OPERATIONAL_STATE_CHANGED` (409)**, like `BOOKING_STATE_CHANGED`; one row added to arch 09 §1.5 | On extend, end, convert (and their previews), owner-review resolve, maintenance/closure edit or delete of an ended row, and the hours commit with `emergencyId` |
 
-The new routes join arch 09 §4.2 and §5 in a later docs change (D1–D3); only the §1.5 row is edited here, because `ApiErrorCodeTest` requires every code to be listed there.
+arch 09 lists the new routes in §4.2 and §5 and the new code in §1.5 (same PR).
 
 ## 2. Conventions (resolved from the documents)
 
