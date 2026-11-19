@@ -6,20 +6,27 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import ps.e7gz.common.codes.VerifiedPlayerQualification;
 import ps.e7gz.common.codes.VerifiedPlayerStatus;
+import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.DataResponse;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
+import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.trust.api.AccountStandings;
+import ps.e7gz.trust.api.VerifiedPlayers;
 
 /**
- * The customer's own Account Standing (arch 09 §3.1, FR-TRS-15, FR-ACC-11). Stub of the Sprint 4 contract (E7-65)
- * until E7-71 (bans) and E7-72 (Verified Player) fill it from the trust projection. Open to every customer state,
- * banned and unverified included (FR-ACC-17, FRS §2.11).
+ * The customer's own Account Standing (arch 09 §3.1, FR-TRS-15, FR-ACC-11). In the Sprint 4 contract (E7-65); the
+ * no-show counter, stage, threshold and current ban filled by E7-71 from the trust projection ({@link AccountStandings},
+ * the same reader as the Platform Admin's user page). Open to every customer state, banned and unverified included
+ * (FR-ACC-17, FRS §2.11): a ban never blocks reading it. The Verified Player part (E7-72) is read from
+ * {@link VerifiedPlayers} as the admin user page reads it, out of {@link VerifiedPlayers#REQUIRED_COMPLETED_BOOKINGS}.
  */
 @RestController
 @RequestMapping("/api/v1/customer/account-standing")
@@ -27,15 +34,34 @@ import ps.e7gz.common.web.OpenApiConfig;
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class CustomerAccountStandingController {
 
+    private final AccountStandings standings;
+    private final VerifiedPlayers verifiedPlayers;
+    private final ResponseMetaFactory meta;
+
+    CustomerAccountStandingController(AccountStandings standings, VerifiedPlayers verifiedPlayers,
+                                      ResponseMetaFactory meta) {
+        this.standings = standings;
+        this.verifiedPlayers = verifiedPlayers;
+        this.meta = meta;
+    }
+
     @GetMapping
     @Operation(operationId = "customerGetAccountStanding",
             summary = "My Account Standing: no-show count, penalty stage, the current ban and Verified Player",
             description = "Exactly one current ban, or null (FR-TRS-15). The remaining ban time is currentBan.endsAt "
                     + "against meta.serverTime: no remaining seconds are sent (NFR-10). Verified Player qualification "
-                    + "progress and operational status are two separate fields (FR-ACC-11). Implemented by E7-71 and "
-                    + "E7-72.")
-    public DataResponse<CustomerAccountStanding> get() {
-        throw NotImplementedYet.stub();
+                    + "progress and operational status are two separate fields (FR-ACC-11).")
+    public DataResponse<CustomerAccountStanding> get(@AuthenticationPrincipal AuthenticatedSubject customer) {
+        UUID id = customer.id();
+        AccountStandings.Standing standing = standings.of(List.of(id)).get(id);
+        VerifiedPlayers.VerifiedPlayer player = verifiedPlayers.of(List.of(id)).get(id);
+        AccountStandings.Ban ban = standing.activeBan();
+        return meta.data(new CustomerAccountStanding(standing.consecutiveNoShows(), standing.penaltyStage(),
+                standing.currentThreshold(),
+                ban == null ? null : new CustomerCurrentBan(ban.banId(), ban.penaltyStage(), ban.activatedAt(),
+                        ban.endsAt()),
+                new CustomerVerifiedPlayer(player.qualification(), player.completedBookings(),
+                        VerifiedPlayers.REQUIRED_COMPLETED_BOOKINGS, player.status())));
     }
 
     @Schema(name = "CustomerAccountStanding")

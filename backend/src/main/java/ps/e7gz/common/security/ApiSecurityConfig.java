@@ -63,8 +63,12 @@ public class ApiSecurityConfig {
             "/api/v1/admin/auth/refresh",
             "/api/v1/admin/auth/logout"};
 
-    /** Public discovery (arch 09 section 3.2), as in the OpenAPI contract. */
+    /**
+     * Public discovery (arch 09 section 3.2), as in the OpenAPI contract, and the current Terms and Privacy Policy that
+     * the sign-up screen needs (PCR-013, E7-124).
+     */
     static final String[] PUBLIC_GETS = {
+            "/api/v1/customer/legal",
             "/api/v1/customer/areas",
             "/api/v1/customer/venues",
             "/api/v1/customer/venues/*",

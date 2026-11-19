@@ -32,7 +32,6 @@ import ps.e7gz.concurrency.ConcurrentRace;
 import ps.e7gz.support.IntegrationTest;
 import ps.e7gz.support.PostgresTestContainer;
 import ps.e7gz.support.boundary.TestCommands;
-import ps.e7gz.trust.api.TrustConsequenceUnavailableException;
 import ps.e7gz.trust.api.TrustReconciler;
 import ps.e7gz.trust.api.TrustReplay;
 
@@ -182,12 +181,13 @@ class AttendanceCorrectionIntegrationTest extends IntegrationTest {
     }
 
     /**
-     * The E7-71 boundary: a correction that makes replay cross the stage-0 threshold derives a Ban Qualification. Its
-     * operational consequence (Ban Instance + cascade) is E7-71's, not deployed, so the reconciler refuses and the
-     * whole correction rolls back - no result change, no event, no audit, no ban fabricated.
+     * E7-71: a correction that makes replay cross the stage-0 threshold activates the Ban in the Admin's own command -
+     * now, never back-dated - and its cascade cancels the customer's future booking USER_BANNED with its fee decision
+     * recorded in the Admin's Loyalty context (one context per transaction: the cascade joins it). One commit: the
+     * corrected result, its chain link and audit, the Ban, the cancellation and one AttendanceCorrected.
      */
     @Test
-    void aCorrectionThatQualifiesABanNeedsE771AndUntilThenRollsBackWhole() {
+    void aCorrectionThatQualifiesABanActivatesItInTheSameCommand() {
         BookingFlows.Customer customer = flows.customer();
         Booking booking = flows.pastItsEnd(customer.nextActive(Duration.ofMinutes(5)), Duration.ofMinutes(10));
         assertThat(flows.fireCompletion(booking)).as("T5 settled").isTrue();
@@ -195,23 +195,24 @@ class AttendanceCorrectionIntegrationTest extends IntegrationTest {
             Booking missed = customer.nextActive(Duration.ofMinutes(20));
             attendance.noShow(missed.venueAccountId(), missed.bookingId());
         }
+        Booking future = customer.nextPending(Duration.ofHours(3));
         assertThat(projection(booking.customerId())).containsExactly(2, 0);
-        List<Long> before = derivedCounts(booking.customerId());
 
-        assertThatThrownBy(() -> corrections.correct(admin, booking.bookingId(), AttendanceResult.ABSENT_NO_SHOW,
-                "was not there"))
-                .isInstanceOf(TrustConsequenceUnavailableException.class)
-                .hasMessageContaining("E7-71 Ban reconciliation")
-                .satisfies(failure -> assertThat(((TrustConsequenceUnavailableException) failure).reconciliation()
-                        .outstandingQualifications()).singleElement()
-                        .satisfies(due -> assertThat(due.penaltyStage()).isOne()));
+        corrections.correct(admin, booking.bookingId(), AttendanceResult.ABSENT_NO_SHOW, "was not there");
 
-        assertThat(attendanceResult(booking)).isEqualTo("ATTENDANCE_UNCONFIRMED");
-        assertThat(chain(booking)).isEmpty();
-        assertThat(adminEvidence(booking)).isZero();
-        assertThat(derivedCounts(booking.customerId())).isEqualTo(before);
-        assertThat(projection(booking.customerId())).containsExactly(2, 0);
-        assertThat(correctedEvents(booking)).as("rolled back with the command").isEmpty();
+        assertThat(attendanceResult(booking)).isEqualTo("ABSENT_NO_SHOW");
+        assertThat(chain(booking)).hasSize(1);
+        assertThat(adminEvidence(booking)).isOne();
+        assertThat(OWNER.sql("SELECT status || ' ' || penalty_stage FROM trust.ban_instance WHERE user_id = :id")
+                .param("id", booking.customerId()).query(String.class).list()).containsExactly("ACTIVE 1");
+        assertThat(OWNER.sql("""
+                        SELECT b.status || '/' || b.terminal_reason || '/' || (f.id IS NOT NULL)
+                          FROM booking.booking b LEFT JOIN loyalty.booking_fee_refund f ON f.booking_id = b.id
+                         WHERE b.id = :id""")
+                .param("id", future.bookingId()).query(String.class).single())
+                .isEqualTo("CANCELLED/USER_BANNED/true");
+        assertThat(projection(booking.customerId())).as("counter reset at the crossing").containsExactly(0, 0);
+        assertThat(correctedEvents(booking)).hasSize(1);
     }
 
     /**

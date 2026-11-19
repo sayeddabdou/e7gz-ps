@@ -35,6 +35,10 @@ public interface BookingFeeRefunds {
      * scope"). It runs on the caller's transaction - nothing commits here, and any database error propagates and rolls
      * the whole command back.
      *
+     * <p>E7-71: when the command already opened its Loyalty context - an Admin correction whose replay activated a Ban,
+     * {@link BookingRewards#beginCorrection} - the batch joins it instead of opening a second one; its Customers must
+     * be that context's.
+     *
      * <p>An empty list returns an empty map without SQL. A null list, a null element and a repeated booking id are
      * refused before any SQL.
      *

@@ -49,9 +49,8 @@ import ps.e7gz.trust.api.TrustReplay;
  * own refusal ({@code tr_03_booking_transition_guard}) and is unit-tested to the microsecond in
  * {@code NoShowReversalTargetTest}.
  *
- * <p>Pending on E7-71 (not bypassed): a reversal that leaves an operational Ban without replay support is handed to the
- * Ban reconciliation and today rolls back ({@code TrustConsequenceUnavailableException}). It cannot be staged yet: no Ban
- * can exist until E7-71 creates one, because the third no-show itself still rolls back.
+ * <p>A reversal that leaves an operational Ban without replay support corrects it, or shortens it to the part still
+ * supported, in the same command (E7-71): {@code BanCascadeIntegrationTest} and {@code BanConsequencesIntegrationTest}.
  */
 class NoShowReversalIntegrationTest extends IntegrationTest {
 

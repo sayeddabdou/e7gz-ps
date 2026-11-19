@@ -344,6 +344,7 @@ export const en = {
       NO_SHOW_REVERSED: "The no-show on your booking was reversed.",
       ATTENDANCE_CORRECTED: "Your booking attendance was corrected.",
       TEMPORARY_BAN_ACTIVATED: "A temporary account restriction is now active.",
+      BAN_EXTENDED: "Your temporary account restriction was updated.",
       BAN_EXPIRED: "Your temporary account restriction has ended.",
       POINTS_EARNED: "You earned points.",
       VERIFIED_PLAYER_UNLOCKED: "Verified Player has been unlocked.",

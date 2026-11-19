@@ -276,7 +276,7 @@ class ReferralHttpTest extends IntegrationTest {
         String local = randomLocalPhone();
         String username = randomUsername();
         Map<String, String> body = new HashMap<>(Map.of("fullName", "Friend", "username", username, "phone", local,
-                "email", email, "password", "Passw0rd1"));
+                "email", email, "password", "Passw0rd1", "acceptedTermsVersion", "dev"));    // PCR-013, E7-124
         if (referralCode != null) {
             body.put("referralCode", referralCode);
         }

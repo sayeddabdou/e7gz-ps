@@ -314,6 +314,62 @@ class MigrationFilesTest {
                 "s.session_period @> NEW.created_at\n", "s.session_period @> NEW.created_at AND s.superseded_at IS NULL\n"));
     }
 
+    /**
+     * v1.1.41 (E7-71): the migration is the model's own block, byte for byte, and only adds the BAN_EXTENDED catalogue
+     * row - the catalogue is append-only, so nothing is updated, deleted or redefined.
+     */
+    @Test
+    void banExtendedNotificationMigrationIsTheModelsV1141Block() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String open = "<genericsql name=\"v1_1_41_ban_extended_notification\">\n\t<definition> <![CDATA[\n";
+        int start = model.indexOf(open);
+        assertThat(start).as("v1.1.41 block in the .dbm").isPositive();
+        String block = model.substring(start + open.length(), model.indexOf("]]> </definition>", start));
+        String migration = classpath("db/migration/V202611171200__ban_extended_notification.sql");
+        assertThat(migration).isEqualTo(block);
+        assertThat(migration.substring(migration.indexOf("INSERT INTO")))
+                .startsWith("INSERT INTO notification.notification_catalogue(")
+                .containsOnlyOnce("('BAN_EXTENDED','NONE',ARRAY['CUSTOMER']::text[],ARRAY['IN_APP','PUSH']::text[],"
+                        + "ARRAY['IN_APP','PUSH']::text[],false,")
+                .doesNotContain("UPDATE ")
+                .doesNotContain("DELETE ")
+                .doesNotContain("CREATE ")
+                .doesNotContain("DROP ")
+                .doesNotContain("ALTER ")
+                .doesNotContain("GRANT");
+    }
+
+    /**
+     * v1.1.42 (E7-71, PO decision 19 Oct 2026): the migration is the model's own block, byte for byte, and redefines
+     * only {@code trust.guard_booking_ban_eligibility}: V1's final definition plus exactly the start block.
+     */
+    @Test
+    void banGuardMigrationIsTheModelsV1142Block() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String open = "<genericsql name=\"v1_1_42_ban_guard_lets_a_confirmed_booking_start\">\n\t<definition> <![CDATA[\n";
+        int start = model.indexOf(open);
+        assertThat(start).as("v1.1.42 block in the .dbm").isPositive();
+        String block = model.substring(start + open.length(), model.indexOf("]]> </definition>", start));
+        String migration = classpath("db/migration/V202611171300__ban_guard_lets_a_confirmed_booking_start.sql");
+        assertThat(migration).isEqualTo(block);
+        String guard = "CREATE OR REPLACE FUNCTION trust.guard_booking_ban_eligibility()";
+        String baseline = classpath("db/migration/V1__baseline.sql");
+        String previous = baseline.substring(baseline.lastIndexOf(guard));
+        previous = previous.substring(0, previous.indexOf("$function$;\n") + "$function$;\n".length());
+        String added = """
+                    -- v1.1.42 (E7-71, PO decision 19 Oct 2026): a start is not a new or stronger commitment - a CONFIRMED booking the
+                    -- Ban cascade left (its startAt was not in the future) is treated as started and its late T4 still starts it.
+                    IF TG_OP = 'UPDATE' AND OLD.status = 'CONFIRMED' AND NEW.status = 'ACTIVE' THEN
+                        RETURN NEW;
+                    END IF;
+                """;
+        String migrated = function(migration, guard);
+        assertThat(migrated).containsOnlyOnce(added);
+        assertThat(migrated.replace(added, "")).isEqualTo(previous);
+        assertThat(migration.substring(migration.indexOf(guard) + guard.length()))
+                .doesNotContain("CREATE ").doesNotContain("DROP ").doesNotContain("ALTER ").doesNotContain("GRANT");
+    }
+
     /** {@code open}'s definition in {@code migration} is its definition in {@code earlier} plus exactly {@code lines}. */
     /**
      * v1.1.39 (E7-66 PR 3, PCR-009): the migration is the model's own block, byte for byte; the table model has the
@@ -406,6 +462,43 @@ class MigrationFilesTest {
                 "loyalty.assert_booking(", "loyalty.assert_user(", "loyalty.pay_fee_from_wallet(")) {
             function(migration, "CREATE OR REPLACE FUNCTION " + redefined);
         }
+    }
+
+    /**
+     * v1.1.43 (E7-124, PCR-013): the migration is the model's own block, byte for byte; the model has the new table, its
+     * check, primary key, foreign key and relationship under the migration's names; no grant, no trigger switched off,
+     * and no existing function or table redefined (the acceptance is a table of its own).
+     */
+    @Test
+    void termsAcceptanceMigrationIsTheModelsV1143Block() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String open = "<genericsql name=\"v1_1_43_terms_acceptance\">\n\t<definition> <![CDATA[\n";
+        int start = model.indexOf(open);
+        assertThat(start).as("v1.1.43 block in the .dbm").isPositive();
+        String block = model.substring(start + open.length(), model.indexOf("]]> </definition>", start));
+        String migration = classpath("db/migration/V202611171400__terms_acceptance.sql");
+        assertThat(migration).isEqualTo(block);
+
+        int tableStart = model.indexOf("<table name=\"terms_acceptance\" layers");
+        assertThat(tableStart).as("the new table in the model").isPositive();
+        String table = model.substring(tableStart, model.indexOf("</table>", tableStart));
+        assertThat(table).contains("<schema name=\"iam\"/>")
+                .contains("<column name=\"user_id\" not-null=\"true\">")
+                .contains("<column name=\"terms_version\" not-null=\"true\">")
+                .contains("<column name=\"accepted_at\" not-null=\"true\">")
+                .contains("<constraint name=\"terms_acceptance_pk\" type=\"pk-constr\"")
+                .contains("<constraint name=\"ck_terms_acceptance_version\" type=\"ck-constr\"");
+        assertThat(model).contains("<constraint name=\"fk_terms_acceptance_user\" type=\"fk-constr\"")
+                .contains("reference-fk=\"fk_terms_acceptance_user\"");
+        assertThat(migration).contains("CREATE TABLE iam.terms_acceptance (")
+                .contains("CONSTRAINT terms_acceptance_pk PRIMARY KEY (user_id)")
+                .contains("CONSTRAINT ck_terms_acceptance_version CHECK")
+                .contains("ADD CONSTRAINT fk_terms_acceptance_user FOREIGN KEY (user_id)")
+                .contains("CREATE OR REPLACE FUNCTION iam.guard_terms_acceptance()")
+                .doesNotContain("GRANT")
+                .doesNotContain("DISABLE TRIGGER")
+                .doesNotContain("ALTER TABLE iam.user_account");
+        assertThat(migration.split("CREATE OR REPLACE FUNCTION", -1)).as("one new function only").hasSize(2);
     }
 
     private static void assertAddedLinesOnly(String earlier, String migration, String open, String... lines) {

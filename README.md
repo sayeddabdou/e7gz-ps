@@ -38,6 +38,8 @@ cd backend && ./gradlew bootRun --args="--spring.profiles.active=api"
 | Mailpit (fake inbox) | http://localhost:8025 (SMTP `localhost:1025`) | — |
 | SeaweedFS (S3 file storage) | http://localhost:8333 | `e7gz-dev` / `e7gz-dev-secret` |
 
+**Terms and Privacy Policy settings** (PCR-013): `E7GZ_LEGAL_TERMS_VERSION`, `E7GZ_LEGAL_TERMS_URL` and `E7GZ_LEGAL_PRIVACY_URL` (names in `backend/.env.example`). Locally they default to the version `dev` and placeholder addresses; a sign-up must send the current version, which `GET /api/v1/customer/legal` returns. The Product Owner sets the real values for deployment.
+
 Port **5433** (not 5432) so an installed PostgreSQL does not clash. `docker compose down` stops everything; `docker compose down -v` also **wipes** the database (it is rebuilt on the next start).
 
 **Database:** every developer has their own local database. You never create tables by hand: when the backend starts, Flyway applies the migrations in `backend/src/main/resources/db/migration/` (`V1__baseline.sql` = the model from `docs/04-erd/physical`, then any newer `V…` files). After a `git pull` with a new migration, just restart the backend. Staging and production get the same migrations (E7-101).

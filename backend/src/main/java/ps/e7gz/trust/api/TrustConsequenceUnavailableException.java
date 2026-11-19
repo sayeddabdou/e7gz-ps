@@ -17,8 +17,8 @@ public final class TrustConsequenceUnavailableException extends IllegalStateExce
 
     public TrustConsequenceUnavailableException(UUID userId, String owner,
                                                 TrustReconciler.Reconciliation reconciliation) {
-        super("Trust reconciliation of user " + userId + " needs " + owner + ", which is not available: "
-                + reconciliation);
+        super("Trust reconciliation of user " + userId + " needs " + owner + ", which is not available"
+                + (reconciliation == null ? "" : ": " + reconciliation));
         this.userId = userId;
         this.reconciliation = reconciliation;
     }
