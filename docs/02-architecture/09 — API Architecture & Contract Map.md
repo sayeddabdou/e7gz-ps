@@ -10,6 +10,7 @@
 **Updated:** 15 October 2026 — E7-56 decisions: admin alert list and acknowledge routes (`§5`) and `ADMIN_ALERT_ALREADY_ACKNOWLEDGED` (`§1.5`).
 **Updated:** 16 October 2026 — E7-57: `verify-phone` takes `password` for a code from `otp/send` (`§3.1`).
 **Updated:** 17 October 2026 — Sprint 4 contract decisions (E7-65): `ADMIN_ACTION_NOT_ALLOWED` (`§1.5`); admin users, trust, ban, attendance, wallet, points, referral and points-settings routes (`§5`); global rules joined on 20 October 2026 (`§5`).
+**Updated:** 19 November 2026 — Sprint 5 contract decision (E7-77): `OPERATIONAL_STATE_CHANGED` (`§1.5`). The Sprint 5 routes this contract adds to `§4.2` and `§5` are listed in `packages/api-client/SPRINT-5-CONTRACT.md`; they join this map in a later docs change (Product Owner decision, 19 Nov 2026).
 
 **Style.** REST + JSON over HTTPS, base `/api/v1`, OpenAPI 3.1 generated from code, typed TypeScript clients generated for all three surfaces (`ADR-012`).
 
@@ -138,6 +139,7 @@ Representative members, each traced:
 | `ADMIN_ALERT_ALREADY_ACKNOWLEDGED` | **409** | an admin acknowledges an alert another admin already acknowledged (one acknowledgement per alert, `admin.acknowledge_alert`); the same admin acknowledging again returns the alert. Product Owner decision, 15 Oct 2026 (E7-56) |
 | `CUSTOMER_NOT_ELIGIBLE` | 422 | `FR-BOK-14` — the venue's Accept fails the always-on customer check (banned, deleted or restricted); the booking stays PENDING, nothing is cancelled. Neutral: the venue is never told why. Product Owner decision D9, 10 Oct 2026 (E7-47) |
 | `ADMIN_ACTION_NOT_ALLOWED` | **409** | a Platform Admin trust, Verified Player, attendance or referral action the target's current state no longer allows (a ban no longer `ACTIVE`, a Verified Player status that does not allow the transition, a referral already `INVALID`, evidence that does not exist, a ban still supported by trust history): refresh and look again. One general code for all of them. Product Owner decision D5, 17 Oct 2026 (E7-65) |
+| `OPERATIONAL_STATE_CHANGED` | **409** | a venue action on an Emergency or an Owner Review that is no longer in the state it needs (extending, ending or converting an Emergency another staff member already ended or converted, resolving an Owner Review already resolved): refresh and look again. One general code for both. Product Owner decision, 19 Nov 2026 (E7-77) |
 
 **General codes** — Product Owner decision, 29 Sep 2026 (E7-12). Used only where no more specific code above applies:
 
