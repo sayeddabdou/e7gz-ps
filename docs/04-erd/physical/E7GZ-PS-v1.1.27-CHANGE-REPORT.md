@@ -339,6 +339,20 @@ No table, column, constraint, trigger or grant changes; `tr_05_booking_ban_eligi
 
 - Tests: `BanConsequencesIntegrationTest.aLateStartBookingContinuesUnderTheBanAndItsLateT4StillStartsIt` (the real T4 starts it under the Ban; a future booking of the same customer is cancelled); `MigrationSafetyTest`; the `.dbm`/migration identity and added-lines checks in `MigrationFilesTest`.
 
+### v1.1.43 — the recorded acceptance of the Terms and the Privacy Policy at sign-up (E7-124, 17 Nov 2026; renumbered from v1.1.41 / V202611171200 after E7-71 took both)
+
+**Product Owner decisions, 15 and 16 Nov 2026 (Sayed), PCR-013 items 4-6**: the server stores, for each Customer, which version of the Terms of Use and the Privacy Policy they accepted and when; written once at registration, never changed; a registration without it, or with a version that is not the current one, is refused (the application's check: the current label is the deployment setting `E7GZ_LEGAL_TERMS_VERSION`, PO decision 16 Nov 2026). Accounts from before the change keep no acceptance: nothing is invented. `.dbm` block `v1_1_43_terms_acceptance` = Flyway `V202611171400__terms_acceptance.sql`, byte for byte; the `.dbm` models the new table `iam.terms_acceptance` with `terms_acceptance_pk`, `ck_terms_acceptance_version`, the foreign key `fk_terms_acceptance_user` and the relationship `rel_terms_acceptance_user`. **Waiting for the Product Owner's review.**
+
+| Object | Change |
+|---|---|
+| `iam.terms_acceptance` | New, append-only: `user_id` (primary key, so one acceptance per Customer), `terms_version` (trimmed, 1-64 characters), `accepted_at`. A table of its own rather than two columns of `iam.user_account`, so the account row, its update guard and the anonymisation producer are untouched. A later version that Customers must accept again needs its own PCR (PCR-013 item 5) and migration |
+| `iam.guard_terms_acceptance()` + `tr_141_terms_acceptance_guard` | New. UPDATE and DELETE are refused. An INSERT needs a Customer that exists and is not anonymised, and `accepted_at` must be both the command instant (`tournament.command_now()`) and the account's `joined_at`: only the command that registers the Customer can write it, so no acceptance can be added later to an older account |
+| `tr_141_terms_acceptance_no_truncate` | New: `technical.reject_truncate()` |
+
+**Existing data.** A new table; no existing row changes and no backfill (PCR-013 item 6). An anonymised account keeps its acceptance: it holds no personal data, and it is the proof of consent. Grants: the security baseline already grants SELECT/INSERT/UPDATE on every `iam` table to both runtime roles; the guard refuses every change after the INSERT. Upgrade seed `upgrade-seed/V202611171400.sql`: a Customer registered in a command with their acceptance, so later migrations run over an acceptance row; the V1 seed Customer stays without one.
+
+- Tests: `TermsAcceptanceHttpTest` (registration refused without the version or with another one, and no account created; the current version stored with the command instant; the row cannot be changed or deleted, nor added to an older account; `GET /customer/legal` without a token; the Admin user detail); `MigrationSafetyTest` (no acceptance invented for the V1 Customer; the seeded one survives); the `.dbm`/migration identity check in `MigrationFilesTest`.
+
 ## Product Owner decisions (26 Sep 2026)
 
 A1 overlapping Maintenance allowed · A2 booking horizon is a deployment setting, default 120 days · A4 rate-limit table approved · A5 reports FR-AUD-11/12 at launch · A6 venue alerts = live + Web Push + audible alert · A8 configurable = fees and points only · A9 Venue never returns to ONBOARDING · A10 login limits stored as `LOGIN` rate-limit rows · A11 read-only customer wallet screen (PCR-004, no DB change) · review self-reporting allowed, duplicate open reports blocked.

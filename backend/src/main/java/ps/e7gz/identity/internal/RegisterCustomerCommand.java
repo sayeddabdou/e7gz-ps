@@ -20,6 +20,9 @@ import ps.e7gz.notification.api.CustomerPushDevices;
  * <p>A {@code referredByCode} (E7-67, FR-PTS-06) makes {@code loyalty.initialize_user} record the referral with the
  * account: PENDING for a friend's code, INVALID for an unknown code or a self-referral (same phone or email).
  *
+ * <p>The Terms of Use and Privacy Policy version the customer accepted is recorded with the account, at the command
+ * instant, once ({@code iam.terms_acceptance}, PCR-013 item 4, E7-124); the database refuses any later write of it.
+ *
  * <p>An account that never verified its phone does not keep them (Sprint 0 review S-3, E7-57): under its lock it is
  * released first ({@link UnverifiedAccounts}), and the registration goes ahead. A verified holder keeps them.
  */
@@ -27,7 +30,7 @@ record RegisterCustomerCommand(UUID userId, String fullName, String username, St
                                String passwordHash, String referralCode, String referredByCode, UUID challengeId,
                                String codeHash,
                                String sealedCode, Outbox outbox, List<UUID> holders,
-                               CustomerPushDevices pushDevices)
+                               CustomerPushDevices pushDevices, String acceptedTermsVersion)
         implements Command<Void> {
 
     /** No Venue is in scope, so the category selects no venue rule (ADR-022 names none for account commands). */
@@ -63,6 +66,14 @@ record RegisterCustomerCommand(UUID userId, String fullName, String username, St
                 .param("referralCode", referralCode)
                 .param("referredByCode", referredByCode)
                 .param("joinedAt", OtpChallenges.utc(ctx.commandNow()))
+                .update();
+        ctx.jdbc().sql("""
+                        INSERT INTO iam.terms_acceptance (user_id, terms_version, accepted_at)
+                        VALUES (:id, :version, :acceptedAt)
+                        """)
+                .param("id", userId)
+                .param("version", acceptedTermsVersion)
+                .param("acceptedAt", OtpChallenges.utc(ctx.commandNow()))                  // never device time
                 .update();
         OtpChallenges.issue(ctx, outbox, challengeId, userId, OtpPurpose.PHONE_VERIFICATION, phoneE164, codeHash,
                 sealedCode);

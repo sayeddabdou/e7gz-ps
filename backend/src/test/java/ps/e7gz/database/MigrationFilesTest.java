@@ -464,6 +464,43 @@ class MigrationFilesTest {
         }
     }
 
+    /**
+     * v1.1.43 (E7-124, PCR-013): the migration is the model's own block, byte for byte; the model has the new table, its
+     * check, primary key, foreign key and relationship under the migration's names; no grant, no trigger switched off,
+     * and no existing function or table redefined (the acceptance is a table of its own).
+     */
+    @Test
+    void termsAcceptanceMigrationIsTheModelsV1143Block() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String open = "<genericsql name=\"v1_1_43_terms_acceptance\">\n\t<definition> <![CDATA[\n";
+        int start = model.indexOf(open);
+        assertThat(start).as("v1.1.43 block in the .dbm").isPositive();
+        String block = model.substring(start + open.length(), model.indexOf("]]> </definition>", start));
+        String migration = classpath("db/migration/V202611171400__terms_acceptance.sql");
+        assertThat(migration).isEqualTo(block);
+
+        int tableStart = model.indexOf("<table name=\"terms_acceptance\" layers");
+        assertThat(tableStart).as("the new table in the model").isPositive();
+        String table = model.substring(tableStart, model.indexOf("</table>", tableStart));
+        assertThat(table).contains("<schema name=\"iam\"/>")
+                .contains("<column name=\"user_id\" not-null=\"true\">")
+                .contains("<column name=\"terms_version\" not-null=\"true\">")
+                .contains("<column name=\"accepted_at\" not-null=\"true\">")
+                .contains("<constraint name=\"terms_acceptance_pk\" type=\"pk-constr\"")
+                .contains("<constraint name=\"ck_terms_acceptance_version\" type=\"ck-constr\"");
+        assertThat(model).contains("<constraint name=\"fk_terms_acceptance_user\" type=\"fk-constr\"")
+                .contains("reference-fk=\"fk_terms_acceptance_user\"");
+        assertThat(migration).contains("CREATE TABLE iam.terms_acceptance (")
+                .contains("CONSTRAINT terms_acceptance_pk PRIMARY KEY (user_id)")
+                .contains("CONSTRAINT ck_terms_acceptance_version CHECK")
+                .contains("ADD CONSTRAINT fk_terms_acceptance_user FOREIGN KEY (user_id)")
+                .contains("CREATE OR REPLACE FUNCTION iam.guard_terms_acceptance()")
+                .doesNotContain("GRANT")
+                .doesNotContain("DISABLE TRIGGER")
+                .doesNotContain("ALTER TABLE iam.user_account");
+        assertThat(migration.split("CREATE OR REPLACE FUNCTION", -1)).as("one new function only").hasSize(2);
+    }
+
     private static void assertAddedLinesOnly(String earlier, String migration, String open, String... lines) {
         String migrated = function(migration, open);
         String stripped = migrated;

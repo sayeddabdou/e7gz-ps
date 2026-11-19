@@ -68,7 +68,15 @@ public class AdminUsers {
     public record Page(List<User> items, String nextCursor) {
     }
 
-    public record Detail(User user, LoyaltyBalances.Balances balances) {
+    /**
+     * @param termsAcceptance the Terms and Privacy Policy version accepted at registration, and when (PCR-013, E7-124);
+     *                        {@code null} for an account from before that rule
+     */
+    public record Detail(User user, LoyaltyBalances.Balances balances, TermsAcceptance termsAcceptance) {
+    }
+
+    /** What {@code iam.terms_acceptance} recorded at registration (PCR-013 item 4). */
+    public record TermsAcceptance(String version, Instant acceptedAt) {
     }
 
     private final JdbcClient jdbc;
@@ -103,7 +111,10 @@ public class AdminUsers {
         return new Page(users, more ? encode(new Position(page.getLast().joinedAt(), page.getLast().userId())) : null);
     }
 
-    /** One customer with balances and referral code; empty when there is no such customer. */
+    /**
+     * One customer with balances, referral code and the recorded Terms acceptance; empty when there is no such
+     * customer.
+     */
     public Optional<Detail> detail(UUID userId) {
         Objects.requireNonNull(userId, "userId");
         return jdbc.sql("SELECT " + COLUMNS + " FROM iam.user_account u WHERE u.id = :id")
@@ -111,7 +122,17 @@ public class AdminUsers {
                 .query((rs, n) -> account(rs))
                 .optional()
                 .map(account -> new Detail(withStanding(List.of(account)).getFirst(), balances.of(userId)
-                        .orElseThrow(() -> new IllegalStateException("Customer without loyalty accounts: " + userId))));
+                        .orElseThrow(() -> new IllegalStateException("Customer without loyalty accounts: " + userId)),
+                        termsAcceptance(userId)));
+    }
+
+    private TermsAcceptance termsAcceptance(UUID userId) {
+        return jdbc.sql("SELECT terms_version, accepted_at FROM iam.terms_acceptance WHERE user_id = :id")
+                .param("id", userId)
+                .query((rs, n) -> new TermsAcceptance(rs.getString("terms_version"),
+                        rs.getObject("accepted_at", OffsetDateTime.class).toInstant()))
+                .optional()
+                .orElse(null);
     }
 
     private List<User> withStanding(List<Account> accounts) {

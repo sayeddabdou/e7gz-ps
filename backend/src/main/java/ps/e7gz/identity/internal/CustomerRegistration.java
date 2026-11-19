@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import javax.sql.DataSource;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -22,8 +23,12 @@ import ps.e7gz.notification.api.CustomerPushDevices;
  * command. The command writes the challenge and an outbox event carrying the sealed code; the worker's dispatcher sends
  * the SMS after commit, with retries (E7-41, ADR-004; arch 01 section 6: "Never called inside a business transaction").
  * A failed SMS never undoes the committed account or challenge; the customer can also ask for a new code after 60 s.
+ *
+ * <p>The account is created only with the customer's acceptance of the current Terms of Use and Privacy Policy, which
+ * the same command records (PCR-013 items 3-4, E7-124).
  */
 @Service
+@EnableConfigurationProperties(LegalTextsProperties.class)
 public class CustomerRegistration {
 
     private final CommandRunner runner;
@@ -32,16 +37,19 @@ public class CustomerRegistration {
     private final Outbox outbox;
     private final CustomerPushDevices pushDevices;
     private final ReferralSettlement referrals;
+    private final LegalTextsProperties legal;
     private final JdbcClient jdbc;
 
     CustomerRegistration(CommandRunner runner, PasswordEncoder passwords, OtpPayloadCipher otpCipher, Outbox outbox,
-                         CustomerPushDevices pushDevices, ReferralSettlement referrals, DataSource appDataSource) {
+                         CustomerPushDevices pushDevices, ReferralSettlement referrals, LegalTextsProperties legal,
+                         DataSource appDataSource) {
         this.runner = runner;
         this.passwords = passwords;
         this.otpCipher = otpCipher;
         this.outbox = outbox;
         this.pushDevices = pushDevices;
         this.referrals = referrals;
+        this.legal = legal;
         this.jdbc = JdbcClient.create(appDataSource);
     }
 
@@ -51,17 +59,18 @@ public class CustomerRegistration {
 
     /**
      * Registration data as the client sent it (FR-ACC-01: all five fields required); {@code referralCode}, the
-     * inviting friend's code (FR-PTS-06), is optional.
+     * inviting friend's code (FR-PTS-06), is optional; {@code acceptedTermsVersion}, the version of the Terms of Use
+     * and Privacy Policy the customer agreed to, is required (PCR-013 items 3-4).
      */
     public record NewCustomer(String fullName, String username, String phone, String email, String password,
-                              String referralCode) {
-
-        public NewCustomer(String fullName, String username, String phone, String email, String password) {
-            this(fullName, username, phone, email, password, null);
-        }
+                              String referralCode, String acceptedTermsVersion) {
     }
 
     public Registered register(NewCustomer customer) {
+        // PCR-013 item 4: missing, or not the current version -> refused before anything is written
+        if (customer.acceptedTermsVersion() == null || !legal.isCurrent(customer.acceptedTermsVersion().strip())) {
+            throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "acceptedTermsVersion");
+        }
         if (!PasswordPolicy.isAcceptable(customer.password())) {
             throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "password");               // VALIDATION RULES §2.1
         }
@@ -87,7 +96,8 @@ public class CustomerRegistration {
                 otpCipher.seal(challengeId, code),
                 outbox,
                 holders,
-                pushDevices));
+                pushDevices,
+                legal.termsVersion()));
         return new Registered(userId, challengeId);
     }
 

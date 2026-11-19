@@ -26,6 +26,7 @@ import ps.e7gz.common.web.ResponseMetaFactory;
 import ps.e7gz.identity.internal.AuthSessions;
 import ps.e7gz.identity.internal.CustomerProfiles;
 import ps.e7gz.identity.internal.CustomerRegistration;
+import ps.e7gz.identity.internal.LegalTextsProperties;
 import ps.e7gz.identity.internal.PasswordPolicy;
 
 /**
@@ -60,13 +61,16 @@ public class CustomerAuthController {
             description = "A phone or username held by an account that never verified its phone is taken over: that "
                     + "account is released and can no longer log in (Sprint 0 review S-3, E7-57). A verified holder "
                     + "keeps them: PHONE_TAKEN / USERNAME_TAKEN. A referralCode makes a PENDING referral of the "
-                    + "friend who owns it; the phone OTP verification settles it (FR-PTS-06, E7-67).")
+                    + "friend who owns it; the phone OTP verification settles it (FR-PTS-06, E7-67). "
+                    + "acceptedTermsVersion must be the current version of GET /customer/legal; it is recorded with "
+                    + "the command instant and never changed (PCR-013, E7-124).")
+    @ApiError(status = 400, codes = ApiErrorCode.VALIDATION_FAILED)
     @ApiError(status = 422, codes = {ApiErrorCode.USERNAME_TAKEN, ApiErrorCode.PHONE_TAKEN})
     @ApiError(status = 429, codes = {ApiErrorCode.OTP_RESEND_TOO_SOON, ApiErrorCode.OTP_HOURLY_LIMIT_REACHED})
     public DataResponse<CustomerRegistrationView> register(@Valid @RequestBody CustomerRegisterRequest request) {
         CustomerRegistration.Registered registered = registration.register(new CustomerRegistration.NewCustomer(
                 request.fullName(), request.username(), request.phone(), request.email(), request.password(),
-                request.referralCode()));
+                request.referralCode(), request.acceptedTermsVersion()));
         return meta.data(new CustomerRegistrationView(registered.userId(), registered.otpChallengeId()));
     }
 
@@ -159,7 +163,8 @@ public class CustomerAuthController {
 
     /**
      * Arch 09 section 2: {@code {fullName, username, phone, email, password}}, all required (FR-ACC-01); since E7-67
-     * also the optional {@code referralCode} of the friend who invited them (FR-PTS-06).
+     * also the optional {@code referralCode} of the friend who invited them (FR-PTS-06); since E7-124 the required
+     * {@code acceptedTermsVersion} (PCR-013 items 3-4).
      */
     @Schema(name = "CustomerRegisterRequest")
     public record CustomerRegisterRequest(
@@ -176,7 +181,13 @@ public class CustomerAuthController {
             @Size(max = 32) @Schema(nullable = true, description = "The Referral Code of the friend who invited "
                     + "me (FR-PTS-06), trimmed and upper-cased. A code nobody has, or my own phone's or email's, is "
                     + "recorded as an INVALID referral and never blocks the registration.", example = "K7M3QX9P")
-            String referralCode) {
+            String referralCode,
+            @NotBlank @Size(max = LegalTextsProperties.MAX_VERSION_LENGTH)
+            @Schema(description = "The version of the Terms of Use and the Privacy Policy the customer agreed to: "
+                    + "the version of GET /customer/legal (PCR-013). Missing, or not the current version: 400 "
+                    + "VALIDATION_FAILED on field acceptedTermsVersion, and no account is created.",
+                    example = "2026-11-15")
+            String acceptedTermsVersion) {
     }
 
     @Schema(name = "CustomerRegistration")

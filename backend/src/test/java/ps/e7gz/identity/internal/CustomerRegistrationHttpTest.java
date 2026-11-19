@@ -471,7 +471,8 @@ class CustomerRegistrationHttpTest extends IntegrationTest {
     private ResultActions register(String fullName, String username, String phone, String email, String password)
             throws Exception {
         ResultActions result = postJson(AUTH + "/register", Map.of("fullName", fullName, "username", username,
-                "phone", phone, "email", email, "password", password));
+                "phone", phone, "email", email, "password", password,
+                "acceptedTermsVersion", "dev"));                                  // PCR-013, E7-124
         deliverSms();
         return result;
     }
