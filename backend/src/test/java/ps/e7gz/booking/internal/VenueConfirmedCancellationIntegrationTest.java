@@ -526,7 +526,7 @@ class VenueConfirmedCancellationIntegrationTest extends IntegrationTest {
     private static long failures(UUID accountId) {
         return OWNER.sql("""
                         SELECT coalesce((SELECT counter FROM iam.security_rate_limit_counter
-                                          WHERE limiter_type = 'OWNER_PASSWORD'
+                                          WHERE limiter_type = 'OWNER_PASSWORD' AND action_class = 'VENUE'
                                             AND subject_key_hash = encode(sha256(convert_to(
                                                     'venue-account:' || CAST(:id AS text), 'UTF8')), 'hex')), 0)""")
                 .param("id", accountId).query(Long.class).single();
@@ -568,6 +568,12 @@ class VenueConfirmedCancellationIntegrationTest extends IntegrationTest {
         @Override
         public Optional<ActiveReservation> activeOf(CommandContext command, ReservationOwner owner) {
             return ledger.activeOf(command, owner);
+        }
+
+        @Override
+        public int releaseAll(CommandContext command, ReservationOwner owner, Instant releaseAt,
+                              String releaseReason) {
+            return 0;
         }
 
         @Override

@@ -17,6 +17,7 @@ import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.validation.TextFields;
 import ps.e7gz.common.validation.VenuePhones;
 import ps.e7gz.geography.api.AreaLookup;
+import ps.e7gz.identity.api.OwnerPasswordAttempts;
 import ps.e7gz.identity.api.PasswordRules;
 import ps.e7gz.messaging.api.Idempotency;
 import ps.e7gz.messaging.api.IdempotentRequest;
@@ -48,11 +49,12 @@ public class VenueAccounts implements VenueAccountVenues {
     private final Outbox outbox;
     private final VenueBrowserPush browserPush;
     private final Idempotency idempotency;
+    private final OwnerPasswordAttempts attempts;
     private final JdbcClient jdbc;
 
     VenueAccounts(CommandRunner runner, OwnerPasswordGate gate, PasswordEncoder passwords, AuditWriter audit,
                   AreaLookup areas, Notifications notifications, Outbox outbox, VenueBrowserPush browserPush,
-                  Idempotency idempotency, DataSource appDataSource) {
+                  Idempotency idempotency, OwnerPasswordAttempts attempts, DataSource appDataSource) {
         this.runner = runner;
         this.gate = gate;
         this.passwords = passwords;
@@ -62,6 +64,7 @@ public class VenueAccounts implements VenueAccountVenues {
         this.outbox = outbox;
         this.browserPush = browserPush;
         this.idempotency = idempotency;
+        this.attempts = attempts;
         this.jdbc = JdbcClient.create(appDataSource);
     }
 
@@ -136,13 +139,16 @@ public class VenueAccounts implements VenueAccountVenues {
                 venueId, hash, audit));
     }
 
-    /** FR-ADM-03: the admin chooses the new Owner Password (a 4-digit PIN); the old one stops working at once. */
+    /**
+     * FR-ADM-03: the admin chooses the new Owner Password (a 4-digit PIN); the old one stops working at once. It also
+     * ends the long lock and a running short lockout (PCR-012 item 3, E7-121).
+     */
     public void resetOwnerPassword(UUID adminId, UUID venueAccountId, String newPassword) {
         UUID venueId = venueOf(venueAccountId);
         requireOwnerPin(newPassword, "newPassword");
         String hash = passwords.encode(newPassword);
         runner.run(new VenueAccountCommands.ResetOwnerPassword(adminId, CorrelationId.require(), venueAccountId,
-                venueId, hash, audit, notifications));
+                venueId, hash, audit, notifications, attempts));
     }
 
     public Settings settings(UUID venueAccountId) {

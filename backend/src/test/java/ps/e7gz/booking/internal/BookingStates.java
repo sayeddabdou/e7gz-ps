@@ -242,6 +242,47 @@ final class BookingStates {
         });
     }
 
+    /**
+     * E7-118: a VENUE_RESPONSE_EXPIRED booking the real T1 expired, moved back in time by {@code by}, whole - its
+     * interval, creation and response deadline, its released BOOKING reservation and its history rows together - so
+     * its original startAt lies in the past, as when its T6 comes due late, while every instant keeps its distance to
+     * the others (the lead time, the deadline, the release after the reservation was taken). Its jobs, outbox and audit
+     * rows are left as they are; the caller makes T6 due.
+     */
+    static void shiftExpiredBack(UUID bookingId, Duration by) {
+        double seconds = by.toNanos() / 1e9;
+        VenueAnswerDb.withoutTriggers(jdbc -> {
+            int moved = jdbc.sql("""
+                            UPDATE booking.booking
+                               SET start_at = start_at - make_interval(secs => :by),
+                                   end_at = end_at - make_interval(secs => :by),
+                                   session_local_start = session_local_start - make_interval(secs => :by),
+                                   session_local_end = session_local_end - make_interval(secs => :by),
+                                   venue_response_expires_at = venue_response_expires_at - make_interval(secs => :by),
+                                   created_at = created_at - make_interval(secs => :by)
+                             WHERE id = :id AND status = 'VENUE_RESPONSE_EXPIRED'""")
+                    .param("by", seconds).param("id", bookingId).update();
+            if (moved != 1) {
+                throw new IllegalStateException("Booking " + bookingId + " is not VENUE_RESPONSE_EXPIRED");
+            }
+            jdbc.sql("""
+                            UPDATE inventory.resource_reservation
+                               SET planned_start = planned_start - make_interval(secs => :by),
+                                   planned_end = planned_end - make_interval(secs => :by),
+                                   planned_range = tstzrange(planned_start - make_interval(secs => :by),
+                                                             planned_end - make_interval(secs => :by), '[)'),
+                                   actual_reservation_start = actual_reservation_start - make_interval(secs => :by),
+                                   actual_reservation_release_at =
+                                       actual_reservation_release_at - make_interval(secs => :by)
+                             WHERE booking_id = :id AND reservation_type = 'BOOKING'""")
+                    .param("by", seconds).param("id", bookingId).update();
+            jdbc.sql("""
+                            UPDATE booking.booking_history SET occurred_at = occurred_at - make_interval(secs => :by)
+                             WHERE booking_id = :id""")
+                    .param("by", seconds).param("id", bookingId).update();
+        });
+    }
+
     private static void moveInterval(org.springframework.jdbc.core.simple.JdbcClient jdbc, UUID bookingId,
                                      Instant startAt, String status) {
         jdbc.sql("""

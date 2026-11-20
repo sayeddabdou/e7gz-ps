@@ -501,6 +501,89 @@ class MigrationFilesTest {
         assertThat(migration.split("CREATE OR REPLACE FUNCTION", -1)).as("one new function only").hasSize(2);
     }
 
+    /**
+     * v1.1.44 (E7-81): the migration is the model's own block, byte for byte; both tables model deleted_at; every
+     * function it redefines is its previous definition (V1's, or V202609291200's for guard_maintenance_window) plus only
+     * the soft-delete lines - nothing removed or rewritten; no grant and no trigger switched off.
+     */
+    @Test
+    void maintenanceClosureSoftDeleteMigrationIsTheModelsV1144Block() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String open = "<genericsql name=\"v1_1_44_maintenance_closure_soft_delete\">\n\t<definition> <![CDATA[\n";
+        int start = model.indexOf(open);
+        assertThat(start).as("v1.1.44 block in the .dbm").isPositive();
+        String block = model.substring(start + open.length(), model.indexOf("]]> </definition>", start));
+        String migration = classpath("db/migration/V202611201200__maintenance_closure_soft_delete.sql");
+        assertThat(migration).isEqualTo(block);
+        for (String table : new String[] {"maintenance_window", "venue_closure"}) {
+            int tableStart = model.indexOf("<table name=\"" + table + "\" layers");
+            assertThat(model.substring(tableStart, model.indexOf("</table>", tableStart)))
+                    .as(table).contains("<column name=\"deleted_at\">");
+            assertThat(migration).contains("ALTER TABLE operations." + table
+                    + " ADD COLUMN deleted_at timestamp with time zone;");
+        }
+        assertThat(migration).doesNotContain("GRANT").doesNotContain("DISABLE TRIGGER").doesNotContain("DELETE FROM");
+
+        String baseline = classpath("db/migration/V1__baseline.sql");
+        String guards = classpath("db/migration/V202609291200__guard_error_identifiers.sql");
+        String m = "       AND m.deleted_at IS NULL\n";
+        assertAddedLinesOnly(baseline, migration,
+                "CREATE OR REPLACE FUNCTION operations.maintenance_union_minutes_in_window(", m);
+        assertAddedLinesOnly(baseline, migration,
+                "CREATE OR REPLACE FUNCTION operations.maintenance_candidate_max_rolling_minutes(", m);
+        assertAddedLinesOnly(guards, migration, "CREATE OR REPLACE FUNCTION operations.guard_maintenance_window()",
+                "              AND c.deleted_at IS NULL\n");
+        assertAddedLinesOnly(baseline, migration,
+                "CREATE OR REPLACE FUNCTION operations.assert_venue_closure_affected_set_resolved()", """
+                    -- v1.1.44 (E7-81): a deleted Closure blocks nothing, so it has no affected set to resolve.
+                    IF EXISTS (SELECT 1 FROM operations.venue_closure c WHERE c.id = NEW.id AND c.deleted_at IS NOT NULL) THEN
+                        RETURN NULL;
+                    END IF;
+                """);
+        assertAddedLinesOnly(baseline, migration,
+                "CREATE OR REPLACE FUNCTION inventory.validate_operational_reservation_owner()", """
+                        -- v1.1.44 (E7-81): a deleted Maintenance window holds no active guard row.
+                        IF EXISTS (SELECT 1 FROM operations.maintenance_window m WHERE m.id = NEW.maintenance_id AND m.deleted_at IS NOT NULL) THEN
+                            RAISE EXCEPTION 'A deleted Maintenance window cannot hold an active MAINTENANCE reservation';
+                        END IF;
+                """, """
+                        -- v1.1.44 (E7-81): a deleted Closure holds no active guard row.
+                        IF EXISTS (SELECT 1 FROM operations.venue_closure c WHERE c.id = NEW.closure_id AND c.deleted_at IS NOT NULL) THEN
+                            RAISE EXCEPTION 'A deleted Closure cannot hold an active CLOSURE reservation';
+                        END IF;
+                """);
+        assertAddedLinesOnly(baseline, migration,
+                "CREATE OR REPLACE FUNCTION operations.assert_operational_guard_rows_match_owner()", """
+                        -- v1.1.44 (E7-81): the delete released the window's guard row in the same transaction.
+                        IF NEW.deleted_at IS NOT NULL AND EXISTS (
+                            SELECT 1 FROM inventory.resource_reservation rr
+                            WHERE rr.active_flag AND rr.reservation_type = 'MAINTENANCE' AND rr.maintenance_id = NEW.id
+                        ) THEN
+                            RAISE EXCEPTION 'A deleted Maintenance window still holds an active MAINTENANCE guard row';
+                        END IF;
+                """, """
+                        -- v1.1.44 (E7-81): the delete released the Closure's guard rows in the same transaction.
+                        IF NEW.deleted_at IS NOT NULL AND EXISTS (
+                            SELECT 1 FROM inventory.resource_reservation rr
+                            WHERE rr.active_flag AND rr.reservation_type = 'CLOSURE' AND rr.closure_id = NEW.id
+                        ) THEN
+                            RAISE EXCEPTION 'A deleted Closure still holds an active CLOSURE guard row';
+                        END IF;
+                """);
+        String owner = "CREATE OR REPLACE FUNCTION operations.assert_owner_review_resolution()";
+        String ownerMigrated = function(migration, owner);
+        assertThat(ownerMigrated.split("AND m.deleted_at IS NULL\n", -1)).as("both Maintenance reads").hasSize(3);
+        assertThat(ownerMigrated.replace("              AND m.deleted_at IS NULL\n", ""))
+                .isEqualTo(function(baseline, owner));
+        String conversion = "CREATE OR REPLACE FUNCTION operations.assert_emergency_conversion_target_exists()";
+        assertAddedLinesOnly(baseline, migration, conversion, "              AND m.deleted_at IS NULL\n",
+                "              AND c.deleted_at IS NULL\n");
+        assertAddedLinesOnly(baseline, migration, "CREATE OR REPLACE FUNCTION tournament.assert_resources_operational(",
+                "           AND c.deleted_at IS NULL\n");
+        assertThat(migration.split("CREATE OR REPLACE FUNCTION", -1)).as("one new function, nine redefined")
+                .hasSize(11);
+    }
+
     private static void assertAddedLinesOnly(String earlier, String migration, String open, String... lines) {
         String migrated = function(migration, open);
         String stripped = migrated;

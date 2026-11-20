@@ -216,6 +216,16 @@ class MigrationSafetyTest {
                  WHERE t.user_id = '5afe0000-0000-4000-8000-000000000241' AND t.terms_version = '2026-11-15'
                    AND t.accepted_at = u.joined_at"""))
                 .as("the seeded acceptance survived every later migration").isEqualTo(1L);
+        // v1.1.44 (E7-81): no live row was deleted by the migration; the rows a command deleted stay deleted.
+        assertThat(count("SELECT count(*) FROM operations.maintenance_window"
+                + " WHERE id = '5afe0000-0000-4000-8000-000000000091' AND deleted_at IS NULL"))
+                .as("the V1 Maintenance window is still live").isEqualTo(1L);
+        assertThat(count("""
+                SELECT (SELECT count(*) FROM operations.maintenance_window
+                         WHERE id = '5afe0000-0000-4000-8000-000000000291' AND deleted_at IS NOT NULL)
+                     + (SELECT count(*) FROM operations.venue_closure
+                         WHERE id = '5afe0000-0000-4000-8000-000000000292' AND deleted_at IS NOT NULL)"""))
+                .as("the seeded deletions survived every later migration").isEqualTo(2L);
     }
 
     private static long count(String sql) throws SQLException {

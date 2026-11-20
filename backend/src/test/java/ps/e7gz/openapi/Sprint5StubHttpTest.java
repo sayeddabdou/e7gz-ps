@@ -30,7 +30,6 @@ import ps.e7gz.support.fixtures.Fixtures;
 @AutoConfigureMockMvc
 class Sprint5StubHttpTest extends IntegrationTest {
 
-    private static final String MAINTENANCE = "/api/v1/venue/maintenance";
     private static final String CLOSURES = "/api/v1/venue/closures";
     private static final String EMERGENCIES = "/api/v1/venue/emergencies";
     private static final String EMERGENCY = EMERGENCIES + "/" + UUID.randomUUID();
@@ -54,25 +53,7 @@ class Sprint5StubHttpTest extends IntegrationTest {
         admin = bearer(AuthSubjectType.ADMIN, Fixtures.anAdmin().create().id());
     }
 
-    @Test
-    void maintenanceStubsAnswerNotImplemented() throws Exception {
-        String window = "{\"resourceId\":\"" + UUID.randomUUID() + "\",\"startAt\":\"" + START + "\",\"endAt\":\""
-                + END + "\",\"reason\":\"Controller replacement\"}";
-        notImplemented(get(MAINTENANCE), venue);                                                    // E7-81
-        notImplemented(json(post(MAINTENANCE), window), venue);                                     // E7-81
-        notImplemented(json(patch(MAINTENANCE + "/" + UUID.randomUUID()), "{\"reason\":\"Longer\"}"), venue); // E7-81
-        notImplemented(delete(MAINTENANCE + "/" + UUID.randomUUID()), venue);                       // E7-81
-    }
-
-    @Test
-    void closureStubsAnswerNotImplemented() throws Exception {
-        String save = "{\"proposal\":" + CLOSURE + ",\"previewToken\":\"b64:x\"}";
-        notImplemented(get(CLOSURES), venue);                                                       // E7-81
-        notImplemented(json(post(CLOSURES + "/preview"), "{\"proposal\":" + CLOSURE + "}"), venue);  // E7-81
-        notImplemented(write(post(CLOSURES), save), venue);                                         // E7-81
-        notImplemented(write(patch(CLOSURES + "/" + UUID.randomUUID()), save), venue);              // E7-81
-        notImplemented(delete(CLOSURES + "/" + UUID.randomUUID()), venue);                          // E7-81
-    }
+    // E7-81 filled the Maintenance and Closure stubs: their tests are MaintenanceHttpTest and ClosureHttpTest.
 
     @Test
     void emergencyStubsAnswerNotImplemented() throws Exception {

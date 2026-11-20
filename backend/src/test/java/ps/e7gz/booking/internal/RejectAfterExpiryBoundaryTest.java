@@ -55,7 +55,8 @@ class RejectAfterExpiryBoundaryTest {
     private final VenueAnswers answers = new VenueAnswers(store, bookings, mock(VenueEligibility.class),
             mock(ResourceStates.class), mock(UnresolvedEmergencies.class), mock(AvailabilityQuery.class), ledger,
             mock(CustomerActivation.class), mock(ActiveBans.class), mock(ScheduledJobs.class), mock(Outbox.class),
-            refunds, mock(ResponseTimerPauses.class), mock(AdminAlerts.class));
+            refunds, mock(ResponseTimerPauses.class), mock(AdminAlerts.class),
+            mock(ExpiredRequestResolutions.class));
     private CorrelationId.Scope correlation;
 
     @BeforeEach

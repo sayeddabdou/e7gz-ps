@@ -82,40 +82,51 @@ final class BookingNotificationRules {
      * adds it (E7-60 start-time revalidation, E7-80 emergency/owner-review/closure cascades, E7-113 hours change,
      * E7-114 venue cancel).
      *
-     * <p>The three operational reasons are produced today only by an Accept stopped by its cause (FR-BOK-16, E7-47):
+     * <p>The three operational reasons are produced by an Accept stopped by its cause (FR-BOK-16, E7-47), the start (E7-60)
+     * and the resolution of a still-expired request at its start (T6, E7-118):
      * the customer gets the generic {@code BOOKING_AUTO_CANCELLED} (PO decision 13 Oct 2026) and the venue
      * {@code VENUE_BOOKING_AUTO_CANCELLED} (PO decision 12 Oct 2026). E7-80's cascades write the same reasons and want
      * their own customer codes ({@code BOOKING_CANCELLED_VENUE_EMERGENCY}, ...), so E7-80 tells its events apart here.
      */
-    static final Map<BookingTerminalReason, Plan> CANCELLED = Map.of(
+    static final Map<BookingTerminalReason, Plan> CANCELLED = Map.ofEntries(
             // E7-49 (D4: the customer notification of the customer's own cancel is E7-55's; PO decision 13 Oct 2026)
-            BookingTerminalReason.CUSTOMER_CANCELLED, plan(customer("BOOKING_CANCELLED")),
-            BookingTerminalReason.VENUE_EMERGENCY_CLOSURE,
-            plan(customer("BOOKING_AUTO_CANCELLED"), venue("VENUE_BOOKING_AUTO_CANCELLED")),
-            BookingTerminalReason.RESOURCE_EMERGENCY_OUTAGE,
-            plan(customer("BOOKING_AUTO_CANCELLED"), venue("VENUE_BOOKING_AUTO_CANCELLED")),
-            BookingTerminalReason.RESOURCE_OWNER_REVIEW_REQUIRED,
-            plan(customer("BOOKING_AUTO_CANCELLED"), venue("VENUE_BOOKING_AUTO_CANCELLED")),
+            Map.entry(BookingTerminalReason.CUSTOMER_CANCELLED, plan(customer("BOOKING_CANCELLED"))),
+            Map.entry(BookingTerminalReason.VENUE_EMERGENCY_CLOSURE,
+                    plan(customer("BOOKING_AUTO_CANCELLED"), venue("VENUE_BOOKING_AUTO_CANCELLED"))),
+            Map.entry(BookingTerminalReason.RESOURCE_EMERGENCY_OUTAGE,
+                    plan(customer("BOOKING_AUTO_CANCELLED"), venue("VENUE_BOOKING_AUTO_CANCELLED"))),
+            Map.entry(BookingTerminalReason.RESOURCE_OWNER_REVIEW_REQUIRED,
+                    plan(customer("BOOKING_AUTO_CANCELLED"), venue("VENUE_BOOKING_AUTO_CANCELLED"))),
             // The other two start-time reasons (Spec v5 section 31.3: every start-time failure notifies the customer),
             // produced today by a delayed-start no-show (E7-59, Amr Heiba 17 Oct 2026) and later by E7-60's start: the
             // same generic pair as the three operational reasons above
-            BookingTerminalReason.VENUE_CLOSURE,
-            plan(customer("BOOKING_AUTO_CANCELLED"), venue("VENUE_BOOKING_AUTO_CANCELLED")),
-            BookingTerminalReason.SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR,
-            plan(customer("BOOKING_AUTO_CANCELLED"), venue("VENUE_BOOKING_AUTO_CANCELLED")),
+            Map.entry(BookingTerminalReason.VENUE_CLOSURE,
+                    plan(customer("BOOKING_AUTO_CANCELLED"), venue("VENUE_BOOKING_AUTO_CANCELLED"))),
+            Map.entry(BookingTerminalReason.SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR,
+                    plan(customer("BOOKING_AUTO_CANCELLED"), venue("VENUE_BOOKING_AUTO_CANCELLED"))),
+            // E7-118 T6 (FR-BOK-23): a request still VENUE_RESPONSE_EXPIRED cancelled at its original start, the customer
+            // only - the venue never answered the request. PO decision D2 (20 Oct 2026): ordinary non-response has no
+            // code of its own, so the one generic BOOKING_AUTO_CANCELLED. A Venue Account disable does have one, and
+            // FR-NTF-06 / Spec v5 section 24.3 forbid presenting it as ordinary non-response (Amr Heiba 17 Nov 2026,
+            // subject to PO review): §52.2 BOOKING_CANCELLED_VENUE_ACCOUNT_DISABLED. E7-78's AWAITING -> CANCELLED under
+            // the same reason gets the same code. T6's three operational reasons use their entries above.
+            Map.entry(BookingTerminalReason.VENUE_DID_NOT_RESPOND_IN_TIME, plan(customer("BOOKING_AUTO_CANCELLED"))),
+            Map.entry(BookingTerminalReason.VENUE_ACCOUNT_DISABLED,
+                    plan(customer("BOOKING_CANCELLED_VENUE_ACCOUNT_DISABLED"))),
             // E7-48: the venue cancelled its own Manual Booking; there is no customer to tell
-            BookingTerminalReason.VENUE_CANCELLED_MANUAL_BOOKING, Plan.NONE,
+            Map.entry(BookingTerminalReason.VENUE_CANCELLED_MANUAL_BOOKING, Plan.NONE),
             // E7-114 (FR-VEN-03): the venue cancelled a CONFIRMED Online Booking with the Owner Password. §52.2 "Booking
             // Cancelled", the existing customer code (Amr Heiba 23 Oct 2026, subject to PO review); the customer only:
             // the venue made the cancellation itself
-            BookingTerminalReason.VENUE_CANCELLED_CONFIRMED_BOOKING, plan(customer("BOOKING_CANCELLED")),
+            Map.entry(BookingTerminalReason.VENUE_CANCELLED_CONFIRMED_BOOKING, plan(customer("BOOKING_CANCELLED"))),
             // E7-113 (O5, FR-VEN-23 step 9, FR-VEN-28): §52.2 "Venue Opening Hours Changed", one per cancelled booking.
             // The customer only: the venue made the change itself. A Manual Booking gets nothing (cancelled(event)).
-            BookingTerminalReason.VENUE_OPENING_HOURS_CHANGED, plan(customer("VENUE_OPENING_HOURS_CHANGED")),
+            Map.entry(BookingTerminalReason.VENUE_OPENING_HOURS_CHANGED,
+                    plan(customer("VENUE_OPENING_HOURS_CHANGED"))),
             // E7-71 (O14, FR-TRS-20: the customer is notified): §52.2 "Booking cancelled due to Ban" to the customer, and
             // §52.5 "Booking Auto Cancelled" to the venue - a system cancellation of one of its bookings
-            BookingTerminalReason.USER_BANNED,
-            plan(customer("BOOKING_CANCELLED_BAN"), venue("VENUE_BOOKING_AUTO_CANCELLED")));
+            Map.entry(BookingTerminalReason.USER_BANNED,
+                    plan(customer("BOOKING_CANCELLED_BAN"), venue("VENUE_BOOKING_AUTO_CANCELLED"))));
 
     /** One entry per integration event this module turns into booking notifications. */
     static final Map<String, Function<OutboxEvent, Plan>> RULES = Map.ofEntries(

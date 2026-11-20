@@ -62,6 +62,7 @@ public final class BookingFlows {
     private final ApplicationContext context;
     private DueJobs starts;
     private DueJobs completions;
+    private DueJobs resolutions;
 
     private BookingFlows(ApplicationContext context) {
         this.context = context;
@@ -260,6 +261,65 @@ public final class BookingFlows {
             starts().makeDue(context, VenueAnswerDb.bookingStart(booking.bookingId()), context.commandNow());
             return null;
         }));
+    }
+
+    // ---------------------------------------------------------------- E7-118 VENUE_RESPONSE_EXPIRED resolution (T6)
+
+    /**
+     * An Online Booking the real T1 expired - which schedules its T6 at startAt - then moved back whole so its stored
+     * startAt lies {@code startedAgo} (whole seconds) before the database clock ({@link BookingStates#shiftExpiredBack}):
+     * still VENUE_RESPONSE_EXPIRED, its T6 PENDING, as if the worker had not reached it yet.
+     */
+    public Booking expiredWithOverdueStart(Duration startedAgo) {
+        Booking booking = pending();
+        expire(booking);
+        Instant start = OnlineBookingWorld.dbNow().minus(startedAgo).truncatedTo(ChronoUnit.SECONDS);
+        Duration by = Duration.between(start, booking.startAt());
+        BookingStates.shiftExpiredBack(booking.bookingId(), by);
+        return new Booking(booking.bookingId(), booking.customerId(), booking.venueId(), booking.venueName(),
+                booking.venueAccountId(), booking.resourceId(), start, null);
+    }
+
+    /**
+     * Fires the booking's T6 once through the real deadline worker and E7-118's handler: the job, still PENDING, is
+     * made due now. Returns whether the worker settled it; false when it was not PENDING.
+     */
+    public boolean fireExpiredResolution(Booking booking) {
+        String key = ExpiredRequestResolutions.resolutionKey(booking.bookingId());
+        boolean due = runner.run(TestCommands.under(scope(booking), context -> {
+            int pending = context.jdbc().sql("""
+                            SELECT count(*) FROM technical.scheduled_job WHERE idempotency_key = :key
+                               AND status = 'PENDING'""")
+                    .param("key", key).query(Integer.class).single();
+            if (pending == 1) {
+                resolutions().makeDue(context, key, context.commandNow());
+            }
+            return pending == 1;
+        }));
+        return due && resolutions().fire(key);
+    }
+
+    /** The venue's account disabled from {@code disabledAt}, still disabled: an open restriction interval (E7-78's). */
+    public void venueAccountDisabledSince(Booking booking, Instant disabledAt) {
+        VenueAnswerDb.withoutTriggers(jdbc -> jdbc.sql("""
+                        INSERT INTO iam.venue_account_restriction_interval (id, venue_id, disabled_at, source, reason,
+                                                                            correlation_id)
+                        VALUES (gen_random_uuid(), :venue, :disabled, 'SYSTEM', 'E7-118 test', gen_random_uuid())""")
+                .param("venue", booking.venueId())
+                .param("disabled", OffsetDateTime.ofInstant(disabledAt, java.time.ZoneOffset.UTC)).update());
+    }
+
+    /** The idempotency key of the booking's T6 job. */
+    public static String expiredResolutionKey(UUID bookingId) {
+        return ExpiredRequestResolutions.resolutionKey(bookingId);
+    }
+
+    private synchronized DueJobs resolutions() {
+        if (resolutions == null) {
+            resolutions = DueJobs.of(context, new ExpiredRequestResolutionHandler(runner, store,
+                    context.getBean(ExpiredRequestResolutions.class)));
+        }
+        return resolutions;
     }
 
     // ---------------------------------------------------------------------------- E7-61 completion (O12, T5)
@@ -485,6 +545,15 @@ public final class BookingFlows {
     public UUID walkInOnRoomOf(Booking booking, int minutes) {
         return manualBookings.create(booking.venueAccountId(),
                 ManualBookingRequest.of(booking.resourceId(), PlayMode.SINGLE, null, minutes, null, null)).bookingId();
+    }
+
+    /**
+     * E7-81: a future Manual Booking of {@code minutes} on the booking's room at {@code start}, through the real command
+     * (E7-48). @return its Booking ID
+     */
+    public UUID manualOnRoomOf(Booking booking, Instant start, int minutes) {
+        return manualBookings.create(booking.venueAccountId(),
+                ManualBookingRequest.of(booking.resourceId(), PlayMode.SINGLE, start, minutes, null, null)).bookingId();
     }
 
     public void accept(Booking booking) {

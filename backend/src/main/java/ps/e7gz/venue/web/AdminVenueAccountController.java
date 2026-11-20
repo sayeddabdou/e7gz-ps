@@ -123,7 +123,9 @@ public class AdminVenueAccountController {
             description = "The admin chooses the new Owner Password and gives it to the venue through support (PO "
                     + "decision, 28 Sep 2026). The Owner Password is a PIN of exactly 4 digits (PCR-006). No temporary "
                     + "password, reset link or forced change. Audited; the venue "
-                    + "is notified (FR-ADM-03).")
+                    + "is notified (FR-ADM-03). It is the only way to end the long lock (OWNER_PASSWORD_LOCKED, "
+                    + "PCR-012); it also ends a running 15-minute lockout, and both counts start again from zero "
+                    + "(E7-121).")
     public void resetOwnerPassword(@AuthenticationPrincipal AuthenticatedSubject admin,
             @PathVariable UUID venueAccountId, @Valid @RequestBody AdminVenuePasswordResetRequest request) {
         accounts.resetOwnerPassword(admin.id(), venueAccountId, request.newPassword());

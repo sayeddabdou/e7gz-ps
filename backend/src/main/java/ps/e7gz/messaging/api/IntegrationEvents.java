@@ -272,19 +272,38 @@ public final class IntegrationEvents {
     public static final String LOYALTY_POINTS_LEDGER_COMMITTED = "LOYALTY_POINTS_LEDGER_COMMITTED";
 
     /**
+     * {@code {venueId, resourceId, maintenanceId}}, aggregate {@code MAINTENANCE}: the venue created a Maintenance window
+     * on one of its rooms (FR-OPS-01, arch 08 section 3.2; E7-81, Sprint 2 review, PO decision 12 Oct 2026). Its two
+     * siblings below carry the same payload.
+     */
+    public static final String MAINTENANCE_CREATED = "MaintenanceCreated";
+    /** The venue moved, extended, shortened or re-worded a Maintenance window (FR-OPS-04); as {@link #MAINTENANCE_CREATED}. */
+    public static final String MAINTENANCE_EDITED = "MaintenanceEdited";
+    /** The venue deleted a Maintenance window (FR-OPS-01); as {@link #MAINTENANCE_CREATED}. */
+    public static final String MAINTENANCE_DELETED = "MaintenanceDeleted";
+    /**
+     * {@code {venueId, closureId}}, aggregate {@code VENUE_CLOSURE}: the venue saved a new normal Closure (FR-VEN-29,
+     * arch 08 section 3.2; E7-81). An edit or a delete has no event of its own in arch 08: it releases and holds the
+     * Closure's per-room {@code CLOSURE} rows, whose {@link #RESERVATION_RELEASED} / {@link #RESERVATION_HELD} refresh
+     * the venue the same way.
+     */
+    public static final String CLOSURE_CREATED = "ClosureCreated";
+
+    /**
      * Every event that can change a venue's availability and so refreshes its Nearest Availability rows (arch 05
      * section 5.3, arch 08 section 7): reservation hold or release, Resource state, selling blocks (maintenance,
      * closures, emergencies), opening hours and prices. Each carries the {@code venueId} it touches;
      * {@link #AREA_DEACTIVATED} carries an {@code areaId} instead. Written so far (PO decision 9 Oct 2026): the E7-23
      * events, {@link #RESERVATION_HELD} (E7-46), {@link #RESERVATION_RELEASED} (E7-47) and the room state and price
-     * events (E7-56, PO decision 12 Oct 2026); the other producers add theirs in their own tasks.
+     * events (E7-56, PO decision 12 Oct 2026), and the Maintenance and Closure events (E7-81); the other producers add
+     * theirs in their own tasks.
      */
     public static final Set<String> INVENTORY_AFFECTING = Set.of(
             RESERVATION_HELD, RESERVATION_RELEASED,
             RESOURCE_DISABLED, RESOURCE_RE_ENABLED, RESOURCE_ARCHIVED, RESOURCE_RESTORED,
             RESOURCE_CONSOLE_CHANGED, "ResourceRestrictionChanged",
-            "MaintenanceCreated", "MaintenanceEdited", "MaintenanceDeleted",
-            "ClosureCreated",
+            MAINTENANCE_CREATED, MAINTENANCE_EDITED, MAINTENANCE_DELETED,
+            CLOSURE_CREATED,
             "EmergencyDeclared", "EmergencyExtended", "EmergencyEnded", "EmergencyConverted",
             "OpeningHoursChanged",
             VENUE_PRICING_CHANGED, ROOM_OVERRIDE_CHANGED,
