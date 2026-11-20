@@ -13,6 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -20,7 +21,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import ps.e7gz.booking.api.AttendanceBookings;
 import ps.e7gz.booking.api.InterruptionAttendance;
+import ps.e7gz.booking.api.LateConfirmBookings;
 import ps.e7gz.booking.api.LateConfirmClosures;
+import ps.e7gz.booking.api.LateConfirmWindows;
 import ps.e7gz.booking.api.StartTimeAttendance;
 import ps.e7gz.booking.internal.VenueAnswerStore.Facts;
 import ps.e7gz.common.codes.ActorType;
@@ -28,6 +31,7 @@ import ps.e7gz.common.codes.AttendanceResult;
 import ps.e7gz.common.codes.BookingSource;
 import ps.e7gz.common.codes.BookingStatus;
 import ps.e7gz.common.codes.BookingTerminalReason;
+import ps.e7gz.common.codes.BookingTimerPauseKind;
 import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.inventory.ledger.api.ActiveReservation;
@@ -134,13 +138,16 @@ class JdbcEmergencyBookings implements EmergencyBookings {
     private final BookingStarts starts;
     private final InterruptionAttendance interruptions;
     private final StartTimeAttendance startAttendance;
+    private final LateConfirmBookings lateConfirmPauses;
+    private final LateConfirmWindows windows;
 
     JdbcEmergencyBookings(VenueAnswerStore store, ReservationLedger ledger, BookingFeeRefunds refunds,
                           BookingRewards rewards, ScheduledJobs jobs, Outbox outbox, ResponseTimerPauses pauses,
                           LateConfirmClosures closures, StartTimeResolution resolution,
                           StartTimeCancellation startCancellation, BookingStarts starts,
                           InterruptionAttendance interruptions,
-                          StartTimeAttendance startAttendance) {
+                          StartTimeAttendance startAttendance, LateConfirmBookings lateConfirmPauses,
+                          LateConfirmWindows windows) {
         this.store = store;
         this.ledger = ledger;
         this.refunds = refunds;
@@ -154,6 +161,8 @@ class JdbcEmergencyBookings implements EmergencyBookings {
         this.starts = starts;
         this.interruptions = interruptions;
         this.startAttendance = startAttendance;
+        this.lateConfirmPauses = lateConfirmPauses;
+        this.windows = windows;
     }
 
     @Override
@@ -247,6 +256,11 @@ class JdbcEmergencyBookings implements EmergencyBookings {
     /** A booking that has not started: CANCELLED under the Emergency reason, released, its jobs withdrawn. */
     private Ended cancelled(CommandContext context, Facts booking, BookingTerminalReason reason, Instant now,
                             UUID actor) {
+        return cancelled(context, booking, reason, now, ActorType.VENUE, actor);
+    }
+
+    private Ended cancelled(CommandContext context, Facts booking, BookingTerminalReason reason, Instant now,
+                            ActorType actorType, UUID actor) {
         UUID bookingId = booking.bookingId();
         BookingStatus from = booking.status();
         if (from == BookingStatus.PENDING && booking.responsePaused()) {
@@ -261,7 +275,7 @@ class JdbcEmergencyBookings implements EmergencyBookings {
             ledger.release(context, ownReservation(context, booking).id(), now, reason.name());
         }
         UUID history = store.insertTransition(context, bookingId, now, from, BookingStatus.CANCELLED, reason,
-                ActorType.VENUE, actor, CorrelationId.require());
+                actorType, actor, CorrelationId.require());
         if (from == BookingStatus.PENDING) {
             jobs.supersede(context, VenueAnswers.venueResponseExpiryKey(bookingId));
         } else if (from == BookingStatus.CONFIRMED) {
@@ -347,6 +361,130 @@ class JdbcEmergencyBookings implements EmergencyBookings {
                     booking.status(), booking.startAt(), booking.endAt(), true));
         }
         return List.copyOf(paused);
+    }
+
+    // ---------------------------------------------------------------------------------------------- E7-83
+
+    @Override
+    public List<PausedTimer> pausedTimers(CommandContext context, UUID venueId, UUID resourceId) {
+        Objects.requireNonNull(venueId, "venueId");
+        List<PausedRow> rows = context.jdbc().sql(PAUSED + """
+                         AND b.venue_id = :venue
+                         AND (CAST(:resource AS uuid) IS NULL OR b.resource_id = CAST(:resource AS uuid))
+                       ORDER BY b.start_at, b.id""")
+                .param("venue", venueId).param("resource", resourceId)
+                .query(JdbcEmergencyBookings::pausedRow).list();
+        return withDeadlines(context, rows);
+    }
+
+    @Override
+    public Optional<PausedTimer> pausedTimer(CommandContext context, UUID bookingId) {
+        List<PausedRow> rows = context.jdbc().sql(PAUSED + " AND b.id = :id")
+                .param("id", Objects.requireNonNull(bookingId, "bookingId"))
+                .query(JdbcEmergencyBookings::pausedRow).list();
+        return withDeadlines(context, rows).stream().findFirst();
+    }
+
+    @Override
+    public Duration resume(CommandContext context, UUID bookingId, Instant at, Instant deadline) {
+        PausedTimer timer = pausedTimer(context, bookingId)
+                .orElseThrow(() -> integrityFailure(bookingId, "no paused timer to resume"));
+        Objects.requireNonNull(at, "at");
+        Objects.requireNonNull(deadline, "deadline");
+        Duration accumulated;
+        if (timer.kind() == BookingTimerPauseKind.VENUE_RESPONSE) {
+            accumulated = store.endResponsePause(context, bookingId, at)
+                    .orElseThrow(() -> integrityFailure(bookingId, "the paused response timer did not end"));
+            pauses.closeOpen(context, bookingId, at, accumulated);
+            if (deadline.isAfter(timer.deadline())) {
+                context.jdbc().sql(MOVE_RESPONSE_DEADLINE).param("id", bookingId).param("at", utc(deadline)).update();
+            }
+            Instant due = deadline.isAfter(timer.deadline()) ? deadline : timer.deadline();
+            jobs.rearmIfHeld(context, VenueAnswers.venueResponseExpiryKey(bookingId), due);
+        } else {
+            accumulated = lateConfirmPauses.endLateConfirmPause(context, bookingId, at)
+                    .orElseThrow(() -> integrityFailure(bookingId, "the paused Late Confirm countdown did not end"));
+            pauses.closeOpenLateConfirm(context, bookingId, at, accumulated);
+            closures.resumeTimers(context, bookingId, at, deadline);
+        }
+        return accumulated;
+    }
+
+    @Override
+    public void cancelInterrupted(CommandContext context, UUID bookingId, BookingTerminalReason reason, Instant at) {
+        PausedTimer timer = pausedTimer(context, bookingId)
+                .orElseThrow(() -> integrityFailure(bookingId, "no paused timer to cancel"));
+        Objects.requireNonNull(at, "at");
+        boolean fits = timer.kind() == BookingTimerPauseKind.VENUE_RESPONSE
+                ? reason == BookingTerminalReason.VENUE_RESPONSE_INTERRUPTED_BY_EMERGENCY
+                || reason == BookingTerminalReason.RESOURCE_RESPONSE_INTERRUPTED_BY_EMERGENCY
+                : reason == BookingTerminalReason.LATE_CONFIRM_INTERRUPTED_BY_EMERGENCY;
+        if (!fits) {
+            throw new IllegalArgumentException(reason + " does not end a paused " + timer.kind() + " timer");
+        }
+        Facts booking = store.facts(context, bookingId).orElseThrow();
+        if (timer.kind() == BookingTimerPauseKind.LATE_CONFIRM) {
+            // ends the pause, closes its history row, releases the hold, closes the attempt, withdraws T2/T3
+            closures.closeForCancellation(context, bookingId, reason, at);
+        }
+        Ended ended = cancelled(context, booking, reason, at, ActorType.SYSTEM, null);
+        refunds.recordDecisions(context, List.of(new BookingFeeRefunds.Decision(booking.customerId(), bookingId,
+                ended.history())));
+    }
+
+    /** The paused timers' rows; {@code ck_booking_pause_state_scope} ties each pause column to its status. */
+    static final String PAUSED = """
+            SELECT b.id, b.venue_id, b.resource_id, b.customer_id, b.status, b.start_at, b.venue_response_expires_at,
+                   b.response_pause_started_at, EXTRACT(EPOCH FROM b.cumulative_emergency_pause_duration) AS response_sum,
+                   b.late_confirm_pause_started_at,
+                   EXTRACT(EPOCH FROM b.cumulative_late_confirm_emergency_pause_duration) AS late_confirm_sum
+              FROM booking.booking b
+             WHERE b.source = 'ONLINE'
+               AND ((b.status = 'PENDING' AND b.response_pause_started_at IS NOT NULL)
+                    OR (b.status = 'AWAITING_CUSTOMER_CONFIRMATION' AND b.late_confirm_pause_started_at IS NOT NULL))
+            """;
+
+    /** FR-OPS-36: the remaining time preserved - the deadline moves later only. */
+    static final String MOVE_RESPONSE_DEADLINE = """
+            UPDATE booking.booking SET venue_response_expires_at = :at, version = version + 1
+             WHERE id = :id AND status = 'PENDING' AND venue_response_expires_at < :at
+            """;
+
+    private record PausedRow(UUID bookingId, UUID venueId, UUID resourceId, UUID customerId, BookingStatus status,
+                             Instant startAt, Instant responseDeadline, Instant pauseStartedAt, Duration cumulative) {
+    }
+
+    private static PausedRow pausedRow(ResultSet rs, int row) throws SQLException {
+        BookingStatus status = BookingStatus.valueOf(rs.getString("status"));
+        boolean response = status == BookingStatus.PENDING;
+        OffsetDateTime started = rs.getObject(response ? "response_pause_started_at" : "late_confirm_pause_started_at",
+                OffsetDateTime.class);
+        BigDecimal sum =rs.getBigDecimal(response ? "response_sum" : "late_confirm_sum");
+        OffsetDateTime responseDeadline = rs.getObject("venue_response_expires_at", OffsetDateTime.class);
+        return new PausedRow(rs.getObject("id", UUID.class), rs.getObject("venue_id", UUID.class),
+                rs.getObject("resource_id", UUID.class), rs.getObject("customer_id", UUID.class), status,
+                rs.getObject("start_at", OffsetDateTime.class).toInstant(),
+                responseDeadline == null ? null : responseDeadline.toInstant(), started.toInstant(),
+                sum == null ? Duration.ZERO : Duration.ofNanos(sum.movePointRight(9).longValue()));
+    }
+
+    /** Each row with its stored deadline: the response deadline, or the open Late Confirmation's through its port. */
+    private List<PausedTimer> withDeadlines(CommandContext context, List<PausedRow> rows) {
+        List<UUID> awaiting = rows.stream().filter(r -> r.status() == BookingStatus.AWAITING_CUSTOMER_CONFIRMATION)
+                .map(PausedRow::bookingId).toList();
+        Map<UUID, Instant> lateConfirm = awaiting.isEmpty() ? Map.of() : windows.openDeadlines(context, awaiting);
+        List<PausedTimer> timers = new ArrayList<>(rows.size());
+        for (PausedRow r : rows) {
+            boolean response = r.status() == BookingStatus.PENDING;
+            Instant deadline = response ? r.responseDeadline() : lateConfirm.get(r.bookingId());
+            if (deadline == null) {
+                throw integrityFailure(r.bookingId(), "a paused " + r.status() + " booking has no stored deadline");
+            }
+            timers.add(new PausedTimer(r.bookingId(), r.venueId(), r.resourceId(), r.customerId(), r.status(),
+                    response ? BookingTimerPauseKind.VENUE_RESPONSE : BookingTimerPauseKind.LATE_CONFIRM, r.startAt(),
+                    r.pauseStartedAt(), r.cumulative(), deadline));
+        }
+        return List.copyOf(timers);
     }
 
     private void publishCancelled(CommandContext context, Facts booking, BookingTerminalReason reason) {

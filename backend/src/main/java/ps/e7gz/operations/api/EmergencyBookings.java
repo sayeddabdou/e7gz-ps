@@ -1,14 +1,17 @@
 package ps.e7gz.operations.api;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import ps.e7gz.common.codes.AttendanceResult;
 import ps.e7gz.common.codes.BookingSource;
 import ps.e7gz.common.codes.BookingStatus;
 import ps.e7gz.common.codes.BookingTerminalReason;
+import ps.e7gz.common.codes.BookingTimerPauseKind;
 import ps.e7gz.common.command.CommandContext;
 
 /**
@@ -77,6 +80,73 @@ public interface EmergencyBookings {
      * @return the paused bookings, in id order, with the timer each had
      */
     List<Live> pause(CommandContext command, UUID venueId, List<UUID> bookingIds);
+
+    /**
+     * E7-83: the paused timers - PENDING Online Bookings with a paused venue-response timer and AWAITING ones with a
+     * paused Late Confirm countdown - of the Venue ({@code resourceId} null) or of the one Resource, in start, then id
+     * order. Read-only.
+     */
+    List<PausedTimer> pausedTimers(CommandContext command, UUID venueId, UUID resourceId);
+
+    /** E7-83: the booking's paused timer; empty when it is not a paused PENDING or AWAITING Online Booking. Read-only. */
+    Optional<PausedTimer> pausedTimer(CommandContext command, UUID bookingId);
+
+    /**
+     * E7-83 (FR-OPS-36, FR-OPS-39, arch 08 section 2.5): the paused timer resumes at {@code at} with its deadline moved to
+     * {@code deadline} - the pause added to its 30-minute counter and the pause column cleared, the open pause-history
+     * row closed through {@link ResponseTimerPauses}, the deadline stored ({@code venue_response_expires_at}, or the open
+     * Late Confirmation's) and its jobs re-armed at it whether {@code PAUSED} or {@code FAILED} (Sprint 2 review, PO
+     * decision 12 Oct 2026). Needs the booking's Customer, Venue and Resource in the lock set.
+     *
+     * @return the counter including this pause
+     * @throws IllegalStateException when the booking has no paused timer - a caller defect
+     */
+    Duration resume(CommandContext command, UUID bookingId, Instant at, Instant deadline);
+
+    /**
+     * E7-83 (FR-OPS-38, FR-OPS-40): a paused booking CANCELLED at {@code at} under {@code reason} -
+     * {@code VENUE_RESPONSE_INTERRUPTED_BY_EMERGENCY} / {@code RESOURCE_RESPONSE_INTERRUPTED_BY_EMERGENCY} for a PENDING
+     * one, {@code LATE_CONFIRM_INTERRUPTED_BY_EMERGENCY} for an AWAITING one - actor SYSTEM (no venue non-response
+     * blame): its pause ended and history row closed, its reservation or hold released, its jobs withdrawn, its Booking
+     * Fee decision (a full refund, no penalty) and {@code BookingCancelled}. Needs the booking's Customer, Venue and
+     * Resource in the lock set.
+     *
+     * @throws IllegalStateException when the booking has no paused timer or the reason does not fit it - a caller defect
+     */
+    void cancelInterrupted(CommandContext command, UUID bookingId, BookingTerminalReason reason, Instant at);
+
+    /**
+     * One paused timer (FR-OPS-37).
+     *
+     * @param pauseStartedAt {@code response_pause_started_at} or {@code late_confirm_pause_started_at}
+     * @param cumulative     the 30-minute counter before this pause ({@code cumulative_emergency_pause_duration} or
+     *                       {@code cumulative_late_confirm_emergency_pause_duration})
+     * @param deadline       the stored deadline the pause stopped: {@code venue_response_expires_at} or the open Late
+     *                       Confirmation's {@code expires_at}
+     */
+    record PausedTimer(UUID bookingId, UUID venueId, UUID resourceId, UUID customerId, BookingStatus status,
+                       BookingTimerPauseKind kind, Instant startAt, Instant pauseStartedAt, Duration cumulative,
+                       Instant deadline) {
+
+        public PausedTimer {
+            Objects.requireNonNull(bookingId, "bookingId");
+            Objects.requireNonNull(venueId, "venueId");
+            Objects.requireNonNull(resourceId, "resourceId");
+            Objects.requireNonNull(customerId, "customerId");
+            Objects.requireNonNull(status, "status");
+            Objects.requireNonNull(kind, "kind");
+            Objects.requireNonNull(startAt, "startAt");
+            Objects.requireNonNull(pauseStartedAt, "pauseStartedAt");
+            Objects.requireNonNull(cumulative, "cumulative");
+            Objects.requireNonNull(deadline, "deadline");
+        }
+
+        /** FR-OPS-36: the time the timer had left when it paused; never negative. */
+        public Duration remaining() {
+            Duration left = Duration.between(pauseStartedAt, deadline);
+            return left.isNegative() ? Duration.ZERO : left;
+        }
+    }
 
     /**
      * One live booking.

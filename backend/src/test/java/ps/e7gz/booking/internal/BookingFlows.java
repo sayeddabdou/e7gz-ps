@@ -20,12 +20,14 @@ import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.error.ApiException;
 import ps.e7gz.messaging.api.CommandAnswer;
 import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.scheduling.api.JobOutcome;
 import ps.e7gz.scheduling.api.NewJob;
 import ps.e7gz.scheduling.api.ScheduledJob;
 import ps.e7gz.scheduling.api.ScheduledJobs;
+import ps.e7gz.support.boundary.Boundary;
 import ps.e7gz.support.boundary.Deadlines;
 import ps.e7gz.support.boundary.DueJobs;
 import ps.e7gz.support.boundary.TestCommands;
@@ -63,6 +65,7 @@ public final class BookingFlows {
     private DueJobs starts;
     private DueJobs completions;
     private DueJobs resolutions;
+    private DueJobs t1;
 
     private BookingFlows(ApplicationContext context) {
         this.context = context;
@@ -762,6 +765,67 @@ public final class BookingFlows {
         return runner.run(TestCommands.under(CommandScope.shared(lateConfirmations.lockSetOf(booking.bookingId())),
                 context -> type.equals("LATE_CONFIRM_EXPIRY") ? lateConfirmations.expire(context, job)
                         : lateConfirmations.warn(context, job)));
+    }
+
+    // ---------------------------------------------------------------------------------------------- E7-83
+
+    /** The booking's T1 key ({@code VENUE_RESPONSE_EXPIRY:{bookingId}}). */
+    public static String responseExpiryKey(UUID bookingId) {
+        return VenueAnswers.venueResponseExpiryKey(bookingId);
+    }
+
+    /** The booking's T2 and T3 keys. */
+    public static String lateConfirmExpiryKey(UUID bookingId) {
+        return LateConfirmDb.t2(bookingId);
+    }
+
+    /** The worker profile is off in tests: E7-47's T1 handler built by hand, as the deadline worker runs it. */
+    private synchronized DueJobs t1() {
+        if (t1 == null) {
+            t1 = DueJobs.of(context, new VenueResponseExpiryHandler(runner, store, answers));
+        }
+        return t1;
+    }
+
+    /**
+     * E7-83 (Sprint 2 review, PO decision 12 Oct 2026): T1 fires while the response timer is paused - it throws, the
+     * worker backs it off - and is fired again at once until its attempts run out and it is FAILED.
+     */
+    public void t1FailsWhilePaused(Booking booking) {
+        String key = responseExpiryKey(booking.bookingId());
+        for (int fires = 0; !DueJobs.job(key).status().equals("FAILED"); fires++) {
+            assertThat(fires).as("bounded by the worker's max attempts").isLessThan(20);
+            runner.run(TestCommands.under(scope(booking), context -> {
+                if (DueJobs.job(key).status().equals("PAUSED")) {
+                    jobs.rearm(context, key, context.commandNow());
+                } else {
+                    t1().makeDue(context, key, context.commandNow());
+                }
+                return null;
+            }));
+            assertThat(t1().fire(key)).as("T1 fired").isTrue();
+        }
+    }
+
+    /** T1 fired with "now" exactly at the stored response deadline (moved to the command's own instant). */
+    public Instant fireT1AtItsDeadline(Booking booking) {
+        return t1().fireAt(scope(booking), responseExpiryKey(booking.bookingId()), Boundary.AT,
+                (context, at) -> moveResponseDeadline(context, booking, at));
+    }
+
+    /** The venue's Accept refused with nothing changed (an ordinary thrown refusal): its code. */
+    public ApiErrorCode acceptRefusal(Booking booking) {
+        try {
+            responses.accept(booking.venueAccountId(), booking.bookingId());
+        } catch (ApiException refused) {
+            return refused.code();
+        }
+        throw new AssertionError("The Accept of " + booking.bookingId() + " was not refused");
+    }
+
+    /** The customer's Decline of a Late Confirmation: its answer's terminal reason. */
+    public BookingTerminalReason declineLateConfirmReason(Booking booking) {
+        return lateConfirmations.decline(booking.customerId(), booking.bookingId()).terminalReason();
     }
 
     /** The booking's Customer, Venue and Resource: the locks of every answer to it. */

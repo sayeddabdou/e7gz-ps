@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import javax.sql.DataSource;
@@ -74,14 +75,14 @@ public class VenueEmergencies {
                      ResourceCatalog catalog, OperatingSessions sessions, ActiveCommitments commitments,
                      ResourceBaseStateChanges baseStates, HoursChangeBookings hoursBookings, ReservationLedger ledger,
                      AuditWriter audit, Outbox outbox, ScheduledJobs jobs, ObjectMapper json,
-                     DataSource appDataSource) {
+                     DataSource appDataSource, TimerPauses timers) {
         this.runner = runner;
         this.gate = gate;
         this.accounts = accounts;
         this.idempotency = idempotency;
         this.deps = new Deps(bookings, tournaments, resources, catalog, sessions, commitments, baseStates, audit,
                 outbox, jobs, gate, new ClosureCommands.Deps(commitments, hoursBookings, ledger, catalog, audit, outbox,
-                gate), json);
+                gate), json, timers);
         this.jdbc = JdbcClient.create(appDataSource);
     }
 
@@ -177,7 +178,7 @@ public class VenueEmergencies {
                                        StoredResponse<R> response, Function<View, R> view) {
         Objects.requireNonNull(key, "key");
         UUID venueId = accounts.venueOf(venueAccountId);
-        LockSet locks = runner.run(new SubjectLocks(venueId, emergencyId)).build();
+        LockSet locks = runner.run(new SubjectLocks(venueId, emergencyId, deps)).build();
         return runner.run(idempotency.wrap(key, response, new Mapped<>(new EmergencyCommands.End(venueId,
                 venueAccountId, CorrelationId.require(), emergencyId, locks, deps),
                 emergency -> view.apply(View.of(emergency)))));
@@ -204,7 +205,7 @@ public class VenueEmergencies {
         Objects.requireNonNull(key, "key");
         UUID venueId = accounts.venueOf(venueAccountId);
         Conversion conversion = conversion(view);
-        LockSet.Builder locks = runner.run(new SubjectLocks(venueId, emergencyId));
+        LockSet.Builder locks = runner.run(new SubjectLocks(venueId, emergencyId, deps));
         boolean protectedTarget;
         try {
             ConversionImpact planned = runner.run(new EmergencyCommands.PreviewConversion(venueId, emergencyId,
@@ -279,8 +280,12 @@ public class VenueEmergencies {
         return new Conversion(view.target(), view.closureKind(), view.endAt(), view.reason());
     }
 
-    /** Read-only: the venue, and the Emergency's resource when it has one - the locks of an end or a conversion. */
-    private record SubjectLocks(UUID venueId, UUID emergencyId) implements Command<LockSet.Builder> {
+    /**
+     * Read-only: the venue, and the Emergency's resource when it has one - the locks of an end or a conversion - and
+     * E7-83: the Resource and Customer of every timer paused at its venue (or on its resource), which the resolution
+     * decides again at once ({@link TimerPauses#afterResolution}; one paused meanwhile is left to a check job).
+     */
+    private record SubjectLocks(UUID venueId, UUID emergencyId, Deps deps) implements Command<LockSet.Builder> {
 
         @Override
         public EligibilityCategory eligibilityCategory() {
@@ -295,9 +300,13 @@ public class VenueEmergencies {
         @Override
         public LockSet.Builder execute(CommandContext context) {
             LockSet.Builder locks = LockSet.builder().venues(venueId);
-            EmergencyCommands.read(context, venueId, emergencyId)
-                    .map(Emergency::resourceId).filter(Objects::nonNull)
-                    .ifPresent(locks::resources);
+            Optional<Emergency> emergency = EmergencyCommands.read(context, venueId, emergencyId);
+            emergency.map(Emergency::resourceId).filter(Objects::nonNull).ifPresent(locks::resources);
+            emergency.ifPresent(found -> deps.bookings().pausedTimers(context, venueId, found.resourceId())
+                    .forEach(timer -> {
+                        locks.resources(timer.resourceId());
+                        locks.users(timer.customerId());
+                    }));
             return locks;
         }
     }

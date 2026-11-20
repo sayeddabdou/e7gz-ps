@@ -51,8 +51,20 @@ public interface LateConfirmClosures {
      * E7-82 (FR-OPS-35, arch 08 section 2.5): an Emergency pauses the booking's Late Confirm countdown - its T2 expiry and
      * T3 warning go {@code PENDING -> PAUSED}, their due instants kept, so neither fires while paused. The caller writes
      * the booking's {@code late_confirm_pause_started_at} and the open pause history row in the same transaction. A job a
-     * worker holds {@code LEASED} is left to it: its fire re-reads the paused booking and backs off. Resuming them with
-     * the remaining time is E7-83's.
+     * worker holds {@code LEASED} is left to it: its fire re-reads the paused booking and backs off. {@link #resumeTimers}
+     * sends them back with the remaining time (E7-83).
      */
     void pauseTimers(CommandContext command, UUID bookingId);
+
+    /**
+     * E7-83 (FR-OPS-36, FR-OPS-39, arch 08 section 2.5): the paused countdown resumes - the open attempt's deadline moves
+     * to {@code deadline} (only later, never beyond the booking's {@code startAt}: {@code guard_late_confirmation_mutation},
+     * {@code booking.assert_late_confirmation_row}), T2 is re-armed at it whether {@code PAUSED} or {@code FAILED}, and T3
+     * at {@code deadline - 60 s} while the warning is unsent and more than 60 seconds remain - otherwise T3 is withdrawn
+     * (FR-LCF-12: no warning for a window of 60 seconds or less). The caller ends the booking's pause columns and closes
+     * the pause history row in the same transaction.
+     *
+     * @throws IllegalStateException when the booking has no open attempt - a data defect
+     */
+    void resumeTimers(CommandContext command, UUID bookingId, Instant resumedAt, Instant deadline);
 }

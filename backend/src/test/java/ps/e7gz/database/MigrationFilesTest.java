@@ -611,6 +611,41 @@ class MigrationFilesTest {
                 .doesNotContain("TRIGGER");
     }
 
+    /**
+     * v1.1.46 (E7-83): the migration is the model's own block, byte for byte; {@code technical.guard_scheduled_job} is
+     * its V202610091200 definition with one more permitted attempt change (back to 0 on FAILED -> PENDING, under the
+     * write token), and {@code technical.job_rearm} resets the attempts of a FAILED job only; nothing else.
+     */
+    @Test
+    void jobRearmFailedRestartsAttemptsMigrationIsTheModelsV1146Block() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String open = "<genericsql name=\"v1_1_46_job_rearm_failed_restarts_attempts\">\n\t<definition> <![CDATA[\n";
+        int start = model.indexOf(open);
+        assertThat(start).as("v1.1.46 block in the .dbm").isPositive();
+        String block = model.substring(start + open.length(), model.indexOf("]]> </definition>", start));
+        String migration = classpath("db/migration/V202611202100__job_rearm_failed_restarts_attempts.sql");
+        assertThat(migration).isEqualTo(block);
+
+        String guard = "CREATE OR REPLACE FUNCTION technical.guard_scheduled_job()";
+        String previous = function(classpath("db/migration/V202610091200__scheduled_job_finish_and_correlation.sql"),
+                guard);
+        String added = "\n      AND NOT (NEW.attempt=0 AND NEW.status='PENDING' AND OLD.status='FAILED'"
+                + "\n      AND technical.has_write('technical.scheduled_job',OLD.id::text))";
+        String migrated = function(migration, guard);
+        assertThat(migrated).containsOnlyOnce(added);
+        assertThat(migrated.replace(added, "")).as("the V202610091200 guard plus one condition").isEqualTo(previous);
+
+        String rearm = function(migration, "CREATE OR REPLACE FUNCTION technical.job_rearm(p_job uuid,p_due_at timestamptz)");
+        assertThat(rearm).contains("attempt=CASE WHEN status='FAILED' THEN 0 ELSE attempt END")
+                .contains("WHERE id=p_job AND status IN ('PAUSED','FAILED');")
+                .contains("RAISE EXCEPTION 'Only a PAUSED or FAILED job can be re-armed';")
+                .contains("technical.enter_write('technical.scheduled_job',p_job::text)")
+                .contains("technical.leave_write(tok)");
+        assertThat(migration.split("CREATE OR REPLACE FUNCTION", -1)).as("two functions redefined").hasSize(3);
+        assertThat(migration).doesNotContain("GRANT").doesNotContain("DROP ").doesNotContain("ALTER ")
+                .doesNotContain("TRIGGER");
+    }
+
     private static void assertAddedLinesOnly(String earlier, String migration, String open, String... lines) {
         String migrated = function(migration, open);
         String stripped = migrated;

@@ -35,7 +35,7 @@ class JdbcEmergencyHoursConversions implements EmergencyHoursConversions {
                         UUID correlationId) {
         Emergency emergency = convertible(command, venueId, emergencyId);
         EmergencyCommands.convertedTo(command, emergencies.deps(), emergency,
-                EmergencyConversionTarget.OPENING_HOURS_CHANGE, null, venueAccountId, correlationId, null);
+                EmergencyConversionTarget.OPENING_HOURS_CHANGE, null, venueAccountId, correlationId, null, null);
     }
 
     private static Emergency convertible(CommandContext command, UUID venueId, UUID emergencyId) {
