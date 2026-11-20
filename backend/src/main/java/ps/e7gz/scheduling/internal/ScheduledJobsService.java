@@ -40,4 +40,9 @@ class ScheduledJobsService implements ScheduledJobs {
     public boolean supersede(CommandContext context, String idempotencyKey) {
         return store.supersede(context.jdbc(), idempotencyKey);
     }
+
+    @Override
+    public boolean pause(CommandContext context, String idempotencyKey) {
+        return store.pause(context.jdbc(), idempotencyKey);
+    }
 }

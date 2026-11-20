@@ -150,42 +150,56 @@ final class ResourceCommands {
         @Override
         public Resources.Resource execute(CommandContext context) {
             OwnerPasswordCheck check = gate.verify(context, venueAccountId, ownerPassword);
-            Resources.Resource current = ofVenue(context, venueId, resourceId);
-            if (!action.from.contains(current.baseState())) {
-                throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "baseState");
-            }
-            if (action.blockedByReservations) {
-                refuseWhenBlocked(context, commitments, resourceId);
-            }
-            context.jdbc().sql("UPDATE resource.resource SET base_state = :state WHERE id = :id")
-                    .param("state", action.to.name()).param("id", resourceId).update();
-            Actor actor = Actor.venue(venueAccountId);
-            context.jdbc().sql("""
-                            INSERT INTO resource.resource_state_change(
-                                id, resource_id, from_base_state, to_base_state, owner_password_used, actor_type,
-                                actor_id, correlation_id, changed_at)
-                            VALUES (:id, :resource, :from, :to, :ownerPasswordUsed, :actorType, :actorId,
-                                    :correlation, :changedAt)""")
-                    .param("id", UUID.randomUUID()).param("resource", resourceId)
-                    .param("from", current.baseState().name()).param("to", action.to.name())
-                    .param("ownerPasswordUsed", actor.ownerPasswordUsed()).param("actorType", actor.type())
-                    .param("actorId", actor.id()).param("correlation", correlationId)
-                    .param("changedAt", utc(context)).update();
-            audit.write(context, AuditRecord.builder(action.auditAction, actor.audit(), resourceId, correlationId)
-                    .ownerPasswordCheck(check)
-                    .stateChange(current.baseState().name(), action.to.name())
-                    .contextVenue(venueId)
-                    .payload(Map.of("venueId", venueId, "previousState", current.baseState().name(),
-                            "newState", action.to.name()))
-                    .build());
-            outbox.publish(context, roomEvent(action.event, venueId, resourceId));
-            return Resources.read(context.jdbc(), resourceId);
+            return changeBaseState(context, venueAccountId, venueId, resourceId, correlationId, action, check,
+                    commitments, audit, outbox);
         }
 
         @Override
         public String toString() {
             return "ChangeBaseState[resourceId=" + resourceId + ", action=" + action + ", <owner password redacted>]";
         }
+    }
+
+    /**
+     * The base-state change itself, after the Owner Password was checked ({@code check}): the venue's resource, the
+     * action fitting its state, FR-VEN-14's blocking reservations, the state, its state-change row, the audit row and
+     * the room event. E7-82 reuses it for an Emergency converted to DISABLED or ARCHIVED (FR-OPS-23: the target action's
+     * own rules), whose command checked the password itself.
+     */
+    static Resources.Resource changeBaseState(CommandContext context, UUID venueAccountId, UUID venueId,
+                                              UUID resourceId, UUID correlationId, BaseStateAction action,
+                                              OwnerPasswordCheck check, ActiveCommitments commitments,
+                                              AuditWriter audit, Outbox outbox) {
+        Resources.Resource current = ofVenue(context, venueId, resourceId);
+        if (!action.from.contains(current.baseState())) {
+            throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "baseState");
+        }
+        if (action.blockedByReservations) {
+            refuseWhenBlocked(context, commitments, resourceId);
+        }
+        context.jdbc().sql("UPDATE resource.resource SET base_state = :state WHERE id = :id")
+                .param("state", action.to.name()).param("id", resourceId).update();
+        Actor actor = Actor.venue(venueAccountId);
+        context.jdbc().sql("""
+                        INSERT INTO resource.resource_state_change(
+                            id, resource_id, from_base_state, to_base_state, owner_password_used, actor_type,
+                            actor_id, correlation_id, changed_at)
+                        VALUES (:id, :resource, :from, :to, :ownerPasswordUsed, :actorType, :actorId,
+                                :correlation, :changedAt)""")
+                .param("id", UUID.randomUUID()).param("resource", resourceId)
+                .param("from", current.baseState().name()).param("to", action.to.name())
+                .param("ownerPasswordUsed", actor.ownerPasswordUsed()).param("actorType", actor.type())
+                .param("actorId", actor.id()).param("correlation", correlationId)
+                .param("changedAt", utc(context)).update();
+        audit.write(context, AuditRecord.builder(action.auditAction, actor.audit(), resourceId, correlationId)
+                .ownerPasswordCheck(check)
+                .stateChange(current.baseState().name(), action.to.name())
+                .contextVenue(venueId)
+                .payload(Map.of("venueId", venueId, "previousState", current.baseState().name(),
+                        "newState", action.to.name()))
+                .build());
+        outbox.publish(context, roomEvent(action.event, venueId, resourceId));
+        return Resources.read(context.jdbc(), resourceId);
     }
 
     /**

@@ -30,6 +30,7 @@ import ps.e7gz.messaging.api.Idempotency;
 import ps.e7gz.messaging.api.IdempotentRequest;
 import ps.e7gz.messaging.api.IdempotentResult;
 import ps.e7gz.messaging.api.StoredResponse;
+import ps.e7gz.venue.api.EmergencyHoursConversions;
 import ps.e7gz.venue.api.HoursChangeBookings;
 import ps.e7gz.venue.api.OwnerPasswordGate;
 import ps.e7gz.venue.internal.OpeningHoursCommands.Impact;
@@ -57,10 +58,11 @@ public class OpeningHoursService {
 
     OpeningHoursService(CommandRunner runner, VenueAccounts accounts, ActiveCommitments commitments,
                         HoursChangeBookings bookings, OperatingSessionProperties properties,
-                        DataSource appDataSource, Idempotency idempotency, OwnerPasswordGate gate, AuditWriter audit) {
+                        DataSource appDataSource, Idempotency idempotency, OwnerPasswordGate gate, AuditWriter audit,
+                        EmergencyHoursConversions emergencies) {
         this.runner = runner;
         this.accounts = accounts;
-        this.readers = new Readers(commitments, bookings, properties.horizonDays());
+        this.readers = new Readers(commitments, bookings, properties.horizonDays(), emergencies);
         this.properties = properties;
         this.jdbc = JdbcClient.create(appDataSource);
         this.idempotency = idempotency;
@@ -137,6 +139,17 @@ public class OpeningHoursService {
     public <R> IdempotentResult<R> commit(UUID venueAccountId, Proposal proposal, String previewToken,
                                           String ownerPassword, IdempotentRequest key, StoredResponse<R> response,
                                           Function<View, R> view) {
+        return commit(venueAccountId, proposal, previewToken, ownerPassword, null, key, response, view);
+    }
+
+    /**
+     * As above; with {@code emergencyId} the same commit converts that unresolved venue Emergency into this hours change
+     * (E7-82; the E7-77 contract D5): checked before any write, converted after the hours are saved, in the one
+     * transaction ({@link EmergencyHoursConversions}).
+     */
+    public <R> IdempotentResult<R> commit(UUID venueAccountId, Proposal proposal, String previewToken,
+                                          String ownerPassword, UUID emergencyId, IdempotentRequest key,
+                                          StoredResponse<R> response, Function<View, R> view) {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(view, "view");
         UUID venueId = accounts.venueOf(venueAccountId);
@@ -159,12 +172,12 @@ public class OpeningHoursService {
         }
         if (!protectedSet && ownerPassword == null) {
             return runner.run(idempotency.wrap(key, response, new Mapped<>(new OpeningHoursCommands.Commit(venueId,
-                    venueAccountId, hours, previewToken, locks, readers), answer)));
+                    venueAccountId, hours, previewToken, locks, readers, emergencyId), answer)));
         }
         UUID correlationId = CorrelationId.require();
         return gate.run(new OpeningHoursCommands.Protected<>(idempotency.wrap(key, response,
                 new Mapped<>(new OpeningHoursCommands.ProtectedCommit(venueId, venueAccountId, hours, previewToken,
-                        locks, correlationId, readers, gate, audit), answer))),
+                        locks, correlationId, readers, gate, audit, emergencyId), answer))),
                 venueAccountId, ownerPassword, correlationId);
     }
 

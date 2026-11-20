@@ -290,6 +290,19 @@ public final class IntegrationEvents {
     public static final String CLOSURE_CREATED = "ClosureCreated";
 
     /**
+     * {@code {venueId, emergencyId, scope, resourceId?}}, aggregate {@code EMERGENCY}: a venue Emergency Closure or a
+     * resource Emergency Outage was declared (FR-OPS-06, FR-OPS-11; arch 08 section 3.2; E7-82, Sprint 2 review, PO
+     * decision 12 Oct 2026), in the command that declares it. Its three siblings below carry the same payload.
+     */
+    public static final String EMERGENCY_DECLARED = "EmergencyDeclared";
+    /** The expected end moved later (FR-OPS-22); as {@link #EMERGENCY_DECLARED}. */
+    public static final String EMERGENCY_EXTENDED = "EmergencyExtended";
+    /** END EMERGENCY: the selling block ended (FR-OPS-19); as {@link #EMERGENCY_DECLARED}. */
+    public static final String EMERGENCY_ENDED = "EmergencyEnded";
+    /** Converted into its target in one commit (FR-OPS-23, FR-OPS-24); as {@link #EMERGENCY_DECLARED}. */
+    public static final String EMERGENCY_CONVERTED = "EmergencyConverted";
+
+    /**
      * Every event that can change a venue's availability and so refreshes its Nearest Availability rows (arch 05
      * section 5.3, arch 08 section 7): reservation hold or release, Resource state, selling blocks (maintenance,
      * closures, emergencies), opening hours and prices. Each carries the {@code venueId} it touches;
@@ -304,7 +317,7 @@ public final class IntegrationEvents {
             RESOURCE_CONSOLE_CHANGED, "ResourceRestrictionChanged",
             MAINTENANCE_CREATED, MAINTENANCE_EDITED, MAINTENANCE_DELETED,
             CLOSURE_CREATED,
-            "EmergencyDeclared", "EmergencyExtended", "EmergencyEnded", "EmergencyConverted",
+            EMERGENCY_DECLARED, EMERGENCY_EXTENDED, EMERGENCY_ENDED, EMERGENCY_CONVERTED,
             "OpeningHoursChanged",
             VENUE_PRICING_CHANGED, ROOM_OVERRIDE_CHANGED,
             VENUE_MARKETPLACE_STATUS_CHANGED,

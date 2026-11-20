@@ -31,4 +31,12 @@ public interface ScheduledJobs {
      * under its lease holder (whose {@code job_finish} would then fail).
      */
     boolean supersede(CommandContext context, String idempotencyKey);
+
+    /**
+     * E7-82: pauses a pausable deadline (T1, T2, T3) for an Emergency - {@code PENDING -> PAUSED}, its {@code due_at}
+     * kept (arch 08 section 2.5, FR-OPS-34, FR-OPS-35) - so it never fires while the timer is paused. Returns
+     * {@code false}, changing nothing, when no job has the key or it is not {@code PENDING}: a {@code LEASED} job is left
+     * to its worker, whose fire re-reads the paused booking and backs off. {@link #rearm} sends it back (E7-83).
+     */
+    boolean pause(CommandContext context, String idempotencyKey);
 }
