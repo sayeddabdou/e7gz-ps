@@ -139,6 +139,53 @@ class ScheduledJobLifecycleTest extends IntegrationTest {
         assertThat(column("status")).isEqualTo("LEASED");
     }
 
+    // ------------------------------------------------------------------------------------------------ v1.1.46
+
+    /**
+     * v1.1.46 (E7-83; Sprint 2 review, PO decision 12 Oct 2026): a FAILED job re-armed is a new run of the same job, its
+     * attempts starting again - before, the next lease went past the worker's maximum and the job failed unrun.
+     */
+    @Test
+    void aReArmedFailedJobStartsItsAttemptsAgainAndCanBeLeased() {
+        inTransaction(jdbc -> finish(jdbc, "'worker-a', 'FAILED', 'paused'"));
+        assertThat(column("attempt")).isEqualTo("1");
+
+        inTransaction(jdbc -> jdbc.sql("SELECT technical.job_rearm(:id, clock_timestamp() - interval '1 second')")
+                .param("id", job).query().listOfRows());
+
+        assertThat(column("status")).isEqualTo("PENDING");
+        assertThat(column("attempt")).isEqualTo("0");
+        assertThat(column("completed_at")).isNull();
+        inTransaction(jdbc -> assertThat(jdbc.sql("SELECT technical.job_lease(:id, 'worker-b', interval '1 hour')")
+                .param("id", job).query(Boolean.class).single()).isTrue());
+        assertThat(column("attempt")).isEqualTo("1");
+    }
+
+    /** v1.1.46: a pause is not a new run - a re-armed PAUSED job keeps its attempts. */
+    @Test
+    void aReArmedPausedJobKeepsItsAttempts() {
+        inTransaction(jdbc -> finish(jdbc, "'worker-a', 'PENDING', 'backing off', due_at + interval '10 minutes'"));
+        inTransaction(jdbc -> jdbc.sql("UPDATE technical.scheduled_job SET status = 'PAUSED' WHERE id = :id")
+                .param("id", job).update());
+
+        inTransaction(jdbc -> jdbc.sql("SELECT technical.job_rearm(:id, clock_timestamp())")
+                .param("id", job).query().listOfRows());
+
+        assertThat(column("status")).isEqualTo("PENDING");
+        assertThat(column("attempt")).isEqualTo("1");
+    }
+
+    /** v1.1.46: only job_rearm resets a FAILED job's attempts; a plain UPDATE still cannot. */
+    @Test
+    void aPlainUpdateStillCannotResetAFailedJobsAttempts() {
+        inTransaction(jdbc -> finish(jdbc, "'worker-a', 'FAILED', 'paused'"));
+
+        assertRefused("attempt changes only", jdbc -> jdbc.sql("""
+                        UPDATE technical.scheduled_job SET status = 'PENDING', attempt = 0, completed_at = NULL
+                         WHERE id = :id""")
+                .param("id", job).update());
+    }
+
     // ------------------------------------------------------------------------------------------------ helpers
 
     private void finish(JdbcClient jdbc, String arguments) {

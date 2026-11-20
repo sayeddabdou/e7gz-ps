@@ -29,10 +29,14 @@ import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.operations.api.EmergencyBookings;
+import ps.e7gz.operations.api.UnresolvedEmergencies;
 import ps.e7gz.operations.internal.EmergencyCommands.Deps;
+import ps.e7gz.resource.api.ResourceStates;
 import ps.e7gz.scheduling.api.ScheduledJobs;
 import ps.e7gz.support.IntegrationTest;
 import ps.e7gz.tournament.api.TournamentCascades;
+import ps.e7gz.venue.api.OperatingSessions;
+import ps.e7gz.venue.api.VenueEligibility;
 
 /**
  * E7-82 "done when": fault injection at every step of the Emergency cascade leaves no partial cascade (FR-OPS-09, arch
@@ -107,12 +111,18 @@ class EmergencyCascadeFaultInjectionTest extends IntegrationTest {
 
     private void declare(World world, AtomicInteger calls, int failAt) {
         Deps real = emergencies.deps();
-        Deps faulty = new Deps(faulty(EmergencyBookings.class, real.bookings(), calls, failAt),
+        EmergencyBookings bookings = faulty(EmergencyBookings.class, real.bookings(), calls, failAt);
+        Outbox outbox = faulty(Outbox.class, real.outbox(), calls, failAt);
+        ScheduledJobs jobs = faulty(ScheduledJobs.class, real.jobs(), calls, failAt);
+        // E7-83: the pauses go through the same faulty ports
+        TimerPauses timers = new TimerPauses(bookings, context.getBean(UnresolvedEmergencies.class),
+                context.getBean(OperatingSessions.class), context.getBean(VenueEligibility.class),
+                context.getBean(ResourceStates.class), jobs, outbox);
+        Deps faulty = new Deps(bookings,
                 faulty(TournamentCascades.class, real.tournaments(), calls, failAt), real.resources(), real.catalog(),
                 real.sessions(), real.commitments(), real.baseStates(),
                 faulty(AuditWriter.class, real.audit(), calls, failAt),
-                faulty(Outbox.class, real.outbox(), calls, failAt),
-                faulty(ScheduledJobs.class, real.jobs(), calls, failAt), real.gate(), real.closures(), real.json());
+                outbox, jobs, real.gate(), real.closures(), real.json(), timers);
         EmergencyCommands.Subject subject = new EmergencyCommands.Subject(world.venueId(), EmergencyScope.VENUE, null);
         Instant end = world.inside().startAt().plus(Duration.ofMinutes(60));
         LockSet locks = runner.run(new EmergencyCommands.Plan(world.venueId(), subject, null, end, real));

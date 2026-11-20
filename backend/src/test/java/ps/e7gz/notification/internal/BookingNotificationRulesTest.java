@@ -158,10 +158,10 @@ class BookingNotificationRulesTest extends IntegrationTest {
 
     /**
      * The six booking rules of E7-55, the five Late Confirm ones (E7-58), the three attendance ones (E7-59), the two
-     * completion ones (E7-61) and the Admin attendance one (E7-70): seventeen, and nothing else.
+     * completion ones (E7-61) and the Admin attendance one (E7-70) and the Late Confirm pause (E7-83): eighteen, and nothing else.
      */
     @Test
-    void seventeenEventsHaveARule() {
+    void eighteenEventsHaveARule() {
         assertThat(BookingNotificationRules.eventTypes()).containsExactlyInAnyOrder(
                 IntegrationEvents.BOOKING_CREATED, IntegrationEvents.BOOKING_CONFIRMED,
                 IntegrationEvents.BOOKING_REJECTED, IntegrationEvents.VENUE_RESPONSE_EXPIRED,
@@ -171,7 +171,15 @@ class BookingNotificationRulesTest extends IntegrationTest {
                 IntegrationEvents.LATE_CONFIRM_TIMED_OUT, IntegrationEvents.CHECK_IN_RECORDED,
                 IntegrationEvents.LATE_PRESENT_RECORDED, IntegrationEvents.NO_SHOW_RECORDED,
                 IntegrationEvents.BOOKING_COMPLETED, IntegrationEvents.ATTENDANCE_RESOLVED,
-                IntegrationEvents.ATTENDANCE_CORRECTED);
+                IntegrationEvents.ATTENDANCE_CORRECTED, IntegrationEvents.TIMER_PAUSED);
+    }
+
+    /** E7-83 (FR-OPS-41, PCR-008): a paused Late Confirm countdown tells the customer; a paused response timer no one. */
+    @Test
+    void aPausedLateConfirmTellsTheCustomerAndAPausedResponseTimerNobody() {
+        assertThat(codes(IntegrationEvents.TIMER_PAUSED, Map.of("pauseKind", "LATE_CONFIRM")))
+                .containsExactly("CUSTOMER LATE_CONFIRMATION_PAUSED");
+        assertThat(codes(IntegrationEvents.TIMER_PAUSED, Map.of("pauseKind", "VENUE_RESPONSE"))).isEmpty();
     }
 
     /**
@@ -358,6 +366,9 @@ class BookingNotificationRulesTest extends IntegrationTest {
         }
         if (type.equals(IntegrationEvents.ATTENDANCE_CORRECTED)) {
             return List.of(Map.of("correction", "NO_SHOW_REVERSED"), Map.of("correction", "ATTENDANCE_CORRECTED"));
+        }
+        if (type.equals(IntegrationEvents.TIMER_PAUSED)) {
+            return List.of(Map.of("pauseKind", "LATE_CONFIRM"), Map.of("pauseKind", "VENUE_RESPONSE"));
         }
         return List.of(Map.of(), Map.of("source", "MANUAL"));
     }

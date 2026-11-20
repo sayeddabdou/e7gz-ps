@@ -385,6 +385,19 @@ No table, column, constraint, trigger or grant changes; `tr_05_booking_ban_eligi
 
 - Tests: `EmergencyTournamentCascadeTest` (a venue Emergency cancels the Tournament of its window; a resource Emergency cancels a pre-start one and trims an ACTIVE one); `EmergencyHttpTest`; the `.dbm`/migration identity and changed-lines checks in `MigrationFilesTest`.
 
+### v1.1.46 — re-arming a FAILED job starts its attempts again (E7-83, 20 Nov 2026)
+
+**Why.** E7-83 resumes an emergency-paused timer with its remaining time (FR-OPS-36), and the Sprint 2 review (PO decision 12 Oct 2026) requires the resume to re-arm the booking's T1 whether it is PAUSED or FAILED: a T1 that fires during the pause refuses to run, backs off and can end FAILED. `technical.job_rearm` sent a FAILED job back to PENDING with its attempt count unchanged - already at the worker's maximum - so the next lease recorded one attempt too many and the worker marked it FAILED again without running it ("attempts exhausted"). A re-armed FAILED job could never fire. `.dbm` block `v1_1_46_job_rearm_failed_restarts_attempts` = Flyway `V202611202100__job_rearm_failed_restarts_attempts.sql`, byte for byte. **Waiting for the Product Owner's review.**
+
+| Object | Change |
+|---|---|
+| `technical.job_rearm` | V1 definition, plus: a FAILED job re-armed starts its attempts again at 0 (a new run of the same job), through the private write token (`technical.enter_write`, the `job_finish` pattern). A PAUSED job keeps its count: a pause is not a new run |
+| `technical.guard_scheduled_job` | V202610091200 definition with one more permitted attempt change: back to 0 on FAILED -> PENDING, only inside `job_rearm` (the write token), never through a plain UPDATE |
+
+**Existing data.** No table, column, constraint, index, trigger or grant changes; existing rows are not touched (a FAILED job keeps its count until it is re-armed); no backfill and no upgrade seed.
+
+- Tests: `TimerPausesIntegrationTest` (a T1 that fired during the pause and ended FAILED is re-armed on resume and expires the booking once at the moved deadline); `ScheduledJobLifecycleTest` (a re-armed FAILED job starts at attempt 0 and can be leased, a re-armed PAUSED one keeps its count, a plain UPDATE still cannot reset it); the `.dbm`/migration identity and changed-lines checks in `MigrationFilesTest`.
+
 ## Product Owner decisions (26 Sep 2026)
 
 A1 overlapping Maintenance allowed · A2 booking horizon is a deployment setting, default 120 days · A4 rate-limit table approved · A5 reports FR-AUD-11/12 at launch · A6 venue alerts = live + Web Push + audible alert · A8 configurable = fees and points only · A9 Venue never returns to ONBOARDING · A10 login limits stored as `LOGIN` rate-limit rows · A11 read-only customer wallet screen (PCR-004, no DB change) · review self-reporting allowed, duplicate open reports blocked.

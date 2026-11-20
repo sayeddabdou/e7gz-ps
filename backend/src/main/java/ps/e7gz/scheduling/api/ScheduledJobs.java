@@ -36,7 +36,17 @@ public interface ScheduledJobs {
      * E7-82: pauses a pausable deadline (T1, T2, T3) for an Emergency - {@code PENDING -> PAUSED}, its {@code due_at}
      * kept (arch 08 section 2.5, FR-OPS-34, FR-OPS-35) - so it never fires while the timer is paused. Returns
      * {@code false}, changing nothing, when no job has the key or it is not {@code PENDING}: a {@code LEASED} job is left
-     * to its worker, whose fire re-reads the paused booking and backs off. {@link #rearm} sends it back (E7-83).
+     * to its worker, whose fire re-reads the paused booking and backs off. {@link #rearmIfHeld} sends it back (E7-83).
      */
     boolean pause(CommandContext context, String idempotencyKey);
+
+    /**
+     * E7-83: {@link #rearm} when the job is {@code PAUSED} or {@code FAILED} - a resumed timer's T1, T2 or T3 (FR-OPS-36;
+     * Sprint 2 review, PO decision 12 Oct 2026: a T1 that fired during the pause and ended {@code FAILED} is re-armed
+     * too; v1.1.46: a FAILED job re-armed starts its attempts again). Returns {@code false}, changing nothing, when no
+     * job has the key or it is in any other state: a
+     * {@code PENDING} or {@code LEASED} job fires on its own and re-reads the stored deadline (rescheduling itself to it),
+     * and a {@code DONE} or {@code SUPERSEDED} one is over.
+     */
+    boolean rearmIfHeld(CommandContext context, String idempotencyKey, Instant dueAt);
 }
