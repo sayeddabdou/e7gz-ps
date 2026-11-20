@@ -22,6 +22,7 @@ import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.security.owner.OwnerPasswordNotRequired;
 import ps.e7gz.common.security.owner.OwnerProtected;
+import ps.e7gz.identity.api.OwnerPasswordAttempts;
 import ps.e7gz.messaging.api.IntegrationEvents;
 import ps.e7gz.messaging.api.NewOutboxEvent;
 import ps.e7gz.messaging.api.Outbox;
@@ -265,9 +266,11 @@ final class VenueAccountCommands {
      * The Platform Admin sets a new Owner Password (FR-ADM-03): like the venue's own change, the new hash gets a later
      * {@code changed_at} and the next {@code version}, so the old one stops working at once. The venue is notified in
      * the same transaction (FR-VEN-05, FR-ADM-03; E7-43): {@code VENUE_OWNER_PASSWORD_RESET}, never with the password.
+     * It ends the long lock and a running short lockout, and both counts start again (PCR-012; E7-121).
      */
     record ResetOwnerPassword(UUID adminId, UUID correlationId, UUID venueAccountId, UUID venueId,
-                              String ownerPasswordHash, AuditWriter audit, Notifications notifications)
+                              String ownerPasswordHash, AuditWriter audit, Notifications notifications,
+                              OwnerPasswordAttempts attempts)
             implements Command<Void> {
 
         @Override
@@ -291,6 +294,8 @@ final class VenueAccountCommands {
             if (changed != 1) {
                 throw new ApiException(ApiErrorCode.NOT_FOUND);
             }
+            // PCR-012 item 3 (E7-121): only this reset ends the long lock; the counts start again from zero
+            attempts.endLocks(context, venueAccountId);
             audit.write(context, AuditRecord.builder(VenueAccountAuditAction.OWNER_PASSWORD_RESET,
                     AuditActor.admin(adminId), venueAccountId, correlationId)
                     .contextVenue(venueId).payload(Map.of("venueId", venueId)).build());

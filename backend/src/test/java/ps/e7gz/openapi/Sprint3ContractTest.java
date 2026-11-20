@@ -85,7 +85,8 @@ class Sprint3ContractTest {
         JsonNode body = requestBody(operation(cancel));
         assertThat(properties(body)).containsExactly("ownerPassword");
         assertThat(body.path("properties").path("ownerPassword").path("writeOnly").asBoolean()).isTrue();
-        assertThat(codes(operation(cancel), "423")).containsExactly("OWNER_PASSWORD_REQUIRED", "OWNER_PASSWORD_INVALID");
+        assertThat(codes(operation(cancel), "423"))       // the long lock since PCR-012 (E7-121)
+                .containsExactly("OWNER_PASSWORD_REQUIRED", "OWNER_PASSWORD_INVALID", "OWNER_PASSWORD_LOCKED");
         assertThat(codes(operation(cancel), "409")).containsExactly("BOOKING_STATE_CHANGED");
     }
 

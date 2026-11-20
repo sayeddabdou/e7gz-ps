@@ -105,6 +105,23 @@ class OpenApiConfigTest {
                 .isEqualTo(OpenApiConfig.UNEXPECTED_ERROR_RESPONSE_REF);
     }
 
+    /** PCR-012 (E7-121): a route that checks the Owner PIN can also answer the long lock; other 423s are left alone. */
+    @Test
+    void anOwnerPinRouteGainsTheLongLockCode() {
+        Operation pinRoute = new Operation().responses(new ApiResponses().addApiResponse("423", new ApiResponse()
+                .description("error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID").content(new Content()
+                        .addMediaType("application/json", new MediaType().schema(OpenApiConfig.errorWithCodes(
+                                new LinkedHashSet<>(List.of("OWNER_PASSWORD_REQUIRED", "OWNER_PASSWORD_INVALID"))))))));
+        Operation otherRoute = new Operation().responses(new ApiResponses());
+
+        OpenApiConfig.addSharedErrors(pinRoute);
+        OpenApiConfig.addSharedErrors(otherRoute);
+
+        assertThat(codes(pinRoute, "423"))
+                .containsExactly("OWNER_PASSWORD_REQUIRED", "OWNER_PASSWORD_INVALID", "OWNER_PASSWORD_LOCKED");
+        assertThat(otherRoute.getResponses()).doesNotContainKey("423");
+    }
+
     @Test
     void anExplicitResponseInAnotherShapeIsNeverOverwritten() {
         ApiResponse custom =

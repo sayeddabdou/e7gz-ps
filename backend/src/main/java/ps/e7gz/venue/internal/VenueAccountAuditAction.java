@@ -16,9 +16,16 @@ enum VenueAccountAuditAction implements AuditAction {
     /**
      * A protected action was refused for its Owner Password (FR-VEN-05): {@code protectedAction} is the action id from
      * the Owner Password matrix, {@code lockedOut} tells whether the account was already locked out (password not
-     * checked). The row carries owner_password_outcome = FAILURE.
+     * checked), {@code longLocked} whether that lock is the long one (PCR-012, E7-121). The row carries
+     * owner_password_outcome = FAILURE.
      */
-    OWNER_PASSWORD_REFUSED(AuditPayloadAllowlist.of("protectedAction", "lockedOut")),
+    OWNER_PASSWORD_REFUSED(AuditPayloadAllowlist.of("protectedAction", "lockedOut", "longLocked")),
+    /**
+     * PCR-012 item 4 (E7-121): this wrong Owner Password started the account's third short lockout within 24 hours, so
+     * every protected action stays refused until the Platform Admin resets the Owner Password. Written in the same
+     * transaction as that refusal and its admin alert; {@code protectedAction} is the action it was refused for.
+     */
+    OWNER_PASSWORD_LONG_LOCKED(AuditPayloadAllowlist.of("protectedAction", "lockouts")),
     /**
      * A protected action's Owner Password was accepted (FR-VEN-05, arch 10 §8.1), audited on its own row because the
      * action itself has none - the opening-hours change cancelling protected bookings (E7-113; no audit row for the

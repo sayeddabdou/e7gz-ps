@@ -104,6 +104,7 @@ Representative members, each traced:
 | `CHECK_IN_WINDOW_CLOSED` · `LATE_PRESENT_NOT_AVAILABLE` · `NO_SHOW_NOT_AVAILABLE` | 422 | `FR-ATT-02`…`FR-ATT-04` |
 | `ATTENDANCE_REVERSAL_REQUIRES_ADMIN` | 403 | `FR-ATT-11` |
 | `OWNER_PASSWORD_REQUIRED` · `OWNER_PASSWORD_INVALID` | 423 | `FR-VEN-02`, `FR-VEN-03` |
+| `OWNER_PASSWORD_LOCKED` | 423 | PCR-012 — the long lock: 3 short lockouts within 24 hours lock every Owner-PIN action of the venue until the Platform Admin resets the Owner PIN; the same answer for a right and a wrong PIN. The 15-minute lockout keeps `RATE_LIMITED` (PO decision 16 Nov 2026; E7-121) |
 | `RESOURCE_HAS_BLOCKING_RESERVATIONS` | 422 | `FR-VEN-14` |
 | `TOURNAMENT_CONFLICT_BLOCKS_SAVE` | 422 | `FR-VEN-27`, `FR-VEN-32` |
 | `AFFECTED_SET_CHANGED_REFRESH_PREVIEW` | 409 | `FR-VEN-26` |
