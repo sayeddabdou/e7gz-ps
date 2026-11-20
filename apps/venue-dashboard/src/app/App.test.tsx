@@ -108,6 +108,9 @@ describe("Venue Dashboard shell", () => {
 
   it("uses the stored language, switches direction, and persists the choice", async () => {
     window.localStorage.setItem("e7gz.venue.language", "ar");
+    // The account's saved language (GET /venue/settings) is applied when it arrives; it must agree with the stored
+    // one here, or the test races that response (it answered "en" and flipped the shell back to LTR at random).
+    vi.mocked(globalThis.fetch).mockImplementation(async (input: RequestInfo | URL) => defaultResponse(input, "ar"));
     render(<App config={readyConfig} />);
 
     await waitFor(() => expect(screen.getByTestId("venue-sidebar")).toBeTruthy());
