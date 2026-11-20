@@ -1,6 +1,8 @@
 import { useState, useSyncExternalStore, type CSSProperties } from "react";
 import type { components } from "@e7gz/api-client";
 import { webTokens } from "@e7gz/tokens/web";
+import { StoredText } from "../../components";
+import { formatCountdown, formatDateTime, formatMoney } from "../../formatters";
 import { useMessages } from "../../i18n";
 
 type Booking = components["schemas"]["VenueBooking"];
@@ -45,11 +47,11 @@ const styles = {
   notice: { alignItems: "center", backgroundColor: webTokens.color.surface.venueSubtle, borderRadius: webTokens.radius.xl, display: "flex", flexWrap: "wrap", gap: webTokens.spacing.lg, justifyContent: "space-between", padding: webTokens.spacing.xl },
 } satisfies Record<string, CSSProperties>;
 
-function remainingLabel(expiresAt: string | null, paused: boolean, clockOffsetMs: number, now: number): string {
+function remainingLabel(expiresAt: string | null, paused: boolean, clockOffsetMs: number, now: number, locale: string): string {
   if (paused) return "paused";
-  if (!expiresAt) return "00:00";
+  if (!expiresAt) return formatCountdown(0, locale);
   const seconds = Math.max(0, Math.ceil((Date.parse(expiresAt) - (now + clockOffsetMs)) / 1_000));
-  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  return formatCountdown(seconds, locale);
 }
 
 let clockNow = Date.now();
@@ -82,7 +84,7 @@ function RequestCard({ booking, model }: { booking: Booking; model: PendingReque
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
   const [reasonError, setReasonError] = useState(false);
-  const countdown = remainingLabel(booking.venueResponseExpiresAt, booking.venueResponsePaused, model.clockOffsetMs, now);
+  const countdown = remainingLabel(booking.venueResponseExpiresAt, booking.venueResponsePaused, model.clockOffsetMs, now, t.locale);
   const busy = model.pendingAction?.startsWith(`${booking.bookingId}:`) ?? false;
   const submitReject = () => {
     const trimmed = reason.trim();
@@ -97,17 +99,17 @@ function RequestCard({ booking, model }: { booking: Booking; model: PendingReque
   return <li style={styles.card}>
     <div style={styles.cardHeader}>
       <div>
-        <h3 style={styles.title}>{booking.resource.name}</h3>
-        <p style={styles.muted}>{booking.customer?.username ?? t.customerHidden} · {messages.activity[booking.resource.activity]}</p>
-        {booking.customer?.phone ? <p style={styles.muted}>{booking.customer.phone}</p> : null}
+        <h3 style={styles.title}><StoredText>{booking.resource.name}</StoredText></h3>
+        <p style={styles.muted}>{booking.customer?.username ? <StoredText>{booking.customer.username}</StoredText> : t.customerHidden} · {messages.activity[booking.resource.activity]}</p>
+        {booking.customer?.phone ? <p style={styles.muted}><StoredText direction="ltr">{booking.customer.phone}</StoredText></p> : null}
       </div>
       <span aria-label={t.timeRemaining} style={styles.countdown}>{countdown === "paused" ? t.paused : countdown}</span>
     </div>
     {booking.venueResponsePaused ? <p style={styles.muted}>{t.acceptPaused}</p> : null}
     <div style={styles.details}>
-      <p><strong>{t.starts}</strong><br />{new Date(booking.startAt).toLocaleString(t.locale, { timeZone: "Africa/Cairo" })}</p>
+      <p><strong>{t.starts}</strong><br />{formatDateTime(booking.startAt, t.locale)}</p>
       <p><strong>{t.duration}</strong><br />{t.durationMinutes(booking.nominalBookedMinutes)}</p>
-      <p><strong>{t.price}</strong><br />{booking.venuePriceTotal.amount} {booking.venuePriceTotal.currency}</p>
+      <p><strong>{t.price}</strong><br />{formatMoney(booking.venuePriceTotal, t.locale)}</p>
     </div>
     {model.actionError ? <p role="alert" style={styles.error}>{model.actionError}</p> : null}
     {rejecting ? <div style={styles.reject}>

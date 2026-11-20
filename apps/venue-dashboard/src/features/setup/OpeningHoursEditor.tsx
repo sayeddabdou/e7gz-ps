@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { components } from "@e7gz/api-client";
 import { apiErrorOf, type ApiClient } from "../../api";
+import { StoredText } from "../../components";
+import { formatDate, formatTime } from "../../formatters";
 import { useMessages } from "../../i18n";
 import { createIdempotencyKey } from "../operations";
 import { setupErrorMessage } from "./errorMessages";
@@ -148,16 +150,6 @@ export function OpeningHoursEditor({ api }: { api: ApiClient }) {
     setProposal({ ...proposal, days: proposal.days.map((day) => day.weekday === weekday ? { ...day, ...patch } : day) });
   };
 
-  const affectedDateFormatter = useMemo(() => new Intl.DateTimeFormat(t.setup.hours.locale, {
-    dateStyle: "medium",
-    timeZone: timezone,
-  }), [t, timezone]);
-  const affectedTimeFormatter = useMemo(() => new Intl.DateTimeFormat(t.setup.hours.locale, {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: timezone,
-  }), [t, timezone]);
-
   return (
     <section aria-labelledby="hours-title" style={styles.card}>
       <div><h2 id="hours-title" style={styles.cardTitle}>{t.setup.hours.title}</h2><p style={styles.muted}>{t.setup.hours.description}</p></div>
@@ -196,11 +188,9 @@ export function OpeningHoursEditor({ api }: { api: ApiClient }) {
         <section aria-labelledby="affected-title" style={styles.card}>
           <h3 id="affected-title" style={styles.cardTitle}>{t.setup.hours.affected}</h3>
           {preview.affected.length ? <ul style={styles.list}>{preview.affected.map((item) => {
-            const start = new Date(item.startAt);
-            const end = new Date(item.endAt);
             return <li key={item.bookingId} style={styles.field}>
-              <strong>{resourceNames[item.resourceId] ?? t.setup.hours.resource}</strong>
-              <span><time dateTime={item.startAt}>{affectedDateFormatter.format(start)}, {affectedTimeFormatter.format(start)}</time> – <time dateTime={item.endAt}>{affectedTimeFormatter.format(end)}</time></span>
+              <strong><StoredText>{resourceNames[item.resourceId] ?? t.setup.hours.resource}</StoredText></strong>
+              <span><time dateTime={item.startAt}>{formatDate(item.startAt, t.setup.hours.locale, timezone)}, {formatTime(item.startAt, t.setup.hours.locale, timezone)}</time> – <time dateTime={item.endAt}>{formatTime(item.endAt, t.setup.hours.locale, timezone)}</time></span>
               {item.protectedCancellation ? <span style={styles.muted}>{t.setup.hours.needsPin}</span> : null}
             </li>;
           })}</ul> : <p>{t.setup.hours.noAffected}</p>}
