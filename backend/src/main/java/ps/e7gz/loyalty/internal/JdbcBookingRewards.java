@@ -1,5 +1,7 @@
 package ps.e7gz.loyalty.internal;
 
+import java.util.Comparator;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
@@ -50,5 +52,26 @@ class JdbcBookingRewards implements BookingRewards {
                 .param("admin", Objects.requireNonNull(adminId, "adminId"))
                 .param("correlation", CorrelationId.require())
                 .query().singleRow();
+    }
+
+    @Override
+    public void reconcileAll(CommandContext command, Map<UUID, UUID> bookings) {
+        Objects.requireNonNull(command, "command");
+        Objects.requireNonNull(bookings, "bookings");
+        if (bookings.isEmpty()) {
+            return;
+        }
+        if (!JdbcBookingFeeRefunds.loyaltyCommandOpen(command)) {
+            command.jdbc().sql(JdbcBookingFeeRefunds.BEGIN_MANY)
+                    .param("users", bookings.values().stream().distinct().sorted().toArray(UUID[]::new))
+                    .param("correlation", CorrelationId.require())
+                    .query().singleRow();
+        }
+        bookings.entrySet().stream()
+                .sorted(Comparator.comparing((Map.Entry<UUID, UUID> entry) -> entry.getValue())
+                        .thenComparing(Map.Entry::getKey))
+                .forEach(entry -> command.jdbc().sql(RECONCILE)
+                        .param("booking", entry.getKey())
+                        .query(UUID.class).single());
     }
 }

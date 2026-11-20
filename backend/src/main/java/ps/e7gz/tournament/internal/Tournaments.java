@@ -19,6 +19,7 @@ import ps.e7gz.audit.api.AuditRecord;
 import ps.e7gz.audit.api.AuditWriter;
 import ps.e7gz.common.codes.TournamentHostType;
 import ps.e7gz.common.codes.TournamentStatus;
+import ps.e7gz.common.codes.TournamentResourceRemovalCause;
 import ps.e7gz.common.codes.TournamentTerminalReason;
 import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.correlation.CorrelationId;
@@ -357,6 +358,27 @@ class Tournaments implements TournamentCascades {
             jobs.supersede(command, timer + ":" + tournamentId);
         }
         return true;
+    }
+
+    @Override
+    public boolean removeResource(CommandContext command, UUID tournamentId, UUID resourceId,
+                                  TournamentResourceRemovalCause cause) {
+        Objects.requireNonNull(command, "command");
+        Objects.requireNonNull(tournamentId, "tournamentId");
+        Objects.requireNonNull(resourceId, "resourceId");
+        Objects.requireNonNull(cause, "cause");
+        List<UUID> reservations = command.jdbc().sql("""
+                        UPDATE tournament.tournament_resource
+                           SET removed_at = :now, removal_cause = :cause
+                         WHERE tournament_id = :tournament AND resource_id = :resource AND removed_at IS NULL
+                        RETURNING reservation_id""")
+                .param("now", utc(command.commandNow())).param("cause", cause.name())
+                .param("tournament", tournamentId).param("resource", resourceId)
+                .query(UUID.class).list();
+        for (UUID reservationId : reservations) {
+            ledger.release(command, reservationId, command.commandNow(), cause.name());
+        }
+        return !reservations.isEmpty();
     }
 
     /** The Tournament as it is now in this command, or empty when it does not exist. */

@@ -23,6 +23,8 @@ import ps.e7gz.common.web.DataResponse;
 import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.PageView;
+import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.operations.internal.VenueEmergencies;
 
 /**
  * Platform Admin — read-only monitors of Owner Reviews and Emergencies (FRS F-22, FR-OPS-06, FR-OPS-11 "Platform Admin
@@ -36,6 +38,14 @@ import ps.e7gz.common.web.PageView;
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 @Validated
 public class AdminOperationsController {
+
+    private final VenueEmergencies emergencies;
+    private final ResponseMetaFactory meta;
+
+    public AdminOperationsController(VenueEmergencies emergencies, ResponseMetaFactory meta) {
+        this.emergencies = emergencies;
+        this.meta = meta;
+    }
 
     @GetMapping("/owner-reviews")
     @Operation(operationId = "adminListOwnerReviews",
@@ -61,7 +71,8 @@ public class AdminOperationsController {
             @Parameter(description = "Only this status.") @RequestParam(required = false) EmergencyStatus status,
             @RequestParam(required = false) String cursor,
             @RequestParam(required = false) @Min(1) @Max(100) Integer limit) {
-        throw NotImplementedYet.stub();
+        VenueEmergencies.AdminPage page = emergencies.adminList(venueId, status, cursor, limit);
+        return meta.data(new PageView<>(page.items().stream().map(AdminEmergency::of).toList(), page.nextCursor()));
     }
 
     @Schema(name = "AdminOwnerReview")
@@ -92,5 +103,12 @@ public class AdminOperationsController {
             @NotNull @Schema(example = "Power cut") String reason,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) EmergencyConversionTarget convertedTo,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) Instant endedAt) {
+
+        static AdminEmergency of(VenueEmergencies.AdminView row) {
+            VenueEmergencies.View e = row.emergency();
+            return new AdminEmergency(e.id(), row.venueId(), row.venueName(), e.scope(), e.resourceId(),
+                    row.resourceName(), e.status(), e.declaredAt(), e.expectedEndAt(), e.reason(), e.convertedTo(),
+                    e.endedAt());
+        }
     }
 }

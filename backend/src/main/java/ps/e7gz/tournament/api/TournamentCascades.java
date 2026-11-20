@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
+import ps.e7gz.common.codes.TournamentResourceRemovalCause;
 import ps.e7gz.common.codes.TournamentTerminalReason;
 import ps.e7gz.common.command.CommandContext;
 
@@ -52,4 +53,16 @@ public interface TournamentCascades {
      * @throws IllegalArgumentException when no such Tournament exists
      */
     boolean cancel(CommandContext command, UUID tournamentId, TournamentTerminalReason reason);
+
+    /**
+     * E7-82 (FR-TRN-27, FR-OPS-12): an ACTIVE Tournament loses one Resource to a Resource Emergency Outage (or an Owner
+     * Review, E7-84) and continues on the others: the assignment is marked removed at {@link CommandContext#commandNow()}
+     * with {@code cause}, and its hold is released with the cause as release reason. A Tournament left with no operational
+     * Resource must then be cancelled by the caller ({@link #cancel}); the database refuses the commit otherwise
+     * ({@code operations.assert_emergency_cascade_complete}).
+     *
+     * @return {@code false}, changing nothing, when the Resource is not (or no longer) assigned to it
+     */
+    boolean removeResource(CommandContext command, UUID tournamentId, UUID resourceId,
+                           TournamentResourceRemovalCause cause);
 }

@@ -60,6 +60,18 @@ class StartTimeCancellation {
 
     /** @throws ApiException {@code BOOKING_STATE_CHANGED} when the booking is no longer CONFIRMED */
     void cancel(CommandContext context, Facts booking, Outcome.Cancel cancel) {
+        UUID history = cancelWithoutDecision(context, booking, cancel);
+        if (booking.source() == BookingSource.ONLINE) {
+            refunds.recordDecision(context, booking.customerId(), booking.bookingId(), history);
+        }
+    }
+
+    /**
+     * E7-82: the same start-time cancellation without its Booking Fee decision, for a cascade that records every
+     * decision of its command in one Loyalty batch (an Emergency declared after a late T4: the start-time outcome T4
+     * would have written, then the rest of the cascade). Returns the terminal history row the decision rests on.
+     */
+    UUID cancelWithoutDecision(CommandContext context, Facts booking, Outcome.Cancel cancel) {
         BookingTerminalReason reason = cancel.reason();
         Instant startAt = booking.startAt();
         ActiveReservation reservation = ledger.activeOf(context, ReservationOwner.booking(booking.bookingId()))
@@ -72,16 +84,13 @@ class StartTimeCancellation {
         ledger.release(context, reservation.id(), startAt, reason.name());
         UUID history = store.insertTransition(context, booking.bookingId(), startAt, BookingStatus.CONFIRMED,
                 BookingStatus.CANCELLED, reason, ActorType.SYSTEM, null, CorrelationId.require());
-        if (booking.source() == BookingSource.ONLINE) {
-            refunds.recordDecision(context, booking.customerId(), booking.bookingId(), history);
-            outbox.publish(context, BookingEvents.cancelled(booking, reason));
-        } else {
-            outbox.publish(context, BookingEvents.manualCancelled(booking, reason));
-        }
+        outbox.publish(context, booking.source() == BookingSource.ONLINE ? BookingEvents.cancelled(booking, reason)
+                : BookingEvents.manualCancelled(booking, reason));
         if (reason == BookingTerminalReason.SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR) {
             alerts.raise(context, NewAdminAlert.resourceStateIntegrityError(booking.bookingId(), booking.resourceId(),
                     cancel.unexpectedBaseState(), startAt, context.commandNow(), null, CorrelationId.require()));
         }
+        return history;
     }
 
     /**

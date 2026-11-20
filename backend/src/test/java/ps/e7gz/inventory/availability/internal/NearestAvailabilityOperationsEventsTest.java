@@ -53,6 +53,7 @@ class NearestAvailabilityOperationsEventsTest extends IntegrationTest {
     private static final JdbcClient OWNER = JdbcClient.create(new SimpleDriverDataSource(new Driver(),
             PostgresTestContainer.jdbcUrl(DATABASE), MIGRATOR, MIGRATOR));
     private static final Instant STALE = Instant.parse("2020-01-01T00:00:00Z");
+    private static final String EMERGENCIES = "/api/v1/venue/emergencies";
 
     @Autowired
     MockMvc mvc;
@@ -116,6 +117,43 @@ class NearestAvailabilityOperationsEventsTest extends IntegrationTest {
         refreshes(IntegrationEvents.CLOSURE_CREATED, json(post("/api/v1/venue/closures"),
                 "{\"proposal\":" + proposal + ",\"previewToken\":\"" + previewToken + "\"}")
                 .header("Idempotency-Key", UUID.randomUUID().toString()));
+    }
+
+    /**
+     * E7-82 (Sprint 2 review, PO decision 12 Oct 2026): EmergencyDeclared, EmergencyExtended, EmergencyEnded and
+     * EmergencyConverted each refresh the venue at once, without the one-minute pass.
+     */
+    @Test
+    void eachEmergencyEventRefreshesItsVenueAtOnce() throws Exception {
+        Instant now = OWNER.sql("SELECT clock_timestamp()").query(OffsetDateTime.class).single().toInstant();
+        Instant end = now.plus(Duration.ofMinutes(10)).truncatedTo(ChronoUnit.SECONDS);
+        String declared = refreshes(IntegrationEvents.EMERGENCY_DECLARED, write(post(EMERGENCIES + "/venue-closure"),
+                "{\"reason\":\"Power cut\",\"expectedEndAt\":\"" + end + "\"}"));
+        String id = json.readTree(declared).path("data").path("id").asText();
+        Instant later = end.plus(Duration.ofMinutes(5));
+        String extension = mvc.perform(json(post(EMERGENCIES + "/" + id + "/extend/preview"),
+                        "{\"expectedEndAt\":\"" + later + "\"}")).andExpect(status().isOk()).andReturn().getResponse()
+                .getContentAsString();
+        refreshes(IntegrationEvents.EMERGENCY_EXTENDED, write(post(EMERGENCIES + "/" + id + "/extend"),
+                "{\"expectedEndAt\":\"" + later + "\",\"previewToken\":\""
+                        + json.readTree(extension).path("data").path("previewToken").asText() + "\"}"));
+        refreshes(IntegrationEvents.EMERGENCY_ENDED, write(post(EMERGENCIES + "/" + id + "/end"), "{}"));
+
+        String outage = refreshes(IntegrationEvents.EMERGENCY_DECLARED, write(post(EMERGENCIES + "/resource-outage"),
+                "{\"resourceId\":\"" + booking.resourceId() + "\",\"reason\":\"Overheating\",\"expectedReturnAt\":\""
+                        + end + "\"}"));
+        String room = json.readTree(outage).path("data").path("id").asText();
+        String conversion = "{\"target\":\"MAINTENANCE\",\"maintenance\":{\"endAt\":\"" + later
+                + "\",\"reason\":\"Part on order\"}}";
+        String preview = mvc.perform(json(post(EMERGENCIES + "/" + room + "/convert/preview"), conversion))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        refreshes(IntegrationEvents.EMERGENCY_CONVERTED, write(post(EMERGENCIES + "/" + room + "/convert"),
+                "{\"conversion\":" + conversion + ",\"previewToken\":\""
+                        + json.readTree(preview).path("data").path("previewToken").asText() + "\"}"));
+    }
+
+    private MockHttpServletRequestBuilder write(MockHttpServletRequestBuilder request, String body) {
+        return json(request, body).header("Idempotency-Key", UUID.randomUUID().toString());
     }
 
     /** The change writes one event of {@code type} for this venue; delivering only that type refreshes the row. */
