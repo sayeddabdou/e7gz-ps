@@ -61,8 +61,9 @@ describe("Missed requests", () => {
     const get = vi.fn().mockResolvedValue({ data: { data: [booking], meta: { correlationId: "c", serverTime: "2026-10-12T17:55:00Z" } } });
     render(<MessagesContext.Provider value={messages.ar}><MissedRequestsScreen api={{ GET: get } as unknown as ApiClient} bookingChangeVersion={0} /></MessagesContext.Provider>);
 
-    expect(await screen.findByText("Room 3")).toBeTruthy();
-    expect(screen.getByText("omar_k")).toBeTruthy();
+    expect((await screen.findByText("Room 3")).getAttribute("dir")).toBe("auto");
+    expect(screen.getByText("omar_k").getAttribute("dir")).toBe("auto");
+    expect(screen.getByText("+201001234567").getAttribute("dir")).toBe("ltr");
     expect(screen.getByLabelText("الوقت المتبقي حتى بدء الحجز").textContent).toBe("٠٥:٠٠");
     expect(screen.getByText("٣٠٠٫٠٠ EGP")).toBeTruthy();
   });

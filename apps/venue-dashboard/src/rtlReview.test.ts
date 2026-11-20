@@ -15,6 +15,7 @@ describe("Arabic RTL source review", () => {
     expect(source).not.toMatch(/\b(?:margin|padding|border)(?:Left|Right)\b/u);
     expect(source).not.toMatch(/\b(?:margin|padding|border)-(?:left|right)\b/u);
     expect(source).not.toMatch(/\b(?:left|right)\s*:/u);
+    expect(source).not.toMatch(/\btextAlign\s*:\s*["'](?:left|right)["']/u);
     expect(source).not.toContain("scaleX(");
   });
 });

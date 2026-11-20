@@ -5,6 +5,7 @@ import { formatInteger, formatNumber } from "../formatters";
 export type Language = "en" | "ar";
 
 const en = {
+  locale: "en-US" as string,
   appTitle: "Venue Dashboard",
   switchLanguage: "العربية",
   navigationLabel: "Dashboard navigation",
@@ -101,7 +102,7 @@ const en = {
     customerHidden: "Customer details unavailable",
     starts: "Starts",
     duration: "Duration",
-    durationMinutes: (minutes: number) => minutes === 60 ? "1 hour" : `${formatNumber(minutes / 60, "en-US", { maximumFractionDigits: 1 })} hours`,
+    durationMinutes: (minutes: number) => minutes === 60 ? "1 hour" : `${formatNumber(minutes / 60, "en-US", { maximumFractionDigits: 2 })} hours`,
     price: "Venue price",
     timeRemaining: "Venue response time remaining",
     paused: "Paused",
@@ -249,7 +250,7 @@ const en = {
       playMode: "Play mode",
       playModes: { SINGLE: "Single", MULTIPLAYER: "Multiplayer" },
       duration: "Duration",
-      durationMinutes: (minutes: number) => minutes === 60 ? "1 hour" : `${formatNumber(minutes / 60, "en-US", { maximumFractionDigits: 1 })} hours`,
+      durationMinutes: (minutes: number) => minutes === 60 ? "1 hour" : `${formatNumber(minutes / 60, "en-US", { maximumFractionDigits: 2 })} hours`,
       start: "Start",
       now: "Start now (walk-in)",
       future: "Future start",
@@ -325,7 +326,7 @@ const en = {
       start: "Starts",
       end: "Ends",
       duration: "Duration",
-      durationMinutes: (minutes: number) => minutes === 60 ? "1 hour" : `${formatNumber(minutes / 60, "en-US", { maximumFractionDigits: 1 })} hours`,
+      durationMinutes: (minutes: number) => minutes === 60 ? "1 hour" : `${formatNumber(minutes / 60, "en-US", { maximumFractionDigits: 2 })} hours`,
       price: "Venue price",
       contact: "Customer contact",
       customer: "Customer",
@@ -545,6 +546,7 @@ const en = {
 export type Messages = typeof en;
 
 const ar: Messages = {
+  locale: "ar-EG",
   appTitle: "لوحة تحكم المكان",
   switchLanguage: "English",
   navigationLabel: "التنقل في لوحة التحكم",
@@ -641,7 +643,7 @@ const ar: Messages = {
     customerHidden: "بيانات العميل غير متاحة",
     starts: "يبدأ",
     duration: "المدة",
-    durationMinutes: (minutes: number) => `${formatNumber(minutes / 60, "ar-EG", { maximumFractionDigits: 1 })} ساعة`,
+    durationMinutes: (minutes: number) => `${formatNumber(minutes / 60, "ar-EG", { maximumFractionDigits: 2 })} ساعة`,
     price: "سعر المكان",
     timeRemaining: "الوقت المتبقي لرد المكان",
     paused: "متوقف مؤقتًا",
@@ -789,7 +791,7 @@ const ar: Messages = {
       playMode: "نمط اللعب",
       playModes: { SINGLE: "فردي", MULTIPLAYER: "متعدد اللاعبين" },
       duration: "المدة",
-      durationMinutes: (minutes: number) => minutes === 60 ? "ساعة واحدة" : minutes === 90 ? "ساعة ونصف" : minutes === 120 ? "ساعتان" : `${formatNumber(minutes / 60, "ar-EG", { maximumFractionDigits: 1 })} ساعات`,
+      durationMinutes: (minutes: number) => minutes === 60 ? "ساعة واحدة" : minutes === 90 ? "ساعة ونصف" : minutes === 120 ? "ساعتان" : `${formatNumber(minutes / 60, "ar-EG", { maximumFractionDigits: 2 })} ساعات`,
       start: "البداية",
       now: "ابدأ الآن (حضور مباشر)",
       future: "موعد مستقبلي",
@@ -865,7 +867,7 @@ const ar: Messages = {
       start: "يبدأ",
       end: "ينتهي",
       duration: "المدة",
-      durationMinutes: (minutes: number) => minutes === 60 ? "ساعة واحدة" : minutes === 90 ? "ساعة ونصف" : minutes === 120 ? "ساعتان" : `${formatNumber(minutes / 60, "ar-EG", { maximumFractionDigits: 1 })} ساعات`,
+      durationMinutes: (minutes: number) => minutes === 60 ? "ساعة واحدة" : minutes === 90 ? "ساعة ونصف" : minutes === 120 ? "ساعتان" : `${formatNumber(minutes / 60, "ar-EG", { maximumFractionDigits: 2 })} ساعات`,
       price: "سعر المكان",
       contact: "بيانات تواصل العميل",
       customer: "العميل",

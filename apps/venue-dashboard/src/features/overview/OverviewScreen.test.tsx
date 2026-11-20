@@ -70,8 +70,8 @@ describe("Dashboard overview", () => {
     vi.useFakeTimers({ toFake: ["Date"] }).setSystemTime(new Date("2026-10-13T12:00:00Z"));
     const { requests } = renderOverview();
 
-    expect(await screen.findByText("1,234.50 EGP")).toBeTruthy();
-    expect(screen.getByText("9,876.00 EGP")).toBeTruthy();
+    expect(await screen.findByText("1234.50 EGP")).toBeTruthy();
+    expect(screen.getByText("9876.00 EGP")).toBeTruthy();
     expect(screen.getByText("37")).toBeTruthy();
     expect(screen.getByText("4")).toBeTruthy();
     expect(await screen.findByText("October 12, 2026")).toBeTruthy();
@@ -84,7 +84,7 @@ describe("Dashboard overview", () => {
   it("opens existing request and manual-booking flows and omits the Sprint 6 tournament action", async () => {
     const { onOpenManualBooking, onOpenPendingRequests } = renderOverview();
 
-    await screen.findByText("1,234.50 EGP");
+    await screen.findByText("1234.50 EGP");
     fireEvent.click(screen.getByRole("button", { name: "View pending requests" }));
     fireEvent.click(screen.getByRole("button", { name: "Create manual booking" }));
 
@@ -102,7 +102,7 @@ describe("Dashboard overview", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("This action is not available for this account.");
     expect(await screen.findByText("October 12, 2026")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Retry overview" }));
-    expect(await screen.findByText("1,234.50 EGP")).toBeTruthy();
+    expect(await screen.findByText("1234.50 EGP")).toBeTruthy();
   });
 
   it("refreshes the numbers and today's schedule when a live booking signal arrives", async () => {
@@ -117,10 +117,10 @@ describe("Dashboard overview", () => {
       json(200, { data: changed, meta }),
     ] });
 
-    expect(await screen.findByText("1,234.50 EGP")).toBeTruthy();
+    expect(await screen.findByText("1234.50 EGP")).toBeTruthy();
     updateBookingChangeVersion(1);
 
-    expect(await screen.findByText("1,400.00 EGP")).toBeTruthy();
+    expect(await screen.findByText("1400.00 EGP")).toBeTruthy();
     expect(screen.getByText("38")).toBeTruthy();
     expect(screen.getByText("5")).toBeTruthy();
     await waitFor(() => {
@@ -137,7 +137,7 @@ describe("Dashboard overview", () => {
     expect(page.getAttribute("style")).not.toMatch(/(?:^|-)left|(?:^|-)right/u);
     expect(screen.getByRole("heading", { name: "نظرة عامة" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "عرض الطلبات المعلقة" })).toBeTruthy();
-    expect(screen.getByText("١٬٢٣٤٫٥٠ EGP")).toBeTruthy();
+    expect(screen.getByText("١٢٣٤٫٥٠ EGP")).toBeTruthy();
     expect(screen.getByText("٣٧")).toBeTruthy();
     await waitFor(() => expect(screen.getByText("١٢ أكتوبر ٢٠٢٦")).toBeTruthy());
   });

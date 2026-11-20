@@ -110,6 +110,10 @@ describe("Pending requests", () => {
 
     expect(screen.getByRole("heading", { name: "طلبات الحجز المعلقة" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "قبول" })).toBeTruthy();
+    expect(screen.getByText("Room 3")).toMatchObject({ tagName: "BDI" });
+    expect(screen.getByText("Room 3").getAttribute("dir")).toBe("auto");
+    expect(screen.getByText("omar_k").getAttribute("dir")).toBe("auto");
+    expect(screen.getByText("+201001234567").getAttribute("dir")).toBe("ltr");
     expect(container.innerHTML).not.toMatch(/(?:margin|padding|border)-(?:left|right)/u);
   });
 });

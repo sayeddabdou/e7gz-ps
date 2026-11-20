@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { components } from "@e7gz/api-client";
 import { apiErrorOf, type ApiClient } from "../../api";
+import { StoredText } from "../../components";
 import { formatBusinessDate, formatTime } from "../../formatters";
 import { useMessages } from "../../i18n";
 import { setupErrorMessage } from "../setup/errorMessages";
@@ -180,7 +181,7 @@ export function AvailabilitySchedule({
                 {schedule.resources.map((resource) => (
                   <div key={resource.resourceId} style={styles.resourceRow}>
                     <div style={styles.resource}>
-                      <span style={styles.resourceName}>{resource.name}</span>
+                      <span style={styles.resourceName}><StoredText>{resource.name}</StoredText></span>
                       <span style={styles.resourceMeta}>
                         {t.activity[resource.activity]}{resource.consoleType ? ` · ${resource.consoleType}` : ""}
                       </span>

@@ -5,11 +5,16 @@ describe("Dashboard formatters", () => {
   it("formats numbers and EGP money consistently for English and Arabic", () => {
     const money = { amount: "1234.5", currency: "EGP" };
 
-    expect(formatMoney(money, "en-US")).toBe("1,234.50 EGP");
+    expect(formatMoney(money, "en-US")).toBe("1234.5 EGP");
     expect(formatInteger(1234, "en-US")).toBe("1,234");
-    expect(formatMoney(money, "ar-EG")).toBe("١٬٢٣٤٫٥٠ EGP");
+    expect(formatMoney(money, "ar-EG")).toBe("١٢٣٤٫٥ EGP");
     expect(formatInteger(1234, "ar-EG")).toBe("١٬٢٣٤");
     expect(formatCountdown(65, "ar-EG")).toBe("٠١:٠٥");
+  });
+
+  it("preserves every API money digit without floating-point conversion or rounding", () => {
+    expect(formatMoney({ amount: "1234.567890", currency: "EGP" }, "en-US")).toBe("1234.567890 EGP");
+    expect(formatMoney({ amount: "1234.567890", currency: "EGP" }, "ar-EG")).toBe("١٢٣٤٫٥٦٧٨٩٠ EGP");
   });
 
   it("formats server timestamps and business dates in Cairo without device-time defaults", () => {

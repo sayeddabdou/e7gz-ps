@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { components } from "@e7gz/api-client";
 import { apiErrorOf, type ApiClient } from "../../api";
+import { StoredText } from "../../components";
 import { formatDate, formatTime } from "../../formatters";
 import { useMessages } from "../../i18n";
 import { createIdempotencyKey } from "../operations";
@@ -188,7 +189,7 @@ export function OpeningHoursEditor({ api }: { api: ApiClient }) {
           <h3 id="affected-title" style={styles.cardTitle}>{t.setup.hours.affected}</h3>
           {preview.affected.length ? <ul style={styles.list}>{preview.affected.map((item) => {
             return <li key={item.bookingId} style={styles.field}>
-              <strong>{resourceNames[item.resourceId] ?? t.setup.hours.resource}</strong>
+              <strong><StoredText>{resourceNames[item.resourceId] ?? t.setup.hours.resource}</StoredText></strong>
               <span><time dateTime={item.startAt}>{formatDate(item.startAt, t.setup.hours.locale, timezone)}, {formatTime(item.startAt, t.setup.hours.locale, timezone)}</time> – <time dateTime={item.endAt}>{formatTime(item.endAt, t.setup.hours.locale, timezone)}</time></span>
               {item.protectedCancellation ? <span style={styles.muted}>{t.setup.hours.needsPin}</span> : null}
             </li>;

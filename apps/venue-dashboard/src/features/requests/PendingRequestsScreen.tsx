@@ -1,6 +1,7 @@
 import { useState, useSyncExternalStore, type CSSProperties } from "react";
 import type { components } from "@e7gz/api-client";
 import { webTokens } from "@e7gz/tokens/web";
+import { StoredText } from "../../components";
 import { formatCountdown, formatDateTime, formatMoney } from "../../formatters";
 import { useMessages } from "../../i18n";
 
@@ -98,9 +99,9 @@ function RequestCard({ booking, model }: { booking: Booking; model: PendingReque
   return <li style={styles.card}>
     <div style={styles.cardHeader}>
       <div>
-        <h3 style={styles.title}>{booking.resource.name}</h3>
-        <p style={styles.muted}>{booking.customer?.username ?? t.customerHidden} · {messages.activity[booking.resource.activity]}</p>
-        {booking.customer?.phone ? <p style={styles.muted}>{booking.customer.phone}</p> : null}
+        <h3 style={styles.title}><StoredText>{booking.resource.name}</StoredText></h3>
+        <p style={styles.muted}>{booking.customer?.username ? <StoredText>{booking.customer.username}</StoredText> : t.customerHidden} · {messages.activity[booking.resource.activity]}</p>
+        {booking.customer?.phone ? <p style={styles.muted}><StoredText direction="ltr">{booking.customer.phone}</StoredText></p> : null}
       </div>
       <span aria-label={t.timeRemaining} style={styles.countdown}>{countdown === "paused" ? t.paused : countdown}</span>
     </div>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import type { components } from "@e7gz/api-client";
 import { webTokens } from "@e7gz/tokens/web";
 import { apiErrorOf, type ApiClient } from "../../api";
+import { StoredText } from "../../components";
 import { formatCountdown, formatDateTime, formatMoney } from "../../formatters";
 import { useMessages } from "../../i18n";
 import { createIdempotencyKey, serverClockOffset, useServerNow } from "../operations";
@@ -120,7 +121,7 @@ export function MissedRequestsScreen({
           const started = serverNow >= Date.parse(booking.startAt);
           const cardBusy = busy?.startsWith(`${booking.bookingId}:`) ?? false;
           return <li key={booking.bookingId} style={styles.card}>
-            <div style={styles.cardHeader}><div><h3 style={styles.title}>{booking.resource.name}</h3><p style={styles.muted}>{booking.customer?.username ?? t.customerHidden}</p>{booking.customer?.phone ? <p style={styles.muted}>{booking.customer.phone}</p> : null}</div><span aria-label={t.timeToStart} style={styles.countdown}>{timeLeftLabel(booking.startAt, serverNow, t.started, t.locale)}</span></div>
+            <div style={styles.cardHeader}><div><h3 style={styles.title}><StoredText>{booking.resource.name}</StoredText></h3><p style={styles.muted}>{booking.customer?.username ? <StoredText>{booking.customer.username}</StoredText> : t.customerHidden}</p>{booking.customer?.phone ? <p style={styles.muted}><StoredText direction="ltr">{booking.customer.phone}</StoredText></p> : null}</div><span aria-label={t.timeToStart} style={styles.countdown}>{timeLeftLabel(booking.startAt, serverNow, t.started, t.locale)}</span></div>
             <div style={styles.details}><p><strong>{t.starts}</strong><br />{formatDateTime(booking.startAt, t.locale)}</p><p><strong>{t.duration}</strong><br />{messages.requests.durationMinutes(booking.nominalBookedMinutes)}</p><p><strong>{t.price}</strong><br />{formatMoney(booking.venuePriceTotal, t.locale)}</p></div>
             {confirmingReject === booking.bookingId ? <div style={styles.confirmation}><strong>{t.reject}</strong><div style={styles.actions}><button disabled={cardBusy || started} onClick={() => void act(booking.bookingId, "reject-after-expiry")} style={{ ...styles.button, ...styles.danger }} type="button">{cardBusy ? t.working : t.confirmReject}</button><button disabled={cardBusy} onClick={() => setConfirmingReject(undefined)} style={{ ...styles.button, ...styles.primary }} type="button">{t.keepRequest}</button></div></div>
               : <div style={styles.actions}><button disabled={cardBusy || started} onClick={() => void act(booking.bookingId, "late-confirm")} style={{ ...styles.button, ...styles.primary }} type="button">{cardBusy ? t.working : t.lateConfirm}</button><button disabled={cardBusy || started} onClick={() => setConfirmingReject(booking.bookingId)} style={{ ...styles.button, ...styles.danger }} type="button">{t.reject}</button></div>}

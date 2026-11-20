@@ -87,10 +87,10 @@ export function OverviewScreen({
       ) : null}
       {!loading && !error && overview ? (
         <div className="overview-kpis" style={styles.kpis}>
-          <Kpi label={t.overview.todayRevenue} value={formatMoney(overview.todayRevenue, t.requests.locale)} />
-          <Kpi label={t.overview.monthRevenue} value={formatMoney(overview.monthRevenue, t.requests.locale)} />
-          <Kpi label={t.overview.todayBookings} value={formatInteger(overview.todayBookings, t.requests.locale)} />
-          <Kpi label={t.overview.pendingRequests} value={formatInteger(overview.pendingRequests, t.requests.locale)} />
+          <Kpi label={t.overview.todayRevenue} value={formatMoney(overview.todayRevenue, t.locale)} />
+          <Kpi label={t.overview.monthRevenue} value={formatMoney(overview.monthRevenue, t.locale)} />
+          <Kpi label={t.overview.todayBookings} value={formatInteger(overview.todayBookings, t.locale)} />
+          <Kpi label={t.overview.pendingRequests} value={formatInteger(overview.pendingRequests, t.locale)} />
         </div>
       ) : null}
 
