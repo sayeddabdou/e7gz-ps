@@ -136,9 +136,16 @@ class GuardErrorIdentifiersTest {
     /**
      * What a later migration does to one of these functions, so a fresh install (every migration) still compares with
      * this upgrade: v1.1.37 (E7-113) reads the Online intake window from current sessions only; v1.1.40 (E7-68,
-     * PCR-010) checks the fee snapshot against {@code config.booking_fee_for}, per booking or per hour.
+     * PCR-010) checks the fee snapshot against {@code config.booking_fee_for}, per booking or per hour; v1.1.44 (E7-81)
+     * skips a deleted Closure in the new-Maintenance check.
      */
     private static FunctionState laterMigrations(String name, FunctionState upgraded) {
+        if (name.equals("operations.guard_maintenance_window")) {
+            String closure = "            WHERE c.venue_id = v_venue_id AND c.period && NEW.period\n";
+            assertThat(upgraded.definition()).containsOnlyOnce(closure);
+            return new FunctionState(upgraded.definition().replace(closure,
+                    closure + "              AND c.deleted_at IS NULL\n"), upgraded.attributes());
+        }
         if (!name.equals("booking.validate_online_booking_intake")) {
             return upgraded;
         }

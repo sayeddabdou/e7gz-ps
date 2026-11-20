@@ -196,6 +196,28 @@ class JdbcReservationLedger implements ReservationLedger {
     }
 
     @Override
+    public int releaseAll(CommandContext command, ReservationOwner owner, Instant releaseAt, String releaseReason) {
+        Objects.requireNonNull(command, "command");
+        Objects.requireNonNull(owner, "owner");
+        OwnerColumns columns = OwnerColumns.of(owner);
+        List<ActiveReservation> rows = command.jdbc().sql(ACTIVE_OF + " ORDER BY rr.id")
+                .param("reservationType", owner.type().name())
+                .param("bookingId", columns.bookingId())
+                .param("tournamentId", columns.tournamentId())
+                .param("maintenanceId", columns.maintenanceId())
+                .param("closureId", columns.closureId())
+                .query(JdbcReservationLedger::period)
+                .list();
+        int released = 0;
+        for (ActiveReservation row : rows) {
+            if (release(command, row.id(), releaseAt, releaseReason)) {
+                released++;
+            }
+        }
+        return released;
+    }
+
+    @Override
     public boolean hasBlockingOverlap(CommandContext command, UUID resourceId, Instant start, Instant end) {
         Objects.requireNonNull(command, "command");
         Objects.requireNonNull(resourceId, "resourceId");

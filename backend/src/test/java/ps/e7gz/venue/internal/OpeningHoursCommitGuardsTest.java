@@ -249,7 +249,8 @@ class OpeningHoursCommitGuardsTest extends IntegrationTest {
         }
 
         @Override
-        public void cancel(CommandContext command, UUID venueId, UUID venueAccountId, List<UUID> bookingIds) {
+        public void cancel(CommandContext command, UUID venueId, UUID venueAccountId, List<UUID> bookingIds,
+                           ps.e7gz.common.codes.BookingTerminalReason reason) {
             cancelled.add(List.copyOf(bookingIds));
             throw new AssertionError("no cancellation may run: " + bookingIds);
         }

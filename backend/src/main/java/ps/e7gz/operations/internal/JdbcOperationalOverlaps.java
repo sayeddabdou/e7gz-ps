@@ -59,6 +59,7 @@ class JdbcOperationalOverlaps implements OperationalOverlaps, DeclaredEmergencyI
                 SELECT 1
                   FROM operations.maintenance_window m
                  WHERE m.resource_id = :resourceId
+                   AND m.deleted_at IS NULL
                    AND m.period && tstzrange(CAST(:start AS timestamptz), CAST(:end AS timestamptz), '[)'))
             """;
 
@@ -67,6 +68,7 @@ class JdbcOperationalOverlaps implements OperationalOverlaps, DeclaredEmergencyI
                 SELECT 1
                   FROM operations.venue_closure c
                  WHERE c.venue_id = :venueId
+                   AND c.deleted_at IS NULL
                    AND c.period && tstzrange(CAST(:start AS timestamptz), CAST(:end AS timestamptz), '[)'))
             """;
 

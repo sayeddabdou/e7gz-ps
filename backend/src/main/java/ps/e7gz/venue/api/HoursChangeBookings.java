@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import ps.e7gz.common.codes.BookingSource;
+import ps.e7gz.common.codes.BookingTerminalReason;
 import ps.e7gz.common.codes.BookingStatus;
 import ps.e7gz.common.command.CommandContext;
 
@@ -52,7 +53,20 @@ public interface HoursChangeBookings {
      *
      * @param venueAccountId the authenticated Venue Account making the change, recorded as the history actor
      */
-    void cancel(CommandContext command, UUID venueId, UUID venueAccountId, List<UUID> bookingIds);
+    default void cancel(CommandContext command, UUID venueId, UUID venueAccountId, List<UUID> bookingIds) {
+        cancel(command, venueId, venueAccountId, bookingIds, BookingTerminalReason.VENUE_OPENING_HOURS_CHANGED);
+    }
+
+    /**
+     * E7-81: the same cancellation under {@code reason} - {@code VENUE_OPENING_HOURS_CHANGED} for an hours change (as
+     * {@link #cancel(CommandContext, UUID, UUID, List)}) or {@code VENUE_CLOSURE} for a normal Venue Closure (FR-VEN-30,
+     * FRS section 2.4 "Hours/Closure save cancelling protected bookings": one cancellation path for both). A Closure
+     * blocks every Resource for its interval, whatever the hours (FR-VEN-29), so under {@code VENUE_CLOSURE} a CONFIRMED
+     * Manual Booking made outside published hours is cancellable too; everything else is as above. Any other reason is
+     * an {@link IllegalArgumentException} before any write.
+     */
+    void cancel(CommandContext command, UUID venueId, UUID venueAccountId, List<UUID> bookingIds,
+                BookingTerminalReason reason);
 
     /**
      * @param customerId             the Online Booking's Customer, whom a cancelling command must lock (with their

@@ -547,6 +547,15 @@ public final class BookingFlows {
                 ManualBookingRequest.of(booking.resourceId(), PlayMode.SINGLE, null, minutes, null, null)).bookingId();
     }
 
+    /**
+     * E7-81: a future Manual Booking of {@code minutes} on the booking's room at {@code start}, through the real command
+     * (E7-48). @return its Booking ID
+     */
+    public UUID manualOnRoomOf(Booking booking, Instant start, int minutes) {
+        return manualBookings.create(booking.venueAccountId(),
+                ManualBookingRequest.of(booking.resourceId(), PlayMode.SINGLE, start, minutes, null, null)).bookingId();
+    }
+
     public void accept(Booking booking) {
         assertThat(responses.accept(booking.venueAccountId(), booking.bookingId()))
                 .isInstanceOf(CommandAnswer.Ok.class);

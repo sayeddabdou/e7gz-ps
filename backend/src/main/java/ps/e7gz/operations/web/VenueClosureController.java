@@ -10,8 +10,10 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -24,14 +26,18 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import ps.e7gz.common.codes.VenueClosureKind;
 import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
+import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.messaging.api.Idempotency;
+import ps.e7gz.messaging.api.StoredResponse;
+import ps.e7gz.operations.internal.VenueClosures;
 
 /**
- * Venue Dashboard — normal Venue Closures (arch 09 §4.2, FR-VEN-30…FR-VEN-33, Spec v5 §15). Stubs of the Sprint 5
- * contract (E7-77) until E7-81. A Closure blocks every resource of the venue for its interval and cancels the
+ * Venue Dashboard — normal Venue Closures (arch 09 §4.2, FR-VEN-30…FR-VEN-33, Spec v5 §15). The Sprint 5 contract
+ * (E7-77), implemented by E7-81. A Closure blocks every resource of the venue for its interval and cancels the
  * reservations inside it under {@code VENUE_CLOSURE}, so a save is two calls bound by a {@code previewToken}, the same
  * way as opening hours (PO decision 19 Nov 2026, E7-77, D2; FR-VEN-30 "Save & Cancel Affected Bookings"). The Owner
  * Password is needed only when a protected booking is cancelled (FR-VEN-30, FR-VEN-04). Saves cancel commitments and
@@ -44,12 +50,25 @@ import ps.e7gz.common.web.OpenApiConfig;
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class VenueClosureController {
 
+    static final String CREATE_ENDPOINT = "POST /api/v1/venue/closures";
+    static final String EDIT_ENDPOINT = "PATCH /api/v1/venue/closures/{closureId}";
+
+    private final VenueClosures closures;
+    private final ResponseMetaFactory meta;
+    private final Idempotency idempotency;
+
+    public VenueClosureController(VenueClosures closures, ResponseMetaFactory meta, Idempotency idempotency) {
+        this.closures = closures;
+        this.meta = meta;
+        this.idempotency = idempotency;
+    }
+
     @GetMapping
     @Operation(operationId = "venueListClosures",
             summary = "Closures not yet ended, earliest first (FR-VEN-30; PO decision 19 Nov 2026, E7-77)",
             description = "Every Closure of the signed-in venue whose end is after now. Implemented by E7-81.")
-    public DataResponse<List<VenueClosure>> list() {
-        throw NotImplementedYet.stub();
+    public DataResponse<List<VenueClosure>> list(@AuthenticationPrincipal AuthenticatedSubject venue) {
+        return meta.data(closures.list(venue.id()).stream().map(VenueClosure::of).toList());
     }
 
     @PostMapping("/preview")
@@ -63,8 +82,14 @@ public class VenueClosureController {
     @ApiError(status = 409, codes = ApiErrorCode.OPERATIONAL_STATE_CHANGED)
     @ApiError(status = 422, codes = {ApiErrorCode.CLOSURE_OVERLAPS_ACTIVE_SESSION,
             ApiErrorCode.TOURNAMENT_CONFLICT_BLOCKS_SAVE})
-    public DataResponse<VenueClosurePreview> preview(@Valid @RequestBody VenueClosurePreviewRequest request) {
-        throw NotImplementedYet.stub();
+    public DataResponse<VenueClosurePreview> preview(@AuthenticationPrincipal AuthenticatedSubject venue,
+                                                     @Valid @RequestBody VenueClosurePreviewRequest request) {
+        VenueClosures.Preview preview = closures.preview(venue.id(), request.closureId(),
+                request.proposal().toView());
+        return meta.data(new VenueClosurePreview(preview.previewToken(), preview.affected().stream()
+                .map(a -> new VenueClosureAffectedBooking(a.bookingId(), a.resourceId(), a.startAt(), a.endAt(),
+                        a.protectedCancellation()))
+                .toList(), preview.ownerPasswordRequired()));
     }
 
     @PostMapping
@@ -82,8 +107,11 @@ public class VenueClosureController {
     @ApiError(status = 423, codes = {ApiErrorCode.OWNER_PASSWORD_REQUIRED, ApiErrorCode.OWNER_PASSWORD_INVALID})
     @ApiError(status = 429, codes = ApiErrorCode.RATE_LIMITED)
     public DataResponse<VenueClosure> create(@RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+                                             @AuthenticationPrincipal AuthenticatedSubject venue,
                                              @Valid @RequestBody VenueClosureSaveRequest request) {
-        throw NotImplementedYet.stub();
+        return meta.data(closures.save(venue.id(), null, request.proposal().toView(), request.previewToken(),
+                request.ownerPassword(), idempotency.request(venue, CREATE_ENDPOINT, idempotencyKey, Map.of(), request),
+                StoredResponse.of(VenueClosure.class, 201), VenueClosure::of).body());
     }
 
     @PatchMapping("/{closureId}")
@@ -100,9 +128,13 @@ public class VenueClosureController {
     @ApiError(status = 423, codes = {ApiErrorCode.OWNER_PASSWORD_REQUIRED, ApiErrorCode.OWNER_PASSWORD_INVALID})
     @ApiError(status = 429, codes = ApiErrorCode.RATE_LIMITED)
     public DataResponse<VenueClosure> edit(@RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+                                           @AuthenticationPrincipal AuthenticatedSubject venue,
                                            @PathVariable UUID closureId,
                                            @Valid @RequestBody VenueClosureSaveRequest request) {
-        throw NotImplementedYet.stub();
+        return meta.data(closures.save(venue.id(), closureId, request.proposal().toView(), request.previewToken(),
+                request.ownerPassword(), idempotency.request(venue, EDIT_ENDPOINT, idempotencyKey,
+                        Map.of("closureId", closureId), request),
+                StoredResponse.of(VenueClosure.class, 200), VenueClosure::of).body());
     }
 
     @DeleteMapping("/{closureId}")
@@ -113,8 +145,8 @@ public class VenueClosureController {
                     + "Implemented by E7-81.")
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     @ApiError(status = 409, codes = ApiErrorCode.OPERATIONAL_STATE_CHANGED)
-    public void delete(@PathVariable UUID closureId) {
-        throw NotImplementedYet.stub();
+    public void delete(@AuthenticationPrincipal AuthenticatedSubject venue, @PathVariable UUID closureId) {
+        closures.delete(venue.id(), closureId);
     }
 
     /** {@code operations.venue_closure}; the period is {@code [startAt, endAt)}. */
@@ -125,6 +157,10 @@ public class VenueClosureController {
             @NotNull @Schema(example = "2026-12-10T10:00:00Z") Instant startAt,
             @NotNull @Schema(example = "2026-12-11T00:00:00Z") Instant endAt,
             @NotNull @Schema(example = "Private event") String reason) {
+
+        static VenueClosure of(VenueClosures.View view) {
+            return new VenueClosure(view.id(), view.kind(), view.startAt(), view.endAt(), view.reason());
+        }
     }
 
     /** A proposed Closure (Spec v5 §15: full-day or partial-time, the whole venue). */
@@ -134,6 +170,10 @@ public class VenueClosureController {
             @NotNull @Schema(example = "2026-12-10T10:00:00Z") Instant startAt,
             @NotNull @Schema(description = "After startAt.", example = "2026-12-11T00:00:00Z") Instant endAt,
             @NotBlank @Size(max = 500) @Schema(example = "Private event") String reason) {
+
+        VenueClosures.ProposalView toView() {
+            return new VenueClosures.ProposalView(kind, startAt, endAt, reason);
+        }
     }
 
     @Schema(name = "VenueClosurePreviewRequest")

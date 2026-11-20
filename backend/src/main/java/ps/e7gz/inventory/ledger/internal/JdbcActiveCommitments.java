@@ -44,6 +44,32 @@ class JdbcActiveCommitments implements ActiveCommitments {
              ORDER BY rr.planned_start, rr.id
             """;
 
+    /** E7-81: the commitments a Closure of {@code [start, end)} meets, started ones included. */
+    static final String OVERLAPPING = """
+            SELECT rr.id, rr.resource_id, rr.reservation_type, rr.booking_id, rr.tournament_id,
+                   rr.planned_start, rr.planned_end
+              FROM inventory.resource_reservation rr
+              JOIN resource.resource r ON r.id = rr.resource_id
+             WHERE r.venue_id = :venueId
+               AND rr.active_flag
+               AND rr.reservation_type IN ('BOOKING', 'LATE_CONFIRM_HOLD', 'TOURNAMENT_APPROVAL_HOLD', 'TOURNAMENT_HOLD')
+               AND rr.planned_range && tstzrange(CAST(:start AS timestamptz), CAST(:end AS timestamptz), '[)')
+             ORDER BY rr.planned_start, rr.id
+            """;
+
+    @Override
+    public List<Commitment> overlapping(CommandContext command, UUID venueId, Instant start, Instant end) {
+        if (!end.isAfter(start)) {
+            throw new IllegalArgumentException("end must be after start: [" + start + ", " + end + ")");
+        }
+        return command.jdbc().sql(OVERLAPPING)
+                .param("venueId", venueId)
+                .param("start", OffsetDateTime.ofInstant(start, ZoneOffset.UTC))
+                .param("end", OffsetDateTime.ofInstant(end, ZoneOffset.UTC))
+                .query(JdbcActiveCommitments::map)
+                .list();
+    }
+
     @Override
     public List<Commitment> startingAfter(CommandContext command, UUID venueId, Instant after) {
         return command.jdbc().sql(STARTING_AFTER)

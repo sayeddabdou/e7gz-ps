@@ -353,6 +353,25 @@ No table, column, constraint, trigger or grant changes; `tr_05_booking_ban_eligi
 
 - Tests: `TermsAcceptanceHttpTest` (registration refused without the version or with another one, and no account created; the current version stored with the command instant; the row cannot be changed or deleted, nor added to an older account; `GET /customer/legal` without a token; the Admin user detail); `MigrationSafetyTest` (no acceptance invented for the V1 Customer; the seeded one survives); the `.dbm`/migration identity check in `MigrationFilesTest`.
 
+### v1.1.44 — deleting a Maintenance window or a normal Venue Closure (E7-81, 20 Nov 2026)
+
+**Why.** The Sprint 5 contract (E7-77, PO decisions 19 Nov 2026) has `DELETE /venue/maintenance/{id}` and `DELETE /venue/closures/{id}`. Neither table could be deleted from: the runtime roles have no DELETE grant outside the security baseline's short list, and history matters (FR-OPS-01: create, edit and delete are audited; a Maintenance window counts toward the rolling 48-hour total while it exists, FR-OPS-03). So a delete is a **soft delete** (the E7-30 review's carry-forward named this option). `.dbm` block `v1_1_44_maintenance_closure_soft_delete` = Flyway `V202611201200__maintenance_closure_soft_delete.sql`, byte for byte; the `.dbm` models `deleted_at` on both tables. **Waiting for the Product Owner's review.**
+
+| Object | Change |
+|---|---|
+| `operations.maintenance_window.deleted_at`, `operations.venue_closure.deleted_at` | New, nullable `timestamptz`: NULL while the row counts; set once to the deleting command instant |
+| `operations.guard_operational_soft_delete()` + `tr_00_maintenance_soft_delete`, `tr_00_venue_closure_soft_delete` | New. A row is never inserted deleted; deleting sets `deleted_at` to `tournament.command_now()` and changes nothing else; a deleted row never changes again (no undelete) |
+| `operations.maintenance_union_minutes_in_window`, `operations.maintenance_candidate_max_rolling_minutes` (O3) | V1 definition + `AND m.deleted_at IS NULL`: a deleted window no longer counts toward the threshold |
+| `operations.guard_maintenance_window` | V202609291200 definition + `AND c.deleted_at IS NULL` in the new-Maintenance Closure check |
+| `operations.assert_venue_closure_affected_set_resolved` (O4) | V1 definition + an early `RETURN NULL` for a deleted Closure (it blocks nothing) |
+| `inventory.validate_operational_reservation_owner` (O9) | V1 definition + a deleted owner may not hold an active MAINTENANCE / CLOSURE row |
+| `operations.assert_operational_guard_rows_match_owner` + `tr_maintenance_guard_rows_match_owner`, `tr_closure_guard_rows_match_owner` | V1 definition + a deleted owner keeps no active guard row (the delete releases them in its transaction); both deferred triggers now fire on `UPDATE OF period, deleted_at` (dropped and re-created) |
+| `operations.assert_owner_review_resolution`, `operations.assert_emergency_conversion_target_exists`, `tournament.assert_resources_operational` | V1 definition + the deleted rows skipped |
+
+**Existing data.** Every existing row keeps `deleted_at` NULL; nothing is deleted and no backfill is needed. Grants: the security baseline already grants SELECT/INSERT/UPDATE on every `operations` table and EXECUTE on the new function. Java readers (`JdbcOperationalOverlaps` checks 6-7 of isFree, `JdbcOperationalStateAt.closurePreventsService` used by E7-60's start check, `JdbcScheduledOperations`) skip deleted rows too. Upgrade seed `upgrade-seed/V202611201200.sql`: a Maintenance window and a Closure deleted by a command.
+
+- Tests: `MaintenanceHttpTest` and `ClosureHttpTest` (a deleted window or Closure no longer makes isFree refuse, no longer counts toward the threshold, keeps its row); `MigrationSafetyTest` (the V1 window stays live; the seeded deletions survive); the `.dbm`/migration identity and added-lines checks in `MigrationFilesTest`; `GuardErrorIdentifiersTest` (the fresh install has the one added line in `guard_maintenance_window`).
+
 ## Product Owner decisions (26 Sep 2026)
 
 A1 overlapping Maintenance allowed · A2 booking horizon is a deployment setting, default 120 days · A4 rate-limit table approved · A5 reports FR-AUD-11/12 at launch · A6 venue alerts = live + Web Push + audible alert · A8 configurable = fees and points only · A9 Venue never returns to ONBOARDING · A10 login limits stored as `LOGIN` rate-limit rows · A11 read-only customer wallet screen (PCR-004, no DB change) · review self-reporting allowed, duplicate open reports blocked.

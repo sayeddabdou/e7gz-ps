@@ -1,12 +1,8 @@
 package ps.e7gz.venue.internal;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.EnumSet;
@@ -28,6 +24,7 @@ import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
+import ps.e7gz.common.command.PreviewTokens;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.security.owner.OwnerPasswordNotRequired;
@@ -344,12 +341,6 @@ final class OpeningHoursCommands {
                 .append(day.mode()).append(':').append(day.customOpen()).append(':').append(day.customClose()));
         affected.forEach(row -> canonical.append("|b:").append(row.bookingId()).append(':').append(row.resourceId())
                 .append(':').append(row.startAt()).append(':').append(row.endAt()));
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(canonical.toString().getBytes(StandardCharsets.UTF_8));
-            return "v1." + Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException(impossible);
-        }
+        return PreviewTokens.of(canonical.toString());
     }
 }

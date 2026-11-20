@@ -26,11 +26,13 @@ class JdbcScheduledOperations implements ScheduledOperations {
             SELECT 'MAINTENANCE' AS kind, m.resource_id, lower(m.period) AS start_at, upper(m.period) AS end_at
               FROM operations.maintenance_window m, w
              WHERE m.resource_id = ANY(:resourceIds)
+               AND m.deleted_at IS NULL
                AND m.period && w.r
             UNION ALL
             SELECT 'VENUE_CLOSURE', NULL, lower(c.period), upper(c.period)
               FROM operations.venue_closure c, w
              WHERE c.venue_id = :venueId
+               AND c.deleted_at IS NULL
                AND c.period && w.r
             UNION ALL
             SELECT CASE WHEN e.scope = :venueScope THEN 'VENUE_EMERGENCY' ELSE 'RESOURCE_EMERGENCY' END,

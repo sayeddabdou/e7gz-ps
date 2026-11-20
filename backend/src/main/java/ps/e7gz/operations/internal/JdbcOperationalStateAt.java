@@ -47,6 +47,7 @@ class JdbcOperationalStateAt implements OperationalStateAt {
             SELECT EXISTS (
                 SELECT 1 FROM operations.venue_closure c
                  WHERE c.venue_id = :venueId
+                   AND c.deleted_at IS NULL
                    AND c.period && tstzrange(CAST(:start AS timestamptz), CAST(:end AS timestamptz), '[)'))
             """;
 
