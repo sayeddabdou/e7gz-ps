@@ -84,6 +84,18 @@ describe("Today's bookings", () => {
     expect(await screen.findByText("No bookings are scheduled for today's business date.")).toBeTruthy();
     expect(get).toHaveBeenCalledTimes(4);
   });
+
+  it("renders Arabic dates and times while preserving stored resource and customer text", async () => {
+    const get = vi.fn()
+      .mockResolvedValueOnce({ data: { data: { businessDate: "2026-10-12", closed: false, resources: [] }, meta: { correlationId: "c-1", serverTime: "2026-10-12T10:00:00Z" } } })
+      .mockResolvedValueOnce({ data: { data: { items: [booking], nextCursor: null }, meta: { correlationId: "c-2", serverTime: "2026-10-12T10:00:01Z" } } });
+    render(<MessagesContext.Provider value={messages.ar}><TodayBookingsScreen api={{ GET: get } as unknown as ApiClient} onOpenBooking={vi.fn()} /></MessagesContext.Provider>);
+
+    expect(await screen.findByRole("heading", { name: "Room 1" })).toBeTruthy();
+    expect(screen.getByText("omar_k")).toBeTruthy();
+    expect(screen.getByText("١٢ أكتوبر ٢٠٢٦")).toBeTruthy();
+    expect(screen.getByText(/٢:٣٠ ص–٣:٣٠ ص/u)).toBeTruthy();
+  });
 });
 
 describe("Booking detail", () => {
