@@ -3160,6 +3160,7 @@ Read CLAUDE.md first. You are implementing task S5-P1 — "Venue account disable
 Read only these docs for this task:
 - arch 06 §2.8
 - arch 07 §7.5
+- packages/api-client/SPRINT-5-CONTRACT.md (the Sprint 5 contract and PO decisions D1–D6, 19 Nov 2026)
 
 Do:
 1. Disable/re-enable with the five per-state effects; restriction intervals; Platform Attendance Protection.
@@ -3178,6 +3179,17 @@ Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
 
 Plan review 16 Nov 2026 (order):
 - This task cancels PENDING_VENUE_APPROVAL tournaments, so it waits for E7-73 (the tournament aggregate).
+
+PO decisions 19 Nov 2026 — Sprint 5 contract, E7-77 (do these too):
+- D4: POST /admin/venue-accounts/{id}/disable and /enable now require the Idempotency-Key; E7-77 wired it (VenueAccounts.setStatus with an IdempotentRequest). Put the O10 consequences inside that same idempotent command, so a replay with the same key cancels and refunds nothing a second time. Test: replaying a disable that cancelled AWAITING bookings returns the stored answer, and no booking is cancelled or refunded twice.
+- Every Booking Fee refund stays inside the app (PO, 19 Nov 2026): the part paid with Points comes back as Points, the rest goes to the customer's Wallet (FR-PTS-14…16, PCR-009, PCR-010). Nothing is ever paid back to a card or bank, and the Wallet cannot be withdrawn. This applies to the AWAITING bookings cancelled under VENUE_ACCOUNT_DISABLED.
+- GET /admin/venue-accounts is the E7-77 stub; replace its line in Sprint5StubHttpTest with this task's tests.
+
+PO decisions 19 Nov 2026 — E7-78 (do these too):
+- E1: a PENDING booking that a disable moves to VENUE_RESPONSE_EXPIRED gets no customer notification at all (no push, no in-app notification). The ordinary VENUE_RESPONSE_EXPIRED notification says the venue did not respond in time, which FR-NTF-06 and FR-VEN-11 forbid for a disable. The customer sees the right text in the app from the booking history event VENUE_RESPONSE_INTERRUPTED_BY_ACCOUNT_DISABLE (E7-87). No new notification code, no migration. Test: a disable of a venue with a PENDING booking creates no customer notification for it; an ordinary expiry still creates its VENUE_RESPONSE_EXPIRED notification.
+- E2: this task builds FR-ATT-25 and FR-ATT-26. When a disable overlaps an ACTIVE Online Booking: the customer gets ACTIVE_SESSION_ATTENDANCE_RECORDING_AFFECTED (In-App + Push; add its English push copy to the template catalogue; the text never says the booking was cancelled, FR-NTF-07), and the Platform Admin gets one operational alert through admin.api.AdminAlerts with the venue, Booking ID, session interval, disable time, current attendance evidence and whether protection may be required. Test: each is created exactly once per ACTIVE booking per disable, also when the event is delivered twice. The PO reviews the wording in the PR.
+- E3: every disable-caused PENDING -> VENUE_RESPONSE_EXPIRED schedules its start-time resolution in the same command through booking.api.VenueResponseExpiredResolutions.scheduleAtStart (E7-118, T6), so the request is cancelled at its startAt under VENUE_ACCOUNT_DISABLED while the account is still disabled. Each disable opens an iam.venue_account_restriction_interval row and each re-enable closes it; E7-118's VenueAccountRestrictionsAt reads them. E7-118 must be merged first.
+- E4 (order): build this task on top of E7-77 (PR #120). Open its PR against main only after E7-77 and E7-118 are merged.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -3237,6 +3249,9 @@ Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
 Plan review 16 Nov 2026 (order):
 - This task wires the codes of the cascades that E7-81 (maintenance and closures), E7-82 (emergencies) and E7-84 (owner review) build, so it waits for them; its exactly-once tests run against their real cascades.
 
+PO decisions 19 Nov 2026 — Sprint 5 contract, E7-77 (do these too):
+- Refund notification copy (customer, venue and admin) says the Booking Fee went back to the E7GZ Wallet, or as Points when Points paid it. Never 'refunded to your card' or any wording that suggests money leaves the app (PO, 19 Nov 2026; PCR-009, PCR-010).
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -3255,6 +3270,7 @@ Read only these docs for this task:
 - ADR-010
 - A1 (overlapping maintenance allowed)
 - PCR-006 (the Owner Password is a PIN of exactly 4 digits)
+- packages/api-client/SPRINT-5-CONTRACT.md (the Sprint 5 contract and PO decisions D1–D6, 19 Nov 2026)
 
 Do:
 1. Maintenance windows in Layer 1 with the range_agg rolling threshold (Owner Password over the threshold).
@@ -3273,6 +3289,15 @@ Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
 Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do these too):
 - Keep a Venue Closure from overlapping a CONFIRMED booking: E7-60's start check (closurePreventsService) cancels for any overlapping closure, even one created after startAt.
 
+PO decisions 19 Nov 2026 — Sprint 5 contract, E7-77 (do these too):
+- Implement the E7-77 stubs in operations/web/VenueMaintenanceController and VenueClosureController (contract: packages/api-client/SPRINT-5-CONTRACT.md); replace their E7-81 lines in Sprint5StubHttpTest with this task's tests.
+- D1: GET /venue/maintenance?resourceId= and GET /venue/closures list the rows that have not ended yet, each with its id, so the Dashboard can edit and delete them.
+- D2: a Closure is saved with preview + commit, like opening hours. POST /venue/closures/preview {closureId?, proposal} answers {previewToken, affected[], ownerPasswordRequired}; POST /venue/closures and PATCH /venue/closures/{id} send {proposal, previewToken, ownerPassword?}; when the affected set grew since the preview, the save answers 409 AFFECTED_SET_CHANGED_REFRESH_PREVIEW. Reuse the opening-hours preview token mechanism, not a second one.
+- Idempotency-Key: required on Closure create and edit; optional on maintenance writes, deletes and the preview (IdempotencyScopeTest already lists them).
+- Owner Password: maintenance over the rolling threshold answers 423 OWNER_PASSWORD_REQUIRED; a Closure needs it only when the preview says ownerPasswordRequired (a protected booking is cancelled); a delete never needs it.
+- D6: editing or deleting a maintenance window or Closure that has already ended answers 409 OPERATIONAL_STATE_CHANGED.
+- Every Booking Fee refund stays inside the app (PO, 19 Nov 2026): the part paid with Points comes back as Points, the rest goes to the customer's Wallet (FR-PTS-14…16, PCR-009, PCR-010). Nothing is ever paid back to a card or bank, and the Wallet cannot be withdrawn.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -3289,6 +3314,7 @@ Read CLAUDE.md first. You are implementing task S5-E2 — "Emergencies and casca
 Read only these docs for this task:
 - arch 06 §2.5
 - arch 05 §3.1
+- packages/api-client/SPRINT-5-CONTRACT.md (the Sprint 5 contract and PO decisions D1–D6, 19 Nov 2026)
 
 Do:
 1. Venue and resource emergencies, status lifecycle incl. conversion, selling blocks (one active row per subject), all-or-nothing cascades.
@@ -3304,6 +3330,16 @@ Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do t
 
 Carry-forward from E7-69 (PR #102 review, 15 Nov 2026, do this too):
 - This task is the first caller of trust.api.BookingOutcomes.recordInterruption (E7-69 added it with no caller): when an Emergency interrupts an ACTIVE Online Booking after a valid check-in, resolve its attendance to ATTENDED_INTERRUPTED and record BOOKING_ATTENDED_INTERRUPTED through it in the same command. Never write trust.trust_event from this module. Add a committed test: the consecutive no-show counter resets, with no Verified Player progress and no points (FR-TRS-11).
+
+PO decisions 19 Nov 2026 — Sprint 5 contract, E7-77 (do these too):
+- Implement the E7-77 stubs in operations/web/VenueEmergencyController and GET /admin/emergencies in AdminOperationsController (contract: packages/api-client/SPRINT-5-CONTRACT.md); replace their E7-82 lines in Sprint5StubHttpTest with this task's tests.
+- D1: GET /venue/emergencies lists the unresolved Emergencies (ACTIVE and AWAITING_CONFIRMATION), each with its id.
+- D2: extend and convert use preview + commit, like opening hours. POST /venue/emergencies/{id}/extend/preview {expectedEndAt} and /convert/preview {target, closure?, maintenance?} answer {previewToken, affected[], ownerPasswordRequired}; /extend {expectedEndAt, previewToken} and /convert {conversion, previewToken, ownerPassword?} save; when the affected set grew, the save answers 409 AFFECTED_SET_CHANGED_REFRESH_PREVIEW.
+- D5: /convert takes CLOSURE (venue Emergency) or MAINTENANCE, DISABLED, ARCHIVED (resource Emergency); OPENING_HOURS_CHANGE there answers 422 CONVERSION_TARGET_NOT_ALLOWED. A venue Emergency becomes an opening-hours change through POST /venue/opening-hours/commit with the optional emergencyId, which answers 501 until this task: convert the Emergency in the same command as the hours commit. The opening-hours code is in the venue module (Platform lane), so Sayed reviews that part.
+- D3: GET /admin/emergencies?venueId=&status=&cursor=&limit= is read-only, newest first, with cursor paging.
+- D6: extend, end and convert (and their previews), and the hours commit with emergencyId, answer 409 OPERATIONAL_STATE_CHANGED when the Emergency is no longer in the state the action needs (e.g. another staff member ended it a moment earlier).
+- Idempotency-Key required on both declarations, extend, end and convert. No Owner Password to declare, extend or end (FR-OPS-06, FR-OPS-11).
+- Every Booking Fee refund stays inside the app (PO, 19 Nov 2026): the part paid with Points comes back as Points, the rest goes to the customer's Wallet (FR-PTS-14…16, PCR-009, PCR-010). Nothing is ever paid back to a card or bank, and the Wallet cannot be withdrawn.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -3354,6 +3390,7 @@ Read CLAUDE.md first. You are implementing task S5-E4 — "Owner review cascade 
 Read only these docs for this task:
 - arch 06 §2.7
 - PCR-006 (the Owner Password is a PIN of exactly 4 digits)
+- packages/api-client/SPRINT-5-CONTRACT.md (the Sprint 5 contract and PO decisions D1–D6, 19 Nov 2026)
 
 Do:
 1. Owner review entry and cascade (no Owner Password anywhere in it), including tournaments.
@@ -3366,6 +3403,14 @@ Carry-forward from the E7-59/E7-60 review (PO decisions 19 and 20 Oct 2026, do t
 
 Carry-forward from E7-69 (PR #102 review, 15 Nov 2026, do this too):
 - An ACTIVE Online Booking that this task interrupts after a valid check-in records BOOKING_ATTENDED_INTERRUPTED through trust.api.BookingOutcomes.recordInterruption, as E7-82 does; never a second writer of trust events. PO decision 15 Nov 2026 on two FRS lines that disagree for this case: FR-ATT-10 applies (a qualifying check-in gives ATTENDED_INTERRUPTED and the no-show counter resets); FR-OPS-31's "Attendance is NOT_APPLICABLE with no trust effect" covers only the affected customers with no check-in evidence. Late Present only stays ATTENDANCE_UNCONFIRMED. No customer is penalised and the fee refund is full in every case.
+
+PO decisions 19 Nov 2026 — Sprint 5 contract, E7-77 (do these too):
+- Implement the E7-77 stubs in operations/web/VenueOwnerReviewController and GET /admin/owner-reviews in AdminOperationsController (contract: packages/api-client/SPRINT-5-CONTRACT.md); replace their E7-84 lines in Sprint5StubHttpTest with this task's tests.
+- GET /venue/owner-reviews lists the venue's open Owner Reviews. POST /venue/owner-reviews/{resourceId}/resolve {action, maintenance?, ownerPassword} always needs the Owner Password (FR-OPS-33); blocking commitments answer 422 OWNER_REVIEW_RESOLUTION_BLOCKED with details.blockingReservations [{bookingId, period, kind}] (FR-OPS-43). The Idempotency-Key is optional there.
+- The Owner Review entry happens on POST /venue/emergencies/{id}/end (E7-82 builds end; this task adds the over-threshold entry and its cascade in the same command).
+- D3: GET /admin/owner-reviews?venueId=&resolved=&cursor=&limit= is read-only; the Platform Admin has no action on an Owner Review.
+- D6: resolving an Owner Review that is already resolved answers 409 OPERATIONAL_STATE_CHANGED.
+- Every Booking Fee refund stays inside the app (PO, 19 Nov 2026): the part paid with Points comes back as Points, the rest goes to the customer's Wallet (FR-PTS-14…16, PCR-009, PCR-010). Nothing is ever paid back to a card or bank, and the Wallet cannot be withdrawn.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -3388,6 +3433,7 @@ Read only these docs for this task:
 - FRS §2.4 (Owner Password authorization)
 - arch 09 §4.2, §4.3
 - PCR-006 (the Owner Password is a PIN of exactly 4 digits)
+- packages/api-client/SPRINT-5-CONTRACT.md (the Sprint 5 contract and PO decisions D1–D6, 19 Nov 2026)
 
 Do:
 1. Maintenance, closures, venue/resource emergency declare/end, owner review banner; Owner Password prompts.
@@ -3403,6 +3449,15 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 - Status names, reason codes, timers and messages come only from docs/01-product and the backend's error codes, never from the prototype.
 - Every screen you add works in English and Arabic (RTL, CSS logical properties only).
 - In your summary, list the screens and states you built that are NOT in the prototype, so the reviewer can check them against the requirements.
+
+PO decisions 19 Nov 2026 — Sprint 5 contract, E7-77 (do these too):
+- Build against the Sprint 5 contract (packages/api-client/SPRINT-5-CONTRACT.md). D1: the maintenance, closure and emergency lists come from GET /venue/maintenance, /venue/closures and /venue/emergencies, whose rows carry the ids for edit, delete, extend and end.
+- D2: a Closure save and an Emergency extend or convert first show the preview's affected bookings, then save with its previewToken; on 409 AFFECTED_SET_CHANGED_REFRESH_PREVIEW fetch a new preview and show it again.
+- Ask for the Owner PIN only when the server answers 423 OWNER_PASSWORD_REQUIRED (maintenance) or the preview says ownerPasswordRequired (closures, conversions), and always on an Owner Review resolution. Declare, extend, end and every delete never show a PIN prompt.
+- D5: converting a venue Emergency into an opening-hours change opens the opening-hours editor and commits with emergencyId; the convert screen offers only CLOSURE (venue) or MAINTENANCE, DISABLED, ARCHIVED (resource).
+- D6: OPERATIONAL_STATE_CHANGED shows one general 'this changed, refresh and look again' message and reloads. On 422 OWNER_REVIEW_RESOLUTION_BLOCKED show details.blockingReservations and never present the blocked action as executable.
+- Every write sends an Idempotency-Key that stays the same for one intent (a retry of the same action) and changes when the input changes.
+- Where a screen mentions a refund, it says the Booking Fee goes back to the customer's Wallet (or as Points); never to a card (PO, 19 Nov 2026).
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
@@ -3424,6 +3479,7 @@ Read only these docs for this task:
 - FRS §4.9, §4.14
 - arch 09 §5
 - PCR-012 (Owner PIN stays locked after repeated lockouts)
+- packages/api-client/SPRINT-5-CONTRACT.md (the Sprint 5 contract and PO decisions D1–D6, 19 Nov 2026)
 
 Do:
 1. Owner review queue, venue account disable/enable, emergencies monitor, admin alerts inbox with acknowledge.
@@ -3446,6 +3502,11 @@ Carry-forward from E7-37 (PO decision 4 Oct 2026, do these too):
 PO decisions 16 Nov 2026 (do these too):
 - The alerts inbox shows the Owner PIN long-lock alert (PCR-012, raised by E7-121) with a link to that venue's page, where the Owner PIN reset is.
 
+PO decisions 19 Nov 2026 — Sprint 5 contract, E7-77 (do these too):
+- Build against the Sprint 5 contract (packages/api-client/SPRINT-5-CONTRACT.md). D3: the owner-review queue reads GET /admin/owner-reviews (venueId, resolved) and the emergencies monitor reads GET /admin/emergencies (venueId, status), both with cursor paging and 'Load more'. Both are read-only: no admin action (an Owner Review is resolved only with the venue's Owner PIN, FR-OPS-33); a row links to that venue's page.
+- D4: venue-account disable and enable now require the Idempotency-Key. Keep one key per intent (as E7-75 does with createIdempotencyKey): the same key on a retry, a new one when the reason changes.
+- Where the disable dialog or a result mentions refunds, it says the Booking Fees of the cancelled bookings go back to the customers' Wallets (or as Points); never to a card (PO, 19 Nov 2026).
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -3467,6 +3528,7 @@ Read only these docs for this task:
 - FRS §2.12 (notification matrix)
 - arch 09 §3.3
 - PCR-009 and PCR-010 (a refunded Booking Fee goes back to the wallet, or as Points when Points paid it; never to a card)
+- packages/api-client/SPRINT-5-CONTRACT.md (the Sprint 5 contract and PO decisions D1–D6, 19 Nov 2026)
 
 Do:
 1. Show operational cancellations, interruptions, paused timers and refunds using the codes.
@@ -3485,6 +3547,10 @@ Requirements first, prototype for the look (PO decision 2 Oct 2026):
 
 Carry-forward from the Sprint 2 review (PO decisions 12 Oct 2026, do these too):
 - Show the second expiry text of FR-NTF-06, 'Venue is temporarily unable to confirm this booking', for a VENUE_RESPONSE_EXPIRED booking whose CustomerBookingDetail.history has the VENUE_RESPONSE_INTERRUPTED_BY_ACCOUNT_DISABLE event (E7-78 writes it). Today My Bookings (apps/customer/src/features/my-bookings/bookingText.ts) shows 'Venue did not respond in time' for every VENUE_RESPONSE_EXPIRED.
+
+PO decisions 19 Nov 2026 — Sprint 5 contract, E7-77 (do these too):
+- No new route (packages/api-client/SPRINT-5-CONTRACT.md): the operational states come from the existing booking detail and history codes.
+- When a Closure, Emergency, Owner Review or venue-account disable cancels a booking, show its refund as Wallet balance (or Points when Points paid it); never as money back to a card or bank. No screen offers or implies a cash, card or bank refund (PO, 19 Nov 2026).
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
