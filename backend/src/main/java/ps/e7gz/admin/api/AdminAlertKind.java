@@ -28,5 +28,10 @@ public enum AdminAlertKind {
      * Product v5.0 section 52.6 "User Temporary Ban Activated": a replay threshold crossing activated a Ban (raised by
      * E7-71 in the activating command). The admin alert inbox only - no per-admin notification (PO decision 20 Oct 2026).
      */
-    ADMIN_USER_BAN_ACTIVATED
+    ADMIN_USER_BAN_ACTIVATED,
+    /**
+     * PCR-012 item 4: a venue account's Owner PIN is locked until the Platform Admin resets it - its third short lockout
+     * within 24 hours (raised by E7-121).
+     */
+    OWNER_PASSWORD_LONG_LOCK
 }

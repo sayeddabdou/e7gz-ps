@@ -76,11 +76,13 @@ class VenueAnswers {
     private final BookingFeeRefunds refunds;
     private final ResponseTimerPauses pauses;
     private final AdminAlerts alerts;
+    private final ExpiredRequestResolutions resolutions;
 
     VenueAnswers(VenueAnswerStore store, VenueBookings bookings, VenueEligibility venues, ResourceStates resources,
                  UnresolvedEmergencies emergencies, AvailabilityQuery availability, ReservationLedger ledger,
                  CustomerActivation activation, ActiveBans bans, ScheduledJobs jobs, Outbox outbox,
-                 BookingFeeRefunds refunds, ResponseTimerPauses pauses, AdminAlerts alerts) {
+                 BookingFeeRefunds refunds, ResponseTimerPauses pauses, AdminAlerts alerts,
+                 ExpiredRequestResolutions resolutions) {
         this.store = store;
         this.bookings = bookings;
         this.venues = venues;
@@ -95,6 +97,7 @@ class VenueAnswers {
         this.refunds = refunds;
         this.pauses = pauses;
         this.alerts = alerts;
+        this.resolutions = resolutions;
     }
 
     // ------------------------------------------------------------------------------------------------------ Accept
@@ -258,6 +261,7 @@ class VenueAnswers {
     /**
      * VENUE_RESPONSE_EXPIRED -> REJECTED / REJECTED_AFTER_EXPIRY, only while {@code now < startAt} (FR-BOK-21, D5).
      * Expiry already released the reservation, so there is none to release; one still active is an integrity defect.
+     * The booking's T6 (E7-118) is withdrawn with it.
      */
     VenueBookingRow rejectAfterExpiry(CommandContext context, UUID bookingId, UUID venueId, UUID venueAccountId) {
         Instant now = context.commandNow();
@@ -279,6 +283,7 @@ class VenueAnswers {
         UUID history = store.insertTransition(context, bookingId, now, BookingStatus.VENUE_RESPONSE_EXPIRED,
                 BookingStatus.REJECTED, reason, ActorType.VENUE, venueAccountId, CorrelationId.require());
         refunds.recordDecision(context, booking.customerId(), bookingId, history);
+        resolutions.withdraw(context, bookingId);                                                       // T6, E7-118
         outbox.publish(context, BookingEvents.rejected(booking, reason));
         return bookings.current(context, bookingId);
     }
@@ -290,7 +295,8 @@ class VenueAnswers {
      * from the booking and the command instant, never from when the worker ran: no longer PENDING - superseded; before
      * the stored deadline (it moved later) - rescheduled to it; otherwise the effect as of the deadline - the history
      * row and the release are dated at {@code venue_response_expires_at} (D5). No terminal reason:
-     * VENUE_RESPONSE_EXPIRED is non-terminal (FR-BOK-12).
+     * VENUE_RESPONSE_EXPIRED is non-terminal (FR-BOK-12). The same command schedules T6 at {@code startAt} (E7-118,
+     * FR-BOK-23), which cancels the request there unless something takes it out of VENUE_RESPONSE_EXPIRED first.
      *
      * <p>A paused timer (D6, FR-OPS-34): the pause moves the job to PAUSED, and resume re-arms that same job with the
      * remaining time (FR-OPS-36). If the job fires while the booking is paused anyway, it throws - changing nothing -
@@ -321,6 +327,7 @@ class VenueAnswers {
         ledger.release(context, reservation.id(), deadline, BookingStatus.VENUE_RESPONSE_EXPIRED.name());
         store.insertTransition(context, booking.bookingId(), deadline, BookingStatus.PENDING,
                 BookingStatus.VENUE_RESPONSE_EXPIRED, null, ActorType.SYSTEM, null, CorrelationId.require());
+        resolutions.scheduleAtStart(context, booking.bookingId());                                    // T6, E7-118
         outbox.publish(context, BookingEvents.venueResponseExpired(booking));
         return JobOutcome.done();
     }

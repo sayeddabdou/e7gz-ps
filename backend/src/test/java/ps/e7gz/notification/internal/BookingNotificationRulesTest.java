@@ -277,6 +277,19 @@ class BookingNotificationRulesTest extends IntegrationTest {
         }
     }
 
+    /**
+     * E7-118 (FR-BOK-23): T6's two reasons of its own tell the customer once and the venue nothing - ordinary
+     * non-response the generic BOOKING_AUTO_CANCELLED (PO decision D2), an account disable its own code, never the
+     * non-response one (FR-NTF-06); its three operational reasons keep their entries.
+     */
+    @Test
+    void theExpiredRequestResolutionReasonsTellOnlyTheCustomerAndKeepAccountDisableApart() {
+        assertThat(codes(IntegrationEvents.BOOKING_CANCELLED, Map.of("terminalReason", "VENUE_DID_NOT_RESPOND_IN_TIME")))
+                .containsExactly("CUSTOMER BOOKING_AUTO_CANCELLED");
+        assertThat(codes(IntegrationEvents.BOOKING_CANCELLED, Map.of("terminalReason", "VENUE_ACCOUNT_DISABLED")))
+                .containsExactly("CUSTOMER BOOKING_CANCELLED_VENUE_ACCOUNT_DISABLED");
+    }
+
     /** FR-NTF-06: ordinary expiry, platform account disable and an operational cause are three distinct codes. */
     @Test
     void ordinaryExpiryHasItsOwnCodeApartFromAccountDisableAndOperationalCauses() {

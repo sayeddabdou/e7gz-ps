@@ -1264,7 +1264,7 @@ class OpeningHoursChangeIntegrationTest extends IntegrationTest {
     private static long failures(Venue v) {
         return OWNER.sql("""
                         SELECT coalesce((SELECT counter FROM iam.security_rate_limit_counter
-                                          WHERE limiter_type = 'OWNER_PASSWORD'
+                                          WHERE limiter_type = 'OWNER_PASSWORD' AND action_class = 'VENUE'
                                             AND subject_key_hash = encode(sha256(convert_to(
                                                     'venue-account:' || CAST(:id AS text), 'UTF8')), 'hex')), 0)""")
                 .param("id", v.world.account.id()).query(Long.class).single();

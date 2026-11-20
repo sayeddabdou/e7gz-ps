@@ -138,7 +138,12 @@ class JdbcLateConfirmBookings implements LateConfirmBookings {
 
     @Override
     public boolean awaitCustomer(CommandContext command, UUID bookingId) {
-        return command.jdbc().sql(AWAIT_CUSTOMER).param("id", bookingId).update() == 1;
+        boolean reopened = command.jdbc().sql(AWAIT_CUSTOMER).param("id", bookingId).update() == 1;
+        if (reopened) {
+            // T6 (E7-118): a Late Confirm takes the booking out of VENUE_RESPONSE_EXPIRED for good (no way back to it)
+            jobs.supersede(command, ExpiredRequestResolutions.resolutionKey(bookingId));
+        }
+        return reopened;
     }
 
     @Override

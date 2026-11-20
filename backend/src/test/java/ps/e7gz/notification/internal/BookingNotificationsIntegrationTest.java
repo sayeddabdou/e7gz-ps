@@ -203,6 +203,44 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
         assertThat(venueCodes(booking)).containsExactly("VENUE_NEW_BOOKING_REQUEST");
     }
 
+    /**
+     * E7-118, PO decision D2 (20 Oct 2026): a request still VENUE_RESPONSE_EXPIRED at its start is cancelled by T6 and
+     * the customer is told once more - the one generic BOOKING_AUTO_CANCELLED, made by that one stored event even when
+     * it is handled twice and redelivered - although they were told at expiry; the venue, which never answered, nothing.
+     */
+    @Test
+    void anExpiredRequestCancelledAtItsStartTellsOnlyTheCustomerOnceWithTheGenericCode() {
+        Booking booking = flows.expiredWithOverdueStart(Duration.ofSeconds(5));
+        assertThat(flows.fireExpiredResolution(booking)).isTrue();
+        assertThat(outboxEvent(booking, IntegrationEvents.BOOKING_CANCELLED).text("terminalReason"))
+                .isEqualTo("VENUE_DID_NOT_RESPOND_IN_TIME");
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_CANCELLED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.BOOKING_CANCELLED,
+                "CUSTOMER BOOKING_AUTO_CANCELLED " + booking.customerId());
+        assertThat(notifications(booking)).containsExactlyInAnyOrder(
+                "CUSTOMER BOOKING_CREATED " + booking.customerId(),
+                "VENUE VENUE_NEW_BOOKING_REQUEST " + booking.venueId(),
+                "CUSTOMER VENUE_RESPONSE_EXPIRED " + booking.customerId(),
+                "CUSTOMER BOOKING_AUTO_CANCELLED " + booking.customerId());
+    }
+
+    /** FR-NTF-06: the same T6 under VENUE_ACCOUNT_DISABLED tells the customer once with that cause's own code. */
+    @Test
+    void anExpiredRequestOfADisabledVenueCancelledAtItsStartTellsTheCustomerOnceWithItsOwnCode() {
+        Booking booking = flows.expiredWithOverdueStart(Duration.ofSeconds(30));
+        flows.venueAccountDisabledSince(booking, booking.startAt().minus(Duration.ofMinutes(1)));
+        assertThat(flows.fireExpiredResolution(booking)).isTrue();
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_CANCELLED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.BOOKING_CANCELLED,
+                "CUSTOMER BOOKING_CANCELLED_VENUE_ACCOUNT_DISABLED " + booking.customerId());
+        assertThat(customerCodes(booking)).doesNotContain("BOOKING_AUTO_CANCELLED");
+        assertThat(venueCodes(booking)).containsExactly("VENUE_NEW_BOOKING_REQUEST");
+    }
+
     @Test
     void aCustomerCancelledBookingTellsTheCustomerOnce() {
         Booking booking = flows.pending();

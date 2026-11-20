@@ -458,7 +458,7 @@ class OwnerPasswordGateIntegrationTest extends IntegrationTest {
     private long failures() {
         return OWNER.sql("""
                         SELECT coalesce((SELECT counter FROM iam.security_rate_limit_counter
-                                          WHERE limiter_type = 'OWNER_PASSWORD'
+                                          WHERE limiter_type = 'OWNER_PASSWORD' AND action_class = 'VENUE'
                                             AND subject_key_hash = encode(sha256(convert_to(
                                                     'venue-account:' || CAST(:account AS text), 'UTF8')), 'hex')), 0)""")
                 .param("account", account).query(Long.class).single();

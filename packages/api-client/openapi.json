@@ -2068,6 +2068,7 @@
           "ATTENDANCE_REVERSAL_REQUIRES_ADMIN",
           "OWNER_PASSWORD_REQUIRED",
           "OWNER_PASSWORD_INVALID",
+          "OWNER_PASSWORD_LOCKED",
           "RESOURCE_HAS_BLOCKING_RESERVATIONS",
           "TOURNAMENT_CONFLICT_BLOCKS_SAVE",
           "AFFECTED_SET_CHANGED_REFRESH_PREVIEW",
@@ -20038,7 +20039,7 @@
     },
     "/api/v1/admin/venue-accounts/{venueAccountId}/reset-owner-password": {
       "post": {
-        "description": "The admin chooses the new Owner Password and gives it to the venue through support (PO decision, 28 Sep 2026). The Owner Password is a PIN of exactly 4 digits (PCR-006). No temporary password, reset link or forced change. Audited; the venue is notified (FR-ADM-03).",
+        "description": "The admin chooses the new Owner Password and gives it to the venue through support (PO decision, 28 Sep 2026). The Owner Password is a PIN of exactly 4 digits (PCR-006). No temporary password, reset link or forced change. Audited; the venue is notified (FR-ADM-03). It is the only way to end the long lock (OWNER_PASSWORD_LOCKED, PCR-012); it also ends a running 15-minute lockout, and both counts start again from zero (E7-121).",
         "operationId": "adminResetVenueOwnerPassword",
         "parameters": [
           {
@@ -38974,7 +38975,8 @@
                             "code": {
                               "enum": [
                                 "OWNER_PASSWORD_REQUIRED",
-                                "OWNER_PASSWORD_INVALID"
+                                "OWNER_PASSWORD_INVALID",
+                                "OWNER_PASSWORD_LOCKED"
                               ],
                               "type": "string"
                             }
@@ -38994,7 +38996,7 @@
                 }
               }
             },
-            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID | OWNER_PASSWORD_LOCKED",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {
@@ -50143,7 +50145,8 @@
                             "code": {
                               "enum": [
                                 "OWNER_PASSWORD_REQUIRED",
-                                "OWNER_PASSWORD_INVALID"
+                                "OWNER_PASSWORD_INVALID",
+                                "OWNER_PASSWORD_LOCKED"
                               ],
                               "type": "string"
                             }
@@ -50163,7 +50166,7 @@
                 }
               }
             },
-            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID | OWNER_PASSWORD_LOCKED",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {
@@ -50920,7 +50923,8 @@
                             "code": {
                               "enum": [
                                 "OWNER_PASSWORD_REQUIRED",
-                                "OWNER_PASSWORD_INVALID"
+                                "OWNER_PASSWORD_INVALID",
+                                "OWNER_PASSWORD_LOCKED"
                               ],
                               "type": "string"
                             }
@@ -50940,7 +50944,7 @@
                 }
               }
             },
-            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID | OWNER_PASSWORD_LOCKED",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {
@@ -52034,7 +52038,8 @@
                             "code": {
                               "enum": [
                                 "OWNER_PASSWORD_REQUIRED",
-                                "OWNER_PASSWORD_INVALID"
+                                "OWNER_PASSWORD_INVALID",
+                                "OWNER_PASSWORD_LOCKED"
                               ],
                               "type": "string"
                             }
@@ -52054,7 +52059,7 @@
                 }
               }
             },
-            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID | OWNER_PASSWORD_LOCKED",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {
@@ -53636,7 +53641,8 @@
                             "code": {
                               "enum": [
                                 "OWNER_PASSWORD_REQUIRED",
-                                "OWNER_PASSWORD_INVALID"
+                                "OWNER_PASSWORD_INVALID",
+                                "OWNER_PASSWORD_LOCKED"
                               ],
                               "type": "string"
                             }
@@ -53656,7 +53662,7 @@
                 }
               }
             },
-            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID | OWNER_PASSWORD_LOCKED",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {
@@ -54313,7 +54319,8 @@
                             "code": {
                               "enum": [
                                 "OWNER_PASSWORD_REQUIRED",
-                                "OWNER_PASSWORD_INVALID"
+                                "OWNER_PASSWORD_INVALID",
+                                "OWNER_PASSWORD_LOCKED"
                               ],
                               "type": "string"
                             }
@@ -54333,7 +54340,7 @@
                 }
               }
             },
-            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID | OWNER_PASSWORD_LOCKED",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {
@@ -54705,7 +54712,8 @@
                             "code": {
                               "enum": [
                                 "OWNER_PASSWORD_REQUIRED",
-                                "OWNER_PASSWORD_INVALID"
+                                "OWNER_PASSWORD_INVALID",
+                                "OWNER_PASSWORD_LOCKED"
                               ],
                               "type": "string"
                             }
@@ -54725,7 +54733,7 @@
                 }
               }
             },
-            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID | OWNER_PASSWORD_LOCKED",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {
@@ -55097,7 +55105,8 @@
                             "code": {
                               "enum": [
                                 "OWNER_PASSWORD_REQUIRED",
-                                "OWNER_PASSWORD_INVALID"
+                                "OWNER_PASSWORD_INVALID",
+                                "OWNER_PASSWORD_LOCKED"
                               ],
                               "type": "string"
                             }
@@ -55117,7 +55126,7 @@
                 }
               }
             },
-            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID | OWNER_PASSWORD_LOCKED",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {
@@ -55446,7 +55455,8 @@
                             "code": {
                               "enum": [
                                 "OWNER_PASSWORD_REQUIRED",
-                                "OWNER_PASSWORD_INVALID"
+                                "OWNER_PASSWORD_INVALID",
+                                "OWNER_PASSWORD_LOCKED"
                               ],
                               "type": "string"
                             }
@@ -55466,7 +55476,7 @@
                 }
               }
             },
-            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID | OWNER_PASSWORD_LOCKED",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {
@@ -55794,7 +55804,8 @@
                             "code": {
                               "enum": [
                                 "OWNER_PASSWORD_REQUIRED",
-                                "OWNER_PASSWORD_INVALID"
+                                "OWNER_PASSWORD_INVALID",
+                                "OWNER_PASSWORD_LOCKED"
                               ],
                               "type": "string"
                             }
@@ -55814,7 +55825,7 @@
                 }
               }
             },
-            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID | OWNER_PASSWORD_LOCKED",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {
@@ -56143,7 +56154,8 @@
                             "code": {
                               "enum": [
                                 "OWNER_PASSWORD_REQUIRED",
-                                "OWNER_PASSWORD_INVALID"
+                                "OWNER_PASSWORD_INVALID",
+                                "OWNER_PASSWORD_LOCKED"
                               ],
                               "type": "string"
                             }
@@ -56163,7 +56175,7 @@
                 }
               }
             },
-            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID | OWNER_PASSWORD_LOCKED",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {
@@ -56492,7 +56504,8 @@
                             "code": {
                               "enum": [
                                 "OWNER_PASSWORD_REQUIRED",
-                                "OWNER_PASSWORD_INVALID"
+                                "OWNER_PASSWORD_INVALID",
+                                "OWNER_PASSWORD_LOCKED"
                               ],
                               "type": "string"
                             }
@@ -56512,7 +56525,7 @@
                 }
               }
             },
-            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID",
+            "description": "error.code: OWNER_PASSWORD_REQUIRED | OWNER_PASSWORD_INVALID | OWNER_PASSWORD_LOCKED",
             "headers": {
               "X-Correlation-Id": {
                 "schema": {
