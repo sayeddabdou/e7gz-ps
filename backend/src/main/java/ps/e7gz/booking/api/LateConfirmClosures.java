@@ -46,4 +46,13 @@ public interface LateConfirmClosures {
      * @param at     the caller's command instant
      */
     void closeForCancellation(CommandContext command, UUID bookingId, BookingTerminalReason reason, Instant at);
+
+    /**
+     * E7-82 (FR-OPS-35, arch 08 section 2.5): an Emergency pauses the booking's Late Confirm countdown - its T2 expiry and
+     * T3 warning go {@code PENDING -> PAUSED}, their due instants kept, so neither fires while paused. The caller writes
+     * the booking's {@code late_confirm_pause_started_at} and the open pause history row in the same transaction. A job a
+     * worker holds {@code LEASED} is left to it: its fire re-reads the paused booking and backs off. Resuming them with
+     * the remaining time is E7-83's.
+     */
+    void pauseTimers(CommandContext command, UUID bookingId);
 }

@@ -280,10 +280,21 @@ final class ClosureCommands {
         if (check == null && impact.ownerPasswordRequired()) {
             throw new ApiException(ApiErrorCode.OWNER_PASSWORD_REQUIRED);
         }
-        deps.bookings().cancel(context, venueId, save.venueAccountId(),
+        return persist(context, deps, venueId, save.venueAccountId(), save.correlationId(), before, save.proposal(),
+                impact, check);
+    }
+
+    /**
+     * The writes of a checked save: the affected set cancelled CANCELLED / VENUE_CLOSURE, the Closure row (new, or
+     * {@code before} edited), its per-room CLOSURE rows, the audit row and, for a new one, {@code ClosureCreated}. E7-82
+     * reuses it for a venue Emergency converted into a Closure (FR-OPS-23), after its own preview-token and Owner
+     * Password checks.
+     */
+    static Closure persist(CommandContext context, Deps deps, UUID venueId, UUID venueAccountId, UUID correlationId,
+                           Optional<Closure> before, Proposal proposal, Impact impact, OwnerPasswordCheck check) {
+        deps.bookings().cancel(context, venueId, venueAccountId,
                 impact.affected().stream().map(Affected::bookingId).toList(), BookingTerminalReason.VENUE_CLOSURE);
 
-        Proposal proposal = save.proposal();
         Instant now = context.commandNow();
         UUID id;
         boolean periodChanged;
@@ -298,7 +309,7 @@ final class ClosureCommands {
                     .param("end", MaintenanceCommands.utc(proposal.endAt())).param("kind", proposal.kind().name())
                     .param("reason", proposal.reason()).update();
         } else {
-            id = save.closureId();
+            id = before.get().id();
             periodChanged = !before.get().startAt().equals(proposal.startAt())
                     || !before.get().endAt().equals(proposal.endAt());
             context.jdbc().sql("""
@@ -332,8 +343,8 @@ final class ClosureCommands {
         });
         payload.put("cancelledBookings", impact.affected().size());
         AuditRecord.Builder audit = AuditRecord.builder(before.isEmpty() ? OperationsAuditAction.CLOSURE_CREATED
-                                : OperationsAuditAction.CLOSURE_EDITED, AuditActor.venue(save.venueAccountId()), id,
-                        save.correlationId())
+                                : OperationsAuditAction.CLOSURE_EDITED, AuditActor.venue(venueAccountId), id,
+                        correlationId)
                 .contextVenue(venueId)
                 .payload(payload);
         if (check != null) {

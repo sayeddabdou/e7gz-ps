@@ -119,6 +119,22 @@ class JdbcScheduledJobStore {
                 .update() == 1;
     }
 
+    /**
+     * E7-82: {@code PENDING -> PAUSED} of the job with this key, the emergency pause {@code guard_scheduled_job} allows a
+     * command (arch 08 section 2.5: "status := 'PAUSED'"); {@code due_at} is kept. False when nothing moved - no such
+     * job, or it is not {@code PENDING} (a {@code LEASED} job is left to its worker, whose fire re-reads the paused
+     * booking). E7-83 sends it back with {@link #rearm}.
+     */
+    boolean pause(JdbcClient jdbc, String idempotencyKey) {
+        return jdbc.sql("""
+                        UPDATE technical.scheduled_job
+                           SET status = :paused
+                         WHERE idempotency_key = :key AND status = :pending""")
+                .param("paused", ScheduledJobStatus.PAUSED.name()).param("key", idempotencyKey)
+                .param("pending", ScheduledJobStatus.PENDING.name())
+                .update() == 1;
+    }
+
     /** A new {@code PENDING} job; false when its idempotency key is taken (nothing changes then). */
     boolean insert(JdbcClient jdbc, UUID id, NewJob job, UUID correlationId) {
         return jdbc.sql("""

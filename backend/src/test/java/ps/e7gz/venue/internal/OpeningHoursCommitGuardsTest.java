@@ -98,7 +98,7 @@ class OpeningHoursCommitGuardsTest extends IntegrationTest {
         resource = aResource().at(v).playStation(ConsoleType.PS5).create().id();
         customer = aUser().verified().create().id();
         OpeningHoursCommands.Readers real = new OpeningHoursCommands.Readers(commitments, bookings,
-                properties.horizonDays());
+                properties.horizonDays(), null);
         OpeningHours early = OpeningHours.validated(LocalTime.of(12, 0), LocalTime.of(23, 0), false, List.of());
         commit(early, LockSet.builder().venues(venue).build(), real);
 
@@ -106,7 +106,7 @@ class OpeningHoursCommitGuardsTest extends IntegrationTest {
                 .toInstant(), CAIRO).plusDays(10);
         booking = manualBookingAt(day, LocalDateTime.of(day, LocalTime.of(13, 0)));
         port = new ReportingConfirmed(bookings, booking, customer);
-        readers = new OpeningHoursCommands.Readers(commitments, port, properties.horizonDays());
+        readers = new OpeningHoursCommands.Readers(commitments, port, properties.horizonDays(), null);
         later = OpeningHours.validated(LocalTime.of(15, 0), LocalTime.of(23, 0), false, List.of());
     }
 
@@ -126,7 +126,7 @@ class OpeningHoursCommitGuardsTest extends IntegrationTest {
         List<String> sessionsBefore = sessions();
 
         assertThatThrownBy(() -> runner.run(new OpeningHoursCommands.Commit(venue, account, later,
-                impact.previewToken(), impact.lockSet(venue), readers)))
+                impact.previewToken(), impact.lockSet(venue), readers, null)))
                 .isInstanceOfSatisfying(ApiException.class,
                         e -> assertThat(e.code()).isEqualTo(ApiErrorCode.OWNER_PASSWORD_REQUIRED));
 
@@ -144,7 +144,7 @@ class OpeningHoursCommitGuardsTest extends IntegrationTest {
         for (LockSet incomplete : List.of(LockSet.builder().venues(venue).resources(resource).build(),
                 LockSet.builder().venues(venue).users(customer).build())) {
             assertThatThrownBy(() -> runner.run(new OpeningHoursCommands.Commit(venue, account, later,
-                    impact.previewToken(), incomplete, readers)))
+                    impact.previewToken(), incomplete, readers, null)))
                     .as("locks %s", incomplete)
                     .isInstanceOfSatisfying(ApiException.class,
                             e -> assertThat(e.code()).isEqualTo(ApiErrorCode.AFFECTED_SET_CHANGED_REFRESH_PREVIEW));
@@ -162,7 +162,7 @@ class OpeningHoursCommitGuardsTest extends IntegrationTest {
         List<String> sessionsBefore = sessions();
 
         assertThatThrownBy(() -> runner.run(new OpeningHoursCommands.Commit(venue, otherAccount, later,
-                impact.previewToken(), impact.lockSet(venue), readers)))
+                impact.previewToken(), impact.lockSet(venue), readers, null)))
                 .isInstanceOfSatisfying(ApiException.class,
                         e -> assertThat(e.code()).isEqualTo(ApiErrorCode.NOT_FOUND));
 
@@ -178,7 +178,7 @@ class OpeningHoursCommitGuardsTest extends IntegrationTest {
 
     private void commit(OpeningHours hours, LockSet locks, OpeningHoursCommands.Readers with) {
         String token = runner.run(new OpeningHoursCommands.Preview(venue, hours, with)).previewToken();
-        runner.run(new OpeningHoursCommands.Commit(venue, account, hours, token, locks, with));
+        runner.run(new OpeningHoursCommands.Commit(venue, account, hours, token, locks, with, null));
     }
 
     private void assertNothingChanged(List<String> sessionsBefore) {

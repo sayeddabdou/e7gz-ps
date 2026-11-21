@@ -7,20 +7,30 @@ import org.springframework.stereotype.Component;
 import ps.e7gz.booking.api.LateConfirmClosures;
 import ps.e7gz.common.codes.BookingTerminalReason;
 import ps.e7gz.common.command.CommandContext;
+import ps.e7gz.scheduling.api.ScheduledJobs;
 
 /** Booking's operational closure of an AWAITING booking's Late Confirmation ({@link LateConfirmClosures}, E7-113). */
 @Component
 class JdbcLateConfirmClosures implements LateConfirmClosures {
 
     private final LateConfirmCommands commands;
+    private final ScheduledJobs jobs;
 
-    JdbcLateConfirmClosures(LateConfirmCommands commands) {
+    JdbcLateConfirmClosures(LateConfirmCommands commands, ScheduledJobs jobs) {
         this.commands = commands;
+        this.jobs = jobs;
     }
 
     @Override
     public void closeForCancellation(CommandContext command, UUID bookingId, BookingTerminalReason reason,
                                      Instant at) {
         commands.closeForCancellation(Objects.requireNonNull(command, "command"), bookingId, reason, at);
+    }
+
+    @Override
+    public void pauseTimers(CommandContext command, UUID bookingId) {
+        Objects.requireNonNull(command, "command");
+        jobs.pause(command, LateConfirmWindow.expiryKey(Objects.requireNonNull(bookingId, "bookingId")));
+        jobs.pause(command, LateConfirmWindow.warningKey(bookingId));
     }
 }

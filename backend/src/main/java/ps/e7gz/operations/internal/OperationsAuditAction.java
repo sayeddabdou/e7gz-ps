@@ -23,7 +23,23 @@ enum OperationsAuditAction implements AuditAction {
     CLOSURE_EDITED("VENUE_CLOSURE", AuditPayloadAllowlist.of("kind", "startAt", "endAt", "previousStartAt",
             "previousEndAt", "cancelledBookings")),
     /** A Closure that had not ended was deleted (soft delete, v1.1.44); bookings it cancelled stay cancelled. */
-    CLOSURE_DELETED("VENUE_CLOSURE", AuditPayloadAllowlist.of("kind", "startAt", "endAt"));
+    CLOSURE_DELETED("VENUE_CLOSURE", AuditPayloadAllowlist.of("kind", "startAt", "endAt")),
+    /**
+     * E7-82: a venue Emergency Closure or a resource Emergency Outage was declared, starting now, with no Owner Password
+     * (FR-OPS-06, FR-OPS-11); what its all-or-nothing cascade ended is counted (FR-OPS-09).
+     */
+    EMERGENCY_DECLARED("EMERGENCY", AuditPayloadAllowlist.of("scope", "resourceId", "declaredAt", "expectedEndAt",
+            "cancelledBookings", "interruptedBookings", "cancelledTournaments", "pausedTimers")),
+    /** E7-82: the expected end moved later and the newly affected reservations were cancelled (FR-OPS-22). */
+    EMERGENCY_EXTENDED("EMERGENCY", AuditPayloadAllowlist.of("scope", "resourceId", "previousExpectedEndAt",
+            "expectedEndAt", "cancelledBookings", "interruptedBookings", "cancelledTournaments", "pausedTimers")),
+    /** E7-82: the expected end passed with the Emergency unresolved; the block stays (FR-OPS-18). */
+    EMERGENCY_AWAITING_CONFIRMATION("EMERGENCY", AuditPayloadAllowlist.of("scope", "resourceId", "expectedEndAt")),
+    /** E7-82: END EMERGENCY, the staff's audited assertion that the venue or resource is operational (FR-OPS-21). */
+    EMERGENCY_ENDED("EMERGENCY", AuditPayloadAllowlist.of("scope", "resourceId", "endedAt")),
+    /** E7-82: the Emergency was replaced by its target in one commit (FR-OPS-23, FR-OPS-24). */
+    EMERGENCY_CONVERTED("EMERGENCY", AuditPayloadAllowlist.of("scope", "resourceId", "convertedTo", "targetId",
+            "endedAt"));
 
     private final String subjectType;
     private final AuditPayloadAllowlist payload;

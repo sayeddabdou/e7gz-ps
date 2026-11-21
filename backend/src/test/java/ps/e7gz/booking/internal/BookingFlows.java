@@ -523,6 +523,19 @@ public final class BookingFlows {
         return bookings.stream().map(booking -> started(booking, startedAgo)).toList();
     }
 
+    /**
+     * E7-82: one venue with two PENDING requests of one customer on one room, two hours apart (as
+     * {@link #twoPendingOfOneCustomer}), and an ACTIVE booking of another customer on another room that started
+     * {@code startedAgo} before the database clock (as {@link #active}).
+     */
+    public List<Booking> twoPendingAndAnActiveAtOneVenue(Duration startedAgo) {
+        OnlineBookingWorld world = OnlineBookingWorld.create();
+        Booking active = started(pendingOf(world, world.anotherCustomer(), world.anotherRoom(room -> room),
+                world.start()), startedAgo);
+        return List.of(pending(world, world.start()), pending(world, world.start().plus(Duration.ofHours(2))),
+                active);
+    }
+
     private Booking pendingOf(OnlineBookingWorld world, UUID customerId, Fixtures.Resource room, Instant start) {
         CreatedBooking created = creation.create(world.request(customerId, room, start, 60));
         return new Booking(created.bookingId(), created.customerId(), world.venue.id(), world.venue.name(),
@@ -683,6 +696,13 @@ public final class BookingFlows {
         Deadlines.awaitDatabaseClockPast(deadline.plusSeconds(1));
         assertThat(fireLateConfirmJob(booking, LateConfirmDb.t2(booking.bookingId())))
                 .isInstanceOf(JobOutcome.Done.class);
+    }
+
+    /** E7-82 (FR-OPS-44): the stored Late Confirm deadline has passed and T2 has not run yet. */
+    public void lateConfirmDeadlinePassedBeforeT2(Booking booking) {
+        Instant deadline = LateConfirmDb.attempt(booking.bookingId()).orElseThrow().initiatedAt().plusMillis(1);
+        LateConfirmDb.deadlineAt(booking.bookingId(), deadline);
+        Deadlines.awaitDatabaseClockPast(deadline.plusSeconds(1));
     }
 
     /** T3 inside its last minute: the stored deadline is 30 seconds away, then the real warning runs. */

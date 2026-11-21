@@ -372,6 +372,19 @@ No table, column, constraint, trigger or grant changes; `tr_05_booking_ban_eligi
 
 - Tests: `MaintenanceHttpTest` and `ClosureHttpTest` (a deleted window or Closure no longer makes isFree refuse, no longer counts toward the threshold, keeps its row); `MigrationSafetyTest` (the V1 window stays live; the seeded deletions survive); the `.dbm`/migration identity and added-lines checks in `MigrationFilesTest`; `GuardErrorIdentifiersTest` (the fresh install has the one added line in `guard_maintenance_window`).
 
+### v1.1.45 — an Emergency is dated the command instant (E7-82, 20 Nov 2026)
+
+**Why.** E7-82 builds the Emergency cascade of arch 06 section 2.5 as one command (FR-OPS-08, FR-OPS-09: all or nothing). Every write of that command is dated the instant `tournament.begin_command` captured (`tournament.command_now()`), but `operations.guard_emergency_lifecycle` dated the Emergency itself `statement_timestamp()` - always a little later. So `tournament.highest_current_cancellation_reason` (`declared_at <= occurred_at`) never found the Emergency in force at the Tournament's cancellation instant, and the cascade could never cancel a Tournament (`Condition-driven Tournament reason EMERGENCY_CLOSURE lacks matching highest-priority producer`) or remove the failed room from an ACTIVE one (`RESOURCE_EMERGENCY_OUTAGE Tournament Resource removal requires matching Resource Emergency evidence`) - while `operations.assert_emergency_cascade_complete` refuses an Emergency that leaves one live. `.dbm` block `v1_1_45_emergency_command_instant` = Flyway `V202611201600__emergency_command_instant.sql`, byte for byte. **Waiting for the Product Owner's review.**
+
+| Object | Change |
+|---|---|
+| `operations.emergency_command_now()` | New: `tournament.command_now()` when the transaction runs inside a trusted Tournament command context, else `statement_timestamp()` |
+| `operations.guard_emergency_lifecycle` | V202610171400 definition with `declared_at` and `ended_at` taken from `operations.emergency_command_now()`; the AWAITING_CONFIRMATION and extension checks keep `statement_timestamp()`. "Start = NOW only, never scheduled" (FR-OPS-06) is unchanged: the command instant is the database's own now of the declaring command |
+
+**Existing data.** No table, column, constraint, trigger or grant changes; stored Emergencies keep their instants; no backfill and no upgrade seed. Grants: the security baseline grants EXECUTE on the new function.
+
+- Tests: `EmergencyTournamentCascadeTest` (a venue Emergency cancels the Tournament of its window; a resource Emergency cancels a pre-start one and trims an ACTIVE one); `EmergencyHttpTest`; the `.dbm`/migration identity and changed-lines checks in `MigrationFilesTest`.
+
 ## Product Owner decisions (26 Sep 2026)
 
 A1 overlapping Maintenance allowed · A2 booking horizon is a deployment setting, default 120 days · A4 rate-limit table approved · A5 reports FR-AUD-11/12 at launch · A6 venue alerts = live + Web Push + audible alert · A8 configurable = fees and points only · A9 Venue never returns to ONBOARDING · A10 login limits stored as `LOGIN` rate-limit rows · A11 read-only customer wallet screen (PCR-004, no DB change) · review self-reporting allowed, duplicate open reports blocked.

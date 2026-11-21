@@ -112,6 +112,11 @@ class OnlineBookingIdempotencyIntegrationTest extends IntegrationTest {
             public boolean supersede(CommandContext context, String idempotencyKey) {
                 throw new UnsupportedOperationException();
             }
+
+            @Override
+            public boolean pause(CommandContext context, String idempotencyKey) {
+                throw new UnsupportedOperationException();
+            }
         };
         CreateOnlineBookingCommand command = new CreateOnlineBookingCommand(request, world.entry(world.room),
                 predicate, store, ledger, failing, outbox, venues, payments);

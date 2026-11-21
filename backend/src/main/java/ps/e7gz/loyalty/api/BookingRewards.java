@@ -1,5 +1,6 @@
 package ps.e7gz.loyalty.api;
 
+import java.util.Map;
 import java.util.UUID;
 import ps.e7gz.common.command.CommandContext;
 
@@ -39,4 +40,16 @@ public interface BookingRewards {
      * {@link BookingFeeRefunds#recordAdminDecision} by the same Admin and Customer then reuse the same context.
      */
     void beginCorrection(CommandContext command, UUID adminId, UUID customerId);
+
+    /**
+     * E7-82: the reconciliations of one command that ends several Customers' Online Bookings with a canonical Trust
+     * outcome at once - an Emergency interrupting checked-in ACTIVE bookings ({@code BOOKING_ATTENDED_INTERRUPTED}: no
+     * points, FR-TRS-11). One immutable Loyalty context per transaction ({@code loyalty.start_command}): when the command
+     * already opened it - {@link BookingFeeRefunds#recordDecisions} for the same cascade, whose Customers must cover
+     * these - this joins it; otherwise it opens it for these Customers. Each booking is reconciled with
+     * {@code loyalty.reconcile_booking}, in Customer then booking order. An empty list does nothing.
+     *
+     * @param bookings booking id to its Customer
+     */
+    void reconcileAll(CommandContext command, Map<UUID, UUID> bookings);
 }

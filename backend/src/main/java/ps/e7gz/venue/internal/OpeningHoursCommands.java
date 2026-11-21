@@ -25,12 +25,14 @@ import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.EligibilityCategory;
 import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.command.PreviewTokens;
+import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.security.owner.OwnerPasswordNotRequired;
 import ps.e7gz.common.security.owner.OwnerProtected;
 import ps.e7gz.inventory.ledger.api.ActiveCommitments;
 import ps.e7gz.inventory.ledger.api.ActiveCommitments.Commitment;
+import ps.e7gz.venue.api.EmergencyHoursConversions;
 import ps.e7gz.venue.api.HoursChangeBookings;
 import ps.e7gz.venue.api.HoursChangeBookings.BookingFacts;
 import ps.e7gz.venue.api.OwnerPasswordGate;
@@ -89,7 +91,8 @@ final class OpeningHoursCommands {
     }
 
     /** What the reads of a change need; the same for preview and commit. */
-    record Readers(ActiveCommitments commitments, HoursChangeBookings bookings, int horizonDays) {
+    record Readers(ActiveCommitments commitments, HoursChangeBookings bookings, int horizonDays,
+                   EmergencyHoursConversions emergencies) {
     }
 
     /** Steps 1–5, writing nothing: the tournament block, then the affected Bookings and the token. */
@@ -124,7 +127,7 @@ final class OpeningHoursCommands {
      */
     @OwnerPasswordNotRequired("HOURS_CLOSURE_NO_PROTECTED_CANCELLATION")
     record Commit(UUID venueId, UUID venueAccountId, OpeningHours hours, String previewToken, LockSet locks,
-                  Readers readers) implements Command<Template> {
+                  Readers readers, UUID emergencyId) implements Command<Template> {
 
         @Override
         public EligibilityCategory eligibilityCategory() {
@@ -138,7 +141,8 @@ final class OpeningHoursCommands {
 
         @Override
         public Template execute(CommandContext context) {
-            return committed(context, venueId, venueAccountId, hours, previewToken, locks, readers, false);
+            return committed(context, venueId, venueAccountId, hours, previewToken, locks, readers, false,
+                    emergencyId);
         }
     }
 
@@ -152,7 +156,7 @@ final class OpeningHoursCommands {
     @OwnerProtected(PROTECTED_ACTION)
     record ProtectedCommit(UUID venueId, UUID venueAccountId, OpeningHours hours, String previewToken, LockSet locks,
                            UUID correlationId, Readers readers, OwnerPasswordGate gate,
-                           AuditWriter audit) implements Command<Template> {
+                           AuditWriter audit, UUID emergencyId) implements Command<Template> {
 
         @Override
         public EligibilityCategory eligibilityCategory() {
@@ -172,7 +176,8 @@ final class OpeningHoursCommands {
                     .ownerPasswordCheck(check)
                     .payload(Map.of("protectedAction", PROTECTED_ACTION))
                     .build());
-            return committed(context, venueId, venueAccountId, hours, previewToken, locks, readers, true);
+            return committed(context, venueId, venueAccountId, hours, previewToken, locks, readers, true,
+                    emergencyId);
         }
 
         /** The venue and the actor only, as before; the password is the gate's alone (NFR-21). */
@@ -217,8 +222,13 @@ final class OpeningHoursCommands {
      * Referenced sessions keep their row (Spec v5.0 §14.6), cancelled bookings included.
      */
     private static Template committed(CommandContext context, UUID venueId, UUID venueAccountId, OpeningHours hours,
-                                      String previewToken, LockSet locks, Readers readers, boolean passwordChecked) {
+                                      String previewToken, LockSet locks, Readers readers, boolean passwordChecked,
+                                      UUID emergencyId) {
         requireEnabledAccount(context, venueId, venueAccountId);
+        if (emergencyId != null) {
+            // E7-82, the E7-77 contract D5 and D6: the venue Emergency this commit converts, checked before any write
+            readers.emergencies().requireConvertible(context, venueId, emergencyId);
+        }
         ZoneId zone = OperatingSessionStore.zoneOf(context.jdbc(), venueId);
         Optional<Template> current = OperatingSessionStore.template(context.jdbc(), venueId);
         Template proposed = proposed(venueId, hours, current);
@@ -239,6 +249,10 @@ final class OpeningHoursCommands {
         Template saved = OperatingSessionStore.save(context, proposed, current.isEmpty());
         OperatingSessionStore.apply(context, saved, zone,
                 OperatingSessionStore.plan(context, saved, zone, readers.horizonDays()));
+        if (emergencyId != null) {
+            // FR-OPS-24: the Emergency's block ends in the very commit that activates the new hours - no sellable gap
+            readers.emergencies().convert(context, venueId, venueAccountId, emergencyId, CorrelationId.require());
+        }
         return saved;
     }
 

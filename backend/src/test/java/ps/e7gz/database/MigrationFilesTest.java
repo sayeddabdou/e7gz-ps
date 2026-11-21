@@ -584,6 +584,33 @@ class MigrationFilesTest {
                 .hasSize(11);
     }
 
+    /**
+     * v1.1.45 (E7-82): the migration is the model's own block, byte for byte; it adds one helper and redefines
+     * {@code operations.guard_emergency_lifecycle} as its V202610171400 definition with exactly two lines changed -
+     * {@code declared_at} and {@code ended_at} take the command instant; nothing else, no grant, no trigger.
+     */
+    @Test
+    void emergencyCommandInstantMigrationIsTheModelsV1145Block() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String open = "<genericsql name=\"v1_1_45_emergency_command_instant\">\n\t<definition> <![CDATA[\n";
+        int start = model.indexOf(open);
+        assertThat(start).as("v1.1.45 block in the .dbm").isPositive();
+        String block = model.substring(start + open.length(), model.indexOf("]]> </definition>", start));
+        String migration = classpath("db/migration/V202611201600__emergency_command_instant.sql");
+        assertThat(migration).isEqualTo(block);
+        String guard = "CREATE OR REPLACE FUNCTION operations.guard_emergency_lifecycle()";
+        String previous = function(classpath("db/migration/V202610171400__operating_session_supersession.sql"), guard);
+        String migrated = function(migration, guard);
+        assertThat(migrated.replace("NEW.declared_at := operations.emergency_command_now();",
+                        "NEW.declared_at := statement_timestamp();")
+                .replace("NEW.ended_at := operations.emergency_command_now();", "NEW.ended_at := statement_timestamp();"))
+                .isEqualTo(previous);
+        assertThat(migrated.split("operations\\.emergency_command_now\\(\\)", -1)).as("two lines changed").hasSize(3);
+        assertThat(migration.split("CREATE OR REPLACE FUNCTION", -1)).as("one new function, one redefined").hasSize(3);
+        assertThat(migration).doesNotContain("GRANT").doesNotContain("DROP ").doesNotContain("ALTER ")
+                .doesNotContain("TRIGGER");
+    }
+
     private static void assertAddedLinesOnly(String earlier, String migration, String open, String... lines) {
         String migrated = function(migration, open);
         String stripped = migrated;

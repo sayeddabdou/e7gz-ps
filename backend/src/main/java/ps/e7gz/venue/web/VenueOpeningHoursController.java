@@ -26,7 +26,6 @@ import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.ResponseMetaFactory;
 import ps.e7gz.messaging.api.Idempotency;
@@ -92,7 +91,7 @@ public class VenueOpeningHoursController {
                     + "E7-113. With emergencyId the same commit also converts that unresolved venue Emergency: "
                     + "CONVERTED / OPENING_HOURS_CHANGE, its block ending in this commit (FR-OPS-23, FR-OPS-24; PO "
                     + "decision 19 Nov 2026, E7-77). A resource Emergency is CONVERSION_TARGET_NOT_ALLOWED; a resolved "
-                    + "one is OPERATIONAL_STATE_CHANGED. The emergencyId part answers 501 until E7-82.")
+                    + "one is OPERATIONAL_STATE_CHANGED. Implemented by E7-82 (emergencyId).")
     @ApiError(status = 403, codes = ApiErrorCode.FORBIDDEN)
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     @ApiError(status = 409, codes = {ApiErrorCode.AFFECTED_SET_CHANGED_REFRESH_PREVIEW,
@@ -104,11 +103,8 @@ public class VenueOpeningHoursController {
     public DataResponse<VenueOpeningHoursView> commit(@RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
                                                       @AuthenticationPrincipal AuthenticatedSubject venue,
                                                       @Valid @RequestBody VenueOpeningHoursCommitRequest request) {
-        if (request.emergencyId() != null) {
-            throw NotImplementedYet.stub(); // E7-82: the emergency conversion (PO decision 19 Nov 2026, E7-77)
-        }
         IdempotentResult<VenueOpeningHoursView> result = hours.commit(venue.id(), request.proposal().toProposal(),
-                request.previewToken(), request.ownerPassword(),
+                request.previewToken(), request.ownerPassword(), request.emergencyId(),
                 idempotency.request(venue, COMMIT_ENDPOINT, idempotencyKey, Map.of(), request),
                 StoredResponse.of(VenueOpeningHoursView.class, 200), VenueOpeningHoursView::of);
         return meta.data(result.body());

@@ -304,7 +304,7 @@ class OpeningHoursHttpTest extends IntegrationTest {
         OpeningHours later = OpeningHours.validated(java.time.LocalTime.of(20, 0), java.time.LocalTime.of(23, 0),
                 false, List.of());
         OpeningHoursCommands.Readers readers = new OpeningHoursCommands.Readers(commitments, bookings,
-                properties.horizonDays());
+                properties.horizonDays(), null);
         UUID tournament = UUID.randomUUID();
 
         // A Tournament is checked as a whole at commit, so it is written and previewed in one command, rolled back.
