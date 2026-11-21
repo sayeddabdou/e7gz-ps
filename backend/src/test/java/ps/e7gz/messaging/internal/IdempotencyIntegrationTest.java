@@ -450,7 +450,10 @@ class IdempotencyIntegrationTest extends IntegrationTest {
         Map<String, Object> row = record(customer, ENDPOINT, key);
         JsonNode stored = json.readTree(row.get("response_body").toString());
         assertThat(stored).isEqualTo(json.createObjectNode().set("data", json.valueToTree(first.body())));
-        assertThat(row.toString()).doesNotContain("4821", "ownerPassword", "hmac", marker, "meta", "serverTime",
+        // The secret as a column value or as a JSON string, not its bare digits: the row's random ids, timestamps
+        // and fingerprint can hold "4821" by chance (CI run 44248635001 failed that way).
+        assertThat(row.values().stream().map(String::valueOf).toList()).doesNotContain("4821");
+        assertThat(row.toString()).doesNotContain("\"4821\"", "ownerPassword", "hmac", marker, "meta", "serverTime",
                 IntegrationTest.TEST_IDEMPOTENCY_FINGERPRINT_KEY);
         // No unkeyed digest of the secret either: what a plain SHA-256 fingerprint would have exposed to a dictionary.
         assertThat(row.toString()).doesNotContain(sha256("4821"), sha256("\"4821\""),
