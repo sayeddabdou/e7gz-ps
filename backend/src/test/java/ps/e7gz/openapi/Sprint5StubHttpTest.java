@@ -55,19 +55,12 @@ class Sprint5StubHttpTest extends IntegrationTest {
     // E7-81 filled the Maintenance and Closure stubs: their tests are MaintenanceHttpTest and ClosureHttpTest.
     // E7-82 filled the Emergency stubs, GET /admin/emergencies and the hours commit with emergencyId: their tests are
     // EmergencyHttpTest and EmergencyConversionHttpTest.
-
-    @Test
-    void ownerReviewStubsAnswerNotImplemented() throws Exception {
-        notImplemented(get("/api/v1/venue/owner-reviews"), venue);                                  // E7-84
-        notImplemented(json(post("/api/v1/venue/owner-reviews/" + UUID.randomUUID() + "/resolve"),
-                "{\"action\":\"RETURN_TO_SERVICE\",\"ownerPassword\":\"1234\"}"), venue);            // E7-84
-    }
+    // E7-84 filled the Owner Review stubs and GET /admin/owner-reviews: their tests are OwnerReviewHttpTest.
 
     @Test
     void adminStubsAnswerNotImplemented() throws Exception {
         notImplemented(get("/api/v1/admin/venue-accounts"), admin);                                 // E7-78
         notImplemented(get("/api/v1/admin/venue-accounts").param("accountStatus", "DISABLED"), admin);
-        notImplemented(get("/api/v1/admin/owner-reviews"), admin);                                  // E7-84
     }
 
     @Test

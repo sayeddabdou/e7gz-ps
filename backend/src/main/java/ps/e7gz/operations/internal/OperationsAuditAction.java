@@ -39,7 +39,17 @@ enum OperationsAuditAction implements AuditAction {
     EMERGENCY_ENDED("EMERGENCY", AuditPayloadAllowlist.of("scope", "resourceId", "endedAt")),
     /** E7-82: the Emergency was replaced by its target in one commit (FR-OPS-23, FR-OPS-24). */
     EMERGENCY_CONVERTED("EMERGENCY", AuditPayloadAllowlist.of("scope", "resourceId", "convertedTo", "targetId",
-            "endedAt"));
+            "endedAt")),
+    /**
+     * E7-84: a Resource entered OWNER_REVIEW_REQUIRED and its system cascade ran - actor SYSTEM, no Owner Password
+     * (FR-OPS-28, FR-OPS-29; Spec v5 section 43.9: the trigger, the threshold data and what it affected).
+     */
+    OWNER_REVIEW_ENTERED("OWNER_REVIEW", AuditPayloadAllowlist.of("resourceId", "emergencyId", "enteredAt",
+            "entryCause", "maintenanceMinutes", "cancelledBookings", "cancelledManualBookings", "interruptedBookings",
+            "completedBookings", "cancelledTournaments", "trimmedTournaments", "lateConfirmEligibilityLost")),
+    /** E7-84: the venue resolved the Owner Review with the Owner Password (FR-OPS-33; section 43.9: the final action). */
+    OWNER_REVIEW_RESOLVED("OWNER_REVIEW", AuditPayloadAllowlist.of("resourceId", "resolution", "resolvedAt",
+            "maintenanceId", "baseState"));
 
     private final String subjectType;
     private final AuditPayloadAllowlist payload;

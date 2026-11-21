@@ -122,7 +122,7 @@ class EmergencyCascadeFaultInjectionTest extends IntegrationTest {
                 faulty(TournamentCascades.class, real.tournaments(), calls, failAt), real.resources(), real.catalog(),
                 real.sessions(), real.commitments(), real.baseStates(),
                 faulty(AuditWriter.class, real.audit(), calls, failAt),
-                outbox, jobs, real.gate(), real.closures(), real.json(), timers);
+                outbox, jobs, real.gate(), real.closures(), real.json(), timers, real.alerts());
         EmergencyCommands.Subject subject = new EmergencyCommands.Subject(world.venueId(), EmergencyScope.VENUE, null);
         Instant end = world.inside().startAt().plus(Duration.ofMinutes(60));
         LockSet locks = runner.run(new EmergencyCommands.Plan(world.venueId(), subject, null, end, real));

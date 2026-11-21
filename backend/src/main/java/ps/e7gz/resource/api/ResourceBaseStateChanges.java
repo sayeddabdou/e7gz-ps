@@ -25,4 +25,18 @@ public interface ResourceBaseStateChanges {
      */
     void change(CommandContext command, UUID venueAccountId, UUID venueId, UUID resourceId, ResourceBaseState target,
                 OwnerPasswordCheck check, UUID correlationId);
+
+    /**
+     * E7-84 (FR-OPS-33, Spec v5 section 43.8): the Owner Review's resolution clears the restriction -
+     * {@code OWNER_REVIEW_REQUIRED -> NONE} with its state-change row (owner password used, actor the venue account) and
+     * a {@code ResourceRestrictionChanged} room event, so Nearest Availability refreshes. The caller resolves the open
+     * {@code operations.owner_review} row in the same transaction and audits the whole with its Owner Password check;
+     * the database checks the final state at commit ({@code tr_owner_review_restriction_clear},
+     * {@code tr_owner_review_resolution_final_state}).
+     *
+     * @throws IllegalStateException when the venue's resource is not under {@code OWNER_REVIEW_REQUIRED} - a caller
+     *                               defect
+     */
+    void clearOwnerReviewRestriction(CommandContext command, UUID venueAccountId, UUID venueId, UUID resourceId,
+                                     UUID correlationId);
 }
