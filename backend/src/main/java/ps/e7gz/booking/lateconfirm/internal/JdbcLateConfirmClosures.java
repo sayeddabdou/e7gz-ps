@@ -33,4 +33,10 @@ class JdbcLateConfirmClosures implements LateConfirmClosures {
         jobs.pause(command, LateConfirmWindow.expiryKey(Objects.requireNonNull(bookingId, "bookingId")));
         jobs.pause(command, LateConfirmWindow.warningKey(bookingId));
     }
+
+    @Override
+    public void resumeTimers(CommandContext command, UUID bookingId, Instant resumedAt, Instant deadline) {
+        commands.resumeTimers(Objects.requireNonNull(command, "command"), Objects.requireNonNull(bookingId, "bookingId"),
+                Objects.requireNonNull(resumedAt, "resumedAt"), Objects.requireNonNull(deadline, "deadline"));
+    }
 }

@@ -303,6 +303,25 @@ public final class IntegrationEvents {
     public static final String EMERGENCY_CONVERTED = "EmergencyConverted";
 
     /**
+     * {@code {bookingId, venueId, resourceId, customerId, pauseKind, pauseCause, pausedAt}}, aggregate {@code BOOKING}: an
+     * Emergency paused a booking's venue-response timer ({@code pauseKind} VENUE_RESPONSE) or Late Confirm countdown
+     * (LATE_CONFIRM) - FR-OPS-34, FR-OPS-35, arch 08 sections 2.5 and 3.2; E7-83. The Late Confirm one tells the customer
+     * (FR-OPS-41: §52.2 LATE_CONFIRMATION_PAUSED).
+     */
+    public static final String TIMER_PAUSED = "TimerPaused";
+    /**
+     * {@code {bookingId, venueId, resourceId, customerId, pauseKind, resumedAt, deadline, remainingSeconds}}: the paused
+     * timer resumed with its remaining time (FR-OPS-36, FR-OPS-39; E7-83).
+     */
+    public static final String TIMER_RESUMED = "TimerResumed";
+    /**
+     * {@code {bookingId, venueId, resourceId, customerId, pauseKind, terminalReason, capReachedAt}}: the 30-minute
+     * cumulative pause cap was reached and the booking cancelled under {@code terminalReason} (FR-OPS-37, FR-OPS-38;
+     * E7-83). The cancellation's own {@code BookingCancelled} is written in the same command and tells the customer.
+     */
+    public static final String TIMER_PAUSE_CAP_REACHED = "TimerPauseCapReached";
+
+    /**
      * Every event that can change a venue's availability and so refreshes its Nearest Availability rows (arch 05
      * section 5.3, arch 08 section 7): reservation hold or release, Resource state, selling blocks (maintenance,
      * closures, emergencies), opening hours and prices. Each carries the {@code venueId} it touches;
