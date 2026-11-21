@@ -3992,6 +3992,10 @@ PO rules and open items, added 15 Nov 2026 (do these too):
 PO decision 16 Nov 2026 (do this too):
 - Set E7GZ_LEGAL_TERMS_VERSION, E7GZ_LEGAL_TERMS_URL and E7GZ_LEGAL_PRIVACY_URL to the values the Product Owner approved in E7-125; never the placeholder label (PCR-013, E7-124).
 
+PO decisions 21 Nov 2026 (do these too):
+- E7GZ_LEGAL_TERMS_URL is https://<domain>/terms and E7GZ_LEGAL_PRIVACY_URL is https://<domain>/privacy, on the domain the Product Owner buys before deployment; each page shows the English and the Arabic text. E7GZ_LEGAL_TERMS_VERSION is the date the Product Owner approved the texts (PCR-013, decisions of 21 Nov 2026).
+- The load balancer, proxy and CDN must not log URL query strings for /api/v1/customer/**: discovery receives the customer's location as lat/lng parameters, and the Privacy Policy says no location history is kept (PCR-013).
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
