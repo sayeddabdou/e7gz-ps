@@ -35,6 +35,7 @@ Nothing in the requirements asked for a Privacy Policy or Terms of Use. Both are
 7. **Contact.** One Gmail address for privacy questions and support, which the Product Owner is creating; it moves to an address on the domain later.
 8. **Providers.** SMS: SMS Misr. The email and hosting providers are chosen in E7-101 and named in the Privacy Policy then.
 9. **No lawyer's check.** The Product Owner decided to launch without a lawyer's check. The texts use plain default wording for data processed outside Egypt, liability, and the courts.
+10. **Drafted on 21 Nov 2026 (for the Product Owner's review):** the Tournaments section of the Terms (from FR-TRN-03, -06, -12, -14, -17, -21, -29), the no-show ladder (FR-TRS-13), and the Arabic version of both texts.
 
 ## Open items for the Product Owner
 
@@ -44,8 +45,7 @@ Nothing in the requirements asked for a Privacy Policy or Terms of Use. Both are
 | The contact Gmail address (decision 7) | The texts can be approved |
 | The email and hosting providers and the hosting country (decision 8) | The texts can be approved (E7-101) |
 | The domain, then publish both pages there (decision 1) | E7-101 |
-| The Tournaments section of the Terms, when the tournament rules are final | The texts can be approved |
-| Arabic versions of the two texts (decision 2) | Launch |
+| Review the Arabic versions (drafted 21 Nov 2026 under the English text in each file, decision 2) | The texts can be approved |
 | The web server in front of the API must not log URL query strings: discovery receives the customer's location as `lat`/`lng` parameters, and the Privacy Policy says no location history is kept | E7-101 |
 
 ## Traceability
