@@ -13,6 +13,7 @@ import ps.e7gz.audit.api.AuditWriter;
 import ps.e7gz.audit.api.OwnerPasswordCheck;
 import ps.e7gz.common.codes.Activity;
 import ps.e7gz.common.codes.ConsoleType;
+import ps.e7gz.common.codes.OperationalRestriction;
 import ps.e7gz.common.codes.ResourceBaseState;
 import ps.e7gz.common.command.Command;
 import ps.e7gz.common.command.CommandContext;
@@ -200,6 +201,34 @@ final class ResourceCommands {
                 .build());
         outbox.publish(context, roomEvent(action.event, venueId, resourceId));
         return Resources.read(context.jdbc(), resourceId);
+    }
+
+    /**
+     * E7-84 (FR-OPS-33): {@code OWNER_REVIEW_REQUIRED -> NONE} at an Owner Review's resolution, after the caller checked
+     * the Owner Password; see {@link ps.e7gz.resource.api.ResourceBaseStateChanges#clearOwnerReviewRestriction}.
+     */
+    static void clearOwnerReviewRestriction(CommandContext context, UUID venueAccountId, UUID venueId,
+                                            UUID resourceId, UUID correlationId, Outbox outbox) {
+        Resources.Resource current = ofVenue(context, venueId, resourceId);
+        if (current.operationalRestriction() != OperationalRestriction.OWNER_REVIEW_REQUIRED) {
+            throw new IllegalStateException("Resource " + resourceId + " is not under OWNER_REVIEW_REQUIRED");
+        }
+        context.jdbc().sql("UPDATE resource.resource SET operational_restriction = 'NONE' WHERE id = :id")
+                .param("id", resourceId).update();
+        Actor actor = Actor.venue(venueAccountId);
+        context.jdbc().sql("""
+                        INSERT INTO resource.resource_state_change(
+                            id, resource_id, from_restriction, to_restriction, owner_password_used, actor_type,
+                            actor_id, correlation_id, changed_at)
+                        VALUES (:id, :resource, 'OWNER_REVIEW_REQUIRED', 'NONE', :ownerPasswordUsed, :actorType,
+                                :actorId, :correlation, :changedAt)""")
+                .param("id", UUID.randomUUID()).param("resource", resourceId)
+                .param("ownerPasswordUsed", actor.ownerPasswordUsed()).param("actorType", actor.type())
+                .param("actorId", actor.id()).param("correlation", correlationId)
+                .param("changedAt", utc(context)).update();
+        outbox.publish(context, new NewOutboxEvent(IntegrationEvents.RESOURCE_RESTRICTION_CHANGED, "RESOURCE",
+                resourceId, Map.of("venueId", venueId.toString(), "resourceId", resourceId.toString(),
+                "restriction", OperationalRestriction.NONE.name())));
     }
 
     /**

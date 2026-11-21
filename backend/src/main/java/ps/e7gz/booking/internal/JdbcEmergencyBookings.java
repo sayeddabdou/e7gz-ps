@@ -77,6 +77,13 @@ import ps.e7gz.scheduling.api.ScheduledJobs;
  *
  * <p>{@link #pause}: the pause instant on the booking and the jobs {@code PAUSED} (arch 08 section 2.5); the pause
  * history row is Operations'.
+ *
+ * <p>E7-84, the Owner Review (arch 06 section 2.7, FR-OPS-28): {@link #endForOwnerReview} is the same core over every
+ * live booking of the Resource, actor SYSTEM, reason {@code RESOURCE_OWNER_REVIEW_REQUIRED}; an ACTIVE booking whose
+ * {@code endAt} already passed (T5 late) is completed as of {@code endAt} through {@link BookingCompletions}, never
+ * interrupted after its end. {@link #startOverdue} starts the Resource's late-T4 bookings before the review is written
+ * (the start gates read the current restriction), and {@link #lateConfirmEligibilityLost} records FR-OPS-32's event on
+ * its expired requests.
  */
 @Component
 class JdbcEmergencyBookings implements EmergencyBookings {
@@ -112,6 +119,31 @@ class JdbcEmergencyBookings implements EmergencyBookings {
              ORDER BY b.start_at, b.id
             """;
 
+    /** E7-84: every live booking of the Resource, whatever its interval. */
+    static final String ON_RESOURCE = COLUMNS + """
+             WHERE b.venue_id = :venue AND b.resource_id = :resource
+               AND b.status IN ('PENDING','AWAITING_CUSTOMER_CONFIRMATION','CONFIRMED','ACTIVE')
+             ORDER BY b.start_at, b.id
+            """;
+
+    /** E7-84: the Resource's expired requests still before their start (Late-Confirmable, FR-OPS-32). */
+    static final String EXPIRED_ON_RESOURCE = COLUMNS + """
+             WHERE b.venue_id = :venue AND b.resource_id = :resource AND b.source = 'ONLINE'
+               AND b.status = 'VENUE_RESPONSE_EXPIRED' AND b.start_at > :now
+             ORDER BY b.start_at, b.id
+            """;
+
+    /** FR-OPS-32: the Booking Event, its detail code required with it ({@code ck_booking_history_detail_code_scope}). */
+    static final String ELIGIBILITY_LOST = """
+            INSERT INTO booking.booking_history (id, booking_id, sequence, occurred_at, entry_kind, event_type,
+                                                 detail_code, actor_type, actor_id, correlation_id)
+            SELECT :id, :bookingId, COALESCE(max(h.sequence), 0) + 1, :occurredAt, 'BOOKING_EVENT',
+                   'LATE_CONFIRM_ELIGIBILITY_LOST_RESOURCE_STATE_CHANGED', 'RESOURCE_OWNER_REVIEW_REQUIRED', 'SYSTEM',
+                   NULL, :correlationId
+              FROM booking.booking_history h
+             WHERE h.booking_id = :bookingId
+            """;
+
     static final String PAUSE_RESPONSE = """
             UPDATE booking.booking SET response_pause_started_at = :at, version = version + 1
              WHERE id = :id AND status = 'PENDING' AND source = 'ONLINE' AND response_pause_started_at IS NULL
@@ -140,6 +172,7 @@ class JdbcEmergencyBookings implements EmergencyBookings {
     private final StartTimeAttendance startAttendance;
     private final LateConfirmBookings lateConfirmPauses;
     private final LateConfirmWindows windows;
+    private final BookingCompletions completions;
 
     JdbcEmergencyBookings(VenueAnswerStore store, ReservationLedger ledger, BookingFeeRefunds refunds,
                           BookingRewards rewards, ScheduledJobs jobs, Outbox outbox, ResponseTimerPauses pauses,
@@ -147,7 +180,8 @@ class JdbcEmergencyBookings implements EmergencyBookings {
                           StartTimeCancellation startCancellation, BookingStarts starts,
                           InterruptionAttendance interruptions,
                           StartTimeAttendance startAttendance, LateConfirmBookings lateConfirmPauses,
-                          LateConfirmWindows windows) {
+                          LateConfirmWindows windows, BookingCompletions completions) {
+        this.completions = completions;
         this.store = store;
         this.ledger = ledger;
         this.refunds = refunds;
@@ -188,19 +222,86 @@ class JdbcEmergencyBookings implements EmergencyBookings {
     }
 
     @Override
+    public List<Live> onResource(CommandContext command, UUID venueId, UUID resourceId) {
+        return command.jdbc().sql(ON_RESOURCE)
+                .param("venue", Objects.requireNonNull(venueId, "venueId"))
+                .param("resource", Objects.requireNonNull(resourceId, "resourceId"))
+                .query(JdbcEmergencyBookings::live).list();
+    }
+
+    @Override
+    public List<Live> expiredOnResource(CommandContext command, UUID venueId, UUID resourceId) {
+        return command.jdbc().sql(EXPIRED_ON_RESOURCE)
+                .param("venue", Objects.requireNonNull(venueId, "venueId"))
+                .param("resource", Objects.requireNonNull(resourceId, "resourceId"))
+                .param("now", utc(command.commandNow()))
+                .query(JdbcEmergencyBookings::live).list();
+    }
+
+    @Override
     public List<Outcome> end(CommandContext context, UUID venueId, UUID venueAccountId, List<UUID> bookingIds,
                              BookingTerminalReason reason) {
-        Objects.requireNonNull(venueId, "venueId");
         Objects.requireNonNull(venueAccountId, "venueAccountId");
         if (!REASONS.contains(Objects.requireNonNull(reason, "reason"))) {
             throw new IllegalArgumentException(reason + " is not an Emergency reason");
         }
+        return endAll(context, venueId, ActorType.VENUE, venueAccountId, bookingIds, reason);
+    }
+
+    @Override
+    public List<Outcome> endForOwnerReview(CommandContext context, UUID venueId, List<UUID> bookingIds) {
+        return endAll(context, venueId, ActorType.SYSTEM, null, bookingIds,
+                BookingTerminalReason.RESOURCE_OWNER_REVIEW_REQUIRED);
+    }
+
+    @Override
+    public List<UUID> startOverdue(CommandContext context, UUID venueId, UUID resourceId) {
+        Instant now = context.commandNow();
+        List<UUID> started = new ArrayList<>();
+        List<UUID> overdue = onResource(context, venueId, resourceId).stream()
+                .filter(row -> row.status() == BookingStatus.CONFIRMED && !row.startAt().isAfter(now))
+                .map(Live::bookingId).sorted().toList();
+        for (UUID bookingId : overdue) {
+            Facts booking = store.facts(context, bookingId).orElseThrow();
+            if (resolution.resolve(context, booking) instanceof StartTimeResolution.Outcome.Start) {
+                jobs.supersede(context, ManualBookingCommand.bookingStartKey(bookingId));
+                starts.start(context, booking);
+                started.add(bookingId);
+            }
+        }
+        return List.copyOf(started);
+    }
+
+    @Override
+    public void lateConfirmEligibilityLost(CommandContext context, UUID venueId, List<UUID> bookingIds) {
+        Objects.requireNonNull(venueId, "venueId");
+        for (UUID bookingId : HoursChangeCancellation.ordered(bookingIds)) {
+            Facts booking = store.facts(context, bookingId)
+                    .filter(found -> found.venueId().equals(venueId))
+                    .orElseThrow(() -> integrityFailure(bookingId, "no such booking of venue " + venueId));
+            if (booking.status() != BookingStatus.VENUE_RESPONSE_EXPIRED) {
+                throw integrityFailure(bookingId, booking.status() + " booking cannot lose Late Confirm eligibility");
+            }
+            context.jdbc().sql(ELIGIBILITY_LOST)
+                    .param("id", UUID.randomUUID()).param("bookingId", bookingId)
+                    .param("occurredAt", utc(context.commandNow()))
+                    .param("correlationId", CorrelationId.require())
+                    .update();
+        }
+    }
+
+    /**
+     * The shared core of {@link #end} and {@link #endForOwnerReview}: checked first, then written in booking-id order at
+     * the command instant, the history rows by {@code actorType} / {@code actor}.
+     */
+    private List<Outcome> endAll(CommandContext context, UUID venueId, ActorType actorType, UUID actor,
+                                 List<UUID> bookingIds, BookingTerminalReason reason) {
+        Objects.requireNonNull(venueId, "venueId");
         List<UUID> ordered = HoursChangeCancellation.ordered(bookingIds);
         if (ordered.isEmpty()) {
             return List.of();
         }
         Instant now = context.commandNow();
-        UUID actor = venueAccountId;
         List<Facts> batch = new ArrayList<>(ordered.size());
         for (UUID bookingId : ordered) {
             Facts booking = store.facts(context, bookingId)
@@ -228,17 +329,18 @@ class JdbcEmergencyBookings implements EmergencyBookings {
             UUID bookingId = booking.bookingId();
             BookingStatus from = booking.status();
             Ended ended = switch (from) {
-                case PENDING -> cancelled(context, booking, reason, now, actor);
+                case PENDING -> cancelled(context, booking, reason, now, actorType, actor);
                 case AWAITING_CUSTOMER_CONFIRMATION -> {
                     closures.closeForCancellation(context, bookingId, reason, now);
-                    yield cancelled(context, booking, reason, now, actor);
+                    yield cancelled(context, booking, reason, now, actorType, actor);
                 }
-                case CONFIRMED -> booking.startAt().isAfter(now) ? cancelled(context, booking, reason, now, actor)
-                        : lateStart(context, booking, reason, now, actor);
-                case ACTIVE -> interrupted(context, booking, reason, now, false, actor);
+                case CONFIRMED -> booking.startAt().isAfter(now)
+                        ? cancelled(context, booking, reason, now, actorType, actor)
+                        : lateStart(context, booking, reason, now, actorType, actor);
+                case ACTIVE -> interruptedOrCompleted(context, booking, reason, now, false, actorType, actor);
                 default -> throw integrityFailure(bookingId, from + " booking is not ended by an Emergency");
             };
-            if (booking.source() == BookingSource.ONLINE) {
+            if (booking.source() == BookingSource.ONLINE && ended.reason() != null) {
                 decisions.add(new BookingFeeRefunds.Decision(booking.customerId(), bookingId, ended.history()));
                 if (ended.attendance() == AttendanceResult.ATTENDED_INTERRUPTED) {
                     interruptedOutcomes.put(bookingId, booking.customerId());
@@ -253,12 +355,7 @@ class JdbcEmergencyBookings implements EmergencyBookings {
         return List.copyOf(outcomes);
     }
 
-    /** A booking that has not started: CANCELLED under the Emergency reason, released, its jobs withdrawn. */
-    private Ended cancelled(CommandContext context, Facts booking, BookingTerminalReason reason, Instant now,
-                            UUID actor) {
-        return cancelled(context, booking, reason, now, ActorType.VENUE, actor);
-    }
-
+    /** A booking that has not started: CANCELLED under the cause's reason, released, its jobs withdrawn. */
     private Ended cancelled(CommandContext context, Facts booking, BookingTerminalReason reason, Instant now,
                             ActorType actorType, UUID actor) {
         UUID bookingId = booking.bookingId();
@@ -291,14 +388,14 @@ class JdbcEmergencyBookings implements EmergencyBookings {
      * Emergency (PO decisions 19-20 Oct 2026; R1 of E7-60 for the same "start first" rule).
      */
     private Ended lateStart(CommandContext context, Facts booking, BookingTerminalReason reason, Instant now,
-                            UUID actor) {
+                            ActorType actorType, UUID actor) {
         jobs.supersede(context, ManualBookingCommand.bookingStartKey(booking.bookingId()));
         StartTimeResolution.Outcome start = resolution.resolve(context, booking);
         return switch (start) {
             case StartTimeResolution.Outcome.Start started -> {
                 starts.start(context, booking);
                 Facts active = store.facts(context, booking.bookingId()).orElseThrow();
-                yield interrupted(context, active, reason, now, true, actor);
+                yield interruptedOrCompleted(context, active, reason, now, true, actorType, actor);
             }
             case StartTimeResolution.Outcome.Cancel cancel -> {
                 UUID history = startCancellation.cancelWithoutDecision(context, booking, cancel);
@@ -307,17 +404,31 @@ class JdbcEmergencyBookings implements EmergencyBookings {
                 yield new Ended(history, cancel.reason(), null, false);
             }
             case StartTimeResolution.Outcome.Undetermined undetermined -> {
-                log.warn("Late start of booking {} undetermined ({}); the Emergency cancels it unstarted "
-                                + "(correlationId={})", booking.bookingId(), undetermined.why(),
+                log.warn("Late start of booking {} undetermined ({}); {} cancels it unstarted "
+                                + "(correlationId={})", booking.bookingId(), undetermined.why(), reason,
                         CorrelationId.current().map(UUID::toString).orElse("none"));
-                yield cancelled(context, booking, reason, now, actor);
+                yield cancelled(context, booking, reason, now, actorType, actor);
             }
         };
     }
 
+    /**
+     * An ACTIVE booking: interrupted now - or, E7-84, when its {@code endAt} has already passed (T5 late), completed as
+     * of {@code endAt} as T5 would have, since there is no session left to interrupt.
+     */
+    private Ended interruptedOrCompleted(CommandContext context, Facts booking, BookingTerminalReason reason,
+                                         Instant now, boolean startedFirst, ActorType actorType, UUID actor) {
+        if (booking.endAt().isAfter(now)) {
+            return interrupted(context, booking, reason, now, startedFirst, actorType, actor);
+        }
+        jobs.supersede(context, ManualBookingCommand.bookingCompleteKey(booking.bookingId()));
+        AttendanceResult attendance = completions.completeAtEnd(context, booking);
+        return new Ended(null, null, attendance, startedFirst);
+    }
+
     /** An ACTIVE booking interrupted now: CANCELLED, released now, T5 withdrawn, attendance from the evidence. */
     private Ended interrupted(CommandContext context, Facts booking, BookingTerminalReason reason, Instant now,
-                              boolean startedFirst, UUID actor) {
+                              boolean startedFirst, ActorType actorType, UUID actor) {
         UUID bookingId = booking.bookingId();
         ActiveReservation reservation = ownReservation(context, booking);
         if (!store.terminate(context, bookingId, BookingStatus.ACTIVE, BookingStatus.CANCELLED, reason, now, null)) {
@@ -326,7 +437,7 @@ class JdbcEmergencyBookings implements EmergencyBookings {
         ledger.release(context, reservation.id(), now, reason.name());
         jobs.supersede(context, ManualBookingCommand.bookingCompleteKey(bookingId));
         UUID history = store.insertTransition(context, bookingId, now, BookingStatus.ACTIVE, BookingStatus.CANCELLED,
-                reason, ActorType.VENUE, actor, CorrelationId.require());
+                reason, actorType, actor, CorrelationId.require());
         AttendanceResult attendance = interruptions.resolveInterrupted(context, new AttendanceBookings.Booking(
                 bookingId, booking.venueId(), booking.resourceId(), booking.customerId(), booking.source(),
                 BookingStatus.CANCELLED, booking.startAt(), booking.endAt()));

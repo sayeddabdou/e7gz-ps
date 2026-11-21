@@ -322,6 +322,13 @@ public final class IntegrationEvents {
     public static final String TIMER_PAUSE_CAP_REACHED = "TimerPauseCapReached";
 
     /**
+     * {@code {venueId, resourceId, restriction, ownerReviewId?}}, aggregate {@code RESOURCE}: the Resource's operational
+     * restriction changed - it entered OWNER_REVIEW_REQUIRED at an Emergency's expected or actual end (FR-OPS-26,
+     * FR-OPS-27; the venue owner is told, FR-OPS-29) or its Owner Review was resolved (FR-OPS-33). E7-84.
+     */
+    public static final String RESOURCE_RESTRICTION_CHANGED = "ResourceRestrictionChanged";
+
+    /**
      * Every event that can change a venue's availability and so refreshes its Nearest Availability rows (arch 05
      * section 5.3, arch 08 section 7): reservation hold or release, Resource state, selling blocks (maintenance,
      * closures, emergencies), opening hours and prices. Each carries the {@code venueId} it touches;
@@ -333,7 +340,7 @@ public final class IntegrationEvents {
     public static final Set<String> INVENTORY_AFFECTING = Set.of(
             RESERVATION_HELD, RESERVATION_RELEASED,
             RESOURCE_DISABLED, RESOURCE_RE_ENABLED, RESOURCE_ARCHIVED, RESOURCE_RESTORED,
-            RESOURCE_CONSOLE_CHANGED, "ResourceRestrictionChanged",
+            RESOURCE_CONSOLE_CHANGED, RESOURCE_RESTRICTION_CHANGED,
             MAINTENANCE_CREATED, MAINTENANCE_EDITED, MAINTENANCE_DELETED,
             CLOSURE_CREATED,
             EMERGENCY_DECLARED, EMERGENCY_EXTENDED, EMERGENCY_ENDED, EMERGENCY_CONVERTED,

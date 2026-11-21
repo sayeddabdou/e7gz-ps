@@ -37,4 +37,11 @@ class JdbcResourceBaseStateChanges implements ResourceBaseStateChanges {
                 resourceId, Objects.requireNonNull(correlationId, "correlationId"), action,
                 Objects.requireNonNull(check, "check"), commitments, audit, outbox);
     }
+
+    @Override
+    public void clearOwnerReviewRestriction(CommandContext command, UUID venueAccountId, UUID venueId,
+                                            UUID resourceId, UUID correlationId) {
+        ResourceCommands.clearOwnerReviewRestriction(command, Objects.requireNonNull(venueAccountId, "venueAccountId"),
+                venueId, resourceId, Objects.requireNonNull(correlationId, "correlationId"), outbox);
+    }
 }

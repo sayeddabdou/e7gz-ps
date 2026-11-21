@@ -558,7 +558,8 @@ class EmergencyHttpTest extends IntegrationTest {
         UUID venueId = OWNER.sql("SELECT venue_id FROM operations.emergency WHERE id = :id").param("id", id)
                 .query(UUID.class).single();
         return runner.run(TestCommands.under(CommandScope.shared(LockSet.builder().venues(venueId).build()),
-                ctx -> EmergencyCommands.expectedEnd(ctx, emergencies.deps(), id, dueAt)));
+                ctx -> EmergencyCommands.expectedEnd(ctx, emergencies.deps(), id, dueAt,
+                        LockSet.builder().venues(venueId).build())));
     }
 
     static String statusOf(UUID bookingId) {

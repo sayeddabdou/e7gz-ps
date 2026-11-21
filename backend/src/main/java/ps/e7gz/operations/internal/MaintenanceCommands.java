@@ -163,7 +163,7 @@ final class MaintenanceCommands {
      * interval, the Closure overlap (FR-VEN-33), the rolling threshold (FR-OPS-03/04); then the row, its ledger row,
      * the audit row and the event, all in this transaction (Sprint 2 review, PO decision 12 Oct 2026).
      */
-    private static Window save(CommandContext context, Change change, Deps deps, OwnerPasswordCheck check) {
+    static Window save(CommandContext context, Change change, Deps deps, OwnerPasswordCheck check) {
         Instant now = context.commandNow();
         Optional<Window> current = Optional.empty();
         if (change.maintenanceId() == null) {
