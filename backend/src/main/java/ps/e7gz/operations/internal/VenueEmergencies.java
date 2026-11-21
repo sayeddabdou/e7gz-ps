@@ -11,6 +11,7 @@ import java.util.function.Function;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
+import ps.e7gz.admin.api.AdminAlerts;
 import ps.e7gz.audit.api.AuditWriter;
 import ps.e7gz.common.codes.EmergencyConversionTarget;
 import ps.e7gz.common.codes.EmergencyScope;
@@ -75,14 +76,14 @@ public class VenueEmergencies {
                      ResourceCatalog catalog, OperatingSessions sessions, ActiveCommitments commitments,
                      ResourceBaseStateChanges baseStates, HoursChangeBookings hoursBookings, ReservationLedger ledger,
                      AuditWriter audit, Outbox outbox, ScheduledJobs jobs, ObjectMapper json,
-                     DataSource appDataSource, TimerPauses timers) {
+                     DataSource appDataSource, TimerPauses timers, AdminAlerts alerts) {
         this.runner = runner;
         this.gate = gate;
         this.accounts = accounts;
         this.idempotency = idempotency;
         this.deps = new Deps(bookings, tournaments, resources, catalog, sessions, commitments, baseStates, audit,
                 outbox, jobs, gate, new ClosureCommands.Deps(commitments, hoursBookings, ledger, catalog, audit, outbox,
-                gate), json, timers);
+                gate), json, timers, alerts);
         this.jdbc = JdbcClient.create(appDataSource);
     }
 
@@ -178,10 +179,22 @@ public class VenueEmergencies {
                                        StoredResponse<R> response, Function<View, R> view) {
         Objects.requireNonNull(key, "key");
         UUID venueId = accounts.venueOf(venueAccountId);
-        LockSet locks = runner.run(new SubjectLocks(venueId, emergencyId, deps)).build();
-        return runner.run(idempotency.wrap(key, response, new Mapped<>(new EmergencyCommands.End(venueId,
-                venueAccountId, CorrelationId.require(), emergencyId, locks, deps),
-                emergency -> view.apply(View.of(emergency)))));
+        UUID correlationId = CorrelationId.require();
+        // E7-84: the end of a resource Emergency may enter an Owner Review, whose cascade reaches the room's Customers
+        // and Tournaments; a reach grown between plan and write plans again, as a declaration does
+        for (int attempt = 1; ; attempt++) {
+            LockSet locks = runner.run(new SubjectLocks(venueId, emergencyId, deps)).build();
+            try {
+                return runner.run(idempotency.wrap(key, response, new Mapped<>(new EmergencyCommands.End(venueId,
+                        venueAccountId, correlationId, emergencyId, locks, deps),
+                        emergency -> view.apply(View.of(emergency)))));
+            } catch (EmergencyCommands.StaleLocks grown) {
+                if (attempt >= DECLARE_ATTEMPTS) {
+                    throw new IllegalStateException("The Owner Review's reach kept growing while the Emergency ended",
+                            grown);
+                }
+            }
+        }
     }
 
     public Preview previewConversion(UUID venueAccountId, UUID emergencyId, ConversionView conversion) {
@@ -307,6 +320,8 @@ public class VenueEmergencies {
                         locks.resources(timer.resourceId());
                         locks.users(timer.customerId());
                     }));
+            // E7-84: an end may enter an Owner Review (FR-OPS-26); a conversion never does, but shares these locks
+            emergency.ifPresent(found -> EmergencyCommands.ownerReviewLocks(context, deps, found, locks));
             return locks;
         }
     }

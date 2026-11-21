@@ -12,6 +12,7 @@ import ps.e7gz.booking.api.AttendanceBookings;
 import ps.e7gz.booking.api.CompletionAttendance;
 import ps.e7gz.booking.internal.VenueAnswerStore.Facts;
 import ps.e7gz.common.codes.ActorType;
+import ps.e7gz.common.codes.AttendanceResult;
 import ps.e7gz.common.codes.BookingSource;
 import ps.e7gz.common.codes.BookingStatus;
 import ps.e7gz.common.command.CommandContext;
@@ -82,6 +83,21 @@ class BookingCompletions {
         if (context.commandNow().isBefore(booking.endAt())) {
             return JobOutcome.rescheduleAt(booking.endAt());
         }
+        completeAtEnd(context, booking);
+        return JobOutcome.done();
+    }
+
+    /**
+     * The completion of an ACTIVE booking whose {@code endAt} has passed, as of {@code endAt} - T5's own write. Also
+     * E7-84's: an Owner Review that reaches an ACTIVE booking past its end (T5 late) completes it as T5 would have,
+     * never interrupting a session that is over. Needs the booking's Customer, Venue and Resource locks.
+     *
+     * @return the Attendance Result the completion resolved
+     */
+    AttendanceResult completeAtEnd(CommandContext context, Facts booking) {
+        if (booking.status() != BookingStatus.ACTIVE || context.commandNow().isBefore(booking.endAt())) {
+            throw new IllegalStateException("Booking " + booking.bookingId() + " is not an ACTIVE booking past its end");
+        }
         Instant endAt = booking.endAt();
         ActiveReservation reservation = ownReservation(context, booking);
         if (!store.complete(context, booking.bookingId(), endAt)) {
@@ -96,10 +112,9 @@ class BookingCompletions {
         }
         outbox.publish(context, booking.source() == BookingSource.MANUAL ? BookingEvents.manualCompleted(booking)
                 : BookingEvents.completed(booking));
-        attendance.resolveAtCompletion(context, new AttendanceBookings.Booking(booking.bookingId(),
+        return attendance.resolveAtCompletion(context, new AttendanceBookings.Booking(booking.bookingId(),
                 booking.venueId(), booking.resourceId(), booking.customerId(), booking.source(),
                 BookingStatus.COMPLETED, booking.startAt(), endAt));
-        return JobOutcome.done();
     }
 
     /** The booking's own active BOOKING reservation over exactly its Resource and interval (D11, E7-47). */

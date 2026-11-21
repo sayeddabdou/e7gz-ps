@@ -71,6 +71,49 @@ public interface EmergencyBookings {
                       BookingTerminalReason reason);
 
     /**
+     * E7-84 (FR-OPS-28, Spec v5 section 43.3): every live booking - PENDING, AWAITING_CUSTOMER_CONFIRMATION, CONFIRMED
+     * or ACTIVE, Online and Manual - of the Resource, whatever its interval: an Owner Review leaves none live
+     * ({@code operations.assert_owner_review_cascade_complete}). In start, then id order. Read-only.
+     */
+    List<Live> onResource(CommandContext command, UUID venueId, UUID resourceId);
+
+    /**
+     * E7-84 (FR-OPS-32, Spec v5 section 43.6): the VENUE_RESPONSE_EXPIRED Online Bookings of the Resource still before
+     * their {@code startAt} - Late-Confirmable, holding no reservation, so outside the cascade. Read-only.
+     */
+    List<Live> expiredOnResource(CommandContext command, UUID venueId, UUID resourceId);
+
+    /**
+     * E7-84: ends exactly {@code bookingIds} under {@code RESOURCE_OWNER_REVIEW_REQUIRED} as a system operational
+     * consequence (actor SYSTEM, no Owner Password - FR-OPS-29), as {@link #end} ends an Emergency's set, with what a
+     * whole-resource cascade adds: a booking whose time already passed with its timers late gets the outcome those timers
+     * would have written first, never an interruption after its end - an ACTIVE one past its {@code endAt} is completed
+     * as of {@code endAt} (T5), a CONFIRMED one started at {@code startAt} (T4, as {@link #end}) and, past its end,
+     * completed as of {@code endAt}. Such a completed booking's {@link Outcome#completed()} is true and it gets no fee
+     * decision.
+     */
+    List<Outcome> endForOwnerReview(CommandContext command, UUID venueId, List<UUID> bookingIds);
+
+    /**
+     * E7-84 (PO decisions 19-20 Oct 2026, R1 "start first"; Spec v5 section 31.7): the CONFIRMED bookings of the
+     * Resource whose {@code startAt} passed with T4 late, started as of {@code startAt} when T4's own resolution says
+     * start - its job withdrawn, the start written as T4 writes it. Called before a write that may change the Resource's
+     * current state (an Owner Review entry), because the start gates read that state: the start is judged before the
+     * cause exists, as an Emergency's cascade judges it before the Emergency row. A booking whose resolution is not a
+     * start is left as it is, for T4 or the cascade. Needs the bookings' Customers in the lock set.
+     *
+     * @return the bookings started, in id order
+     */
+    List<UUID> startOverdue(CommandContext command, UUID venueId, UUID resourceId);
+
+    /**
+     * E7-84 (FR-OPS-32, Spec v5 section 43.6): one {@code LATE_CONFIRM_ELIGIBILITY_LOST_RESOURCE_STATE_CHANGED} Booking
+     * Event with {@code detailCode RESOURCE_OWNER_REVIEW_REQUIRED} on each of {@code bookingIds} - VENUE_RESPONSE_EXPIRED
+     * Online Bookings of {@code venueId} - at the command instant, actor SYSTEM. Nothing else changes.
+     */
+    void lateConfirmEligibilityLost(CommandContext command, UUID venueId, List<UUID> bookingIds);
+
+    /**
      * Pauses the running timer of exactly {@code bookingIds} at the command instant (FR-OPS-34, FR-OPS-35): a PENDING
      * Online Booking's venue-response timer, an AWAITING one's Late Confirm countdown - its pause instant on the booking
      * and its jobs {@code PAUSED}. The caller appends the open {@code operations.booking_timer_pause_history} row (it
@@ -172,8 +215,9 @@ public interface EmergencyBookings {
      *
      * @param from         its status when the cascade reached it
      * @param startedFirst a late-T4 booking the cascade started at its {@code startAt} before interrupting it
-     * @param reason       the terminal reason written: the Emergency's, or a start-time reason T4 would have written
-     * @param attendance   the Attendance Result an interruption resolved; null when it never started
+     * @param reason       the terminal reason written: the cause's, or a start-time reason T4 would have written; null
+     *                     when the booking was completed instead ({@link #completed()}, E7-84)
+     * @param attendance   the Attendance Result an interruption or completion resolved; null when it never started
      * @param bookingFee   the Booking Fee snapshot (the full-refund amount of an Online Booking; zero for Manual)
      */
     record Outcome(UUID bookingId, UUID resourceId, BookingSource source, BookingStatus from, boolean startedFirst,
@@ -184,8 +228,12 @@ public interface EmergencyBookings {
             Objects.requireNonNull(resourceId, "resourceId");
             Objects.requireNonNull(source, "source");
             Objects.requireNonNull(from, "from");
-            Objects.requireNonNull(reason, "reason");
             Objects.requireNonNull(bookingFee, "bookingFee");
+        }
+
+        /** E7-84: its time had passed, so it was COMPLETED as of its {@code endAt} - not cancelled, no refund. */
+        public boolean completed() {
+            return reason == null;
         }
     }
 }

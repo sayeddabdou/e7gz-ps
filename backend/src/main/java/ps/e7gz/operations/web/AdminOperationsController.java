@@ -20,17 +20,17 @@ import ps.e7gz.common.codes.EmergencyScope;
 import ps.e7gz.common.codes.EmergencyStatus;
 import ps.e7gz.common.codes.OwnerReviewResolution;
 import ps.e7gz.common.web.DataResponse;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.PageView;
 import ps.e7gz.common.web.ResponseMetaFactory;
 import ps.e7gz.operations.internal.VenueEmergencies;
+import ps.e7gz.operations.internal.VenueOwnerReviews;
 
 /**
  * Platform Admin — read-only monitors of Owner Reviews and Emergencies (FRS F-22, FR-OPS-06, FR-OPS-11 "Platform Admin
  * visibility", FR-OPS-29). Not in arch 09 §5: PO decision 19 Nov 2026 (E7-77, D3) adds them so the Admin can watch both
  * (E7-86). There is no admin action here: a review is resolved only by the venue with its Owner Password (FR-OPS-33).
- * Stubs of the Sprint 5 contract until E7-84 (owner reviews) and E7-82 (emergencies).
+ * Built by E7-84 (owner reviews) and E7-82 (emergencies) on the Sprint 5 contract.
  */
 @RestController
 @RequestMapping("/api/v1/admin")
@@ -40,10 +40,13 @@ import ps.e7gz.operations.internal.VenueEmergencies;
 public class AdminOperationsController {
 
     private final VenueEmergencies emergencies;
+    private final VenueOwnerReviews reviews;
     private final ResponseMetaFactory meta;
 
-    public AdminOperationsController(VenueEmergencies emergencies, ResponseMetaFactory meta) {
+    public AdminOperationsController(VenueEmergencies emergencies, VenueOwnerReviews reviews,
+                                     ResponseMetaFactory meta) {
         this.emergencies = emergencies;
+        this.reviews = reviews;
         this.meta = meta;
     }
 
@@ -58,7 +61,9 @@ public class AdminOperationsController {
             @RequestParam(required = false) Boolean resolved,
             @RequestParam(required = false) String cursor,
             @RequestParam(required = false) @Min(1) @Max(100) Integer limit) {
-        throw NotImplementedYet.stub();
+        VenueOwnerReviews.AdminPage page = reviews.adminList(venueId, resolved, cursor, limit);
+        return meta.data(new PageView<>(page.items().stream().map(AdminOwnerReview::of).toList(),
+                page.nextCursor()));
     }
 
     @GetMapping("/emergencies")
@@ -85,6 +90,12 @@ public class AdminOperationsController {
             @NotNull @Schema(example = "2026-12-09T21:00:00Z") Instant enteredAt,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) Instant resolvedAt,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true) OwnerReviewResolution resolution) {
+
+        static AdminOwnerReview of(VenueOwnerReviews.AdminView row) {
+            VenueOwnerReviews.View r = row.review();
+            return new AdminOwnerReview(r.id(), row.venueId(), row.venueName(), r.resourceId(), row.resourceName(),
+                    r.enteredAt(), r.resolvedAt(), r.resolution());
+        }
     }
 
     @Schema(name = "AdminEmergency")
