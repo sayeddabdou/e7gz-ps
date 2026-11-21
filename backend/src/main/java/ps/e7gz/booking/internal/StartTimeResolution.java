@@ -60,14 +60,9 @@ class StartTimeResolution {
     Outcome resolve(CommandContext context, Facts booking) {
         Objects.requireNonNull(booking, "booking");
         Instant at = booking.startAt();
-        if (operations.ownerReviewAt(context, booking.resourceId(), at)) {
-            return new Outcome.Cancel(BookingTerminalReason.RESOURCE_OWNER_REVIEW_REQUIRED, null);
-        }
-        if (operations.resourceEmergencyAt(context, booking.resourceId(), at)) {
-            return new Outcome.Cancel(BookingTerminalReason.RESOURCE_EMERGENCY_OUTAGE, null);
-        }
-        if (operations.venueEmergencyAt(context, booking.venueId(), at)) {
-            return new Outcome.Cancel(BookingTerminalReason.VENUE_EMERGENCY_CLOSURE, null);
+        Optional<BookingTerminalReason> operational = operationalCauseAtStart(context, booking);
+        if (operational.isPresent()) {
+            return new Outcome.Cancel(operational.get(), null);
         }
         if (operations.closurePreventsService(context, booking.venueId(), booking.startAt(), booking.endAt())) {
             return new Outcome.Cancel(BookingTerminalReason.VENUE_CLOSURE, null);
@@ -85,6 +80,26 @@ class StartTimeResolution {
         }
         // an empty answer means the booking's own reservation is missing: the caller's ledger read finds that defect
         return new Outcome.Start();
+    }
+
+    /**
+     * The first three rungs, shared by section 31.6 and FR-BOK-23 (Spec v5 section 24.3), in their common frozen
+     * priority, each read from its own state as of the stored {@code startAt}: Owner Review, then a Resource Emergency,
+     * then a Venue Emergency. Empty when none was in force at startAt. E7-118's T6 reads its causes here too, so the
+     * start-time reads exist once.
+     */
+    Optional<BookingTerminalReason> operationalCauseAtStart(CommandContext context, Facts booking) {
+        Instant at = booking.startAt();
+        if (operations.ownerReviewAt(context, booking.resourceId(), at)) {
+            return Optional.of(BookingTerminalReason.RESOURCE_OWNER_REVIEW_REQUIRED);
+        }
+        if (operations.resourceEmergencyAt(context, booking.resourceId(), at)) {
+            return Optional.of(BookingTerminalReason.RESOURCE_EMERGENCY_OUTAGE);
+        }
+        if (operations.venueEmergencyAt(context, booking.venueId(), at)) {
+            return Optional.of(BookingTerminalReason.VENUE_EMERGENCY_CLOSURE);
+        }
+        return Optional.empty();
     }
 
     /** The start-time resolution. */

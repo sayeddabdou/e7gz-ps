@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { components } from "@e7gz/api-client";
 import { webTokens } from "@e7gz/tokens/web";
 import { apiErrorOf, type ApiClient } from "../../api";
+import { StoredText } from "../../components";
+import { formatDateTime, formatMoney } from "../../formatters";
 import { useMessages } from "../../i18n";
 import { bookingErrorMessage } from "../walk-in/errorMessages";
 
@@ -62,10 +64,6 @@ export function dateRangeFor(preset: Exclude<DatePreset, "custom">, businessDate
   const from = `${year}-${String(month).padStart(2, "0")}-01`;
   const to = new Date(Date.UTC(year!, month!, 0)).toISOString().slice(0, 10);
   return { from, to };
-}
-
-function timeLabel(instant: string, locale: string): string {
-  return new Date(instant).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Cairo" });
 }
 
 export function BookingHistoryScreen({ api, onOpenBooking }: { api: ApiClient; onOpenBooking: (bookingId: string) => void }) {
@@ -181,7 +179,7 @@ export function BookingHistoryScreen({ api, onOpenBooking }: { api: ApiClient; o
       <div><button disabled={!businessDate || applying} style={styles.button} type="submit">{applying ? t.applying : t.apply}</button></div>
     </form>
     {error ? <div><p role="alert" style={styles.error}>{error}</p><button onClick={() => { setError(undefined); if (businessDate) void apply(); else setReload((value) => value + 1); }} style={styles.secondaryButton} type="button">{t.retry}</button></div> : null}
-    {!items ? error ? null : <p role="status">{t.loading}</p> : items.length === 0 ? <p>{t.empty}</p> : <div style={styles.tableWrap}><table style={styles.table}><thead><tr><th style={styles.cell}>{t.start}</th><th style={styles.cell}>{t.resource}</th><th style={styles.cell}>{t.customer}</th><th style={styles.cell}>{t.source}</th><th style={styles.cell}>{t.status}</th><th style={styles.cell}>{t.price}</th><th style={styles.cell}>{t.actions}</th></tr></thead><tbody>{items.map((booking) => <tr key={booking.bookingId}><td style={styles.cell}>{timeLabel(booking.startAt, t.locale)}</td><td style={styles.cell}>{booking.resource.name}</td><td style={styles.cell}>{booking.customer?.username ?? booking.walkIn?.name ?? t.walkIn}</td><td style={styles.cell}>{booking.source === "ONLINE" ? t.sources.ONLINE : t.sources.MANUAL}</td><td style={{ ...styles.cell, ...styles.status }}>{messages.bookings.today.statuses[booking.status]}</td><td style={styles.cell}>{booking.venuePriceTotal.amount} {booking.venuePriceTotal.currency}</td><td style={styles.cell}><button onClick={() => onOpenBooking(booking.bookingId)} style={styles.secondaryButton} type="button">{t.view}</button></td></tr>)}</tbody></table></div>}
+    {!items ? error ? null : <p role="status">{t.loading}</p> : items.length === 0 ? <p>{t.empty}</p> : <div style={styles.tableWrap}><table style={styles.table}><thead><tr><th style={styles.cell}>{t.start}</th><th style={styles.cell}>{t.resource}</th><th style={styles.cell}>{t.customer}</th><th style={styles.cell}>{t.source}</th><th style={styles.cell}>{t.status}</th><th style={styles.cell}>{t.price}</th><th style={styles.cell}>{t.actions}</th></tr></thead><tbody>{items.map((booking) => <tr key={booking.bookingId}><td style={styles.cell}>{formatDateTime(booking.startAt, t.locale)}</td><td style={styles.cell}><StoredText>{booking.resource.name}</StoredText></td><td style={styles.cell}><StoredText>{booking.customer?.username ?? booking.walkIn?.name ?? t.walkIn}</StoredText></td><td style={styles.cell}>{booking.source === "ONLINE" ? t.sources.ONLINE : t.sources.MANUAL}</td><td style={{ ...styles.cell, ...styles.status }}>{messages.bookings.today.statuses[booking.status]}</td><td style={styles.cell}>{formatMoney(booking.venuePriceTotal, t.locale)}</td><td style={styles.cell}><button onClick={() => onOpenBooking(booking.bookingId)} style={styles.secondaryButton} type="button">{t.view}</button></td></tr>)}</tbody></table></div>}
     {nextCursor ? <div style={styles.actions}><button disabled={loadingMore} onClick={() => void loadMore()} style={styles.secondaryButton} type="button">{loadingMore ? t.loadingMore : t.loadMore}</button></div> : null}
   </section>;
 }

@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { components } from "@e7gz/api-client";
 import { webTokens } from "@e7gz/tokens/web";
 import { apiErrorOf, type ApiClient } from "../../api";
+import { StoredText } from "../../components";
+import { formatBusinessDate, formatDateTime, formatMoney, formatTime } from "../../formatters";
 import { useMessages } from "../../i18n";
 import { bookingErrorMessage } from "../walk-in/errorMessages";
 import { createIdempotencyKey, isInsideWindow, serverClockOffset, useServerNow } from "../operations";
@@ -36,18 +38,6 @@ const styles = {
   dangerButton: { backgroundColor: webTokens.color.surface.raised, border: `${webTokens.spacing.hairline}px solid ${webTokens.color.feedback.danger}`, borderRadius: webTokens.radius.lg, color: webTokens.color.feedback.danger, cursor: "pointer", fontWeight: webTokens.typography.fontWeight.bold, paddingBlock: webTokens.spacing.md, paddingInline: webTokens.spacing.xl },
   input: { border: `${webTokens.spacing.hairline}px solid ${webTokens.color.border.venue}`, borderRadius: webTokens.radius.lg, font: "inherit", paddingBlock: webTokens.spacing.md, paddingInline: webTokens.spacing.lg },
 } satisfies Record<string, CSSProperties>;
-
-function timeLabel(instant: string, locale: string): string {
-  return new Date(instant).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit", timeZone: "Africa/Cairo" });
-}
-
-function dateTimeLabel(instant: string, locale: string): string {
-  return new Date(instant).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Cairo" });
-}
-
-function businessDateLabel(date: string, locale: string): string {
-  return new Date(`${date}T12:00:00Z`).toLocaleDateString(locale, { dateStyle: "long", timeZone: "Africa/Cairo" });
-}
 
 function personLabel(booking: Booking, fallback: string): string {
   return booking.customer?.username ?? booking.walkIn?.name ?? fallback;
@@ -117,12 +107,12 @@ export function TodayBookingsScreen({ api, onOpenBooking }: { api: ApiClient; on
   };
 
   return <section style={styles.page}>
-    <header style={styles.header}><div><h2 style={styles.heading}>{t.title}</h2><p style={styles.intro}>{t.description}</p></div><div>{businessDate ? <time dateTime={businessDate} style={styles.date}>{businessDateLabel(businessDate, t.locale)}</time> : null} <button disabled={refreshing} onClick={refresh} style={styles.button} type="button">{refreshing ? t.refreshing : t.refresh}</button></div></header>
-    {!bookings ? error ? <div><p role="alert" style={styles.error}>{error}</p><button onClick={refresh} style={styles.button} type="button">{t.retry}</button></div> : <p role="status">{refreshing ? t.refreshing : t.loading}</p> : bookings.length === 0 ? <p>{t.empty}</p> : <div style={styles.groups}>{groups.map((group) => <section key={group.id} style={styles.group}><h3 style={styles.groupHeading}>{group.name}</h3><ul style={styles.list}>{group.bookings.map((booking) => <li key={booking.bookingId} style={styles.booking}><div><strong>{timeLabel(booking.startAt, t.locale)}–{timeLabel(booking.endAt, t.locale)}</strong><br /><span>{personLabel(booking, t.walkIn)}</span></div><span>{messages.activity[booking.resource.activity]}</span><span style={styles.status}>{t.statuses[booking.status]}</span><button onClick={() => onOpenBooking(booking.bookingId)} style={styles.button} type="button">{t.view}</button></li>)}</ul></section>)}</div>}
+    <header style={styles.header}><div><h2 style={styles.heading}>{t.title}</h2><p style={styles.intro}>{t.description}</p></div><div>{businessDate ? <time dateTime={businessDate} style={styles.date}>{formatBusinessDate(businessDate, t.locale)}</time> : null} <button disabled={refreshing} onClick={refresh} style={styles.button} type="button">{refreshing ? t.refreshing : t.refresh}</button></div></header>
+    {!bookings ? error ? <div><p role="alert" style={styles.error}>{error}</p><button onClick={refresh} style={styles.button} type="button">{t.retry}</button></div> : <p role="status">{refreshing ? t.refreshing : t.loading}</p> : bookings.length === 0 ? <p>{t.empty}</p> : <div style={styles.groups}>{groups.map((group) => <section key={group.id} style={styles.group}><h3 style={styles.groupHeading}><StoredText>{group.name}</StoredText></h3><ul style={styles.list}>{group.bookings.map((booking) => <li key={booking.bookingId} style={styles.booking}><div><strong>{formatTime(booking.startAt, t.locale)}–{formatTime(booking.endAt, t.locale)}</strong><br /><span><StoredText>{personLabel(booking, t.walkIn)}</StoredText></span></div><span>{messages.activity[booking.resource.activity]}</span><span style={styles.status}>{t.statuses[booking.status]}</span><button onClick={() => onOpenBooking(booking.bookingId)} style={styles.button} type="button">{t.view}</button></li>)}</ul></section>)}</div>}
   </section>;
 }
 
-function DetailItem({ label, value }: { label: string; value: string }) {
+function DetailItem({ label, value }: { label: string; value: ReactNode }) {
   return <div style={styles.detailItem}><dt style={styles.term}>{label}</dt><dd style={styles.value}>{value}</dd></div>;
 }
 
@@ -152,24 +142,24 @@ export function BookingDetailScreen({ api, backLabel, bookingId, onBack }: { api
 
   return <section style={styles.page}>
     <div><button onClick={onBack} style={styles.button} type="button">{backLabel ?? t.back}</button></div>
-    <header><h2 style={styles.heading}>{t.title}</h2><p style={styles.intro}>{booking.resource.name}</p></header>
+    <header><h2 style={styles.heading}>{t.title}</h2><p style={styles.intro}><StoredText>{booking.resource.name}</StoredText></p></header>
     <article style={styles.detailCard}>
       <dl style={styles.details}>
         <DetailItem label={t.status} value={messages.bookings.today.statuses[booking.status]} />
         <DetailItem label={t.source} value={booking.source === "MANUAL" ? t.manual : t.online} />
         <DetailItem label={t.activity} value={messages.activity[booking.resource.activity]} />
         <DetailItem label={t.businessDate} value={booking.businessDate} />
-        <DetailItem label={t.start} value={dateTimeLabel(booking.startAt, t.locale)} />
-        <DetailItem label={t.end} value={dateTimeLabel(booking.endAt, t.locale)} />
+        <DetailItem label={t.start} value={formatDateTime(booking.startAt, t.locale)} />
+        <DetailItem label={t.end} value={formatDateTime(booking.endAt, t.locale)} />
         <DetailItem label={t.duration} value={t.durationMinutes(booking.nominalBookedMinutes)} />
-        <DetailItem label={t.price} value={`${booking.venuePriceTotal.amount} ${booking.venuePriceTotal.currency}`} />
-        {contactName ? <DetailItem label={t.customer} value={contactName} /> : null}
+        <DetailItem label={t.price} value={formatMoney(booking.venuePriceTotal, t.locale)} />
+        {contactName ? <DetailItem label={t.customer} value={<StoredText>{contactName}</StoredText>} /> : null}
         {booking.terminalReason ? <DetailItem label={t.terminalReason} value={t.terminalReasons[booking.terminalReason]} /> : null}
-        {booking.rejectReasonText ? <DetailItem label={t.rejectReason} value={booking.rejectReasonText} /> : null}
+        {booking.rejectReasonText ? <DetailItem label={t.rejectReason} value={<StoredText>{booking.rejectReasonText}</StoredText>} /> : null}
       </dl>
-      {contactPhone ? <section style={styles.contact}><h3 style={styles.groupHeading}>{t.contact}</h3><p><strong>{t.customerPhone}</strong><br />{contactPhone}</p></section> : null}
+      {contactPhone ? <section style={styles.contact}><h3 style={styles.groupHeading}>{t.contact}</h3><p><strong>{t.customerPhone}</strong><br /><StoredText direction="ltr">{contactPhone}</StoredText></p></section> : null}
       <BookingActions api={api} booking={booking} clockOffsetMs={clockOffsetMs} onChanged={() => setReload((value) => value + 1)} />
-      {detail.history.length ? <section><h3 style={styles.groupHeading}>{t.history}</h3><ul style={styles.history}>{detail.history.map((entry, index) => <li key={`${entry.at}-${index}`} style={styles.historyItem}><time dateTime={entry.at}>{dateTimeLabel(entry.at, t.locale)}</time> · {entry.toStatus ? messages.bookings.today.statuses[entry.toStatus] : entry.terminalReason ? t.terminalReasons[entry.terminalReason] : entry.eventType ? t.events[entry.eventType] : t.bookingUpdate}</li>)}</ul></section> : null}
+      {detail.history.length ? <section><h3 style={styles.groupHeading}>{t.history}</h3><ul style={styles.history}>{detail.history.map((entry, index) => <li key={`${entry.at}-${index}`} style={styles.historyItem}><time dateTime={entry.at}>{formatDateTime(entry.at, t.locale)}</time> · {entry.toStatus ? messages.bookings.today.statuses[entry.toStatus] : entry.terminalReason ? t.terminalReasons[entry.terminalReason] : entry.eventType ? t.events[entry.eventType] : t.bookingUpdate}</li>)}</ul></section> : null}
     </article>
   </section>;
 }
@@ -259,9 +249,9 @@ function BookingActions({ api, booking, clockOffsetMs, onChanged }: { api: ApiCl
     <h3 style={styles.groupHeading}>{attendance ? t.attendance : t.actions}</h3>
     {error ? <p role="alert" style={styles.error}>{error}</p> : null}
     {success ? <p role="status">{success}</p> : null}
-    {attendance?.checkedInAt ? <p>{t.checkIn}: {dateTimeLabel(attendance.checkedInAt, t.locale)}</p> : null}
-    {attendance?.latePresentAt ? <p>{t.latePresent}: {dateTimeLabel(attendance.latePresentAt, t.locale)}</p> : null}
-    {attendance?.noShowAt ? <p>{t.noShow}: {dateTimeLabel(attendance.noShowAt, t.locale)}</p> : null}
+    {attendance?.checkedInAt ? <p>{t.checkIn}: {formatDateTime(attendance.checkedInAt, t.locale)}</p> : null}
+    {attendance?.latePresentAt ? <p>{t.latePresent}: {formatDateTime(attendance.latePresentAt, t.locale)}</p> : null}
+    {attendance?.noShowAt ? <p>{t.noShow}: {formatDateTime(attendance.noShowAt, t.locale)}</p> : null}
     <div style={styles.actionRow}>
       {canCheckIn ? <button disabled={busy} onClick={() => void act("check-in")} style={styles.button} type="button">{busy ? t.actionWorking : t.checkIn}</button> : null}
       {canLate ? <button disabled={busy} onClick={() => void act("late-present")} style={styles.button} type="button">{busy ? t.actionWorking : t.latePresent}</button> : null}

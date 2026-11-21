@@ -27,4 +27,13 @@ describe("Venue notifications", () => {
     expect(await screen.findByText("A venue update is available.")).toBeTruthy();
     expect(screen.queryByText("FUTURE_CODE")).toBeNull();
   });
+
+  it("renders Arabic copy and Cairo timestamps without changing linked identifiers", async () => {
+    const get = vi.fn().mockResolvedValue({ data: { data: { items: [{ bookingId: "b-1", code: "VENUE_NEW_BOOKING_REQUEST", createdAt: "2026-10-12T15:04:00Z", id: "n-1", params: {}, readAt: null, tournamentId: null }], nextCursor: null }, meta: { correlationId: "c", serverTime: "2026-10-12T15:05:00Z" } } });
+    render(<MessagesContext.Provider value={messages.ar}><NotificationsScreen api={{ GET: get } as unknown as ApiClient} onOpenBooking={vi.fn()} /></MessagesContext.Provider>);
+
+    expect(await screen.findByText("أرسل عميل طلب حجز جديدًا.")).toBeTruthy();
+    expect(screen.getByText(/١٢.*٢٠٢٦/u)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "فتح الحجز" })).toBeTruthy();
+  });
 });

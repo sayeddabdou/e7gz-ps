@@ -133,9 +133,11 @@ public class OpenApiConfig {
     /**
      * The general failures every operation of a kind can return (arch 09 §1.4; codes approved 29 Sep 2026, E7-12):
      * 400 {@code VALIDATION_FAILED} when it takes input, 401 {@code UNAUTHENTICATED} and 403 {@code FORBIDDEN} when it
-     * is secured, 404 {@code NOT_FOUND} when it addresses a resource by path, 429 {@code RATE_LIMITED} (the general
-     * per-IP limit, arch 09 §6) and 500 carrying only {@code meta}. A status the operation already declares with
-     * {@link ApiError} keeps its codes and gains the general one; any other explicit response is left untouched.
+     * is secured, 404 {@code NOT_FOUND} when it addresses a resource by path, 423 {@code OWNER_PASSWORD_LOCKED} when it
+     * checks the Owner PIN (it declares 423 {@code OWNER_PASSWORD_INVALID}; PCR-012, E7-121), 429
+     * {@code RATE_LIMITED} (the general per-IP limit, arch 09 §6) and 500 carrying only {@code meta}. A status the
+     * operation already declares with {@link ApiError} keeps its codes and gains the general one; any other explicit
+     * response is left untouched.
      */
     static void addSharedErrors(Operation operation) {
         boolean secured = operation.getSecurity() != null && !operation.getSecurity().isEmpty();
@@ -153,6 +155,10 @@ public class OpenApiConfig {
         }
         if (addressesResource) {
             addSharedError(operation, 404, ApiErrorCode.NOT_FOUND);
+        }
+        // PCR-012 (E7-121): every route that checks the Owner PIN can also answer the long lock
+        if (declares(operation, 423, ApiErrorCode.OWNER_PASSWORD_INVALID)) {
+            addSharedError(operation, 423, ApiErrorCode.OWNER_PASSWORD_LOCKED);
         }
         addSharedError(operation, 429, ApiErrorCode.RATE_LIMITED);
         if (operation.getResponses().get("500") == null) {
@@ -183,6 +189,15 @@ public class OpenApiConfig {
             narrowed.setEnum(codes);
             existing.description(describe(codes.stream().map(String::valueOf).toList()));
         }
+    }
+
+    /** True when the operation's {@code status} response was built by {@link #errorWithCodes} and lists {@code code}. */
+    @SuppressWarnings("rawtypes")
+    static boolean declares(Operation operation, int status, ApiErrorCode code) {
+        ApiResponse existing = operation.getResponses() == null ? null
+                : operation.getResponses().get(String.valueOf(status));
+        Schema narrowed = existing == null ? null : narrowedCodeSchema(existing);
+        return narrowed != null && narrowed.getEnum().contains(code.name());
     }
 
     /** The {@code error.code} schema of a response built by {@link #errorWithCodes}, or null for any other shape. */

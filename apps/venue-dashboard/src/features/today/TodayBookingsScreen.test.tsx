@@ -84,9 +84,35 @@ describe("Today's bookings", () => {
     expect(await screen.findByText("No bookings are scheduled for today's business date.")).toBeTruthy();
     expect(get).toHaveBeenCalledTimes(4);
   });
+
+  it("renders Arabic dates and times while preserving stored resource and customer text", async () => {
+    const get = vi.fn()
+      .mockResolvedValueOnce({ data: { data: { businessDate: "2026-10-12", closed: false, resources: [] }, meta: { correlationId: "c-1", serverTime: "2026-10-12T10:00:00Z" } } })
+      .mockResolvedValueOnce({ data: { data: { items: [booking], nextCursor: null }, meta: { correlationId: "c-2", serverTime: "2026-10-12T10:00:01Z" } } });
+    render(<MessagesContext.Provider value={messages.ar}><TodayBookingsScreen api={{ GET: get } as unknown as ApiClient} onOpenBooking={vi.fn()} /></MessagesContext.Provider>);
+
+    expect(await screen.findByRole("heading", { name: "Room 1" })).toBeTruthy();
+    expect(screen.getByText("omar_k")).toBeTruthy();
+    expect(screen.getByText("١٢ أكتوبر ٢٠٢٦")).toBeTruthy();
+    expect(screen.getByText(/٢:٣٠ ص–٣:٣٠ ص/u)).toBeTruthy();
+  });
 });
 
 describe("Booking detail", () => {
+  it("keeps stored names and phone numbers isolated inside the Arabic booking detail", async () => {
+    const get = vi.fn().mockResolvedValue({ data: { data: { booking, history: [] }, meta: { correlationId: "c", serverTime: "2026-10-11T21:30:00Z" } } });
+    render(<MessagesContext.Provider value={messages.ar}><BookingDetailScreen api={{ GET: get } as unknown as ApiClient} bookingId="b-1" onBack={vi.fn()} /></MessagesContext.Provider>);
+
+    expect((await screen.findByText("Room 1")).getAttribute("dir")).toBe("auto");
+    expect(screen.getByText("omar_k").getAttribute("dir")).toBe("auto");
+    expect(screen.getByText("+201001234567").getAttribute("dir")).toBe("ltr");
+  });
+
+  it("does not round a 105-minute duration", () => {
+    expect(messages.en.bookings.detail.durationMinutes(105)).toBe("1.75 hours");
+    expect(messages.ar.bookings.detail.durationMinutes(105)).toContain("١٫٧٥");
+  });
+
   it.each(["CANCELLED", "VENUE_RESPONSE_EXPIRED", "COMPLETED", "REJECTED"] as const)("hides check-in for a %s booking even when its API window is open", async (status) => {
     const attendanceBooking = { ...booking, status, attendance: { checkInWindow: { opensAt: "2026-10-12T18:00:00Z", closesAt: "2026-10-12T18:15:00Z" }, lateWindow: { opensAt: "2026-10-12T18:15:00Z", closesAt: "2026-10-12T19:00:00Z" }, checkedInAt: null, latePresentAt: null, noShowAt: null } };
     const get = vi.fn().mockResolvedValue({ data: { data: { booking: attendanceBooking, history: [] }, meta: { correlationId: "c", serverTime: "2026-10-12T18:05:00Z" } } });

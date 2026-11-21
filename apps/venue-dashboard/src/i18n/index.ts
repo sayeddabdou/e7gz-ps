@@ -1,9 +1,11 @@
 // EN + AR resources for the Dashboard (FR-VEN-40, NFR-33). Components do not own user-facing copy.
 import { createContext, useContext } from "react";
+import { formatInteger, formatNumber } from "../formatters";
 
 export type Language = "en" | "ar";
 
 const en = {
+  locale: "en-US" as string,
   appTitle: "Venue Dashboard",
   switchLanguage: "العربية",
   navigationLabel: "Dashboard navigation",
@@ -77,7 +79,7 @@ const en = {
     closed: "The venue is closed on this business date: it has no opening hours.",
     legend: "Availability states",
     timeline: "timeline",
-    summary: (resources: number, slots: number) => `${resources} resources · ${slots} schedule intervals`,
+    summary: (resources: number, slots: number) => `${formatInteger(resources, "en-US")} resources · ${formatInteger(slots, "en-US")} schedule intervals`,
     states: {
       FREE: "Free",
       PENDING: "Pending",
@@ -100,7 +102,7 @@ const en = {
     customerHidden: "Customer details unavailable",
     starts: "Starts",
     duration: "Duration",
-    durationMinutes: (minutes: number) => minutes === 60 ? "1 hour" : `${minutes / 60} hours`,
+    durationMinutes: (minutes: number) => minutes === 60 ? "1 hour" : `${formatNumber(minutes / 60, "en-US", { maximumFractionDigits: 2 })} hours`,
     price: "Venue price",
     timeRemaining: "Venue response time remaining",
     paused: "Paused",
@@ -248,7 +250,7 @@ const en = {
       playMode: "Play mode",
       playModes: { SINGLE: "Single", MULTIPLAYER: "Multiplayer" },
       duration: "Duration",
-      durationMinutes: (minutes: number) => minutes === 60 ? "1 hour" : `${minutes / 60} hours`,
+      durationMinutes: (minutes: number) => minutes === 60 ? "1 hour" : `${formatNumber(minutes / 60, "en-US", { maximumFractionDigits: 2 })} hours`,
       start: "Start",
       now: "Start now (walk-in)",
       future: "Future start",
@@ -324,7 +326,7 @@ const en = {
       start: "Starts",
       end: "Ends",
       duration: "Duration",
-      durationMinutes: (minutes: number) => minutes === 60 ? "1 hour" : `${minutes / 60} hours`,
+      durationMinutes: (minutes: number) => minutes === 60 ? "1 hour" : `${formatNumber(minutes / 60, "en-US", { maximumFractionDigits: 2 })} hours`,
       price: "Venue price",
       contact: "Customer contact",
       customer: "Customer",
@@ -544,6 +546,7 @@ const en = {
 export type Messages = typeof en;
 
 const ar: Messages = {
+  locale: "ar-EG",
   appTitle: "لوحة تحكم المكان",
   switchLanguage: "English",
   navigationLabel: "التنقل في لوحة التحكم",
@@ -617,7 +620,7 @@ const ar: Messages = {
     closed: "المكان مغلق في يوم التشغيل هذا: لا توجد ساعات عمل.",
     legend: "حالات المواعيد",
     timeline: "الجدول الزمني",
-    summary: (resources: number, slots: number) => `${resources} موارد · ${slots} فترات مجدولة`,
+    summary: (resources: number, slots: number) => `${formatInteger(resources, "ar-EG")} موارد · ${formatInteger(slots, "ar-EG")} فترات مجدولة`,
     states: {
       FREE: "متاح",
       PENDING: "معلّق",
@@ -640,7 +643,7 @@ const ar: Messages = {
     customerHidden: "بيانات العميل غير متاحة",
     starts: "يبدأ",
     duration: "المدة",
-    durationMinutes: (minutes: number) => `${minutes / 60} ساعة`,
+    durationMinutes: (minutes: number) => `${formatNumber(minutes / 60, "ar-EG", { maximumFractionDigits: 2 })} ساعة`,
     price: "سعر المكان",
     timeRemaining: "الوقت المتبقي لرد المكان",
     paused: "متوقف مؤقتًا",
@@ -788,7 +791,7 @@ const ar: Messages = {
       playMode: "نمط اللعب",
       playModes: { SINGLE: "فردي", MULTIPLAYER: "متعدد اللاعبين" },
       duration: "المدة",
-      durationMinutes: (minutes: number) => minutes === 60 ? "ساعة واحدة" : minutes === 90 ? "ساعة ونصف" : minutes === 120 ? "ساعتان" : `${minutes / 60} ساعات`,
+      durationMinutes: (minutes: number) => minutes === 60 ? "ساعة واحدة" : minutes === 90 ? "ساعة ونصف" : minutes === 120 ? "ساعتان" : `${formatNumber(minutes / 60, "ar-EG", { maximumFractionDigits: 2 })} ساعات`,
       start: "البداية",
       now: "ابدأ الآن (حضور مباشر)",
       future: "موعد مستقبلي",
@@ -864,7 +867,7 @@ const ar: Messages = {
       start: "يبدأ",
       end: "ينتهي",
       duration: "المدة",
-      durationMinutes: (minutes: number) => minutes === 60 ? "ساعة واحدة" : minutes === 90 ? "ساعة ونصف" : minutes === 120 ? "ساعتان" : `${minutes / 60} ساعات`,
+      durationMinutes: (minutes: number) => minutes === 60 ? "ساعة واحدة" : minutes === 90 ? "ساعة ونصف" : minutes === 120 ? "ساعتان" : `${formatNumber(minutes / 60, "ar-EG", { maximumFractionDigits: 2 })} ساعات`,
       price: "سعر المكان",
       contact: "بيانات تواصل العميل",
       customer: "العميل",
