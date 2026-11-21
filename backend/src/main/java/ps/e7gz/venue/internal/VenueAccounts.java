@@ -1,5 +1,6 @@
 package ps.e7gz.venue.internal;
 
+import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import javax.sql.DataSource;
@@ -18,7 +19,10 @@ import ps.e7gz.common.validation.VenuePhones;
 import ps.e7gz.geography.api.AreaLookup;
 import ps.e7gz.identity.api.OwnerPasswordAttempts;
 import ps.e7gz.identity.api.PasswordRules;
+import ps.e7gz.messaging.api.Idempotency;
+import ps.e7gz.messaging.api.IdempotentRequest;
 import ps.e7gz.messaging.api.Outbox;
+import ps.e7gz.messaging.api.StoredResponse;
 import ps.e7gz.notification.api.Notifications;
 import ps.e7gz.notification.api.VenueBrowserPush;
 import ps.e7gz.venue.api.OwnerPasswordGate;
@@ -44,12 +48,13 @@ public class VenueAccounts implements VenueAccountVenues {
     private final Notifications notifications;
     private final Outbox outbox;
     private final VenueBrowserPush browserPush;
+    private final Idempotency idempotency;
     private final OwnerPasswordAttempts attempts;
     private final JdbcClient jdbc;
 
     VenueAccounts(CommandRunner runner, OwnerPasswordGate gate, PasswordEncoder passwords, AuditWriter audit,
                   AreaLookup areas, Notifications notifications, Outbox outbox, VenueBrowserPush browserPush,
-                  OwnerPasswordAttempts attempts, DataSource appDataSource) {
+                  Idempotency idempotency, OwnerPasswordAttempts attempts, DataSource appDataSource) {
         this.runner = runner;
         this.gate = gate;
         this.passwords = passwords;
@@ -58,6 +63,7 @@ public class VenueAccounts implements VenueAccountVenues {
         this.notifications = notifications;
         this.outbox = outbox;
         this.browserPush = browserPush;
+        this.idempotency = idempotency;
         this.attempts = attempts;
         this.jdbc = JdbcClient.create(appDataSource);
     }
@@ -103,8 +109,25 @@ public class VenueAccounts implements VenueAccountVenues {
     public Venues.VenueAccountSummary setStatus(UUID adminId, UUID venueAccountId, VenueAccountStatus target,
                                                 String reason) {
         UUID venueId = venueOf(venueAccountId);
-        return runner.run(new VenueAccountCommands.SetAccountStatus(adminId, CorrelationId.require(), venueAccountId,
-                venueId, target, reason.strip(), audit, outbox, browserPush));
+        return runner.run(setAccountStatus(adminId, venueAccountId, venueId, target, reason));
+    }
+
+    /**
+     * The admin route: once per Idempotency-Key (ADR-015). Disable will cancel commitments and move Booking Fee
+     * refunds once E7-78 adds the O10 consequences, so both routes require the key (PO decision 19 Nov 2026, E7-77).
+     */
+    public Venues.VenueAccountSummary setStatus(UUID adminId, UUID venueAccountId, VenueAccountStatus target,
+                                                String reason, IdempotentRequest key) {
+        Objects.requireNonNull(key, "key");
+        UUID venueId = venueOf(venueAccountId);
+        return runner.run(idempotency.wrap(key, StoredResponse.of(Venues.VenueAccountSummary.class, 200),
+                setAccountStatus(adminId, venueAccountId, venueId, target, reason))).body();
+    }
+
+    private VenueAccountCommands.SetAccountStatus setAccountStatus(UUID adminId, UUID venueAccountId, UUID venueId,
+                                                                   VenueAccountStatus target, String reason) {
+        return new VenueAccountCommands.SetAccountStatus(adminId, CorrelationId.require(), venueAccountId, venueId,
+                target, reason.strip(), audit, outbox, browserPush);
     }
 
     /** FR-ADM-03: the admin chooses the new login password; it is hashed and never returned. */

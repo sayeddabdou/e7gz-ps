@@ -24,6 +24,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import ps.e7gz.audit.AuditFixtures;
 import ps.e7gz.common.codes.AuthSubjectType;
 import ps.e7gz.common.security.AccessTokens;
+import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.support.IntegrationTest;
 
 /**
@@ -161,7 +162,7 @@ class AdminVenueAccountHttpTest extends IntegrationTest {
         mvc.perform(get("/api/v1/venue/settings").header("Authorization", "Bearer " + venueToken))
                 .andExpect(status().isOk());
 
-        admin(post(ACCOUNTS + account + "/disable"), Map.of("reason", "Owner request"))
+        adminWrite(post(ACCOUNTS + account + "/disable"), Map.of("reason", "Owner request"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.accountStatus").value("DISABLED"));
         mvc.perform(get("/api/v1/venue/settings").header("Authorization", "Bearer " + venueToken))
                 .andExpect(status().isUnauthorized());
@@ -173,11 +174,11 @@ class AdminVenueAccountHttpTest extends IntegrationTest {
                          WHERE action = 'VENUE_ACCOUNT_DISABLED' AND subject_id = :account""")
                 .param("account", account).query(String.class).single()).isEqualTo("Owner request");
 
-        admin(post(ACCOUNTS + account + "/disable"), Map.of("reason", "Again"))
+        adminWrite(post(ACCOUNTS + account + "/disable"), Map.of("reason", "Again"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.accountStatus").value("DISABLED"));
         assertThat(auditCount("VENUE_ACCOUNT_DISABLED", account)).isEqualTo(1);
 
-        admin(post(ACCOUNTS + account + "/enable"), Map.of("reason", "Resolved"))
+        adminWrite(post(ACCOUNTS + account + "/enable"), Map.of("reason", "Resolved"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.accountStatus").value("ENABLED"));
         mvc.perform(get("/api/v1/venue/settings").header("Authorization", "Bearer " + venueToken))
                 .andExpect(status().isOk());
@@ -188,10 +189,38 @@ class AdminVenueAccountHttpTest extends IntegrationTest {
     @Test
     void disableAndEnableNeedAReason() throws Exception {
         UUID account = createdAccount();
-        admin(post(ACCOUNTS + account + "/disable"), Map.of("reason", "  "))
+        adminWrite(post(ACCOUNTS + account + "/disable"), Map.of("reason", "  "))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("reason"));
         assertThat(OWNER.sql("SELECT account_status FROM iam.venue_account WHERE id = :id").param("id", account)
                 .query(String.class).single()).isEqualTo("ENABLED");
+    }
+
+    @Test
+    void disableAndEnableRunOncePerIdempotencyKey() throws Exception {
+        // PO decision 19 Nov 2026 (E7-77): with E7-78 a disable cancels and refunds, so ADR-015 applies.
+        UUID account = createdAccount();
+        admin(post(ACCOUNTS + account + "/disable"), Map.of("reason", "Owner request"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+        assertThat(OWNER.sql("SELECT account_status FROM iam.venue_account WHERE id = :id").param("id", account)
+                .query(String.class).single()).isEqualTo("ENABLED");
+
+        String key = UUID.randomUUID().toString();
+        admin(post(ACCOUNTS + account + "/disable").header(OpenApiConfig.IDEMPOTENCY_KEY, key),
+                Map.of("reason", "Owner request"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.accountStatus").value("DISABLED"));
+        adminWrite(post(ACCOUNTS + account + "/enable"), Map.of("reason", "Resolved"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.accountStatus").value("ENABLED"));
+        admin(post(ACCOUNTS + account + "/disable").header(OpenApiConfig.IDEMPOTENCY_KEY, key),
+                Map.of("reason", "Owner request"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.accountStatus").value("DISABLED"));
+        assertThat(OWNER.sql("SELECT account_status FROM iam.venue_account WHERE id = :id").param("id", account)
+                .query(String.class).single()).as("the replay ran nothing").isEqualTo("ENABLED");
+        assertThat(auditCount("VENUE_ACCOUNT_DISABLED", account)).isEqualTo(1);
+
+        admin(post(ACCOUNTS + account + "/disable").header(OpenApiConfig.IDEMPOTENCY_KEY, key),
+                Map.of("reason", "Something else"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code").value("IDEMPOTENCY_KEY_REUSED"));
     }
 
     @Test
@@ -229,7 +258,7 @@ class AdminVenueAccountHttpTest extends IntegrationTest {
     @Test
     void anUnknownVenueAccountIsNotFound() throws Exception {
         UUID unknown = UUID.randomUUID();
-        admin(post(ACCOUNTS + unknown + "/disable"), Map.of("reason", "x")).andExpect(status().isNotFound());
+        adminWrite(post(ACCOUNTS + unknown + "/disable"), Map.of("reason", "x")).andExpect(status().isNotFound());
         admin(post(ACCOUNTS + unknown + "/reset-owner-password"), Map.of("newPassword", "9753"))
                 .andExpect(status().isNotFound());
     }
@@ -240,6 +269,11 @@ class AdminVenueAccountHttpTest extends IntegrationTest {
         String body = create(venue, "acct." + venue, "Login-pass-1", "1234", "en")
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
         return UUID.fromString(json.readTree(body).path("data").path("id").asText());
+    }
+
+    /** Disable and enable require the Idempotency-Key (PO decision 19 Nov 2026, E7-77). */
+    private ResultActions adminWrite(MockHttpServletRequestBuilder request, Object body) throws Exception {
+        return admin(request.header(OpenApiConfig.IDEMPOTENCY_KEY, UUID.randomUUID().toString()), body);
     }
 
     private ResultActions admin(MockHttpServletRequestBuilder request, Object body) throws Exception {

@@ -53,7 +53,18 @@ class IdempotencyScopeTest {
             "post /api/v1/admin/points/adjust",                                 // points adjustment, E7-66
             "post /api/v1/admin/referrals/{referralId}/invalidate",             // referral invalidation, E7-67
             "put /api/v1/admin/points/settings",                                // points configuration, E7-68
-            "put /api/v1/admin/fees");                                          // fee configuration, E7-68
+            "put /api/v1/admin/fees",                                           // fee configuration, E7-68
+            // Sprint 5 (E7-77): writes that cancel commitments and move Booking Fee refunds.
+            "post /api/v1/venue/closures",                                      // closure cancels, E7-81
+            "patch /api/v1/venue/closures/{closureId}",                         // closure edit cancels, E7-81
+            "post /api/v1/venue/emergencies/venue-closure",                     // emergency cascade, E7-82
+            "post /api/v1/venue/emergencies/resource-outage",                   // emergency cascade, E7-82
+            "post /api/v1/venue/emergencies/{emergencyId}/extend",              // extension cancels, E7-82
+            "post /api/v1/venue/emergencies/{emergencyId}/end",                 // owner-review entry, E7-82/E7-84
+            "post /api/v1/venue/emergencies/{emergencyId}/convert",             // conversion, E7-82
+            // PO decision 19 Nov 2026 (E7-77): O10 cancels AWAITING bookings and refunds them (E7-78).
+            "post /api/v1/admin/venue-accounts/{venueAccountId}/disable",
+            "post /api/v1/admin/venue-accounts/{venueAccountId}/enable");
 
     /** Writes outside ADR-015's scope, so the header is accepted but optional. */
     static final Map<String, List<String>> OPTIONAL = Map.of(
@@ -75,8 +86,6 @@ class IdempotencyScopeTest {
                     "put /api/v1/admin/venues/{venueId}/images/order",
                     "post /api/v1/admin/venues/{venueId}/images/{imageId}/confirm",
                     "post /api/v1/admin/venues/{venueId}/images/{imageId}/remove",
-                    "post /api/v1/admin/venue-accounts/{venueAccountId}/disable",
-                    "post /api/v1/admin/venue-accounts/{venueAccountId}/enable",
                     "post /api/v1/admin/venue-accounts/{venueAccountId}/reset-login-password",
                     "post /api/v1/admin/venue-accounts/{venueAccountId}/reset-owner-password"),
             "venue setup: resources, prices, photos, hours, settings, Owner Password (Sprint 1 contract)", List.of(
@@ -103,6 +112,14 @@ class IdempotencyScopeTest {
                     "patch /api/v1/customer/profile", "post /api/v1/customer/profile/username",
                     "post /api/v1/customer/profile/phone", "post /api/v1/customer/profile/phone/verify",
                     "post /api/v1/customer/profile/email", "post /api/v1/customer/profile/email/verify"),
+            "venue maintenance, closure delete, previews and owner-review resolution (SPRINT-5-CONTRACT.md: they "
+                    + "cancel nothing, FR-OPS-02, FR-OPS-43)", List.of(
+                    "post /api/v1/venue/maintenance", "patch /api/v1/venue/maintenance/{maintenanceId}",
+                    "delete /api/v1/venue/maintenance/{maintenanceId}", "post /api/v1/venue/closures/preview",
+                    "delete /api/v1/venue/closures/{closureId}",
+                    "post /api/v1/venue/emergencies/{emergencyId}/extend/preview",
+                    "post /api/v1/venue/emergencies/{emergencyId}/convert/preview",
+                    "post /api/v1/venue/owner-reviews/{resourceId}/resolve"),
             "notifications and push (SPRINT-2-CONTRACT.md: optional)", List.of(
                     "post /api/v1/customer/notifications/{notificationId}/read",
                     "post /api/v1/customer/notifications/devices",

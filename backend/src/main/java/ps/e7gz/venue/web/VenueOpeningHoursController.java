@@ -26,6 +26,7 @@ import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
+import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.ResponseMetaFactory;
 import ps.e7gz.messaging.api.Idempotency;
@@ -88,15 +89,24 @@ public class VenueOpeningHoursController {
                     + "OWNER_PASSWORD_REQUIRED, wrong is OWNER_PASSWORD_INVALID (audited, FR-VEN-05). Each affected "
                     + "online booking gets a full Booking Fee refund decision; the customer is notified from "
                     + "BookingCancelled. A venue account disabled meanwhile is FORBIDDEN. Implemented by E7-25 and "
-                    + "E7-113.")
+                    + "E7-113. With emergencyId the same commit also converts that unresolved venue Emergency: "
+                    + "CONVERTED / OPENING_HOURS_CHANGE, its block ending in this commit (FR-OPS-23, FR-OPS-24; PO "
+                    + "decision 19 Nov 2026, E7-77). A resource Emergency is CONVERSION_TARGET_NOT_ALLOWED; a resolved "
+                    + "one is OPERATIONAL_STATE_CHANGED. The emergencyId part answers 501 until E7-82.")
     @ApiError(status = 403, codes = ApiErrorCode.FORBIDDEN)
-    @ApiError(status = 409, codes = ApiErrorCode.AFFECTED_SET_CHANGED_REFRESH_PREVIEW)
-    @ApiError(status = 422, codes = {ApiErrorCode.TOURNAMENT_CONFLICT_BLOCKS_SAVE, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
+    @ApiError(status = 409, codes = {ApiErrorCode.AFFECTED_SET_CHANGED_REFRESH_PREVIEW,
+            ApiErrorCode.OPERATIONAL_STATE_CHANGED})
+    @ApiError(status = 422, codes = {ApiErrorCode.TOURNAMENT_CONFLICT_BLOCKS_SAVE,
+            ApiErrorCode.CONVERSION_TARGET_NOT_ALLOWED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
     @ApiError(status = 423, codes = {ApiErrorCode.OWNER_PASSWORD_REQUIRED, ApiErrorCode.OWNER_PASSWORD_INVALID})
     @ApiError(status = 429, codes = ApiErrorCode.RATE_LIMITED)
     public DataResponse<VenueOpeningHoursView> commit(@RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
                                                       @AuthenticationPrincipal AuthenticatedSubject venue,
                                                       @Valid @RequestBody VenueOpeningHoursCommitRequest request) {
+        if (request.emergencyId() != null) {
+            throw NotImplementedYet.stub(); // E7-82: the emergency conversion (PO decision 19 Nov 2026, E7-77)
+        }
         IdempotentResult<VenueOpeningHoursView> result = hours.commit(venue.id(), request.proposal().toProposal(),
                 request.previewToken(), request.ownerPassword(),
                 idempotency.request(venue, COMMIT_ENDPOINT, idempotencyKey, Map.of(), request),
@@ -177,6 +187,10 @@ public class VenueOpeningHoursController {
             @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY,
                     description = "Required only when the preview had protected cancellations (FR-VEN-25). "
                             + "When sent, it is always checked, whatever the preview.")
-            String ownerPassword) {
+            String ownerPassword,
+            @Schema(requiredMode = Schema.RequiredMode.NOT_REQUIRED,
+                    description = "An unresolved venue Emergency this change converts (FR-OPS-23; PO decision 19 Nov "
+                            + "2026, E7-77). Absent for an ordinary hours change.")
+            UUID emergencyId) {
     }
 }

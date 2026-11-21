@@ -120,6 +120,12 @@ public enum ApiErrorCode {
      * code for all of them. PO decision D5, 17 Oct 2026 (E7-65).
      */
     ADMIN_ACTION_NOT_ALLOWED(409),
+    /**
+     * A venue action on an Emergency or an Owner Review that is no longer in the state it needs (e.g. extending an
+     * Emergency another staff member ended a second earlier, resolving an Owner Review already resolved): refresh and
+     * look again. One general code for both, like BOOKING_STATE_CHANGED. PO decision 19 Nov 2026 (E7-77).
+     */
+    OPERATIONAL_STATE_CHANGED(409),
 
     // General codes (arch 09 §1.4; Product Owner decision 29 Sep 2026, E7-12).
     /** A malformed or invalid request: unreadable body, bad parameter, failed bean validation. */
