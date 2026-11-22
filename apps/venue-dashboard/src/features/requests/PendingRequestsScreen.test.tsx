@@ -53,10 +53,9 @@ afterEach(() => {
 
 describe("Pending requests", () => {
   it("formats request times in the venue's Africa/Cairo timezone", () => {
-    const format = vi.spyOn(Date.prototype, "toLocaleString");
     render(<MessagesContext.Provider value={messages.en}><PendingRequestsScreen model={model()} /></MessagesContext.Provider>);
 
-    expect(format).toHaveBeenCalledWith("en-US", { timeZone: "Africa/Cairo" });
+    expect(screen.getByText("Oct 12, 2026, 9:00 PM")).toBeTruthy();
   });
 
   it("uses the server clock for the expiry countdown and requires a reject reason", () => {
@@ -111,6 +110,10 @@ describe("Pending requests", () => {
 
     expect(screen.getByRole("heading", { name: "طلبات الحجز المعلقة" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "قبول" })).toBeTruthy();
+    expect(screen.getByText("Room 3")).toMatchObject({ tagName: "BDI" });
+    expect(screen.getByText("Room 3").getAttribute("dir")).toBe("auto");
+    expect(screen.getByText("omar_k").getAttribute("dir")).toBe("auto");
+    expect(screen.getByText("+201001234567").getAttribute("dir")).toBe("ltr");
     expect(container.innerHTML).not.toMatch(/(?:margin|padding|border)-(?:left|right)/u);
   });
 });

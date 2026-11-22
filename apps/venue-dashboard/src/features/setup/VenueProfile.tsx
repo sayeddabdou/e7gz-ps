@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { components } from "@e7gz/api-client";
 import { apiErrorOf, type ApiClient } from "../../api";
+import { StoredText } from "../../components";
 import { useMessages, type Language } from "../../i18n";
 import { setupErrorMessage } from "./errorMessages";
 import { setupStyles as styles } from "./styles";
@@ -94,15 +95,15 @@ export function VenueProfile({ api, onLanguagePreference }: { api: ApiClient; on
       {settings && !loading ? (
         <form onSubmit={(event) => void submit(event)}>
           <div style={styles.grid}>
-            <div style={styles.field}><label htmlFor="venue-name" style={styles.label}>{t.setup.profile.name}</label><input id="venue-name" aria-describedby={fieldErrors.name ? "venue-name-error" : undefined} aria-invalid={Boolean(fieldErrors.name)} required style={{ ...styles.input, ...(fieldErrors.name ? styles.invalidInput : {}) }} value={form.name} onChange={(event) => updateField("name", event.target.value)} />{fieldErrors.name ? <span id="venue-name-error" style={styles.fieldError}>{fieldErrors.name}</span> : null}</div>
-            <div style={styles.field}><label htmlFor="venue-address" style={styles.label}>{t.setup.profile.address}</label><input id="venue-address" aria-describedby={fieldErrors.address ? "venue-address-error" : undefined} aria-invalid={Boolean(fieldErrors.address)} required style={{ ...styles.input, ...(fieldErrors.address ? styles.invalidInput : {}) }} value={form.address} onChange={(event) => updateField("address", event.target.value)} />{fieldErrors.address ? <span id="venue-address-error" style={styles.fieldError}>{fieldErrors.address}</span> : null}</div>
-            <div style={styles.field}><label htmlFor="venue-phone" style={styles.label}>{t.setup.profile.phone}</label><input id="venue-phone" aria-describedby={fieldErrors.phone ? "venue-phone-error" : undefined} aria-invalid={Boolean(fieldErrors.phone)} required style={{ ...styles.input, ...(fieldErrors.phone ? styles.invalidInput : {}) }} value={form.phone} onChange={(event) => updateField("phone", event.target.value)} />{fieldErrors.phone ? <span id="venue-phone-error" style={styles.fieldError}>{fieldErrors.phone}</span> : null}</div>
+            <div style={styles.field}><label htmlFor="venue-name" style={styles.label}>{t.setup.profile.name}</label><input id="venue-name" aria-describedby={fieldErrors.name ? "venue-name-error" : undefined} aria-invalid={Boolean(fieldErrors.name)} dir="auto" required style={{ ...styles.input, ...(fieldErrors.name ? styles.invalidInput : {}) }} value={form.name} onChange={(event) => updateField("name", event.target.value)} />{fieldErrors.name ? <span id="venue-name-error" style={styles.fieldError}>{fieldErrors.name}</span> : null}</div>
+            <div style={styles.field}><label htmlFor="venue-address" style={styles.label}>{t.setup.profile.address}</label><input id="venue-address" aria-describedby={fieldErrors.address ? "venue-address-error" : undefined} aria-invalid={Boolean(fieldErrors.address)} dir="auto" required style={{ ...styles.input, ...(fieldErrors.address ? styles.invalidInput : {}) }} value={form.address} onChange={(event) => updateField("address", event.target.value)} />{fieldErrors.address ? <span id="venue-address-error" style={styles.fieldError}>{fieldErrors.address}</span> : null}</div>
+            <div style={styles.field}><label htmlFor="venue-phone" style={styles.label}>{t.setup.profile.phone}</label><input id="venue-phone" aria-describedby={fieldErrors.phone ? "venue-phone-error" : undefined} aria-invalid={Boolean(fieldErrors.phone)} dir="ltr" required style={{ ...styles.input, ...(fieldErrors.phone ? styles.invalidInput : {}) }} value={form.phone} onChange={(event) => updateField("phone", event.target.value)} />{fieldErrors.phone ? <span id="venue-phone-error" style={styles.fieldError}>{fieldErrors.phone}</span> : null}</div>
             <label style={styles.field}><span style={styles.label}>{t.setup.profile.language}</span><select style={styles.input} value={form.languagePreference} onChange={(event) => updateField("languagePreference", event.target.value as Language)}><option value="en">English</option><option value="ar">العربية</option></select></label>
           </div>
           <dl style={styles.grid}>
-            <div><dt style={styles.label}>{t.setup.profile.area}</dt><dd>{settings.areaName}</dd></div>
+            <div><dt style={styles.label}>{t.setup.profile.area}</dt><dd><StoredText>{settings.areaName}</StoredText></dd></div>
             <div><dt style={styles.label}>{t.setup.profile.location}</dt><dd>{settings.location.lat}, {settings.location.lng}</dd></div>
-            <div><dt style={styles.label}>{t.setup.profile.timezone}</dt><dd>{settings.timezone}</dd></div>
+            <div><dt style={styles.label}>{t.setup.profile.timezone}</dt><dd><StoredText direction="ltr">{settings.timezone}</StoredText></dd></div>
             <div><dt style={styles.label}>{t.setup.profile.status}</dt><dd>{t.setup.profile.statuses[settings.marketplaceStatus]}</dd></div>
             <div><dt style={styles.label}>{t.setup.profile.activities}</dt><dd>{settings.activities.map((activity) => t.activity[activity]).join(", ")}</dd></div>
           </dl>

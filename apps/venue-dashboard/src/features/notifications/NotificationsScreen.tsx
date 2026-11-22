@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import type { components } from "@e7gz/api-client";
 import { webTokens } from "@e7gz/tokens/web";
 import { apiErrorOf, type ApiClient } from "../../api";
+import { formatDateTime } from "../../formatters";
 import { useMessages } from "../../i18n";
 
 type Notification = components["schemas"]["VenueNotification"];
@@ -75,7 +76,7 @@ export function NotificationsScreen({ api, onOpenBooking }: { api: ApiClient; on
           const text = notification.code in t.codes ? t.codes[notification.code as keyof typeof t.codes] : t.unknown;
           return <li key={notification.id} style={{ ...styles.card, ...(notification.readAt ? undefined : styles.unread) }}>
             <div style={styles.row}><strong>{text}</strong><span>{notification.readAt ? t.read : t.unread}</span></div>
-            <time dateTime={notification.createdAt} style={styles.muted}>{new Date(notification.createdAt).toLocaleString(t.locale, { timeZone: "Africa/Cairo" })}</time>
+            <time dateTime={notification.createdAt} style={styles.muted}>{formatDateTime(notification.createdAt, t.locale)}</time>
             <div style={styles.actions}>{notification.bookingId ? <button onClick={() => onOpenBooking(notification.bookingId!)} style={styles.button} type="button">{t.openBooking}</button> : null}{!notification.readAt ? <button disabled={Boolean(markingRead)} onClick={() => void markRead(notification)} style={styles.button} type="button">{markingRead === notification.id ? t.markingRead : t.markRead}</button> : null}</div>
           </li>;
         })}</ul>{nextCursor ? <button disabled={loadingMore} onClick={() => { setLoadingMore(true); void load(nextCursor); }} style={styles.button} type="button">{loadingMore ? t.loadingMore : t.loadMore}</button> : null}</>}

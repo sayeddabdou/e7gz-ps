@@ -1,2 +1,6 @@
-// Filled by E7-19 and every dashboard feature task (shared components).
-export {};
+import { createElement, type ReactNode } from "react";
+
+/** Isolates stored free text from the surrounding UI direction without changing its bytes. */
+export function StoredText({ children, direction = "auto" }: { children: ReactNode; direction?: "auto" | "ltr" }) {
+  return createElement("bdi", { dir: direction }, children);
+}

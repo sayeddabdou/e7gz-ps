@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { components } from "@e7gz/api-client";
 import { apiErrorOf, type ApiClient } from "../../api";
+import { StoredText } from "../../components";
 import { useMessages } from "../../i18n";
 import { setupErrorMessage } from "./errorMessages";
 import { OwnerPasswordDialog } from "./OwnerPasswordDialog";
@@ -129,7 +130,7 @@ export function ResourceList({ api }: { api: ApiClient }) {
             const selectedConsole = consoleSelections[resource.id] ?? resource.consoleType ?? "PS5";
             return (
               <li key={resource.id} style={styles.card}>
-                <div style={styles.cardHeader}><strong>{resource.name}</strong><span>{t.activity[resource.activity]}{resource.consoleType ? ` · ${resource.consoleType}` : ""} · {t.baseState[resource.baseState]}{t.restriction[resource.operationalRestriction] ? ` · ${t.restriction[resource.operationalRestriction]}` : ""}</span></div>
+                <div style={styles.cardHeader}><strong><StoredText>{resource.name}</StoredText></strong><span>{t.activity[resource.activity]}{resource.consoleType ? ` · ${resource.consoleType}` : ""} · {t.baseState[resource.baseState]}{t.restriction[resource.operationalRestriction] ? ` · ${t.restriction[resource.operationalRestriction]}` : ""}</span></div>
                 {resource.activity === "PLAYSTATION" ? <div style={styles.actions}><select aria-label={`${resource.name} ${t.setup.resources.console}`} style={styles.input} value={selectedConsole} onChange={(event) => setConsoleSelections({ ...consoleSelections, [resource.id]: event.target.value as ConsoleType })}><option value="PS5">PS5</option><option value="PS4">PS4</option></select><button style={styles.secondaryButton} type="button" onClick={() => setAction({ kind: "console", resource, consoleType: selectedConsole })}>{t.setup.resources.changeConsole}</button></div> : null}
                 <div style={styles.actions}>
                   {resource.baseState === "ACTIVE" ? <button style={styles.secondaryButton} type="button" onClick={() => setAction({ kind: "disable", resource })}>{t.setup.resources.disable}</button> : null}

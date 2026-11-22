@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { components } from "@e7gz/api-client";
 import { apiErrorOf, type ApiClient } from "../../api";
+import { StoredText } from "../../components";
+import { formatBusinessDate, formatTime } from "../../formatters";
 import { useMessages } from "../../i18n";
 import { setupErrorMessage } from "../setup/errorMessages";
 import { scheduleStyles as styles, stateStyles } from "./styles";
@@ -96,17 +98,7 @@ export function AvailabilitySchedule({
 
   const range = useMemo(() => schedule ? rangeOf(schedule) : undefined, [schedule]);
   const ticks = useMemo(() => ticksFor(range), [range]);
-  const timeFormatter = useMemo(() => new Intl.DateTimeFormat(locale, {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: cairoTimeZone,
-  }), [locale]);
-  const dateFormatter = useMemo(() => new Intl.DateTimeFormat(locale, {
-    dateStyle: "long",
-    timeZone: "UTC",
-  }), [locale]);
   const slotCount = schedule?.resources.reduce((total, resource) => total + resource.slots.length, 0) ?? 0;
-  const formatTime = (instant: number | string) => timeFormatter.format(typeof instant === "number" ? instant : new Date(instant));
   const slotPosition = (slot: VenueScheduleSlot) => {
     if (!range || range.end === range.start) return { insetInlineStart: "0%", inlineSize: "100%" };
     const span = range.end - range.start;
@@ -161,7 +153,7 @@ export function AvailabilitySchedule({
         <div style={styles.card}>
           <header style={styles.cardHeader}>
             <div>
-              <h3 style={styles.businessDate}>{dateFormatter.format(new Date(`${schedule.businessDate}T00:00:00Z`))}</h3>
+              <h3 style={styles.businessDate}>{formatBusinessDate(schedule.businessDate, locale)}</h3>
               <p style={styles.summary}>{t.schedule.summary(schedule.resources.length, slotCount)}</p>
             </div>
             <span style={styles.label}>{cairoTimeZone}</span>
@@ -183,13 +175,13 @@ export function AvailabilitySchedule({
                 <div style={styles.axisRow}>
                   <span />
                   <div style={{ ...styles.timeAxis, gridTemplateColumns: `repeat(${Math.max(ticks.length, 1)}, minmax(0, 1fr))` }}>
-                    {ticks.map((tick) => <span key={tick} style={styles.tick}>{formatTime(tick)}</span>)}
+                    {ticks.map((tick) => <span key={tick} style={styles.tick}>{formatTime(tick, locale)}</span>)}
                   </div>
                 </div>
                 {schedule.resources.map((resource) => (
                   <div key={resource.resourceId} style={styles.resourceRow}>
                     <div style={styles.resource}>
-                      <span style={styles.resourceName}>{resource.name}</span>
+                      <span style={styles.resourceName}><StoredText>{resource.name}</StoredText></span>
                       <span style={styles.resourceMeta}>
                         {t.activity[resource.activity]}{resource.consoleType ? ` · ${resource.consoleType}` : ""}
                       </span>
@@ -197,12 +189,12 @@ export function AvailabilitySchedule({
                     <div aria-label={`${resource.name} ${t.schedule.timeline}`} style={styles.timeline}>
                       {resource.slots.map((slot, index) => (
                         <div
-                          aria-label={`${t.schedule.states[slot.state]}, ${formatTime(slot.startAt)} – ${formatTime(slot.endAt)}`}
+                          aria-label={`${t.schedule.states[slot.state]}, ${formatTime(slot.startAt, locale)} – ${formatTime(slot.endAt, locale)}`}
                           key={`${slot.startAt}-${slot.endAt}-${slot.state}-${index}`}
                           style={{ ...styles.slot, ...stateStyles[slot.state], ...slotPosition(slot) }}
                         >
                           <div style={styles.slotState}>{t.schedule.states[slot.state]}</div>
-                          <div style={styles.slotTime}>{formatTime(slot.startAt)} – {formatTime(slot.endAt)}</div>
+                          <div style={styles.slotTime}>{formatTime(slot.startAt, locale)} – {formatTime(slot.endAt, locale)}</div>
                         </div>
                       ))}
                     </div>

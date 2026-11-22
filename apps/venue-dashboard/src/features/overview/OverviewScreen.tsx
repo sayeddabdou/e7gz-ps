@@ -2,11 +2,11 @@ import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import type { components } from "@e7gz/api-client";
 import { webTokens } from "@e7gz/tokens/web";
 import { apiErrorOf, type ApiClient } from "../../api";
+import { formatInteger, formatMoney } from "../../formatters";
 import { useMessages, type Messages } from "../../i18n";
 import { AvailabilitySchedule } from "../schedule";
 
 type VenueOverview = components["schemas"]["VenueOverview"];
-type Money = components["schemas"]["Money"];
 
 const overviewErrorCodes = ["UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND", "RATE_LIMITED"] as const;
 type OverviewErrorCode = (typeof overviewErrorCodes)[number];
@@ -15,11 +15,6 @@ function errorMessage(code: string | undefined, t: Messages): string {
   return overviewErrorCodes.includes(code as OverviewErrorCode)
     ? t.overview.errors[code as OverviewErrorCode]
     : t.overview.errors.unexpected;
-}
-
-function moneyText(money: Money): string {
-  // FR-VEN-35: display the API amount string exactly; the Dashboard does not calculate or reformat revenue.
-  return `${money.amount} ${money.currency}`;
 }
 
 export function OverviewScreen({
@@ -92,10 +87,10 @@ export function OverviewScreen({
       ) : null}
       {!loading && !error && overview ? (
         <div className="overview-kpis" style={styles.kpis}>
-          <Kpi label={t.overview.todayRevenue} value={moneyText(overview.todayRevenue)} />
-          <Kpi label={t.overview.monthRevenue} value={moneyText(overview.monthRevenue)} />
-          <Kpi label={t.overview.todayBookings} value={String(overview.todayBookings)} />
-          <Kpi label={t.overview.pendingRequests} value={String(overview.pendingRequests)} />
+          <Kpi label={t.overview.todayRevenue} value={formatMoney(overview.todayRevenue, t.locale)} />
+          <Kpi label={t.overview.monthRevenue} value={formatMoney(overview.monthRevenue, t.locale)} />
+          <Kpi label={t.overview.todayBookings} value={formatInteger(overview.todayBookings, t.locale)} />
+          <Kpi label={t.overview.pendingRequests} value={formatInteger(overview.pendingRequests, t.locale)} />
         </div>
       ) : null}
 

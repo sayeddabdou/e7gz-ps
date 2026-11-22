@@ -3079,6 +3079,12 @@ Done when (write these as tests first where possible):
 
 Why this task exists (review of 5 Nov 2026, finding A1; PO decision 15 Nov 2026): Apple rule 5.1.1 needs a privacy-policy link inside the app and in App Store Connect, and Egypt's data protection law 151/2020 needs it too. Nothing in the requirements had it.
 
+PO decisions 21 Nov 2026 (do these too):
+- The two public addresses are https://<domain>/terms and https://<domain>/privacy (PCR-013, decisions of 21 Nov 2026). The domain is bought before deployment, so build now with the placeholders the backend already uses locally: https://e7gz.example/terms and https://e7gz.example/privacy. Never hard-code either; the real addresses are set at deployment (E7-101, E7-109).
+- Each page shows the English and the Arabic text on the same page, so each text has ONE address: the Arabic Dashboard opens the same link as the English one, with no per-language URL.
+- Dashboard and Admin read the two addresses from VITE_LEGAL_TERMS_URL and VITE_LEGAL_PRIVACY_URL; add both to each app's .env.example with the placeholder values above and a README line.
+- The customer app keeps reading the version and both addresses from GET /customer/legal (E7-124); it needs no setting of its own.
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -3992,6 +3998,10 @@ PO rules and open items, added 15 Nov 2026 (do these too):
 PO decision 16 Nov 2026 (do this too):
 - Set E7GZ_LEGAL_TERMS_VERSION, E7GZ_LEGAL_TERMS_URL and E7GZ_LEGAL_PRIVACY_URL to the values the Product Owner approved in E7-125; never the placeholder label (PCR-013, E7-124).
 
+PO decisions 21 Nov 2026 (do these too):
+- E7GZ_LEGAL_TERMS_URL is https://<domain>/terms and E7GZ_LEGAL_PRIVACY_URL is https://<domain>/privacy, on the domain the Product Owner buys before deployment; each page shows the English and the Arabic text. E7GZ_LEGAL_TERMS_VERSION is the date the Product Owner approved the texts (PCR-013, decisions of 21 Nov 2026).
+- The load balancer, proxy and CDN must not log URL query strings for /api/v1/customer/**: discovery receives the customer's location as lat/lng parameters, and the Privacy Policy says no location history is kept (PCR-013).
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
@@ -4282,6 +4292,9 @@ PO decision 15 Nov 2026 (do this too):
 
 PO decision 16 Nov 2026 (do this too):
 - The App Review notes name the Report and Block functions for reviews (guideline 1.2; PCR-003, PCR-014) and the in-app account deletion (guideline 5.1.1(v); PCR-002).
+
+PO decisions 21 Nov 2026 (do these too):
+- App Store Connect and the Play Console privacy-policy field: https://<domain>/privacy, the address approved in E7-125 (PCR-013, decisions of 21 Nov 2026). Set VITE_LEGAL_TERMS_URL and VITE_LEGAL_PRIVACY_URL for the staging and production Dashboard and Admin builds to https://<domain>/terms and https://<domain>/privacy; never the e7gz.example placeholders.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { components } from "@e7gz/api-client";
 import { apiErrorOf, type ApiClient } from "../../api";
+import { StoredText } from "../../components";
 import { useMessages } from "../../i18n";
 import { setupErrorMessage } from "./errorMessages";
 import { OwnerPasswordDialog } from "./OwnerPasswordDialog";
@@ -157,7 +158,7 @@ export function PricingEditor({ api }: { api: ApiClient }) {
           {resources.filter((resource) => resource.activity === "PLAYSTATION").map((resource) => {
             const draft = overrideDrafts[resource.id] ?? { SINGLE: "", MULTIPLAYER: "" };
             return <div key={resource.id} style={styles.card}>
-              <strong>{resource.name} · {resource.consoleType}</strong>
+              <strong><StoredText>{resource.name}</StoredText> · {resource.consoleType}</strong>
               <div style={styles.grid}>{(["SINGLE", "MULTIPLAYER"] as const).map((mode) => <label key={mode} style={styles.field}><span style={styles.label}>{t.setup.pricing[mode]}</span><input inputMode="decimal" style={styles.input} value={draft[mode]} onChange={(event) => setOverrideDrafts({ ...overrideDrafts, [resource.id]: { ...draft, [mode]: event.target.value } })} /></label>)}</div>
               <div style={styles.actions}><button style={styles.secondaryButton} type="button" onClick={() => ask({ kind: "override", resource })}>{t.setup.pricing.editOverride}</button>{existingOverrideIds.has(resource.id) ? <button style={styles.dangerButton} type="button" onClick={() => ask({ kind: "reset", resource })}>{t.setup.pricing.resetOverride}</button> : <span style={styles.muted}>{t.setup.pricing.inherit}</span>}</div>
             </div>;

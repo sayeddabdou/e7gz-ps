@@ -66,7 +66,7 @@ function renderOverview({
 }
 
 describe("Dashboard overview", () => {
-  it("shows the four API values unchanged and uses the server business date for the first schedule load", async () => {
+  it("formats the four API values consistently and uses the server business date for the first schedule load", async () => {
     vi.useFakeTimers({ toFake: ["Date"] }).setSystemTime(new Date("2026-10-13T12:00:00Z"));
     const { requests } = renderOverview();
 
@@ -137,6 +137,8 @@ describe("Dashboard overview", () => {
     expect(page.getAttribute("style")).not.toMatch(/(?:^|-)left|(?:^|-)right/u);
     expect(screen.getByRole("heading", { name: "نظرة عامة" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "عرض الطلبات المعلقة" })).toBeTruthy();
+    expect(screen.getByText("١٢٣٤٫٥٠ EGP")).toBeTruthy();
+    expect(screen.getByText("٣٧")).toBeTruthy();
     await waitFor(() => expect(screen.getByText("١٢ أكتوبر ٢٠٢٦")).toBeTruthy());
   });
 });
