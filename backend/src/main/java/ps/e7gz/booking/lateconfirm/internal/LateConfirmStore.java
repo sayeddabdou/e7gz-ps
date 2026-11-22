@@ -70,6 +70,32 @@ class LateConfirmStore {
              WHERE id = :id AND closed_at IS NULL
             """;
 
+    /**
+     * E7-83: the open attempt's deadline moves later (an emergency pause preserves the remaining time, FR-OPS-36); never
+     * earlier and never beyond the booking's {@code startAt} - the database refuses both
+     * ({@code guard_late_confirmation_mutation}, {@code booking.assert_late_confirmation_row}).
+     */
+    static final String MOVE_DEADLINE = """
+            UPDATE booking.late_confirmation
+               SET expires_at = :expiresAt
+             WHERE id = :id AND closed_at IS NULL AND expires_at <= :expiresAt
+            """;
+
+    /**
+     * E7-83 (FR-OPS-41, E7-58 carry-forward): while the countdown is paused, the deadline the remaining time would give
+     * if it resumed at {@code :at} - {@code at + (expires_at - pause start)}, never beyond {@code startAt} and never
+     * earlier than stored. Decline needs {@code responded_at < expires_at} ({@code ck_late_confirmation_response_shape});
+     * the pause stops the clock, so the customer may decline after the original deadline.
+     */
+    static final String PAUSED_DEADLINE = """
+            SELECT GREATEST(l.expires_at,
+                            LEAST(CAST(:at AS timestamptz) + (l.expires_at - b.late_confirm_pause_started_at),
+                                  b.start_at))
+              FROM booking.late_confirmation l
+              JOIN booking.booking b ON b.id = l.booking_id
+             WHERE l.id = :id AND l.closed_at IS NULL AND b.late_confirm_pause_started_at IS NOT NULL
+            """;
+
     /** The open attempts' deadlines of several bookings in one query (the booking lists, E7-58 Phase 2C). */
     static final String OPEN_DEADLINES = """
             SELECT l.booking_id, l.expires_at
@@ -123,6 +149,22 @@ class LateConfirmStore {
                 .param("id", Objects.requireNonNull(lateConfirmationId, "lateConfirmationId"))
                 .param("at", utc(at))
                 .update() == 1;
+    }
+
+    /** @return false when the attempt is closed or the deadline would move earlier */
+    boolean moveDeadline(CommandContext command, UUID lateConfirmationId, Instant expiresAt) {
+        return command.jdbc().sql(MOVE_DEADLINE)
+                .param("id", Objects.requireNonNull(lateConfirmationId, "lateConfirmationId"))
+                .param("expiresAt", utc(expiresAt))
+                .update() == 1;
+    }
+
+    /** The deadline a paused countdown would have if it resumed at {@code at}; empty when it is not paused. */
+    Optional<Instant> pausedDeadline(CommandContext command, UUID lateConfirmationId, Instant at) {
+        return command.jdbc().sql(PAUSED_DEADLINE)
+                .param("id", Objects.requireNonNull(lateConfirmationId, "lateConfirmationId"))
+                .param("at", utc(at))
+                .query(OffsetDateTime.class).optional().map(OffsetDateTime::toInstant);
     }
 
     Map<UUID, Instant> openDeadlines(CommandContext command, Collection<UUID> bookingIds) {

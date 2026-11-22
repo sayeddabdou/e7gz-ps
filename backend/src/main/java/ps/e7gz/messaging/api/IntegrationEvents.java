@@ -303,6 +303,32 @@ public final class IntegrationEvents {
     public static final String EMERGENCY_CONVERTED = "EmergencyConverted";
 
     /**
+     * {@code {bookingId, venueId, resourceId, customerId, pauseKind, pauseCause, pausedAt}}, aggregate {@code BOOKING}: an
+     * Emergency paused a booking's venue-response timer ({@code pauseKind} VENUE_RESPONSE) or Late Confirm countdown
+     * (LATE_CONFIRM) - FR-OPS-34, FR-OPS-35, arch 08 sections 2.5 and 3.2; E7-83. The Late Confirm one tells the customer
+     * (FR-OPS-41: §52.2 LATE_CONFIRMATION_PAUSED).
+     */
+    public static final String TIMER_PAUSED = "TimerPaused";
+    /**
+     * {@code {bookingId, venueId, resourceId, customerId, pauseKind, resumedAt, deadline, remainingSeconds}}: the paused
+     * timer resumed with its remaining time (FR-OPS-36, FR-OPS-39; E7-83).
+     */
+    public static final String TIMER_RESUMED = "TimerResumed";
+    /**
+     * {@code {bookingId, venueId, resourceId, customerId, pauseKind, terminalReason, capReachedAt}}: the 30-minute
+     * cumulative pause cap was reached and the booking cancelled under {@code terminalReason} (FR-OPS-37, FR-OPS-38;
+     * E7-83). The cancellation's own {@code BookingCancelled} is written in the same command and tells the customer.
+     */
+    public static final String TIMER_PAUSE_CAP_REACHED = "TimerPauseCapReached";
+
+    /**
+     * {@code {venueId, resourceId, restriction, ownerReviewId?}}, aggregate {@code RESOURCE}: the Resource's operational
+     * restriction changed - it entered OWNER_REVIEW_REQUIRED at an Emergency's expected or actual end (FR-OPS-26,
+     * FR-OPS-27; the venue owner is told, FR-OPS-29) or its Owner Review was resolved (FR-OPS-33). E7-84.
+     */
+    public static final String RESOURCE_RESTRICTION_CHANGED = "ResourceRestrictionChanged";
+
+    /**
      * Every event that can change a venue's availability and so refreshes its Nearest Availability rows (arch 05
      * section 5.3, arch 08 section 7): reservation hold or release, Resource state, selling blocks (maintenance,
      * closures, emergencies), opening hours and prices. Each carries the {@code venueId} it touches;
@@ -314,7 +340,7 @@ public final class IntegrationEvents {
     public static final Set<String> INVENTORY_AFFECTING = Set.of(
             RESERVATION_HELD, RESERVATION_RELEASED,
             RESOURCE_DISABLED, RESOURCE_RE_ENABLED, RESOURCE_ARCHIVED, RESOURCE_RESTORED,
-            RESOURCE_CONSOLE_CHANGED, "ResourceRestrictionChanged",
+            RESOURCE_CONSOLE_CHANGED, RESOURCE_RESTRICTION_CHANGED,
             MAINTENANCE_CREATED, MAINTENANCE_EDITED, MAINTENANCE_DELETED,
             CLOSURE_CREATED,
             EMERGENCY_DECLARED, EMERGENCY_EXTENDED, EMERGENCY_ENDED, EMERGENCY_CONVERTED,

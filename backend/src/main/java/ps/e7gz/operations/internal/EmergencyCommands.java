@@ -18,14 +18,13 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
+import ps.e7gz.admin.api.AdminAlerts;
 import ps.e7gz.audit.api.AuditActor;
 import ps.e7gz.audit.api.AuditRecord;
 import ps.e7gz.audit.api.AuditWriter;
 import ps.e7gz.audit.api.OwnerPasswordCheck;
 import ps.e7gz.common.codes.BookingSource;
-import ps.e7gz.common.codes.BookingStatus;
 import ps.e7gz.common.codes.BookingTerminalReason;
-import ps.e7gz.common.codes.BookingTimerPauseKind;
 import ps.e7gz.common.codes.EmergencyConversionTarget;
 import ps.e7gz.common.codes.EmergencyScope;
 import ps.e7gz.common.codes.EmergencyStatus;
@@ -78,8 +77,8 @@ import ps.e7gz.venue.api.OwnerPasswordGate;
  * Emergency, that resource's block only for a resource one - the other resources keep selling, FR-OPS-12); then the
  * live Tournaments (venue: cancelled; resource: pre-start cancelled, an ACTIVE one loses the resource and is cancelled
  * only when no operational resource remains, FR-TRN-27); then the venue-response and Late Confirm timers of the pending
- * requests outside the window paused, each with its open pause-history row (FR-OPS-34, FR-OPS-35; resume, cap and
- * feasibility are E7-83's); one operational-interruption record per booking and Tournament it ended (Spec v5 section
+ * requests outside the window paused, each with its open pause-history row (FR-OPS-34, FR-OPS-35) and each decided at
+ * once - cap, feasibility, resume - by {@link TimerPauses} (E7-83); one operational-interruption record per booking and Tournament it ended (Spec v5 section
  * 53.2); the expected-end job; the audit row and the Emergency event (Sprint 2 review, PO decision 12 Oct 2026: the
  * Nearest Availability consumer refreshes the venue at once). Notifications leave only after commit, from the outbox
  * (FR-NTF-12). The bookings go first because a late-T4 booking is judged as of its {@code startAt} (Spec v5 section
@@ -152,7 +151,8 @@ final class EmergencyCommands {
     record Deps(EmergencyBookings bookings, TournamentCascades tournaments, ResourceStates resources,
                 ResourceCatalog catalog, OperatingSessions sessions, ActiveCommitments commitments,
                 ResourceBaseStateChanges baseStates, AuditWriter audit, Outbox outbox, ScheduledJobs jobs,
-                OwnerPasswordGate gate, ClosureCommands.Deps closures, ObjectMapper json) {
+                OwnerPasswordGate gate, ClosureCommands.Deps closures, ObjectMapper json, TimerPauses timers,
+                AdminAlerts alerts) {
     }
 
     /** The write's locks no longer cover what the cascade reaches: a declaration plans again (never shown). */
@@ -496,8 +496,11 @@ final class EmergencyCommands {
      * sellable gap. A resource that is not ACTIVE (disabled or archived meanwhile, FR-OPS-42) cannot return to service:
      * EMERGENCY_CANNOT_END_RESOURCE_NOT_OPERATIONAL (FR-OPS-20) - convert it instead. Nothing cancelled is restored
      * (FR-OPS-10). The rolling maintenance threshold at the end (Owner Review entry, FR-OPS-27) is the database's
-     * ({@code tr_20_apply_owner_review_threshold}); its cascade is E7-84's. Paused timers stay paused: resuming them is
-     * E7-83's (FR-OPS-39).
+     * ({@code tr_20_apply_owner_review_threshold}, in the status write itself, so the resource is never sellable in
+     * between); E7-84: when it entered a review, its system cascade runs here in the same command
+     * ({@link OwnerReviewCommands#afterBoundary}), before the timers. E7-83: every timer the Emergency paused is decided
+     * again at the same instant ({@link TimerPauses#afterResolution}) - resumed with its remaining time when FR-OPS-39
+     * holds, else it waits for the next valid intake window, the cap or infeasibility.
      */
     record End(UUID venueId, UUID venueAccountId, UUID correlationId, UUID emergencyId, LockSet locks, Deps deps)
             implements Command<Emergency> {
@@ -521,7 +524,10 @@ final class EmergencyCommands {
                     throw new ApiException(ApiErrorCode.EMERGENCY_CANNOT_END_RESOURCE_NOT_OPERATIONAL);
                 }
             }
+            OwnerReviewCommands.Before reviewBefore = OwnerReviewCommands.beforeBoundary(context, deps, before);
             Emergency emergency = resolve(context, deps, before, EmergencyStatus.ENDED, null);
+            OwnerReviewCommands.afterBoundary(context, deps, emergency, reviewBefore, locks);
+            deps.timers().afterResolution(context, venueId, emergency.resourceId(), locks);
             deps.audit().write(context, AuditRecord.builder(OperationsAuditAction.EMERGENCY_ENDED,
                             AuditActor.venue(venueAccountId), emergencyId, correlationId)
                     .contextVenue(venueId)
@@ -859,16 +865,20 @@ final class EmergencyCommands {
             default -> throw new ApiException(ApiErrorCode.CONVERSION_TARGET_NOT_ALLOWED);
         }
         return convertedTo(context, deps, before, conversion.target(), targetId, convert.venueAccountId(),
-                convert.correlationId(), check);
+                convert.correlationId(), check, convert.locks());
     }
 
     /**
      * The Emergency CONVERTED into {@code target} with its block closed at the database's resolution instant, audited
-     * and published - shared by {@code /convert} and the opening-hours commit with {@code emergencyId} (D5).
+     * and published - shared by {@code /convert} and the opening-hours commit with {@code emergencyId} (D5). E7-83: the
+     * timers it paused are decided again ({@link TimerPauses#afterResolution}); {@code locks} null (the hours commit,
+     * whose locks are the hours change's) leaves each to a check job due now.
      */
     static Emergency convertedTo(CommandContext context, Deps deps, Emergency before, EmergencyConversionTarget target,
-                                 UUID targetId, UUID venueAccountId, UUID correlationId, OwnerPasswordCheck check) {
+                                 UUID targetId, UUID venueAccountId, UUID correlationId, OwnerPasswordCheck check,
+                                 LockSet locks) {
         Emergency emergency = resolve(context, deps, before, EmergencyStatus.CONVERTED, target);
+        deps.timers().afterResolution(context, before.venueId(), before.resourceId(), locks);
         Map<String, Object> extra = new LinkedHashMap<>();
         extra.put("convertedTo", target.name());
         if (targetId != null) {
@@ -902,7 +912,13 @@ final class EmergencyCommands {
      */
     enum ExpectedEndOutcome { DONE, SUPERSEDED, NOT_YET }
 
-    static ExpectedEndOutcome expectedEnd(CommandContext context, Deps deps, UUID emergencyId, Instant dueAt) {
+    /**
+     * E7-84: the database's threshold trigger also runs at the expected end (FR-OPS-26: "at the emergency's expected or
+     * actual end"); when it entered an Owner Review, its cascade runs here, inside {@code locks} - the locks the job
+     * planned ({@link #ownerReviewLocks}); a reach beyond them is {@link StaleLocks}, and the job runs again.
+     */
+    static ExpectedEndOutcome expectedEnd(CommandContext context, Deps deps, UUID emergencyId, Instant dueAt,
+                                          LockSet locks) {
         Optional<Emergency> found = context.jdbc().sql(SELECT + " WHERE e.id = :id").param("id", emergencyId)
                 .query(Emergency::map).optional();
         if (found.isEmpty() || found.get().status() != EmergencyStatus.ACTIVE
@@ -913,8 +929,11 @@ final class EmergencyCommands {
         if (context.commandNow().isBefore(emergency.expectedEndAt())) {
             return ExpectedEndOutcome.NOT_YET;
         }
+        OwnerReviewCommands.Before reviewBefore = OwnerReviewCommands.beforeBoundary(context, deps, emergency);
         context.jdbc().sql("UPDATE operations.emergency SET status = 'AWAITING_CONFIRMATION' WHERE id = :id")
                 .param("id", emergencyId).update();
+        OwnerReviewCommands.afterBoundary(context, deps, read(context, emergency.venueId(), emergencyId).orElseThrow(),
+                reviewBefore, locks);
         deps.audit().write(context, AuditRecord.builder(OperationsAuditAction.EMERGENCY_AWAITING_CONFIRMATION,
                         AuditActor.system(), emergencyId, CorrelationId.require())
                 .contextVenue(emergency.venueId())
@@ -922,6 +941,18 @@ final class EmergencyCommands {
                 .payload(subjectPayload(emergency, Map.of("expectedEndAt", emergency.expectedEndAt().toString())))
                 .build());
         return ExpectedEndOutcome.DONE;
+    }
+
+    /**
+     * E7-84, read-only: what a resource Emergency's end or expected end needs locked in case the database enters an
+     * Owner Review there - the Resource's live and expired bookings' Customers and its Tournaments (FR-OPS-28). Whether
+     * it will enter one is the database's to say at the write (the threshold is never decided here), so a resource
+     * Emergency's boundary always takes them.
+     */
+    static void ownerReviewLocks(CommandContext context, Deps deps, Emergency emergency, LockSet.Builder locks) {
+        if (emergency.resourceId() != null) {
+            OwnerReviewCommands.reach(context, deps, emergency.venueId(), emergency.resourceId()).addTo(locks);
+        }
     }
 
     static String expectedEndKey(Emergency emergency) {
@@ -989,27 +1020,17 @@ final class EmergencyCommands {
             }
         }
 
-        // FR-OPS-34, FR-OPS-35: the pending requests outside the window wait, their timers paused
+        // FR-OPS-34, FR-OPS-35: the pending requests outside the window wait, their timers paused; E7-83: each decided
+        // at once - the feasibility test runs whenever a pause begins (FR-OPS-40) - and checked again until it resumes
         List<UUID> toPause = reach.outside().stream().filter(row -> !row.paused()).map(Live::bookingId).toList();
-        List<Live> paused = toPause.isEmpty() ? List.of()
-                : deps.bookings().pause(context, emergency.venueId(), toPause);
-        for (Live booking : paused) {
-            BookingTimerPauseKind kind = booking.status() == BookingStatus.PENDING ? BookingTimerPauseKind.VENUE_RESPONSE
-                    : BookingTimerPauseKind.LATE_CONFIRM;
-            context.jdbc().sql("""
-                            INSERT INTO operations.booking_timer_pause_history (id, booking_id, sequence, pause_kind,
-                                                                                pause_started_at, pause_cause)
-                            SELECT :id, :booking, COALESCE(max(h.sequence), 0) + 1, :kind, :at, :cause
-                              FROM operations.booking_timer_pause_history h
-                             WHERE h.booking_id = :booking AND h.pause_kind = :kind""")
-                    .param("id", UUID.randomUUID()).param("booking", booking.bookingId()).param("kind", kind.name())
-                    .param("at", MaintenanceCommands.utc(now)).param("cause", emergency.bookingReason().name())
-                    .update();
-        }
+        List<Live> paused = deps.timers().pause(context, emergency.venueId(), emergency.bookingReason(), toPause);
 
         // Spec v5 section 53.2: one append-only operational interruption record per booking and Tournament it ended
         UUID correlationId = CorrelationId.require();
         for (EmergencyBookings.Outcome outcome : cascade.bookings()) {
+            if (outcome.completed()) {
+                continue;
+            }
             Map<String, Object> evidence = new LinkedHashMap<>();
             evidence.put("emergencyId", emergency.id().toString());
             evidence.put("fromStatus", outcome.from().name());
@@ -1031,7 +1052,7 @@ final class EmergencyCommands {
         return new Cascade(cascade.bookings(), List.copyOf(cancelled), List.copyOf(trimmed), paused.size());
     }
 
-    private static boolean operational(CommandContext context, Deps deps, UUID resourceId, Instant now) {
+    static boolean operational(CommandContext context, Deps deps, UUID resourceId, Instant now) {
         return deps.resources().find(context, resourceId)
                 .filter(room -> room.baseState() == ResourceBaseState.ACTIVE
                         && room.restriction() == OperationalRestriction.NONE)
@@ -1039,7 +1060,7 @@ final class EmergencyCommands {
                 .orElseThrow().venueId(), EmergencyScope.RESOURCE, resourceId));
     }
 
-    private static void interruption(CommandContext context, Deps deps, String subjectType, UUID subjectId,
+    static void interruption(CommandContext context, Deps deps, String subjectType, UUID subjectId,
                                      String cause, Instant at, Map<String, Object> evidence, boolean refundApplied,
                                      BigDecimal refundAmount, UUID correlationId) {
         String json;

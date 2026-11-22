@@ -304,13 +304,24 @@ class LateConfirmCommands {
      *
      * <p>D3: never refused for a paused window or an emergency (FR-OPS-41): a pause ends with the Decline - added to
      * the cumulative Late Confirm pause and its open history row closed. It needs {@code now < expires_at}, the stored
-     * deadline ({@code ck_late_confirmation_response_shape}); keeping that deadline valid during a pause is E7-83's. A
-     * banned customer may still decline: no account or Ban check.
+     * deadline ({@code ck_late_confirmation_response_shape}). E7-83: a pause stops the clock, so on a paused window the
+     * stored deadline first moves to where the remaining time would put it if the countdown resumed now (never beyond
+     * {@code startAt}) - a Decline after the original deadline but during the pause succeeds. A banned customer may still
+     * decline: no account or Ban check.
      */
     LateConfirmAnswer decline(CommandContext context, UUID bookingId, UUID customerId) {
         Instant now = context.commandNow();
         Booking booking = customersAwaiting(context, bookingId, customerId);
         Open attempt = openAttempt(context, booking);
+        if (booking.lateConfirmPaused() && !now.isBefore(attempt.expiresAt())) {
+            Instant moved = store.pausedDeadline(context, attempt.id(), now)
+                    .orElseThrow(() -> new ApiException(ApiErrorCode.BOOKING_STATE_CHANGED));
+            if (moved.isAfter(attempt.expiresAt()) && !store.moveDeadline(context, attempt.id(), moved)) {
+                throw new ApiException(ApiErrorCode.BOOKING_STATE_CHANGED);
+            }
+            attempt = new Open(attempt.id(), attempt.bookingId(), attempt.initiatedAt(), moved,
+                    attempt.warningSentAt(), attempt.holdReservationId());
+        }
         requireBeforeDeadline(attempt, now);
 
         if (booking.lateConfirmPaused()) {
@@ -378,6 +389,31 @@ class LateConfirmCommands {
         supersedeJobs(context, bookingId);
     }
 
+    // ------------------------------------------------------------------------------------------------------ Resume
+
+    /**
+     * E7-83 ({@link ps.e7gz.booking.api.LateConfirmClosures#resumeTimers}): the paused countdown resumes with its
+     * remaining time - the deadline moved to {@code deadline} (later only), T2 re-armed at it and T3 at
+     * {@code deadline - 60 s} while unsent and more than 60 seconds remain, else withdrawn (FR-LCF-12). A T2 or T3 that
+     * fired during the pause and ended FAILED is re-armed too; one a worker holds is left to it - it re-reads the moved
+     * deadline and reschedules itself.
+     */
+    void resumeTimers(CommandContext context, UUID bookingId, Instant resumedAt, Instant deadline) {
+        Open attempt = store.open(context, bookingId)
+                .orElseThrow(() -> integrityFailure(bookingId, "a paused AWAITING booking has no open attempt"));
+        if (deadline.isAfter(attempt.expiresAt()) && !store.moveDeadline(context, attempt.id(), deadline)) {
+            throw integrityFailure(bookingId, "the open Late Confirmation deadline did not move");
+        }
+        Instant expiresAt = deadline.isAfter(attempt.expiresAt()) ? deadline : attempt.expiresAt();
+        jobs.rearmIfHeld(context, LateConfirmWindow.expiryKey(bookingId), expiresAt);
+        Instant warningAt = expiresAt.minus(LateConfirmWindow.WARNING_LEAD);
+        if (attempt.warningSentAt() == null && warningAt.isAfter(resumedAt)) {
+            jobs.rearmIfHeld(context, LateConfirmWindow.warningKey(bookingId), warningAt);
+        } else {
+            jobs.supersede(context, LateConfirmWindow.warningKey(bookingId));
+        }
+    }
+
     // ------------------------------------------------------------------------------------------------------ T2
 
     /**
@@ -389,7 +425,8 @@ class LateConfirmCommands {
      *   <li>AWAITING with no open attempt - an integrity failure (as E7-47 D11): ERROR, the command rolls back and the
      *       worker's bounded retries end it FAILED, never a silent supersede;</li>
      *   <li>a paused window (FR-OPS-35): thrown, changing nothing, as T1 does (E7-47 D13) - the job backs off and, if
-     *       still paused, ends FAILED; re-arming it with the remaining time is E7-83's (PO decision 12 Oct 2026);</li>
+     *       still paused, ends FAILED; the resume re-arms it with the remaining time, FAILED or not (E7-83,
+     *       {@link #resumeTimers}; PO decision 12 Oct 2026);</li>
      *   <li>before the stored deadline (it moved later) - rescheduled to it;</li>
      *   <li>otherwise the effect as of the deadline: {@code terminal_at}, the hold's release, the attempt's
      *       {@code responded_at}/{@code closed_at} (TIMED_OUT) and the history row are all the stored

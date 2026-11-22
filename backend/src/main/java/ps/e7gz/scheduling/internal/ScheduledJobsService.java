@@ -45,4 +45,9 @@ class ScheduledJobsService implements ScheduledJobs {
     public boolean pause(CommandContext context, String idempotencyKey) {
         return store.pause(context.jdbc(), idempotencyKey);
     }
+
+    @Override
+    public boolean rearmIfHeld(CommandContext context, String idempotencyKey, Instant dueAt) {
+        return store.rearmIfHeld(context.jdbc(), idempotencyKey, dueAt);
+    }
 }

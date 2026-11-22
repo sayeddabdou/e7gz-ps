@@ -126,7 +126,16 @@ final class BookingNotificationRules {
             // E7-71 (O14, FR-TRS-20: the customer is notified): §52.2 "Booking cancelled due to Ban" to the customer, and
             // §52.5 "Booking Auto Cancelled" to the venue - a system cancellation of one of its bookings
             Map.entry(BookingTerminalReason.USER_BANNED,
-                    plan(customer("BOOKING_CANCELLED_BAN"), venue("VENUE_BOOKING_AUTO_CANCELLED"))));
+                    plan(customer("BOOKING_CANCELLED_BAN"), venue("VENUE_BOOKING_AUTO_CANCELLED"))),
+            // E7-83 (FR-OPS-38, Spec v5 section 44.3: "the Customer receives an emergency-related notification"): §52.2
+            // operational causes, the customer only - the catalogue sends these two codes to the CUSTOMER alone. A
+            // response timer's two reasons share one code; no venue non-response blame is told to anyone
+            Map.entry(BookingTerminalReason.VENUE_RESPONSE_INTERRUPTED_BY_EMERGENCY,
+                    plan(customer("BOOKING_RESPONSE_INTERRUPTED_BY_EMERGENCY"))),
+            Map.entry(BookingTerminalReason.RESOURCE_RESPONSE_INTERRUPTED_BY_EMERGENCY,
+                    plan(customer("BOOKING_RESPONSE_INTERRUPTED_BY_EMERGENCY"))),
+            Map.entry(BookingTerminalReason.LATE_CONFIRM_INTERRUPTED_BY_EMERGENCY,
+                    plan(customer("LATE_CONFIRM_INTERRUPTED_BY_EMERGENCY"))));
 
     /** One entry per integration event this module turns into booking notifications. */
     static final Map<String, Function<OutboxEvent, Plan>> RULES = Map.ofEntries(
@@ -164,6 +173,10 @@ final class BookingNotificationRules {
             // T2: §52.2 and §52.5 "Customer Confirmation Expired", one for each side
             Map.entry(IntegrationEvents.LATE_CONFIRM_TIMED_OUT, event -> plan(customer("CUSTOMER_CONFIRMATION_EXPIRED"),
                     venue("VENUE_CUSTOMER_CONFIRMATION_EXPIRED"))),
+            // E7-83 (FR-OPS-41, Spec v5 section 44.6; PCR-008 leaves it to E7-83): an Emergency paused the customer's
+            // Late Confirm countdown - §52.2 "Late Confirmation Paused". A paused venue-response timer tells no one
+            Map.entry(IntegrationEvents.TIMER_PAUSED, event -> "LATE_CONFIRM".equals(event.text("pauseKind"))
+                    ? plan(customer("LATE_CONFIRMATION_PAUSED")) : Plan.NONE),
             // E7-59 attendance (O13). §52.2 "Check-in Recorded" and "No-show Recorded", the customer only: the venue
             // recorded them itself. Mark Present - Late has no §52.2 notification of its own; its customer-facing
             // outcome is "Attendance-Unconfirmed Completion" at completion (E7-61)

@@ -1,14 +1,17 @@
 package ps.e7gz.operations.api;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import ps.e7gz.common.codes.AttendanceResult;
 import ps.e7gz.common.codes.BookingSource;
 import ps.e7gz.common.codes.BookingStatus;
 import ps.e7gz.common.codes.BookingTerminalReason;
+import ps.e7gz.common.codes.BookingTimerPauseKind;
 import ps.e7gz.common.command.CommandContext;
 
 /**
@@ -68,6 +71,49 @@ public interface EmergencyBookings {
                       BookingTerminalReason reason);
 
     /**
+     * E7-84 (FR-OPS-28, Spec v5 section 43.3): every live booking - PENDING, AWAITING_CUSTOMER_CONFIRMATION, CONFIRMED
+     * or ACTIVE, Online and Manual - of the Resource, whatever its interval: an Owner Review leaves none live
+     * ({@code operations.assert_owner_review_cascade_complete}). In start, then id order. Read-only.
+     */
+    List<Live> onResource(CommandContext command, UUID venueId, UUID resourceId);
+
+    /**
+     * E7-84 (FR-OPS-32, Spec v5 section 43.6): the VENUE_RESPONSE_EXPIRED Online Bookings of the Resource still before
+     * their {@code startAt} - Late-Confirmable, holding no reservation, so outside the cascade. Read-only.
+     */
+    List<Live> expiredOnResource(CommandContext command, UUID venueId, UUID resourceId);
+
+    /**
+     * E7-84: ends exactly {@code bookingIds} under {@code RESOURCE_OWNER_REVIEW_REQUIRED} as a system operational
+     * consequence (actor SYSTEM, no Owner Password - FR-OPS-29), as {@link #end} ends an Emergency's set, with what a
+     * whole-resource cascade adds: a booking whose time already passed with its timers late gets the outcome those timers
+     * would have written first, never an interruption after its end - an ACTIVE one past its {@code endAt} is completed
+     * as of {@code endAt} (T5), a CONFIRMED one started at {@code startAt} (T4, as {@link #end}) and, past its end,
+     * completed as of {@code endAt}. Such a completed booking's {@link Outcome#completed()} is true and it gets no fee
+     * decision.
+     */
+    List<Outcome> endForOwnerReview(CommandContext command, UUID venueId, List<UUID> bookingIds);
+
+    /**
+     * E7-84 (PO decisions 19-20 Oct 2026, R1 "start first"; Spec v5 section 31.7): the CONFIRMED bookings of the
+     * Resource whose {@code startAt} passed with T4 late, started as of {@code startAt} when T4's own resolution says
+     * start - its job withdrawn, the start written as T4 writes it. Called before a write that may change the Resource's
+     * current state (an Owner Review entry), because the start gates read that state: the start is judged before the
+     * cause exists, as an Emergency's cascade judges it before the Emergency row. A booking whose resolution is not a
+     * start is left as it is, for T4 or the cascade. Needs the bookings' Customers in the lock set.
+     *
+     * @return the bookings started, in id order
+     */
+    List<UUID> startOverdue(CommandContext command, UUID venueId, UUID resourceId);
+
+    /**
+     * E7-84 (FR-OPS-32, Spec v5 section 43.6): one {@code LATE_CONFIRM_ELIGIBILITY_LOST_RESOURCE_STATE_CHANGED} Booking
+     * Event with {@code detailCode RESOURCE_OWNER_REVIEW_REQUIRED} on each of {@code bookingIds} - VENUE_RESPONSE_EXPIRED
+     * Online Bookings of {@code venueId} - at the command instant, actor SYSTEM. Nothing else changes.
+     */
+    void lateConfirmEligibilityLost(CommandContext command, UUID venueId, List<UUID> bookingIds);
+
+    /**
      * Pauses the running timer of exactly {@code bookingIds} at the command instant (FR-OPS-34, FR-OPS-35): a PENDING
      * Online Booking's venue-response timer, an AWAITING one's Late Confirm countdown - its pause instant on the booking
      * and its jobs {@code PAUSED}. The caller appends the open {@code operations.booking_timer_pause_history} row (it
@@ -77,6 +123,73 @@ public interface EmergencyBookings {
      * @return the paused bookings, in id order, with the timer each had
      */
     List<Live> pause(CommandContext command, UUID venueId, List<UUID> bookingIds);
+
+    /**
+     * E7-83: the paused timers - PENDING Online Bookings with a paused venue-response timer and AWAITING ones with a
+     * paused Late Confirm countdown - of the Venue ({@code resourceId} null) or of the one Resource, in start, then id
+     * order. Read-only.
+     */
+    List<PausedTimer> pausedTimers(CommandContext command, UUID venueId, UUID resourceId);
+
+    /** E7-83: the booking's paused timer; empty when it is not a paused PENDING or AWAITING Online Booking. Read-only. */
+    Optional<PausedTimer> pausedTimer(CommandContext command, UUID bookingId);
+
+    /**
+     * E7-83 (FR-OPS-36, FR-OPS-39, arch 08 section 2.5): the paused timer resumes at {@code at} with its deadline moved to
+     * {@code deadline} - the pause added to its 30-minute counter and the pause column cleared, the open pause-history
+     * row closed through {@link ResponseTimerPauses}, the deadline stored ({@code venue_response_expires_at}, or the open
+     * Late Confirmation's) and its jobs re-armed at it whether {@code PAUSED} or {@code FAILED} (Sprint 2 review, PO
+     * decision 12 Oct 2026). Needs the booking's Customer, Venue and Resource in the lock set.
+     *
+     * @return the counter including this pause
+     * @throws IllegalStateException when the booking has no paused timer - a caller defect
+     */
+    Duration resume(CommandContext command, UUID bookingId, Instant at, Instant deadline);
+
+    /**
+     * E7-83 (FR-OPS-38, FR-OPS-40): a paused booking CANCELLED at {@code at} under {@code reason} -
+     * {@code VENUE_RESPONSE_INTERRUPTED_BY_EMERGENCY} / {@code RESOURCE_RESPONSE_INTERRUPTED_BY_EMERGENCY} for a PENDING
+     * one, {@code LATE_CONFIRM_INTERRUPTED_BY_EMERGENCY} for an AWAITING one - actor SYSTEM (no venue non-response
+     * blame): its pause ended and history row closed, its reservation or hold released, its jobs withdrawn, its Booking
+     * Fee decision (a full refund, no penalty) and {@code BookingCancelled}. Needs the booking's Customer, Venue and
+     * Resource in the lock set.
+     *
+     * @throws IllegalStateException when the booking has no paused timer or the reason does not fit it - a caller defect
+     */
+    void cancelInterrupted(CommandContext command, UUID bookingId, BookingTerminalReason reason, Instant at);
+
+    /**
+     * One paused timer (FR-OPS-37).
+     *
+     * @param pauseStartedAt {@code response_pause_started_at} or {@code late_confirm_pause_started_at}
+     * @param cumulative     the 30-minute counter before this pause ({@code cumulative_emergency_pause_duration} or
+     *                       {@code cumulative_late_confirm_emergency_pause_duration})
+     * @param deadline       the stored deadline the pause stopped: {@code venue_response_expires_at} or the open Late
+     *                       Confirmation's {@code expires_at}
+     */
+    record PausedTimer(UUID bookingId, UUID venueId, UUID resourceId, UUID customerId, BookingStatus status,
+                       BookingTimerPauseKind kind, Instant startAt, Instant pauseStartedAt, Duration cumulative,
+                       Instant deadline) {
+
+        public PausedTimer {
+            Objects.requireNonNull(bookingId, "bookingId");
+            Objects.requireNonNull(venueId, "venueId");
+            Objects.requireNonNull(resourceId, "resourceId");
+            Objects.requireNonNull(customerId, "customerId");
+            Objects.requireNonNull(status, "status");
+            Objects.requireNonNull(kind, "kind");
+            Objects.requireNonNull(startAt, "startAt");
+            Objects.requireNonNull(pauseStartedAt, "pauseStartedAt");
+            Objects.requireNonNull(cumulative, "cumulative");
+            Objects.requireNonNull(deadline, "deadline");
+        }
+
+        /** FR-OPS-36: the time the timer had left when it paused; never negative. */
+        public Duration remaining() {
+            Duration left = Duration.between(pauseStartedAt, deadline);
+            return left.isNegative() ? Duration.ZERO : left;
+        }
+    }
 
     /**
      * One live booking.
@@ -102,8 +215,9 @@ public interface EmergencyBookings {
      *
      * @param from         its status when the cascade reached it
      * @param startedFirst a late-T4 booking the cascade started at its {@code startAt} before interrupting it
-     * @param reason       the terminal reason written: the Emergency's, or a start-time reason T4 would have written
-     * @param attendance   the Attendance Result an interruption resolved; null when it never started
+     * @param reason       the terminal reason written: the cause's, or a start-time reason T4 would have written; null
+     *                     when the booking was completed instead ({@link #completed()}, E7-84)
+     * @param attendance   the Attendance Result an interruption or completion resolved; null when it never started
      * @param bookingFee   the Booking Fee snapshot (the full-refund amount of an Online Booking; zero for Manual)
      */
     record Outcome(UUID bookingId, UUID resourceId, BookingSource source, BookingStatus from, boolean startedFirst,
@@ -114,8 +228,12 @@ public interface EmergencyBookings {
             Objects.requireNonNull(resourceId, "resourceId");
             Objects.requireNonNull(source, "source");
             Objects.requireNonNull(from, "from");
-            Objects.requireNonNull(reason, "reason");
             Objects.requireNonNull(bookingFee, "bookingFee");
+        }
+
+        /** E7-84: its time had passed, so it was COMPLETED as of its {@code endAt} - not cancelled, no refund. */
+        public boolean completed() {
+            return reason == null;
         }
     }
 }
