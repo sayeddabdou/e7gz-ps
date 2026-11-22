@@ -571,6 +571,12 @@ class VenueConfirmedCancellationIntegrationTest extends IntegrationTest {
         }
 
         @Override
+        public int releaseAll(CommandContext command, ReservationOwner owner, Instant releaseAt,
+                              String releaseReason) {
+            return 0;
+        }
+
+        @Override
         public boolean hasBlockingOverlap(CommandContext command, UUID resourceId, Instant start, Instant end) {
             return ledger.hasBlockingOverlap(command, resourceId, start, end);
         }

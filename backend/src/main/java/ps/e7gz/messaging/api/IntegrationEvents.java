@@ -272,20 +272,78 @@ public final class IntegrationEvents {
     public static final String LOYALTY_POINTS_LEDGER_COMMITTED = "LOYALTY_POINTS_LEDGER_COMMITTED";
 
     /**
+     * {@code {venueId, resourceId, maintenanceId}}, aggregate {@code MAINTENANCE}: the venue created a Maintenance window
+     * on one of its rooms (FR-OPS-01, arch 08 section 3.2; E7-81, Sprint 2 review, PO decision 12 Oct 2026). Its two
+     * siblings below carry the same payload.
+     */
+    public static final String MAINTENANCE_CREATED = "MaintenanceCreated";
+    /** The venue moved, extended, shortened or re-worded a Maintenance window (FR-OPS-04); as {@link #MAINTENANCE_CREATED}. */
+    public static final String MAINTENANCE_EDITED = "MaintenanceEdited";
+    /** The venue deleted a Maintenance window (FR-OPS-01); as {@link #MAINTENANCE_CREATED}. */
+    public static final String MAINTENANCE_DELETED = "MaintenanceDeleted";
+    /**
+     * {@code {venueId, closureId}}, aggregate {@code VENUE_CLOSURE}: the venue saved a new normal Closure (FR-VEN-29,
+     * arch 08 section 3.2; E7-81). An edit or a delete has no event of its own in arch 08: it releases and holds the
+     * Closure's per-room {@code CLOSURE} rows, whose {@link #RESERVATION_RELEASED} / {@link #RESERVATION_HELD} refresh
+     * the venue the same way.
+     */
+    public static final String CLOSURE_CREATED = "ClosureCreated";
+
+    /**
+     * {@code {venueId, emergencyId, scope, resourceId?}}, aggregate {@code EMERGENCY}: a venue Emergency Closure or a
+     * resource Emergency Outage was declared (FR-OPS-06, FR-OPS-11; arch 08 section 3.2; E7-82, Sprint 2 review, PO
+     * decision 12 Oct 2026), in the command that declares it. Its three siblings below carry the same payload.
+     */
+    public static final String EMERGENCY_DECLARED = "EmergencyDeclared";
+    /** The expected end moved later (FR-OPS-22); as {@link #EMERGENCY_DECLARED}. */
+    public static final String EMERGENCY_EXTENDED = "EmergencyExtended";
+    /** END EMERGENCY: the selling block ended (FR-OPS-19); as {@link #EMERGENCY_DECLARED}. */
+    public static final String EMERGENCY_ENDED = "EmergencyEnded";
+    /** Converted into its target in one commit (FR-OPS-23, FR-OPS-24); as {@link #EMERGENCY_DECLARED}. */
+    public static final String EMERGENCY_CONVERTED = "EmergencyConverted";
+
+    /**
+     * {@code {bookingId, venueId, resourceId, customerId, pauseKind, pauseCause, pausedAt}}, aggregate {@code BOOKING}: an
+     * Emergency paused a booking's venue-response timer ({@code pauseKind} VENUE_RESPONSE) or Late Confirm countdown
+     * (LATE_CONFIRM) - FR-OPS-34, FR-OPS-35, arch 08 sections 2.5 and 3.2; E7-83. The Late Confirm one tells the customer
+     * (FR-OPS-41: §52.2 LATE_CONFIRMATION_PAUSED).
+     */
+    public static final String TIMER_PAUSED = "TimerPaused";
+    /**
+     * {@code {bookingId, venueId, resourceId, customerId, pauseKind, resumedAt, deadline, remainingSeconds}}: the paused
+     * timer resumed with its remaining time (FR-OPS-36, FR-OPS-39; E7-83).
+     */
+    public static final String TIMER_RESUMED = "TimerResumed";
+    /**
+     * {@code {bookingId, venueId, resourceId, customerId, pauseKind, terminalReason, capReachedAt}}: the 30-minute
+     * cumulative pause cap was reached and the booking cancelled under {@code terminalReason} (FR-OPS-37, FR-OPS-38;
+     * E7-83). The cancellation's own {@code BookingCancelled} is written in the same command and tells the customer.
+     */
+    public static final String TIMER_PAUSE_CAP_REACHED = "TimerPauseCapReached";
+
+    /**
+     * {@code {venueId, resourceId, restriction, ownerReviewId?}}, aggregate {@code RESOURCE}: the Resource's operational
+     * restriction changed - it entered OWNER_REVIEW_REQUIRED at an Emergency's expected or actual end (FR-OPS-26,
+     * FR-OPS-27; the venue owner is told, FR-OPS-29) or its Owner Review was resolved (FR-OPS-33). E7-84.
+     */
+    public static final String RESOURCE_RESTRICTION_CHANGED = "ResourceRestrictionChanged";
+
+    /**
      * Every event that can change a venue's availability and so refreshes its Nearest Availability rows (arch 05
      * section 5.3, arch 08 section 7): reservation hold or release, Resource state, selling blocks (maintenance,
      * closures, emergencies), opening hours and prices. Each carries the {@code venueId} it touches;
      * {@link #AREA_DEACTIVATED} carries an {@code areaId} instead. Written so far (PO decision 9 Oct 2026): the E7-23
      * events, {@link #RESERVATION_HELD} (E7-46), {@link #RESERVATION_RELEASED} (E7-47) and the room state and price
-     * events (E7-56, PO decision 12 Oct 2026); the other producers add theirs in their own tasks.
+     * events (E7-56, PO decision 12 Oct 2026), and the Maintenance and Closure events (E7-81); the other producers add
+     * theirs in their own tasks.
      */
     public static final Set<String> INVENTORY_AFFECTING = Set.of(
             RESERVATION_HELD, RESERVATION_RELEASED,
             RESOURCE_DISABLED, RESOURCE_RE_ENABLED, RESOURCE_ARCHIVED, RESOURCE_RESTORED,
-            RESOURCE_CONSOLE_CHANGED, "ResourceRestrictionChanged",
-            "MaintenanceCreated", "MaintenanceEdited", "MaintenanceDeleted",
-            "ClosureCreated",
-            "EmergencyDeclared", "EmergencyExtended", "EmergencyEnded", "EmergencyConverted",
+            RESOURCE_CONSOLE_CHANGED, RESOURCE_RESTRICTION_CHANGED,
+            MAINTENANCE_CREATED, MAINTENANCE_EDITED, MAINTENANCE_DELETED,
+            CLOSURE_CREATED,
+            EMERGENCY_DECLARED, EMERGENCY_EXTENDED, EMERGENCY_ENDED, EMERGENCY_CONVERTED,
             "OpeningHoursChanged",
             VENUE_PRICING_CHANGED, ROOM_OVERRIDE_CHANGED,
             VENUE_MARKETPLACE_STATUS_CHANGED,

@@ -87,6 +87,16 @@ class HoursChangeCancellation {
     private static final Logger log = LoggerFactory.getLogger(HoursChangeCancellation.class);
     static final BookingTerminalReason REASON = BookingTerminalReason.VENUE_OPENING_HOURS_CHANGED;
 
+    /** E7-81: the two reasons this one cancellation path serves (FRS section 2.4 "Hours/Closure save"). */
+    static final Set<BookingTerminalReason> REASONS = Set.of(REASON, BookingTerminalReason.VENUE_CLOSURE);
+
+    static void requireReason(BookingTerminalReason reason) {
+        Objects.requireNonNull(reason, "reason");
+        if (!REASONS.contains(reason)) {
+            throw new IllegalArgumentException(reason + " is not an hours-change or Closure cancellation");
+        }
+    }
+
     private final VenueAnswerStore store;
     private final ReservationLedger ledger;
     private final BookingFeeRefunds refunds;
@@ -128,13 +138,20 @@ class HoursChangeCancellation {
      */
     void cancel(CommandContext context, UUID venueId, UUID venueAccountId, List<UUID> ordered,
                 Map<UUID, BookingFacts> sessions) {
+        cancel(context, venueId, venueAccountId, ordered, sessions, REASON);
+    }
+
+    /** As above, under {@code reason}: {@code VENUE_OPENING_HOURS_CHANGED} or, for a Venue Closure, VENUE_CLOSURE. */
+    void cancel(CommandContext context, UUID venueId, UUID venueAccountId, List<UUID> ordered,
+                Map<UUID, BookingFacts> sessions, BookingTerminalReason reason) {
+        requireReason(reason);
         Objects.requireNonNull(venueId, "venueId");
         Objects.requireNonNull(venueAccountId, "venueAccountId");
         Instant now = context.commandNow();
 
         List<Cancellable> batch = new ArrayList<>(ordered.size());
         for (UUID bookingId : ordered) {
-            batch.add(validated(context, bookingId, venueId, sessions.get(bookingId), now));
+            batch.add(validated(context, bookingId, venueId, sessions.get(bookingId), now, reason));
         }
         requireOpenAttempts(context, batch);
 
@@ -144,20 +161,20 @@ class HoursChangeCancellation {
             UUID bookingId = booking.bookingId();
             BookingStatus from = booking.status();
             if (from == BookingStatus.AWAITING_CUSTOMER_CONFIRMATION) {
-                closures.closeForCancellation(context, bookingId, REASON, now);
+                closures.closeForCancellation(context, bookingId, reason, now);
             }
             if (from == BookingStatus.PENDING && booking.responsePaused()) {
                 Duration accumulated = store.endResponsePause(context, bookingId, now)
                         .orElseThrow(() -> integrityFailure(bookingId, "the paused response timer did not end"));
                 pauses.closeOpen(context, bookingId, now, accumulated);
             }
-            if (!store.terminate(context, bookingId, from, BookingStatus.CANCELLED, REASON, now, null)) {
+            if (!store.terminate(context, bookingId, from, BookingStatus.CANCELLED, reason, now, null)) {
                 throw integrityFailure(bookingId, "the booking left " + from + " under the command's locks");
             }
             if (from != BookingStatus.AWAITING_CUSTOMER_CONFIRMATION) {
-                ledger.release(context, next.reservation().id(), now, REASON.name());
+                ledger.release(context, next.reservation().id(), now, reason.name());
             }
-            UUID history = store.insertTransition(context, bookingId, now, from, BookingStatus.CANCELLED, REASON,
+            UUID history = store.insertTransition(context, bookingId, now, from, BookingStatus.CANCELLED, reason,
                     ActorType.VENUE, venueAccountId, CorrelationId.require());
             if (from == BookingStatus.PENDING) {
                 jobs.supersede(context, VenueAnswers.venueResponseExpiryKey(bookingId));
@@ -167,9 +184,9 @@ class HoursChangeCancellation {
             }
             if (booking.source() == BookingSource.ONLINE) {
                 decisions.add(new BookingFeeRefunds.Decision(booking.customerId(), bookingId, history));
-                outbox.publish(context, BookingEvents.cancelled(booking, REASON));
+                outbox.publish(context, BookingEvents.cancelled(booking, reason));
             } else {
-                outbox.publish(context, BookingEvents.manualCancelled(booking, REASON));
+                outbox.publish(context, BookingEvents.manualCancelled(booking, reason));
             }
         }
         refunds.recordDecisions(context, decisions);
@@ -180,7 +197,7 @@ class HoursChangeCancellation {
      * {@code LATE_CONFIRM_HOLD} of an AWAITING booking; writes nothing.
      */
     private Cancellable validated(CommandContext context, UUID bookingId, UUID venueId, BookingFacts session,
-                                  Instant now) {
+                                  Instant now, BookingTerminalReason reason) {
         Facts booking = store.facts(context, bookingId)
                 .orElseThrow(() -> integrityFailure(bookingId, "no such booking"));
         if (!booking.venueId().equals(venueId)) {
@@ -192,7 +209,10 @@ class HoursChangeCancellation {
         BookingStatus status = booking.status();
         boolean cancellable = switch (status) {
             case PENDING -> booking.source() == BookingSource.ONLINE;
-            case CONFIRMED -> booking.source() == BookingSource.ONLINE || session.insideOperatingSession();
+            // E7-81: a Closure blocks the whole venue whatever its hours (FR-VEN-29), so it also cancels a Manual
+            // Booking made outside published hours; an hours change never affects one (FR-MAN-03)
+            case CONFIRMED -> booking.source() == BookingSource.ONLINE || session.insideOperatingSession()
+                    || reason == BookingTerminalReason.VENUE_CLOSURE;
             case AWAITING_CUSTOMER_CONFIRMATION -> booking.source() == BookingSource.ONLINE
                     && !session.lateConfirmTimedOut();
             case VENUE_RESPONSE_EXPIRED, ACTIVE, NO_SHOW, COMPLETED, REJECTED, CANCELLED -> false;

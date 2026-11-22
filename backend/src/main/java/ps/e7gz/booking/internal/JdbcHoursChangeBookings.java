@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import ps.e7gz.booking.api.LateConfirmWindows;
 import ps.e7gz.common.codes.BookingSource;
 import ps.e7gz.common.codes.BookingStatus;
+import ps.e7gz.common.codes.BookingTerminalReason;
 import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.venue.api.HoursChangeBookings;
 
@@ -64,12 +65,14 @@ class JdbcHoursChangeBookings implements HoursChangeBookings {
     }
 
     @Override
-    public void cancel(CommandContext command, UUID venueId, UUID venueAccountId, List<UUID> bookingIds) {
+    public void cancel(CommandContext command, UUID venueId, UUID venueAccountId, List<UUID> bookingIds,
+                       BookingTerminalReason reason) {
+        HoursChangeCancellation.requireReason(reason);
         List<UUID> ordered = HoursChangeCancellation.ordered(bookingIds);
         if (ordered.isEmpty()) {
             return;
         }
-        cancellation.cancel(command, venueId, venueAccountId, ordered, facts(command, ordered));
+        cancellation.cancel(command, venueId, venueAccountId, ordered, facts(command, ordered), reason);
     }
 
     private record Row(UUID id, BookingStatus status, BookingSource source, UUID customerId, boolean insideSession,

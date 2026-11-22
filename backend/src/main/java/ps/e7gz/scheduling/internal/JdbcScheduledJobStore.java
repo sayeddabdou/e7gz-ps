@@ -119,6 +119,43 @@ class JdbcScheduledJobStore {
                 .update() == 1;
     }
 
+    /**
+     * E7-82: {@code PENDING -> PAUSED} of the job with this key, the emergency pause {@code guard_scheduled_job} allows a
+     * command (arch 08 section 2.5: "status := 'PAUSED'"); {@code due_at} is kept. False when nothing moved - no such
+     * job, or it is not {@code PENDING} (a {@code LEASED} job is left to its worker, whose fire re-reads the paused
+     * booking). E7-83 sends it back with {@link #rearmIfHeld}.
+     */
+    boolean pause(JdbcClient jdbc, String idempotencyKey) {
+        return jdbc.sql("""
+                        UPDATE technical.scheduled_job
+                           SET status = :paused
+                         WHERE idempotency_key = :key AND status = :pending""")
+                .param("paused", ScheduledJobStatus.PAUSED.name()).param("key", idempotencyKey)
+                .param("pending", ScheduledJobStatus.PENDING.name())
+                .update() == 1;
+    }
+
+    /**
+     * E7-83: {@code technical.job_rearm} of the job with this key only while it is {@code PAUSED} or {@code FAILED}
+     * (locked first, so a worker cannot lease it in between); false when nothing moved.
+     */
+    boolean rearmIfHeld(JdbcClient jdbc, String idempotencyKey, Instant dueAt) {
+        List<UUID> held = jdbc.sql("""
+                        SELECT id FROM technical.scheduled_job
+                         WHERE idempotency_key = :key AND status IN (:paused, :failed)
+                           FOR UPDATE""")
+                .param("key", idempotencyKey).param("paused", ScheduledJobStatus.PAUSED.name())
+                .param("failed", ScheduledJobStatus.FAILED.name())
+                .query((rs, row) -> rs.getObject("id", UUID.class)).list();
+        if (held.isEmpty()) {
+            return false;
+        }
+        jdbc.sql("SELECT technical.job_rearm(:id, :dueAt)")
+                .param("id", held.getFirst()).param("dueAt", utc(dueAt))
+                .query().singleRow();
+        return true;
+    }
+
     /** A new {@code PENDING} job; false when its idempotency key is taken (nothing changes then). */
     boolean insert(JdbcClient jdbc, UUID id, NewJob job, UUID correlationId) {
         return jdbc.sql("""

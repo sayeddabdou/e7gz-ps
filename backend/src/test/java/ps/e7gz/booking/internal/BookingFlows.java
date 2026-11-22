@@ -20,12 +20,14 @@ import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.error.ApiException;
 import ps.e7gz.messaging.api.CommandAnswer;
 import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.scheduling.api.JobOutcome;
 import ps.e7gz.scheduling.api.NewJob;
 import ps.e7gz.scheduling.api.ScheduledJob;
 import ps.e7gz.scheduling.api.ScheduledJobs;
+import ps.e7gz.support.boundary.Boundary;
 import ps.e7gz.support.boundary.Deadlines;
 import ps.e7gz.support.boundary.DueJobs;
 import ps.e7gz.support.boundary.TestCommands;
@@ -63,6 +65,7 @@ public final class BookingFlows {
     private DueJobs starts;
     private DueJobs completions;
     private DueJobs resolutions;
+    private DueJobs t1;
 
     private BookingFlows(ApplicationContext context) {
         this.context = context;
@@ -523,6 +526,19 @@ public final class BookingFlows {
         return bookings.stream().map(booking -> started(booking, startedAgo)).toList();
     }
 
+    /**
+     * E7-82: one venue with two PENDING requests of one customer on one room, two hours apart (as
+     * {@link #twoPendingOfOneCustomer}), and an ACTIVE booking of another customer on another room that started
+     * {@code startedAgo} before the database clock (as {@link #active}).
+     */
+    public List<Booking> twoPendingAndAnActiveAtOneVenue(Duration startedAgo) {
+        OnlineBookingWorld world = OnlineBookingWorld.create();
+        Booking active = started(pendingOf(world, world.anotherCustomer(), world.anotherRoom(room -> room),
+                world.start()), startedAgo);
+        return List.of(pending(world, world.start()), pending(world, world.start().plus(Duration.ofHours(2))),
+                active);
+    }
+
     private Booking pendingOf(OnlineBookingWorld world, UUID customerId, Fixtures.Resource room, Instant start) {
         CreatedBooking created = creation.create(world.request(customerId, room, start, 60));
         return new Booking(created.bookingId(), created.customerId(), world.venue.id(), world.venue.name(),
@@ -545,6 +561,15 @@ public final class BookingFlows {
     public UUID walkInOnRoomOf(Booking booking, int minutes) {
         return manualBookings.create(booking.venueAccountId(),
                 ManualBookingRequest.of(booking.resourceId(), PlayMode.SINGLE, null, minutes, null, null)).bookingId();
+    }
+
+    /**
+     * E7-81: a future Manual Booking of {@code minutes} on the booking's room at {@code start}, through the real command
+     * (E7-48). @return its Booking ID
+     */
+    public UUID manualOnRoomOf(Booking booking, Instant start, int minutes) {
+        return manualBookings.create(booking.venueAccountId(),
+                ManualBookingRequest.of(booking.resourceId(), PlayMode.SINGLE, start, minutes, null, null)).bookingId();
     }
 
     public void accept(Booking booking) {
@@ -676,6 +701,13 @@ public final class BookingFlows {
                 .isInstanceOf(JobOutcome.Done.class);
     }
 
+    /** E7-82 (FR-OPS-44): the stored Late Confirm deadline has passed and T2 has not run yet. */
+    public void lateConfirmDeadlinePassedBeforeT2(Booking booking) {
+        Instant deadline = LateConfirmDb.attempt(booking.bookingId()).orElseThrow().initiatedAt().plusMillis(1);
+        LateConfirmDb.deadlineAt(booking.bookingId(), deadline);
+        Deadlines.awaitDatabaseClockPast(deadline.plusSeconds(1));
+    }
+
     /** T3 inside its last minute: the stored deadline is 30 seconds away, then the real warning runs. */
     public void warnLateConfirm(Booking booking) {
         LateConfirmDb.deadlineAt(booking.bookingId(), OnlineBookingWorld.dbNow().plusSeconds(30));
@@ -733,6 +765,67 @@ public final class BookingFlows {
         return runner.run(TestCommands.under(CommandScope.shared(lateConfirmations.lockSetOf(booking.bookingId())),
                 context -> type.equals("LATE_CONFIRM_EXPIRY") ? lateConfirmations.expire(context, job)
                         : lateConfirmations.warn(context, job)));
+    }
+
+    // ---------------------------------------------------------------------------------------------- E7-83
+
+    /** The booking's T1 key ({@code VENUE_RESPONSE_EXPIRY:{bookingId}}). */
+    public static String responseExpiryKey(UUID bookingId) {
+        return VenueAnswers.venueResponseExpiryKey(bookingId);
+    }
+
+    /** The booking's T2 and T3 keys. */
+    public static String lateConfirmExpiryKey(UUID bookingId) {
+        return LateConfirmDb.t2(bookingId);
+    }
+
+    /** The worker profile is off in tests: E7-47's T1 handler built by hand, as the deadline worker runs it. */
+    private synchronized DueJobs t1() {
+        if (t1 == null) {
+            t1 = DueJobs.of(context, new VenueResponseExpiryHandler(runner, store, answers));
+        }
+        return t1;
+    }
+
+    /**
+     * E7-83 (Sprint 2 review, PO decision 12 Oct 2026): T1 fires while the response timer is paused - it throws, the
+     * worker backs it off - and is fired again at once until its attempts run out and it is FAILED.
+     */
+    public void t1FailsWhilePaused(Booking booking) {
+        String key = responseExpiryKey(booking.bookingId());
+        for (int fires = 0; !DueJobs.job(key).status().equals("FAILED"); fires++) {
+            assertThat(fires).as("bounded by the worker's max attempts").isLessThan(20);
+            runner.run(TestCommands.under(scope(booking), context -> {
+                if (DueJobs.job(key).status().equals("PAUSED")) {
+                    jobs.rearm(context, key, context.commandNow());
+                } else {
+                    t1().makeDue(context, key, context.commandNow());
+                }
+                return null;
+            }));
+            assertThat(t1().fire(key)).as("T1 fired").isTrue();
+        }
+    }
+
+    /** T1 fired with "now" exactly at the stored response deadline (moved to the command's own instant). */
+    public Instant fireT1AtItsDeadline(Booking booking) {
+        return t1().fireAt(scope(booking), responseExpiryKey(booking.bookingId()), Boundary.AT,
+                (context, at) -> moveResponseDeadline(context, booking, at));
+    }
+
+    /** The venue's Accept refused with nothing changed (an ordinary thrown refusal): its code. */
+    public ApiErrorCode acceptRefusal(Booking booking) {
+        try {
+            responses.accept(booking.venueAccountId(), booking.bookingId());
+        } catch (ApiException refused) {
+            return refused.code();
+        }
+        throw new AssertionError("The Accept of " + booking.bookingId() + " was not refused");
+    }
+
+    /** The customer's Decline of a Late Confirmation: its answer's terminal reason. */
+    public BookingTerminalReason declineLateConfirmReason(Booking booking) {
+        return lateConfirmations.decline(booking.customerId(), booking.bookingId()).terminalReason();
     }
 
     /** The booking's Customer, Venue and Resource: the locks of every answer to it. */

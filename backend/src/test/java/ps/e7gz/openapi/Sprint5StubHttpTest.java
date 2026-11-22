@@ -30,10 +30,8 @@ import ps.e7gz.support.fixtures.Fixtures;
 @AutoConfigureMockMvc
 class Sprint5StubHttpTest extends IntegrationTest {
 
-    private static final String MAINTENANCE = "/api/v1/venue/maintenance";
     private static final String CLOSURES = "/api/v1/venue/closures";
     private static final String EMERGENCIES = "/api/v1/venue/emergencies";
-    private static final String EMERGENCY = EMERGENCIES + "/" + UUID.randomUUID();
     private static final String START = "2030-01-10T10:00:00Z";
     private static final String END = "2030-01-10T12:00:00Z";
     private static final String CLOSURE = "{\"kind\":\"PARTIAL\",\"startAt\":\"" + START + "\",\"endAt\":\"" + END
@@ -54,66 +52,15 @@ class Sprint5StubHttpTest extends IntegrationTest {
         admin = bearer(AuthSubjectType.ADMIN, Fixtures.anAdmin().create().id());
     }
 
-    @Test
-    void maintenanceStubsAnswerNotImplemented() throws Exception {
-        String window = "{\"resourceId\":\"" + UUID.randomUUID() + "\",\"startAt\":\"" + START + "\",\"endAt\":\""
-                + END + "\",\"reason\":\"Controller replacement\"}";
-        notImplemented(get(MAINTENANCE), venue);                                                    // E7-81
-        notImplemented(json(post(MAINTENANCE), window), venue);                                     // E7-81
-        notImplemented(json(patch(MAINTENANCE + "/" + UUID.randomUUID()), "{\"reason\":\"Longer\"}"), venue); // E7-81
-        notImplemented(delete(MAINTENANCE + "/" + UUID.randomUUID()), venue);                       // E7-81
-    }
-
-    @Test
-    void closureStubsAnswerNotImplemented() throws Exception {
-        String save = "{\"proposal\":" + CLOSURE + ",\"previewToken\":\"b64:x\"}";
-        notImplemented(get(CLOSURES), venue);                                                       // E7-81
-        notImplemented(json(post(CLOSURES + "/preview"), "{\"proposal\":" + CLOSURE + "}"), venue);  // E7-81
-        notImplemented(write(post(CLOSURES), save), venue);                                         // E7-81
-        notImplemented(write(patch(CLOSURES + "/" + UUID.randomUUID()), save), venue);              // E7-81
-        notImplemented(delete(CLOSURES + "/" + UUID.randomUUID()), venue);                          // E7-81
-    }
-
-    @Test
-    void emergencyStubsAnswerNotImplemented() throws Exception {
-        notImplemented(get(EMERGENCIES), venue);                                                    // E7-82
-        notImplemented(write(post(EMERGENCIES + "/venue-closure"),
-                "{\"reason\":\"Power cut\",\"expectedEndAt\":\"" + END + "\"}"), venue);            // E7-82
-        notImplemented(write(post(EMERGENCIES + "/resource-outage"), "{\"resourceId\":\"" + UUID.randomUUID()
-                + "\",\"reason\":\"Overheating\",\"expectedReturnAt\":\"" + END + "\"}"), venue);    // E7-82
-        notImplemented(json(post(EMERGENCY + "/extend/preview"), "{\"expectedEndAt\":\"" + END + "\"}"), venue);
-        notImplemented(write(post(EMERGENCY + "/extend"),
-                "{\"expectedEndAt\":\"" + END + "\",\"previewToken\":\"b64:x\"}"), venue);          // E7-82
-        notImplemented(write(post(EMERGENCY + "/end"), "{}"), venue);                                // E7-82, E7-84
-        String conversion = "{\"target\":\"MAINTENANCE\",\"maintenance\":{\"endAt\":\"" + END
-                + "\",\"reason\":\"Part on order\"}}";
-        notImplemented(json(post(EMERGENCY + "/convert/preview"), conversion), venue);              // E7-82
-        notImplemented(write(post(EMERGENCY + "/convert"),
-                "{\"conversion\":" + conversion + ",\"previewToken\":\"b64:x\"}"), venue);           // E7-82
-    }
-
-    @Test
-    void ownerReviewStubsAnswerNotImplemented() throws Exception {
-        notImplemented(get("/api/v1/venue/owner-reviews"), venue);                                  // E7-84
-        notImplemented(json(post("/api/v1/venue/owner-reviews/" + UUID.randomUUID() + "/resolve"),
-                "{\"action\":\"RETURN_TO_SERVICE\",\"ownerPassword\":\"1234\"}"), venue);            // E7-84
-    }
+    // E7-81 filled the Maintenance and Closure stubs: their tests are MaintenanceHttpTest and ClosureHttpTest.
+    // E7-82 filled the Emergency stubs, GET /admin/emergencies and the hours commit with emergencyId: their tests are
+    // EmergencyHttpTest and EmergencyConversionHttpTest.
+    // E7-84 filled the Owner Review stubs and GET /admin/owner-reviews: their tests are OwnerReviewHttpTest.
 
     @Test
     void adminStubsAnswerNotImplemented() throws Exception {
         notImplemented(get("/api/v1/admin/venue-accounts"), admin);                                 // E7-78
         notImplemented(get("/api/v1/admin/venue-accounts").param("accountStatus", "DISABLED"), admin);
-        notImplemented(get("/api/v1/admin/owner-reviews"), admin);                                  // E7-84
-        notImplemented(get("/api/v1/admin/emergencies").param("status", "ACTIVE"), admin);          // E7-82
-    }
-
-    @Test
-    void anHoursCommitThatConvertsAnEmergencyAnswersNotImplemented() throws Exception {
-        // PO decision D5 (19 Nov 2026): the emergencyId part waits for E7-82; an ordinary commit is unchanged.
-        String body = "{\"proposal\":{\"defaultOpen\":\"12:00:00\",\"defaultClose\":\"23:00:00\","
-                + "\"defaultFullDay\":false,\"days\":[]},\"previewToken\":\"b64:x\",\"emergencyId\":\""
-                + UUID.randomUUID() + "\"}";
-        notImplemented(write(post("/api/v1/venue/opening-hours/commit"), body), venue);
     }
 
     @Test

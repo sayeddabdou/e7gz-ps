@@ -33,5 +33,11 @@ public enum AdminAlertKind {
      * PCR-012 item 4: a venue account's Owner PIN is locked until the Platform Admin resets it - its third short lockout
      * within 24 hours (raised by E7-121).
      */
-    OWNER_PASSWORD_LONG_LOCK
+    OWNER_PASSWORD_LONG_LOCK,
+    /**
+     * FR-OPS-29, Spec v5 section 43.3: a Resource entered OWNER_REVIEW_REQUIRED and its system cascade ran - the Platform
+     * Admin is notified (raised by E7-84 in the entering command). Read-only for the Admin: the venue resolves it with
+     * the Owner Password (FR-OPS-33; PO decision 19 Nov 2026, E7-77 D3).
+     */
+    RESOURCE_OWNER_REVIEW_REQUIRED
 }

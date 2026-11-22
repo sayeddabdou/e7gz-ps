@@ -47698,7 +47698,7 @@
     },
     "/api/v1/venue/maintenance": {
       "get": {
-        "description": "Every maintenance window of the signed-in venue whose end is after now, emergency-created ones included (createdFromEmergencyId). Implemented by E7-81.",
+        "description": "Every maintenance window of the signed-in venue whose end is after now, emergency-created ones included (createdFromEmergencyId).",
         "operationId": "venueListMaintenance",
         "parameters": [
           {
@@ -47940,7 +47940,7 @@
         ]
       },
       "post": {
-        "description": "Refused with MAINTENANCE_OVERLAPS_RESERVATION when it overlaps a blocking reservation or an existing Closure (FR-OPS-02, FR-VEN-33); nothing is ever cancelled. Windows of the same resource may overlap or touch (A1). Over the rolling threshold the Owner Password is needed: absent is OWNER_PASSWORD_REQUIRED, wrong is OWNER_PASSWORD_INVALID (audited, FR-VEN-05). An unknown or archived resource is NOT_FOUND. Implemented by E7-81.",
+        "description": "Refused with MAINTENANCE_OVERLAPS_RESERVATION when it overlaps a blocking reservation or an existing Closure (FR-OPS-02, FR-VEN-33); nothing is ever cancelled. Windows of the same resource may overlap or touch (A1). Over the rolling threshold the Owner Password is needed: absent is OWNER_PASSWORD_REQUIRED, wrong is OWNER_PASSWORD_INVALID (audited, FR-VEN-05). An unknown or archived resource is NOT_FOUND.",
         "operationId": "venueCreateMaintenance",
         "parameters": [
           {
@@ -48655,7 +48655,7 @@
         ]
       },
       "patch": {
-        "description": "Omitted fields keep their value. An edit that extends a continuous period past the threshold needs the Owner Password (FR-OPS-04); the overlap rules of create apply to the new interval. A window that has already ended is OPERATIONAL_STATE_CHANGED. Implemented by E7-81.",
+        "description": "Omitted fields keep their value. An edit that extends a continuous period past the threshold needs the Owner Password (FR-OPS-04); the overlap rules of create apply to the new interval. A window that has already ended is OPERATIONAL_STATE_CHANGED.",
         "operationId": "venueEditMaintenance",
         "parameters": [
           {
@@ -49824,7 +49824,7 @@
     },
     "/api/v1/venue/opening-hours/commit": {
       "post": {
-        "description": "Saves the hours and cancels every affected booking (CANCELLED / VENUE_OPENING_HOURS_CHANGED, FR-VEN-24, FR-VEN-28) in one transaction: the affected set is recomputed under the venue, room and customer locks, and a set different from the preview's is AFFECTED_SET_CHANGED_REFRESH_PREVIEW with nothing changed. The Owner Password (body, never a header) is needed only when a CONFIRMED online or an AWAITING booking is cancelled: absent is OWNER_PASSWORD_REQUIRED, wrong is OWNER_PASSWORD_INVALID (audited, FR-VEN-05). Each affected online booking gets a full Booking Fee refund decision; the customer is notified from BookingCancelled. A venue account disabled meanwhile is FORBIDDEN. Implemented by E7-25 and E7-113. With emergencyId the same commit also converts that unresolved venue Emergency: CONVERTED / OPENING_HOURS_CHANGE, its block ending in this commit (FR-OPS-23, FR-OPS-24; PO decision 19 Nov 2026, E7-77). A resource Emergency is CONVERSION_TARGET_NOT_ALLOWED; a resolved one is OPERATIONAL_STATE_CHANGED. The emergencyId part answers 501 until E7-82.",
+        "description": "Saves the hours and cancels every affected booking (CANCELLED / VENUE_OPENING_HOURS_CHANGED, FR-VEN-24, FR-VEN-28) in one transaction: the affected set is recomputed under the venue, room and customer locks, and a set different from the preview's is AFFECTED_SET_CHANGED_REFRESH_PREVIEW with nothing changed. The Owner Password (body, never a header) is needed only when a CONFIRMED online or an AWAITING booking is cancelled: absent is OWNER_PASSWORD_REQUIRED, wrong is OWNER_PASSWORD_INVALID (audited, FR-VEN-05). Each affected online booking gets a full Booking Fee refund decision; the customer is notified from BookingCancelled. A venue account disabled meanwhile is FORBIDDEN. Implemented by E7-25 and E7-113. With emergencyId the same commit also converts that unresolved venue Emergency: CONVERTED / OPENING_HOURS_CHANGE, its block ending in this commit (FR-OPS-23, FR-OPS-24; PO decision 19 Nov 2026, E7-77). A resource Emergency is CONVERSION_TARGET_NOT_ALLOWED; a resolved one is OPERATIONAL_STATE_CHANGED. Implemented by E7-82 (emergencyId).",
         "operationId": "venueCommitOpeningHours",
         "parameters": [
           {

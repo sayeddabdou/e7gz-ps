@@ -36,8 +36,14 @@ import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.correlation.CorrelationId;
+import ps.e7gz.common.codes.ActorType;
+import ps.e7gz.messaging.api.IdempotentRequest;
 import ps.e7gz.messaging.api.IntegrationEvents;
 import ps.e7gz.messaging.api.OutboxConsumer;
+import ps.e7gz.messaging.api.StoredResponse;
+import ps.e7gz.operations.internal.VenueEmergencies;
+import ps.e7gz.support.PostgresTestContainer;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import ps.e7gz.messaging.api.OutboxEvent;
 import ps.e7gz.messaging.internal.OutboxDrain;
 import ps.e7gz.notification.api.BookingReminders;
@@ -706,6 +712,72 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
                 "CUSTOMER LATE_CONFIRMATION_RECEIVED " + booking.customerId(),
                 "CUSTOMER CUSTOMER_CONFIRMATION_EXPIRED " + booking.customerId(),
                 "VENUE VENUE_CUSTOMER_CONFIRMATION_EXPIRED " + booking.venueId()));
+    }
+
+    // ---------------------------------------------------------------------- E7-83 timer pauses, once each
+
+    /** FR-OPS-41, §52.2 "Late Confirmation Paused" (PCR-008 leaves it to E7-83): the customer, from TimerPaused. */
+    @Test
+    void anEmergencyPausingALateConfirmTellsTheCustomerOnce() {
+        Booking booking = flows.lateConfirmed();
+        declareVenueEmergency(booking, Duration.ofMinutes(20));
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.TIMER_PAUSED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.TIMER_PAUSED,
+                "CUSTOMER LATE_CONFIRMATION_PAUSED " + booking.customerId());
+        assertThat(notifications(booking)).containsExactlyInAnyOrderElementsOf(beforeLateConfirm(booking,
+                "CUSTOMER LATE_CONFIRMATION_RECEIVED " + booking.customerId(),
+                "CUSTOMER LATE_CONFIRMATION_PAUSED " + booking.customerId()));
+    }
+
+    /**
+     * FR-OPS-38, FR-OPS-40: a paused request with no feasible window left is cancelled under the interrupted-by-emergency
+     * reason - §52.2 operational cause, the customer only, once; a paused response timer itself tells no one.
+     */
+    @Test
+    void aRequestTheEmergencyInterruptsTellsTheCustomerOnceAndTheVenueNothing() {
+        Booking booking = flows.pending();
+        sessionEndsIn(booking.venueId(), Duration.ofMinutes(15));
+        declareVenueEmergency(booking, Duration.ofMinutes(10));
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_CANCELLED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.BOOKING_CANCELLED,
+                "CUSTOMER BOOKING_RESPONSE_INTERRUPTED_BY_EMERGENCY " + booking.customerId());
+        assertThat(customerCodes(booking)).containsExactlyInAnyOrder("BOOKING_CREATED",
+                "BOOKING_RESPONSE_INTERRUPTED_BY_EMERGENCY");
+        assertThat(venueCodes(booking)).containsExactly("VENUE_NEW_BOOKING_REQUEST");
+    }
+
+    private void declareVenueEmergency(Booking booking, Duration lasting) {
+        Instant end = db.sql("SELECT clock_timestamp()").query(OffsetDateTime.class).single().toInstant()
+                .plus(lasting);
+        IdempotentRequest key = new IdempotentRequest(ActorType.VENUE, booking.venueAccountId(),
+                "POST /api/v1/venue/emergencies/venue-closure", UUID.randomUUID().toString(), "0".repeat(64));
+        context.getBean(VenueEmergencies.class).declare(booking.venueAccountId(), null, "Power cut", end, key,
+                StoredResponse.of(VenueEmergencies.View.class, 201), view -> view);
+    }
+
+    /** TEST-ONLY, triggers off: the venue's one Operating Session now ends {@code in} from now. */
+    private static void sessionEndsIn(UUID venueId, Duration in) {
+        SingleConnectionDataSource owner = new SingleConnectionDataSource(
+                PostgresTestContainer.jdbcUrl(PostgresTestContainer.DATABASE), PostgresTestContainer.MIGRATOR,
+                PostgresTestContainer.MIGRATOR, true);
+        try {
+            JdbcClient jdbc = JdbcClient.create(owner);
+            jdbc.sql("SET session_replication_role = replica").update();
+            jdbc.sql("""
+                            UPDATE venue.operating_session
+                               SET session_period = tstzrange(lower(session_period),
+                                                              clock_timestamp() + CAST(:in AS interval), '[)'),
+                                   local_end = (clock_timestamp() + CAST(:in AS interval)) AT TIME ZONE timezone
+                             WHERE venue_id = :venue""")
+                    .param("in", in.toSeconds() + " seconds").param("venue", venueId).update();
+            jdbc.sql("SET session_replication_role = origin").update();
+        } finally {
+            owner.destroy();
+        }
     }
 
     // ---------------------------------------------------------------------- E7-59 attendance, once each

@@ -10,8 +10,10 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,12 +29,17 @@ import ps.e7gz.common.codes.VenueClosureKind;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
-import ps.e7gz.common.web.NotImplementedYet;
+import ps.e7gz.common.error.ApiException;
+import ps.e7gz.common.security.AuthenticatedSubject;
+import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.messaging.api.Idempotency;
+import ps.e7gz.messaging.api.StoredResponse;
+import ps.e7gz.operations.internal.VenueEmergencies;
 import ps.e7gz.common.web.OpenApiConfig;
 
 /**
- * Venue Dashboard — Emergencies (arch 09 §4.2, arch 06 §2.5, FRS F-19, F-20, FR-OPS-06…FR-OPS-24). Stubs of the
- * Sprint 5 contract (E7-77) until E7-82 (and E7-84 for the owner-review entry on end). No Owner Password to declare,
+ * Venue Dashboard — Emergencies (arch 09 §4.2, arch 06 §2.5, FRS F-19, F-20, FR-OPS-06…FR-OPS-24). Filled by E7-82
+ * (E7-84 adds the owner-review entry on end). No Owner Password to declare,
  * extend or end (FR-OPS-06, FR-OPS-11, FR-VEN-04); a conversion obeys its target's own authorization (FR-OPS-23).
  * Every write that can cancel commitments or move refunds requires the Idempotency-Key (ADR-015): declare, extend, end
  * (an over-threshold resource enters Owner Review and its cascade, FR-OPS-27, FR-OPS-28) and convert. Extend and
@@ -46,13 +53,29 @@ import ps.e7gz.common.web.OpenApiConfig;
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 public class VenueEmergencyController {
 
+    static final String VENUE_CLOSURE_ENDPOINT = "POST /api/v1/venue/emergencies/venue-closure";
+    static final String RESOURCE_OUTAGE_ENDPOINT = "POST /api/v1/venue/emergencies/resource-outage";
+    static final String EXTEND_ENDPOINT = "POST /api/v1/venue/emergencies/{emergencyId}/extend";
+    static final String END_ENDPOINT = "POST /api/v1/venue/emergencies/{emergencyId}/end";
+    static final String CONVERT_ENDPOINT = "POST /api/v1/venue/emergencies/{emergencyId}/convert";
+
+    private final VenueEmergencies emergencies;
+    private final ResponseMetaFactory meta;
+    private final Idempotency idempotency;
+
+    public VenueEmergencyController(VenueEmergencies emergencies, ResponseMetaFactory meta, Idempotency idempotency) {
+        this.emergencies = emergencies;
+        this.meta = meta;
+        this.idempotency = idempotency;
+    }
+
     @GetMapping
     @Operation(operationId = "venueListEmergencies",
             summary = "Unresolved Emergencies: ACTIVE and AWAITING_CONFIRMATION (FR-OPS-18; PO decision 19 Nov 2026)",
             description = "The venue's open Emergencies, newest first; the expected end passing never resolves one "
                     + "(FR-OPS-18, FR-OPS-25). Implemented by E7-82.")
-    public DataResponse<List<VenueEmergency>> list() {
-        throw NotImplementedYet.stub();
+    public DataResponse<List<VenueEmergency>> list(@AuthenticationPrincipal AuthenticatedSubject venue) {
+        return meta.data(emergencies.list(venue.id()).stream().map(VenueEmergency::of).toList());
     }
 
     @PostMapping("/venue-closure")
@@ -68,8 +91,11 @@ public class VenueEmergencyController {
             ApiErrorCode.VENUE_SELLING_BLOCK_ACTIVE, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
     public DataResponse<VenueEmergency> declareVenueClosure(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+            @AuthenticationPrincipal AuthenticatedSubject venue,
             @Valid @RequestBody VenueEmergencyClosureRequest request) {
-        throw NotImplementedYet.stub();
+        return meta.data(emergencies.declare(venue.id(), null, request.reason(), request.expectedEndAt(),
+                idempotency.request(venue, VENUE_CLOSURE_ENDPOINT, idempotencyKey, Map.of(), request),
+                StoredResponse.of(VenueEmergency.class, 201), VenueEmergency::of).body());
     }
 
     @PostMapping("/resource-outage")
@@ -87,8 +113,12 @@ public class VenueEmergencyController {
             ApiErrorCode.RESOURCE_SELLING_BLOCK_ACTIVE, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
     public DataResponse<VenueEmergency> declareResourceOutage(
             @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+            @AuthenticationPrincipal AuthenticatedSubject venue,
             @Valid @RequestBody VenueResourceOutageRequest request) {
-        throw NotImplementedYet.stub();
+        return meta.data(emergencies.declare(venue.id(), request.resourceId(), request.reason(),
+                request.expectedReturnAt(),
+                idempotency.request(venue, RESOURCE_OUTAGE_ENDPOINT, idempotencyKey, Map.of(), request),
+                StoredResponse.of(VenueEmergency.class, 201), VenueEmergency::of).body());
     }
 
     @PostMapping("/{emergencyId}/extend/preview")
@@ -101,8 +131,10 @@ public class VenueEmergencyController {
     @ApiError(status = 409, codes = ApiErrorCode.OPERATIONAL_STATE_CHANGED)
     @ApiError(status = 422, codes = ApiErrorCode.EMERGENCY_EXPECTED_END_OUT_OF_SESSION)
     public DataResponse<VenueEmergencyImpactPreview> previewExtension(
+            @AuthenticationPrincipal AuthenticatedSubject venue,
             @PathVariable UUID emergencyId, @Valid @RequestBody VenueEmergencyExtendPreviewRequest request) {
-        throw NotImplementedYet.stub();
+        return meta.data(VenueEmergencyImpactPreview.of(emergencies.previewExtension(venue.id(), emergencyId,
+                request.expectedEndAt())));
     }
 
     @PostMapping("/{emergencyId}/extend")
@@ -116,9 +148,13 @@ public class VenueEmergencyController {
     @ApiError(status = 422, codes = {ApiErrorCode.EMERGENCY_EXPECTED_END_OUT_OF_SESSION,
             ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
     public DataResponse<VenueEmergency> extend(@RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+                                               @AuthenticationPrincipal AuthenticatedSubject venue,
                                                @PathVariable UUID emergencyId,
                                                @Valid @RequestBody VenueEmergencyExtendRequest request) {
-        throw NotImplementedYet.stub();
+        return meta.data(emergencies.extend(venue.id(), emergencyId, request.expectedEndAt(), request.previewToken(),
+                idempotency.request(venue, EXTEND_ENDPOINT, idempotencyKey, Map.of("emergencyId", emergencyId),
+                        request),
+                StoredResponse.of(VenueEmergency.class, 200), VenueEmergency::of).body());
     }
 
     @PostMapping("/{emergencyId}/end")
@@ -135,8 +171,12 @@ public class VenueEmergencyController {
     @ApiError(status = 422, codes = {ApiErrorCode.EMERGENCY_CANNOT_END_RESOURCE_NOT_OPERATIONAL,
             ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
     public DataResponse<VenueEmergency> end(@RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+                                            @AuthenticationPrincipal AuthenticatedSubject venue,
                                             @PathVariable UUID emergencyId) {
-        throw NotImplementedYet.stub();
+        return meta.data(emergencies.end(venue.id(), emergencyId,
+                idempotency.request(venue, END_ENDPOINT, idempotencyKey, Map.of("emergencyId", emergencyId),
+                        Map.of()),
+                StoredResponse.of(VenueEmergency.class, 200), VenueEmergency::of).body());
     }
 
     @PostMapping("/{emergencyId}/convert/preview")
@@ -152,8 +192,10 @@ public class VenueEmergencyController {
             ApiErrorCode.CLOSURE_OVERLAPS_ACTIVE_SESSION, ApiErrorCode.TOURNAMENT_CONFLICT_BLOCKS_SAVE,
             ApiErrorCode.MAINTENANCE_OVERLAPS_RESERVATION, ApiErrorCode.RESOURCE_HAS_BLOCKING_RESERVATIONS})
     public DataResponse<VenueEmergencyImpactPreview> previewConversion(
+            @AuthenticationPrincipal AuthenticatedSubject venue,
             @PathVariable UUID emergencyId, @Valid @RequestBody VenueEmergencyConversion request) {
-        throw NotImplementedYet.stub();
+        return meta.data(VenueEmergencyImpactPreview.of(emergencies.previewConversion(venue.id(), emergencyId,
+                request.toView())));
     }
 
     @PostMapping("/{emergencyId}/convert")
@@ -174,9 +216,14 @@ public class VenueEmergencyController {
     @ApiError(status = 423, codes = {ApiErrorCode.OWNER_PASSWORD_REQUIRED, ApiErrorCode.OWNER_PASSWORD_INVALID})
     @ApiError(status = 429, codes = ApiErrorCode.RATE_LIMITED)
     public DataResponse<VenueEmergency> convert(@RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+                                                @AuthenticationPrincipal AuthenticatedSubject venue,
                                                 @PathVariable UUID emergencyId,
                                                 @Valid @RequestBody VenueEmergencyConvertRequest request) {
-        throw NotImplementedYet.stub();
+        return meta.data(emergencies.convert(venue.id(), emergencyId, request.conversion().toView(),
+                request.previewToken(), request.ownerPassword(),
+                idempotency.request(venue, CONVERT_ENDPOINT, idempotencyKey, Map.of("emergencyId", emergencyId),
+                        request),
+                StoredResponse.of(VenueEmergency.class, 200), VenueEmergency::of).body());
     }
 
     /** {@code operations.emergency}. */
@@ -194,6 +241,11 @@ public class VenueEmergencyController {
                     description = "Set only when CONVERTED.") EmergencyConversionTarget convertedTo,
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true,
                     description = "When it became ENDED or CONVERTED.") Instant endedAt) {
+
+        static VenueEmergency of(VenueEmergencies.View view) {
+            return new VenueEmergency(view.id(), view.scope(), view.resourceId(), view.status(), view.declaredAt(),
+                    view.expectedEndAt(), view.reason(), view.convertedTo(), view.endedAt());
+        }
     }
 
     @Schema(name = "VenueEmergencyClosureRequest")
@@ -228,6 +280,12 @@ public class VenueEmergencyController {
             String previewToken,
             @NotNull List<VenueEmergencyAffectedBooking> affected,
             @NotNull Boolean ownerPasswordRequired) {
+
+        static VenueEmergencyImpactPreview of(VenueEmergencies.Preview preview) {
+            return new VenueEmergencyImpactPreview(preview.previewToken(), preview.affected().stream()
+                    .map(a -> new VenueEmergencyAffectedBooking(a.bookingId(), a.resourceId(), a.startAt(), a.endAt()))
+                    .toList(), preview.ownerPasswordRequired());
+        }
     }
 
     /** A reservation the change would cancel. */
@@ -248,6 +306,31 @@ public class VenueEmergencyController {
             @NotNull EmergencyConversionTarget target,
             @Valid VenueEmergencyClosureTarget closure,
             @Valid VenueEmergencyMaintenanceTarget maintenance) {
+
+        /**
+         * The one part its target needs, and no other: CLOSURE takes {@code closure}, MAINTENANCE {@code maintenance},
+         * DISABLED and ARCHIVED neither; OPENING_HOURS_CHANGE goes through the hours commit (D5) and is left to the
+         * command's CONVERSION_TARGET_NOT_ALLOWED.
+         */
+        VenueEmergencies.ConversionView toView() {
+            boolean wantsClosure = target == EmergencyConversionTarget.CLOSURE;
+            boolean wantsMaintenance = target == EmergencyConversionTarget.MAINTENANCE;
+            if (target != EmergencyConversionTarget.OPENING_HOURS_CHANGE) {
+                if (wantsClosure != (closure != null)) {
+                    throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "closure");
+                }
+                if (wantsMaintenance != (maintenance != null)) {
+                    throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "maintenance");
+                }
+            }
+            if (closure != null) {
+                return new VenueEmergencies.ConversionView(target, closure.kind(), closure.endAt(), closure.reason());
+            }
+            if (maintenance != null) {
+                return new VenueEmergencies.ConversionView(target, null, maintenance.endAt(), maintenance.reason());
+            }
+            return new VenueEmergencies.ConversionView(target, null, null, null);
+        }
     }
 
     /** A normal Closure from the conversion instant to {@code endAt}. */

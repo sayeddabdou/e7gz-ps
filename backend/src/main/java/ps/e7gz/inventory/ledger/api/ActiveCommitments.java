@@ -29,6 +29,15 @@ public interface ActiveCommitments {
     List<Commitment> blockingResourceChange(CommandContext command, UUID resourceId, Instant at);
 
     /**
+     * E7-81 (a normal Venue Closure, FR-VEN-29…FR-VEN-32): the active {@code BOOKING}, {@code LATE_CONFIRM_HOLD},
+     * {@code TOURNAMENT_APPROVAL_HOLD} and {@code TOURNAMENT_HOLD} rows on the venue's Resources whose planned interval
+     * overlaps {@code [start, end)} - started ones included - in planned-start order. {@code MAINTENANCE} and
+     * {@code CLOSURE} rows are not included (a Closure may overlap Maintenance, FR-VEN-33). Reads on the command's own
+     * transaction.
+     */
+    List<Commitment> overlapping(CommandContext command, UUID venueId, Instant start, Instant end);
+
+    /**
      * One active row: its id, Resource, owner and planned interval {@code [plannedStart, plannedEnd)}. Only
      * {@link #blockingResourceChange} returns {@code MAINTENANCE} owners.
      */

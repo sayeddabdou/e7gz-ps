@@ -51,6 +51,13 @@ public interface ReservationLedger {
     Optional<ActiveReservation> activeOf(CommandContext command, ReservationOwner owner);
 
     /**
+     * E7-81: releases every active row of {@code owner} as {@link #release} does, one {@code ReservationReleased} each,
+     * and returns how many it released. For an owner that may hold several rows - a Venue Closure holds one
+     * {@code CLOSURE} row per Resource (arch 05 section 3.2) - when the owner is edited or deleted.
+     */
+    int releaseAll(CommandContext command, ReservationOwner owner, Instant releaseAt, String releaseReason);
+
+    /**
      * Check 8 of the availability predicate (arch 05 section 2.2, {@code FR-AVL-03}): whether an active
      * {@code BOOKING}, {@code LATE_CONFIRM_HOLD}, {@code TOURNAMENT_APPROVAL_HOLD} or {@code TOURNAMENT_HOLD} row of
      * the Resource has a planned interval overlapping {@code [start, end)}. A released row never blocks; its planned
