@@ -158,10 +158,11 @@ class BookingNotificationRulesTest extends IntegrationTest {
 
     /**
      * The six booking rules of E7-55, the five Late Confirm ones (E7-58), the three attendance ones (E7-59), the two
-     * completion ones (E7-61) and the Admin attendance one (E7-70) and the Late Confirm pause (E7-83): eighteen, and nothing else.
+     * completion ones (E7-61), the Admin attendance one (E7-70), the Late Confirm pause (E7-83) and the disabled
+     * venue's ACTIVE session (E7-78): nineteen, and nothing else.
      */
     @Test
-    void eighteenEventsHaveARule() {
+    void nineteenEventsHaveARule() {
         assertThat(BookingNotificationRules.eventTypes()).containsExactlyInAnyOrder(
                 IntegrationEvents.BOOKING_CREATED, IntegrationEvents.BOOKING_CONFIRMED,
                 IntegrationEvents.BOOKING_REJECTED, IntegrationEvents.VENUE_RESPONSE_EXPIRED,
@@ -171,7 +172,22 @@ class BookingNotificationRulesTest extends IntegrationTest {
                 IntegrationEvents.LATE_CONFIRM_TIMED_OUT, IntegrationEvents.CHECK_IN_RECORDED,
                 IntegrationEvents.LATE_PRESENT_RECORDED, IntegrationEvents.NO_SHOW_RECORDED,
                 IntegrationEvents.BOOKING_COMPLETED, IntegrationEvents.ATTENDANCE_RESOLVED,
-                IntegrationEvents.ATTENDANCE_CORRECTED, IntegrationEvents.TIMER_PAUSED);
+                IntegrationEvents.ATTENDANCE_CORRECTED, IntegrationEvents.TIMER_PAUSED,
+                IntegrationEvents.ACTIVE_SESSION_ATTENDANCE_RECORDING_AFFECTED);
+    }
+
+    /**
+     * E7-78 (PO decisions E1 and E2, 19 Nov 2026): an expiry caused by a Venue Account disable tells no one, an ordinary
+     * one still tells the customer, and a disable overlapping an ACTIVE booking tells its customer.
+     */
+    @Test
+    void aDisableCausedExpiryTellsNoOneAndAnAffectedActiveSessionTellsTheCustomer() {
+        assertThat(codes(IntegrationEvents.VENUE_RESPONSE_EXPIRED,
+                Map.of(IntegrationEvents.INTERRUPTED_BY_ACCOUNT_DISABLE, true))).isEmpty();
+        assertThat(codes(IntegrationEvents.VENUE_RESPONSE_EXPIRED, Map.of()))
+                .containsExactly("CUSTOMER VENUE_RESPONSE_EXPIRED");
+        assertThat(codes(IntegrationEvents.ACTIVE_SESSION_ATTENDANCE_RECORDING_AFFECTED, Map.of()))
+                .containsExactly("CUSTOMER ACTIVE_SESSION_ATTENDANCE_RECORDING_AFFECTED");
     }
 
     /** E7-83 (FR-OPS-41, PCR-008): a paused Late Confirm countdown tells the customer; a paused response timer no one. */

@@ -19046,6 +19046,7 @@
     },
     "/api/v1/admin/venue-accounts/{venueAccountId}/disable": {
       "post": {
+        "description": "In the same transaction (O10, FR-VEN-09): PENDING requests go VENUE_RESPONSE_EXPIRED, AWAITING_CUSTOMER_CONFIRMATION bookings and Tournaments awaiting approval are CANCELLED VENUE_ACCOUNT_DISABLED, CONFIRMED and ACTIVE bookings continue. A replay with the same Idempotency-Key changes nothing again.",
         "operationId": "adminDisableVenueAccount",
         "parameters": [
           {

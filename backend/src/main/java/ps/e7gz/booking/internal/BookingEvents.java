@@ -39,6 +39,19 @@ final class BookingEvents {
         return event(IntegrationEvents.VENUE_RESPONSE_EXPIRED, booking, payload);
     }
 
+    /**
+     * {@code VenueResponseExpired} of a PENDING booking a Venue Account disable moved to VENUE_RESPONSE_EXPIRED before
+     * its deadline (FR-VEN-09; E7-78), with {@code interruptedByAccountDisable} true: the ordinary customer notification
+     * says the venue did not respond in time, which FR-NTF-06 and FR-VEN-11 forbid here, so none is sent (PO decision
+     * E1, 19 Nov 2026). The Dashboard stream still sees the change.
+     */
+    static NewOutboxEvent venueResponseInterruptedByAccountDisable(Facts booking) {
+        Map<String, Object> payload = base(booking);
+        payload.put("venueResponseExpiresAt", booking.venueResponseExpiresAt().toString());
+        payload.put(IntegrationEvents.INTERRUPTED_BY_ACCOUNT_DISABLE, true);
+        return event(IntegrationEvents.VENUE_RESPONSE_EXPIRED, booking, payload);
+    }
+
     /** {@code BookingStarted}: CONFIRMED -> ACTIVE at T4 (E7-60); a Manual Booking's is {@link #manualStarted}. */
     static NewOutboxEvent started(Facts booking) {
         return event(IntegrationEvents.BOOKING_STARTED, booking, base(booking));

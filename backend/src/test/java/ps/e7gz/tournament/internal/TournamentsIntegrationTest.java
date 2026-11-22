@@ -31,6 +31,7 @@ import org.postgresql.Driver;
 import org.postgresql.util.ServerErrorMessage;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
+import ps.e7gz.audit.AuditFixtures;
 import ps.e7gz.audit.api.AuditActor;
 import ps.e7gz.common.codes.Activity;
 import ps.e7gz.common.codes.ConsoleType;
@@ -39,6 +40,7 @@ import ps.e7gz.common.codes.TournamentHostType;
 import ps.e7gz.common.codes.TournamentStatus;
 import ps.e7gz.common.codes.TournamentTerminalReason;
 import ps.e7gz.common.codes.TournamentVisibility;
+import ps.e7gz.common.codes.VenueAccountStatus;
 import ps.e7gz.common.command.Command;
 import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.command.CommandRunner;
@@ -54,6 +56,7 @@ import ps.e7gz.support.fixtures.Fixtures;
 import ps.e7gz.support.fixtures.TrustStates;
 import ps.e7gz.tournament.api.LiveTournament;
 import ps.e7gz.tournament.api.TournamentCascades;
+import ps.e7gz.venue.internal.VenueAccounts;
 
 /**
  * E7-73 (S4-E5): the early Tournament aggregate. Every trigger is on and every write goes through a real command
@@ -379,6 +382,35 @@ class TournamentsIntegrationTest extends IntegrationTest {
         assertThat(refused).isInstanceOf(DataAccessException.class);
         return DatabaseErrorCodes.serverError(refused).map(ServerErrorMessage::getConstraint).orElse(null);
     }
+
+    /**
+     * E7-78 (arch 06 section 2.8, FR-TRN-18, FR-TRN-19): the real Venue Account disable cancels a Tournament awaiting the
+     * venue's approval at once, VENUE_ACCOUNT_DISABLED by SYSTEM, its approval holds released and timers superseded - the
+     * database refused the disable before E7-78 ({@code tr_tournament_account_disable_from_account}).
+     */
+    @Test
+    void aVenueAccountDisableCancelsATournamentAwaitingApproval() {
+        World world = World.create();
+        NewTournament request = world.playerHosted(true, world.rooms().getFirst());
+        create(request);
+
+        venueAccounts.setStatus(AuditFixtures.admin(), world.account().id(), VenueAccountStatus.DISABLED,
+                "Support ticket 7");
+
+        Db.TournamentRow row = Db.tournament(request.id());
+        assertThat(row.status()).isEqualTo("CANCELLED");
+        assertThat(row.terminalReason()).isEqualTo("VENUE_ACCOUNT_DISABLED");
+        assertThat(Db.holds(request.id())).allSatisfy(hold -> {
+            assertThat(hold.active()).isFalse();
+            assertThat(hold.releaseReason()).isEqualTo("VENUE_ACCOUNT_DISABLED");
+        });
+        assertThat(Db.history(request.id())).last().isEqualTo(new Db.HistoryRow(2, "PENDING_VENUE_APPROVAL",
+                "CANCELLED", "VENUE_ACCOUNT_DISABLED", "SYSTEM", null));
+        assertThat(Db.liveJobs(request.id())).isEmpty();
+    }
+
+    @Autowired
+    VenueAccounts venueAccounts;
 
     private Tournaments.Created create(NewTournament request) {
         return run(request.lockSet(), c -> tournaments.create(c, request));

@@ -56,12 +56,7 @@ class Sprint5StubHttpTest extends IntegrationTest {
     // E7-82 filled the Emergency stubs, GET /admin/emergencies and the hours commit with emergencyId: their tests are
     // EmergencyHttpTest and EmergencyConversionHttpTest.
     // E7-84 filled the Owner Review stubs and GET /admin/owner-reviews: their tests are OwnerReviewHttpTest.
-
-    @Test
-    void adminStubsAnswerNotImplemented() throws Exception {
-        notImplemented(get("/api/v1/admin/venue-accounts"), admin);                                 // E7-78
-        notImplemented(get("/api/v1/admin/venue-accounts").param("accountStatus", "DISABLED"), admin);
-    }
+    // E7-78 filled GET /admin/venue-accounts, the last Sprint 5 stub: its tests are AdminVenueAccountListHttpTest.
 
     @Test
     void eachRouteGroupRefusesTheOtherAudience() throws Exception {
@@ -85,10 +80,6 @@ class Sprint5StubHttpTest extends IntegrationTest {
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("reason"));
         mvc.perform(write(post(CLOSURES), "{\"proposal\":" + CLOSURE + "}").header("Authorization", venue))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.field").value("previewToken"));
-    }
-
-    private void notImplemented(MockHttpServletRequestBuilder request, String token) throws Exception {
-        mvc.perform(request.header("Authorization", token)).andExpect(status().isNotImplemented());
     }
 
     private String bearer(AuthSubjectType type, UUID id) {

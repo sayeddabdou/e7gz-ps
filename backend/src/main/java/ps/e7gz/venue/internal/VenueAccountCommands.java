@@ -4,12 +4,15 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import ps.e7gz.audit.api.AuditActor;
 import ps.e7gz.audit.api.AuditRecord;
 import ps.e7gz.audit.api.AuditWriter;
 import ps.e7gz.audit.api.OwnerPasswordCheck;
+import ps.e7gz.common.codes.BookingStatus;
 import ps.e7gz.common.codes.NotificationRecipientType;
 import ps.e7gz.common.codes.VenueAccountLanguage;
 import ps.e7gz.common.codes.VenueAccountStatus;
@@ -29,6 +32,9 @@ import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.notification.api.NotificationRequest;
 import ps.e7gz.notification.api.Notifications;
 import ps.e7gz.notification.api.VenueBrowserPush;
+import ps.e7gz.venue.api.AccountDisableBookings;
+import ps.e7gz.venue.api.AccountDisableTournaments;
+import ps.e7gz.venue.api.AccountRestrictions;
 import ps.e7gz.venue.api.OwnerPasswordGate;
 
 /**
@@ -169,19 +175,78 @@ final class VenueAccountCommands {
         }
     }
 
+    /** What a disable writes besides the account row (O10; E7-78): the three ports and the shared writers. */
+    record DisableDeps(AccountDisableBookings bookings, AccountDisableTournaments tournaments,
+                       AccountRestrictions restrictions, AuditWriter audit, Outbox outbox,
+                       VenueBrowserPush browserPush) {
+    }
+
+    /** The disable reaches a booking or Tournament its lock set does not hold: plan again (E7-82's pattern). */
+    static final class StaleLocks extends RuntimeException {
+
+        StaleLocks() {
+            super("The Venue Account disable reaches rows outside its lock set", null, false, false);
+        }
+    }
+
+    /**
+     * Read-only: the lock set a status change needs (arch 04 section 2.1). A disable of an ENABLED account writes the
+     * Venue, every PENDING and AWAITING Online Booking's Resource and Customer and every Tournament awaiting approval
+     * with its Resources; anything else needs the Venue alone.
+     */
+    record PlanStatus(UUID venueAccountId, UUID venueId, VenueAccountStatus target, DisableDeps deps)
+            implements Command<LockSet> {
+
+        @Override
+        public EligibilityCategory eligibilityCategory() {
+            return EligibilityCategory.C_INTERNAL_VENUE_OPERATION;
+        }
+
+        @Override
+        public CommandScope scope() {
+            return CommandScope.shared(LockSet.builder().venues(venueId).build());
+        }
+
+        @Override
+        public LockSet execute(CommandContext context) {
+            LockSet.Builder locks = LockSet.builder().venues(venueId);
+            Optional<VenueAccountStatus> status = context.jdbc().sql(
+                            "SELECT account_status FROM iam.venue_account WHERE id = :account")
+                    .param("account", venueAccountId).query(String.class).optional().map(VenueAccountStatus::valueOf);
+            if (target == VenueAccountStatus.DISABLED && status.orElse(null) == VenueAccountStatus.ENABLED) {
+                reach(context, deps, venueId, locks);
+            }
+            return locks.build();
+        }
+    }
+
+    /** Adds to {@code locks} every row a disable of the Venue writes besides the Venue itself. */
+    private static void reach(CommandContext context, DisableDeps deps, UUID venueId, LockSet.Builder locks) {
+        deps.bookings().affected(context, venueId).stream().filter(AccountDisableBookings.Affected::interrupted)
+                .forEach(booking -> locks.resources(booking.resourceId()).users(booking.customerId()));
+        deps.tournaments().awaitingApproval(context, venueId).forEach(tournament -> {
+            locks.tournaments(tournament.tournamentId());
+            locks.resources(tournament.resourceIds().toArray(UUID[]::new));
+        });
+    }
+
     /**
      * The Platform Admin disables or re-enables Dashboard access (FR-ADM-03, FR-VEN-08), with a reason; marketplace
      * status and venue data are untouched (FR-VEN-06). Disabled, the account cannot log in and its tokens stop working
      * on the next request (the per-request active check, arch 10 §2.3). Setting the status it already has changes
      * nothing and writes no audit row.
      *
-     * <p>Only the access part of O10 exists yet: interrupting PENDING bookings, cancelling AWAITING ones and the
-     * restriction interval for attendance protection come with E7-78. The database already refuses a disable while the
-     * venue has a tournament waiting for its approval ({@code tr_tournament_account_disable_from_account}).
+     * <p>A disable is O10 (arch 06 section 2.8, FR-VEN-09; E7-78), all in this one transaction under {@code locks}
+     * ({@link PlanStatus}): the restriction interval opens at the command instant (FR-ATT-21); every Tournament awaiting
+     * approval is CANCELLED {@code VENUE_ACCOUNT_DISABLED} - the database refuses the commit otherwise
+     * ({@code tr_tournament_account_disable_from_account}); PENDING bookings go VENUE_RESPONSE_EXPIRED and AWAITING ones
+     * CANCELLED {@code VENUE_ACCOUNT_DISABLED} with their refund; CONFIRMED ones are untouched (FR-VEN-10); ACTIVE ones
+     * continue (FR-ATT-14) and each becomes a protection candidate with the customer's and the Platform Admin's
+     * notifications (FR-ATT-20, FR-ATT-25, FR-ATT-26). Run once per Idempotency-Key, so a replay cancels and refunds
+     * nothing twice (PO decision D4, 19 Nov 2026). A re-enable closes the open interval; nothing it ended comes back.
      */
     record SetAccountStatus(UUID adminId, UUID correlationId, UUID venueAccountId, UUID venueId,
-                            VenueAccountStatus target, String reason, AuditWriter audit, Outbox outbox,
-                            VenueBrowserPush browserPush)
+                            VenueAccountStatus target, String reason, LockSet locks, DisableDeps deps)
             implements Command<Venues.VenueAccountSummary> {
 
         @Override
@@ -191,7 +256,8 @@ final class VenueAccountCommands {
 
         @Override
         public CommandScope scope() {
-            return CommandScope.admin(adminId, correlationId, LockSet.builder().venues(venueId).build());
+            // the cascade writes Resources and Tournaments, which admin.begin_command alone cannot lock
+            return CommandScope.adminCascade(adminId, correlationId, locks);
         }
 
         @Override
@@ -207,15 +273,14 @@ final class VenueAccountCommands {
             context.jdbc().sql("UPDATE iam.venue_account SET account_status = :status WHERE id = :account")
                     .param("status", target.name()).param("account", venueAccountId).update();
             if (target == VenueAccountStatus.DISABLED) {
-                // arch 08 section 5, FR-VEN-08: open Dashboard streams close at once (E7-44, PO decision 10 Oct 2026).
-                outbox.publish(context, new NewOutboxEvent(IntegrationEvents.VENUE_ACCOUNT_DISABLED, "VENUE_ACCOUNT",
-                        venueAccountId, Map.of("venueAccountId", venueAccountId, "venueId", venueId)));
-                // ... and its browsers get no more Web Push (PO decision 10 Oct 2026, E7-44 review).
-                browserPush.revokeAll(context, venueAccountId);
+                disable(context);
+            } else {
+                deps.restrictions().close(context, venueId);                                  // FR-ATT-21, E3
             }
             VenueAccountAuditAction action = target == VenueAccountStatus.DISABLED
                     ? VenueAccountAuditAction.VENUE_ACCOUNT_DISABLED : VenueAccountAuditAction.VENUE_ACCOUNT_ENABLED;
-            audit.write(context, AuditRecord.builder(action, AuditActor.admin(adminId), venueAccountId, correlationId)
+            deps.audit().write(context, AuditRecord.builder(action, AuditActor.admin(adminId), venueAccountId,
+                            correlationId)
                     .reason(reason)
                     .stateChange(current.status().name(), target.name())
                     .contextVenue(venueId)
@@ -223,6 +288,35 @@ final class VenueAccountCommands {
                             "newStatus", target.name()))
                     .build());
             return new Venues.VenueAccountSummary(current.id(), current.venueId(), current.loginIdentifier(), target);
+        }
+
+        private void disable(CommandContext context) {
+            List<AccountDisableBookings.Affected> bookings = deps.bookings().affected(context, venueId);
+            List<AccountDisableTournaments.AwaitingApproval> tournaments =
+                    deps.tournaments().awaitingApproval(context, venueId);
+            boolean covered = bookings.stream().filter(AccountDisableBookings.Affected::interrupted)
+                    .allMatch(b -> locks.resources().contains(b.resourceId()) && locks.users().contains(b.customerId()))
+                    && tournaments.stream().allMatch(t -> locks.tournaments().contains(t.tournamentId()));
+            if (!covered) {
+                throw new StaleLocks();
+            }
+            // The cause first: the Tournament reason must be the highest one in force (FR-TRN-31), and T6 reads it
+            UUID interval = deps.restrictions().open(context, venueId, adminId, reason, correlationId);
+            deps.tournaments().cancel(context, tournaments.stream()
+                    .map(AccountDisableTournaments.AwaitingApproval::tournamentId).toList());
+            deps.bookings().interrupt(context, venueId, bookings.stream()
+                    .filter(AccountDisableBookings.Affected::interrupted)
+                    .map(AccountDisableBookings.Affected::bookingId).toList());
+            deps.restrictions().activeSessionsAffected(context, venueId, interval, bookings.stream()
+                    .filter(b -> b.status() == BookingStatus.ACTIVE)
+                    .map(b -> new AccountRestrictions.ActiveSession(b.bookingId(), b.customerId(), b.resourceId(),
+                            b.startAt(), b.endAt()))
+                    .toList());
+            // arch 08 section 5, FR-VEN-08: open Dashboard streams close at once (E7-44, PO decision 10 Oct 2026).
+            deps.outbox().publish(context, new NewOutboxEvent(IntegrationEvents.VENUE_ACCOUNT_DISABLED,
+                    "VENUE_ACCOUNT", venueAccountId, Map.of("venueAccountId", venueAccountId, "venueId", venueId)));
+            // ... and its browsers get no more Web Push (PO decision 10 Oct 2026, E7-44 review).
+            deps.browserPush().revokeAll(context, venueAccountId);
         }
     }
 
