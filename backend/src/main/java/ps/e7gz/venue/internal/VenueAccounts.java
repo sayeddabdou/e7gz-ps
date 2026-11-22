@@ -1,7 +1,12 @@
 package ps.e7gz.venue.internal;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -11,6 +16,7 @@ import ps.e7gz.audit.api.AuditWriter;
 import ps.e7gz.common.codes.VenueAccountLanguage;
 import ps.e7gz.common.codes.VenueAccountStatus;
 import ps.e7gz.common.command.CommandRunner;
+import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.error.ApiException;
@@ -25,6 +31,9 @@ import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.messaging.api.StoredResponse;
 import ps.e7gz.notification.api.Notifications;
 import ps.e7gz.notification.api.VenueBrowserPush;
+import ps.e7gz.venue.api.AccountDisableBookings;
+import ps.e7gz.venue.api.AccountDisableTournaments;
+import ps.e7gz.venue.api.AccountRestrictions;
 import ps.e7gz.venue.api.OwnerPasswordGate;
 import ps.e7gz.venue.api.VenueAccountVenues;
 
@@ -50,11 +59,17 @@ public class VenueAccounts implements VenueAccountVenues {
     private final VenueBrowserPush browserPush;
     private final Idempotency idempotency;
     private final OwnerPasswordAttempts attempts;
+    private final VenueAccountCommands.DisableDeps disableDeps;
     private final JdbcClient jdbc;
+
+    /** A disable whose reach grew between its plan and its write plans again, this many times at most. */
+    static final int STATUS_ATTEMPTS = 3;
 
     VenueAccounts(CommandRunner runner, OwnerPasswordGate gate, PasswordEncoder passwords, AuditWriter audit,
                   AreaLookup areas, Notifications notifications, Outbox outbox, VenueBrowserPush browserPush,
-                  Idempotency idempotency, OwnerPasswordAttempts attempts, DataSource appDataSource) {
+                  Idempotency idempotency, OwnerPasswordAttempts attempts, AccountDisableBookings disableBookings,
+                  AccountDisableTournaments disableTournaments, AccountRestrictions restrictions,
+                  DataSource appDataSource) {
         this.runner = runner;
         this.gate = gate;
         this.passwords = passwords;
@@ -65,6 +80,8 @@ public class VenueAccounts implements VenueAccountVenues {
         this.browserPush = browserPush;
         this.idempotency = idempotency;
         this.attempts = attempts;
+        this.disableDeps = new VenueAccountCommands.DisableDeps(disableBookings, disableTournaments, restrictions,
+                audit, outbox, browserPush);
         this.jdbc = JdbcClient.create(appDataSource);
     }
 
@@ -103,31 +120,115 @@ public class VenueAccounts implements VenueAccountVenues {
     }
 
     /**
-     * The Platform Admin disables or re-enables the account (FR-ADM-03) with a reason. Only Dashboard access changes
-     * here; the booking and tournament consequences of a disable (O10) come with E7-78.
+     * The Platform Admin disables or re-enables the account (FR-ADM-03) with a reason, with every O10 consequence of a
+     * disable in the same transaction (E7-78; {@link VenueAccountCommands.SetAccountStatus}). Without an
+     * Idempotency-Key: for in-process callers only.
      */
     public Venues.VenueAccountSummary setStatus(UUID adminId, UUID venueAccountId, VenueAccountStatus target,
                                                 String reason) {
-        UUID venueId = venueOf(venueAccountId);
-        return runner.run(setAccountStatus(adminId, venueAccountId, venueId, target, reason));
+        return setStatus(adminId, venueAccountId, target, reason, runner::run);
     }
 
     /**
-     * The admin route: once per Idempotency-Key (ADR-015). Disable will cancel commitments and move Booking Fee
-     * refunds once E7-78 adds the O10 consequences, so both routes require the key (PO decision 19 Nov 2026, E7-77).
+     * The admin route: once per Idempotency-Key (ADR-015). A disable cancels AWAITING bookings and moves their Booking
+     * Fee refunds, so a replay with the same key returns the stored answer and changes nothing again (PO decision D4,
+     * 19 Nov 2026, E7-77).
      */
     public Venues.VenueAccountSummary setStatus(UUID adminId, UUID venueAccountId, VenueAccountStatus target,
                                                 String reason, IdempotentRequest key) {
         Objects.requireNonNull(key, "key");
-        UUID venueId = venueOf(venueAccountId);
-        return runner.run(idempotency.wrap(key, StoredResponse.of(Venues.VenueAccountSummary.class, 200),
-                setAccountStatus(adminId, venueAccountId, venueId, target, reason))).body();
+        StoredResponse<Venues.VenueAccountSummary> response = StoredResponse.of(Venues.VenueAccountSummary.class, 200);
+        return setStatus(adminId, venueAccountId, target, reason,
+                command -> runner.run(idempotency.wrap(key, response, command)).body());
     }
 
-    private VenueAccountCommands.SetAccountStatus setAccountStatus(UUID adminId, UUID venueAccountId, UUID venueId,
-                                                                   VenueAccountStatus target, String reason) {
-        return new VenueAccountCommands.SetAccountStatus(adminId, CorrelationId.require(), venueAccountId, venueId,
-                target, reason.strip(), audit, outbox, browserPush);
+    /** Plans the lock set, then writes under it; a reach that grew in between plans again (as E7-82 does). */
+    private Venues.VenueAccountSummary setStatus(UUID adminId, UUID venueAccountId, VenueAccountStatus target,
+                                                 String reason,
+                                                 Function<VenueAccountCommands.SetAccountStatus,
+                                                         Venues.VenueAccountSummary> run) {
+        UUID venueId = venueOf(venueAccountId);
+        UUID correlationId = CorrelationId.require();
+        String stripped = reason.strip();
+        for (int attempt = 1; ; attempt++) {
+            LockSet locks = runner.run(new VenueAccountCommands.PlanStatus(venueAccountId, venueId, target,
+                    disableDeps));
+            try {
+                return run.apply(new VenueAccountCommands.SetAccountStatus(adminId, correlationId, venueAccountId,
+                        venueId, target, stripped, locks, disableDeps));
+            } catch (VenueAccountCommands.StaleLocks grown) {
+                if (attempt >= STATUS_ATTEMPTS) {
+                    throw new IllegalStateException("The Venue Account disable kept reaching new rows", grown);
+                }
+            }
+        }
+    }
+
+    /** One row of the Platform Admin's venue-account list: never a password, hash or Owner PIN (E7-37 carry-forward). */
+    public record AccountListItem(UUID id, UUID venueId, String loginIdentifier, VenueAccountStatus accountStatus,
+                                  String venueName, VenueAccountLanguage languagePreference) {
+    }
+
+    public record AccountPage(List<AccountListItem> items, String nextCursor) {
+    }
+
+    static final int DEFAULT_PAGE_SIZE = 20;
+
+    /**
+     * FR-ADM-03 (PO decision 4 Oct 2026, carry-forward from E7-37 to E7-78): every venue account with its venue's name,
+     * ordered by venue name then account id, optionally only one {@code accountStatus}. The cursor is the opaque
+     * (venue name, id) of the last row of the previous page, so each account appears once across the pages.
+     */
+    public AccountPage list(VenueAccountStatus accountStatus, String cursor, Integer limit) {
+        int size = limit == null ? DEFAULT_PAGE_SIZE : limit;
+        AccountCursor after = cursor == null || cursor.isBlank() ? null : AccountCursor.decode(cursor);
+        List<AccountListItem> rows = jdbc.sql("""
+                        SELECT a.id, a.venue_id, a.login_identifier, a.account_status, a.language_preference,
+                               v.name AS venue_name
+                          FROM iam.venue_account a
+                          JOIN venue.venue v ON v.id = a.venue_id
+                         WHERE (CAST(:status AS text) IS NULL OR a.account_status = :status)
+                           AND (CAST(:afterId AS uuid) IS NULL OR (v.name, a.id) > (CAST(:afterName AS text), :afterId))
+                         ORDER BY v.name, a.id
+                         LIMIT :limit""")
+                .param("status", accountStatus == null ? null : accountStatus.name())
+                .param("afterName", after == null ? null : after.venueName())
+                .param("afterId", after == null ? null : after.id())
+                .param("limit", size + 1)
+                .query((rs, n) -> new AccountListItem(rs.getObject("id", UUID.class),
+                        rs.getObject("venue_id", UUID.class), rs.getString("login_identifier"),
+                        VenueAccountStatus.valueOf(rs.getString("account_status")), rs.getString("venue_name"),
+                        VenueAccountLanguage.valueOf(rs.getString("language_preference"))))
+                .list();
+        boolean more = rows.size() > size;
+        List<AccountListItem> page = more ? rows.subList(0, size) : rows;
+        return new AccountPage(List.copyOf(page),
+                more ? new AccountCursor(page.getLast().venueName(), page.getLast().id()).encode() : null);
+    }
+
+    /** The keyset of the list: the venue name and the account id, Base64url over the 16 id bytes then the UTF-8 name. */
+    record AccountCursor(String venueName, UUID id) {
+
+        String encode() {
+            byte[] name = venueName.getBytes(StandardCharsets.UTF_8);
+            ByteBuffer bytes = ByteBuffer.allocate(16 + name.length).putLong(id.getMostSignificantBits())
+                    .putLong(id.getLeastSignificantBits()).put(name);
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes.array());
+        }
+
+        static AccountCursor decode(String cursor) {
+            try {
+                byte[] bytes = Base64.getUrlDecoder().decode(cursor);
+                if (bytes.length < 16) {
+                    throw new IllegalArgumentException("cursor length");
+                }
+                ByteBuffer buffer = ByteBuffer.wrap(bytes);
+                UUID id = new UUID(buffer.getLong(), buffer.getLong());
+                return new AccountCursor(new String(bytes, 16, bytes.length - 16, StandardCharsets.UTF_8), id);
+            } catch (IllegalArgumentException malformed) {
+                throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "cursor");
+            }
+        }
     }
 
     /** FR-ADM-03: the admin chooses the new login password; it is hashed and never returned. */

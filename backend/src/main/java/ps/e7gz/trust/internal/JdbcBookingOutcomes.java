@@ -55,6 +55,12 @@ class JdbcBookingOutcomes implements BookingOutcomes {
         record(command, TrustEventType.BOOKING_ATTENDED_INTERRUPTED, customerId, bookingId, startAt);
     }
 
+    @Override
+    public void recordAttendanceProtection(CommandContext command, UUID customerId, UUID bookingId,
+                                           Instant startAt) {
+        record(command, TrustEventType.BOOKING_ACCOUNT_DISABLE_ATTENDANCE_PROTECTION, customerId, bookingId, startAt);
+    }
+
     private void record(CommandContext command, TrustEventType type, UUID customerId, UUID bookingId,
                                Instant startAt) {
         Objects.requireNonNull(customerId, "customerId");

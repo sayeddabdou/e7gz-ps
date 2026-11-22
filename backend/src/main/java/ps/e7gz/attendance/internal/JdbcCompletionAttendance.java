@@ -37,9 +37,12 @@ class JdbcCompletionAttendance implements CompletionAttendance {
     private final BookingOutcomes trust;
     private final BookingRewards rewards;
     private final Outbox outbox;
+    private final AttendanceProtection protection;
 
-    JdbcCompletionAttendance(AttendanceStore store, BookingOutcomes trust, BookingRewards rewards, Outbox outbox) {
+    JdbcCompletionAttendance(AttendanceStore store, BookingOutcomes trust, BookingRewards rewards, Outbox outbox,
+                             AttendanceProtection protection) {
         this.store = store;
+        this.protection = protection;
         this.trust = trust;
         this.rewards = rewards;
         this.outbox = outbox;
@@ -70,6 +73,7 @@ class JdbcCompletionAttendance implements CompletionAttendance {
         if (booking.source() == BookingSource.ONLINE) {
             trust.recordCompletion(command, booking.customerId(), bookingId, booking.startAt(), result);
             rewards.reconcile(command, booking.customerId(), bookingId);
+            protection.applyAtResolution(command, booking, result);                          // E7-78, FR-ATT-20
         }
         outbox.publish(command, AttendanceEvents.resolved(booking, result));
         return result;

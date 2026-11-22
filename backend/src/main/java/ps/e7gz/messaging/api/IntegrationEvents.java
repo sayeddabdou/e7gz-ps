@@ -80,9 +80,23 @@ public final class IntegrationEvents {
     /**
      * {@code {bookingId, customerId, venueId, resourceId, startAt, endAt, venueResponseExpiresAt}}, aggregate
      * {@code BOOKING}: T1 moved a PENDING booking to the non-terminal VENUE_RESPONSE_EXPIRED (FR-BOK-18; E7-47, PO
-     * decision D4).
+     * decision D4). A Venue Account disable writes it too, before the deadline, with
+     * {@code interruptedByAccountDisable: true} ({@link #INTERRUPTED_BY_ACCOUNT_DISABLE}; FR-VEN-09, E7-78): no
+     * customer notification for that one (PO decision E1, 19 Nov 2026).
      */
     public static final String VENUE_RESPONSE_EXPIRED = "VenueResponseExpired";
+
+    /** The {@link #VENUE_RESPONSE_EXPIRED} payload flag of an expiry caused by a Venue Account disable (E7-78). */
+    public static final String INTERRUPTED_BY_ACCOUNT_DISABLE = "interruptedByAccountDisable";
+
+    /**
+     * {@code {bookingId, customerId, venueId, resourceId, startAt, endAt, restrictionIntervalId, disabledAt}}, aggregate
+     * {@code BOOKING}: a Venue Account disable overlaps the ACTIVE Online Booking, which continues (FR-ATT-14,
+     * FR-ATT-25; E7-78, PO decision E2 19 Nov 2026). One per booking per disable; the customer is told
+     * {@code ACTIVE_SESSION_ATTENDANCE_RECORDING_AFFECTED}, never that it was cancelled (FR-NTF-07).
+     */
+    public static final String ACTIVE_SESSION_ATTENDANCE_RECORDING_AFFECTED =
+            "ActiveSessionAttendanceRecordingAffected";
 
     /**
      * {@code {bookingId, customerId, venueId, resourceId, startAt, endAt, terminalReason}}, aggregate {@code BOOKING}: a

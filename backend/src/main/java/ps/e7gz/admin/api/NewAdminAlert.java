@@ -77,6 +77,36 @@ public record NewAdminAlert(AdminAlertKind kind, AdminAlertSeverity severity, St
     }
 
     /**
+     * FR-ATT-26 (E7-78, PO decision E2 19 Nov 2026): a Venue Account disable overlaps an ACTIVE Online Booking. SEV_3,
+     * informational - the session continues and nothing is broken. About the BOOKING, with the venue, the session
+     * interval, the disable instant, the attendance evidence standing at that instant and whether Platform Attendance
+     * Protection may be required (no standing check-in, Late Present or no-show before the disable, arch 07 section
+     * 7.5). Ids and instants only.
+     *
+     * @param evidence the standing evidence instants by name ({@code checkInAt}, {@code latePresentAt},
+     *                 {@code noShowAt}), each absent when none stands
+     */
+    public static NewAdminAlert accountDisableOverlapsActiveBooking(UUID venueId, UUID bookingId, Instant startAt,
+                                                                    Instant endAt, Instant disabledAt,
+                                                                    Map<String, Instant> evidence,
+                                                                    boolean protectionMayBeRequired,
+                                                                    UUID correlationId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("venueId", Objects.requireNonNull(venueId, "venueId").toString());
+        payload.put("bookingId", Objects.requireNonNull(bookingId, "bookingId").toString());
+        payload.put("startAt", Objects.requireNonNull(startAt, "startAt").toString());
+        payload.put("endAt", Objects.requireNonNull(endAt, "endAt").toString());
+        payload.put("disabledAt", Objects.requireNonNull(disabledAt, "disabledAt").toString());
+        Map<String, Object> standing = new LinkedHashMap<>();
+        Objects.requireNonNull(evidence, "evidence").forEach((name, at) -> standing.put(name, at.toString()));
+        payload.put("attendanceEvidence", standing);
+        payload.put("protectionMayBeRequired", protectionMayBeRequired);
+        payload.put("correlationId", Objects.requireNonNull(correlationId, "correlationId").toString());
+        return new NewAdminAlert(AdminAlertKind.ACCOUNT_DISABLE_OVERLAPS_ACTIVE_BOOKING, AdminAlertSeverity.SEV_3,
+                "BOOKING", bookingId, payload, correlationId);
+    }
+
+    /**
      * Product v5.0 section 52.6, E7-71 (PO decision 20 Oct 2026: the alert inbox only): a Ban was activated. SEV_3 -
      * information for the Platform Admin, nothing is broken. Subject: the User; ids, stage and instants only.
      *

@@ -21,6 +21,16 @@ public sealed interface CommandScope {
     }
 
     /**
+     * A Platform Admin command whose system cascade writes Resources or Tournaments (E7-78, the Venue Account disable):
+     * on the admin-runtime connection, {@code tournament.begin_command} first with the whole lock set, then
+     * {@code admin.begin_command} with its Users and Venues, which binds the Admin and checks they lie inside the shared
+     * scope already open ({@code admin.begin_command}'s second branch). Same instant, same locks, one transaction.
+     */
+    static CommandScope adminCascade(UUID adminId, UUID correlationId, LockSet lockSet) {
+        return new AdminCascade(adminId, correlationId, lockSet);
+    }
+
+    /**
      * The one-off creation of the first Platform Admin (Sprint 0 review S-5, E7-23). No admin exists yet, so
      * {@code admin.begin_command} cannot run: the transaction opens on the admin-runtime connection, takes a transaction
      * advisory lock that serialises concurrent bootstraps, and samples the command instant from the database. Use it for
@@ -48,6 +58,16 @@ public sealed interface CommandScope {
                     || !lockSet.newTournaments().isEmpty()) {
                 throw new IllegalArgumentException("admin.begin_command locks only Users and Venues");
             }
+        }
+    }
+
+    /** See {@link #adminCascade}: any lock set. */
+    record AdminCascade(UUID adminId, UUID correlationId, LockSet lockSet) implements CommandScope {
+
+        public AdminCascade {
+            Objects.requireNonNull(adminId, "adminId");
+            Objects.requireNonNull(correlationId, "correlationId");
+            Objects.requireNonNull(lockSet, "lockSet");
         }
     }
 
