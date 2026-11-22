@@ -46,7 +46,8 @@ Modules and the tables they own: arch 03 §1. A module calls another only throug
 
 ```
 docker compose up -d                 # postgres (postgis) on 5433, seaweedfs (S3), mailpit
-cd backend && ./gradlew check        # unit + integration (Testcontainers) + ArchUnit
+cd backend && ./gradlew check        # unit + integration (Testcontainers) + ArchUnit: the whole suite, run by CI on every push (~15 min)
+./gradlew test --tests 'ps.e7gz.<module>.*'   # one task's tests before pushing (§7); add 'ps.e7gz.architecture.*' when modules or ports change
 ./gradlew bootRun --args='--spring.profiles.active=api'     # or worker; api,worker runs both (photo copies, Nearest Availability refresh and every outbox event, the OTP SMS included, need worker)
                                      # needs E7GZ_JWT_SECRET (Base64, 64 bytes), E7GZ_OTP_PAYLOAD_KEY and E7GZ_IDEMPOTENCY_FINGERPRINT_KEY (Base64, 32 bytes each);
                                      # make each on one line: node -e "process.stdout.write(require('crypto').randomBytes(64).toString('base64'))" (32 for the
@@ -78,7 +79,7 @@ pnpm mock                            # Prism mock server from openapi.json
 - Every new migration needs, in the same PR: the `.dbm` updated, a change-report entry naming the migration file and its `.dbm` change, a `MigrationFilesTest` check that the `.dbm` matches, and PO review.
 - Before adding one, check it against the data already in the tables, not only an empty database: a new `NOT NULL` without a default, a new `CHECK` or `UNIQUE` that old rows break, a dropped or renamed column, table, function or grant still used by Java, SQL, a trigger or another migration. Search the code (`grep`) for every name it changes. If old rows need a backfill, the migration does it.
 - `MigrationSafetyTest` applies every migration, one at a time, on a database seeded with realistic rows (`upgrade-seed/V1.sql`), and fails if any step crashes or loses rows. When a migration adds columns, add `upgrade-seed/V<version>.sql` with rows that use them, so later migrations are tested against them too.
-- Run `./gradlew check` at least twice before asking for review of a migration PR (Testcontainers runs from scratch each time), and again after merging `main` into the branch.
+- Before asking for review of a migration PR: run `MigrationSafetyTest`, `MigrationFilesTest` and the task's own tests locally; then CI green twice (re-run the CI job once: Testcontainers starts from scratch each time), and CI green again after merging `main` into the branch (PO decision 22 Nov 2026: CI replaces the two local full runs).
 - After deployment (E7-101): back up first; run the migration on a restored copy of production on staging; check `flyway info` / `validate` before `migrate`; smoke-test after. If production fails, restore the backup and ship a forward fix as a new migration. Never edit `flyway_schema_history` by hand.
 - Nothing is hard-deleted where history matters. Tokens/subscriptions are revoked, accounts anonymised.
 
@@ -120,4 +121,9 @@ pnpm mock                            # Prism mock server from openapi.json
 1. Read this file, then only the docs the task lists. Quote doc section IDs in code comments where a rule comes from.
 2. Stay inside the task's scope and module(s). If you need a change elsewhere, stop and say so.
 3. Write the tests from the task's "done when" list first.
-4. Finish with: `./gradlew check` and/or `pnpm -r lint typecheck build` green, a short summary, and any open question for the PO.
+4. Before pushing, test the task itself, not the whole suite (PO decision 22 Nov 2026: the full local `./gradlew check` takes about 2 hours on Windows and finds nothing CI does not):
+   - its integration tests and its unit (logic) tests, starting with the "done when" ones: `./gradlew test --tests '…'` for the task's test classes, plus `ps.e7gz.architecture.*` when modules or ports change and `ps.e7gz.openapi.*` when the API changes (then `pnpm api:gen`);
+   - its API by hand-run API tests: the Postman CLI against a local `bootRun`, collections kept local and never committed;
+   - a frontend task: `pnpm --filter <app> lint typecheck test build`.
+   Then push: CI runs the full `./gradlew check` and `pnpm -r …` on GitHub, and must be green before review. A CI failure is fixed on the same branch.
+5. Finish with a short summary of what was tested, and any open question for the PO.
