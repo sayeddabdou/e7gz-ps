@@ -78,7 +78,8 @@ public class CommandRunner {
                     + "CommandRunner cannot be called inside another transaction (arch 04 section 2.1)");
         }
         boolean onAdminConnection =
-                scope instanceof CommandScope.Admin || scope instanceof CommandScope.FirstAdminBootstrap;
+                scope instanceof CommandScope.Admin || scope instanceof CommandScope.AdminCascade
+                        || scope instanceof CommandScope.FirstAdminBootstrap;
         Pool pool = onAdminConnection ? admin : app;
 
         for (int attempt = 1; ; attempt++) {
@@ -178,6 +179,26 @@ public class CommandRunner {
                         statement.setObject(2, a.correlationId());
                         statement.setArray(3, uuids(con, a.lockSet().users()));
                         statement.setArray(4, uuids(con, a.lockSet().venues()));
+                        yield instant(statement);
+                    }
+                }
+                case CommandScope.AdminCascade a -> {
+                    LockSet l = a.lockSet();
+                    try (PreparedStatement shared =
+                                 con.prepareStatement("SELECT tournament.begin_command(?, ?, ?, ?, ?)")) {
+                        shared.setArray(1, uuids(con, l.users()));
+                        shared.setArray(2, uuids(con, l.venues()));
+                        shared.setArray(3, uuids(con, l.resources()));
+                        shared.setArray(4, uuids(con, l.tournaments()));
+                        shared.setArray(5, uuids(con, l.newTournaments()));
+                        instant(shared);
+                    }
+                    try (PreparedStatement statement =
+                                 con.prepareStatement("SELECT admin.begin_command(?, ?, ?, ?)")) {
+                        statement.setObject(1, a.adminId());
+                        statement.setObject(2, a.correlationId());
+                        statement.setArray(3, uuids(con, l.users()));
+                        statement.setArray(4, uuids(con, l.venues()));
                         yield instant(statement);
                     }
                 }

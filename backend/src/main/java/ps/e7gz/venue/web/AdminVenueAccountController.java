@@ -30,7 +30,6 @@ import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.PageView;
 import ps.e7gz.common.web.ResponseMetaFactory;
@@ -41,10 +40,10 @@ import ps.e7gz.venue.internal.Venues;
 /**
  * Platform Admin — venue accounts (arch 09 §5, arch 03 §5, FR-ADM-03, FR-VEN-06, FR-VEN-08). Nothing here deletes venue
  * data; an Owner Password reset notifies the venue (that notification comes with E7-43). {@code venueAccountId} is
- * {@code iam.venue_account.id}. Implemented by E7-24 (PO decision 3 Oct 2026); disable changes Dashboard access only -
- * its booking and tournament consequences (O10) come with E7-78. Disable and enable require the Idempotency-Key since
- * the Sprint 5 contract (PO decision 19 Nov 2026, E7-77): with E7-78 a disable cancels AWAITING bookings and moves
- * their Booking Fee refunds (ADR-015). The list is a stub of that contract until E7-78 (carry-forward from E7-37).
+ * {@code iam.venue_account.id}. Implemented by E7-24 (PO decision 3 Oct 2026); a disable's booking, tournament and
+ * attendance consequences (O10, arch 06 section 2.8) by E7-78, in the same transaction. Disable and enable require the
+ * Idempotency-Key since the Sprint 5 contract (PO decision 19 Nov 2026, E7-77): a disable cancels AWAITING bookings and
+ * moves their Booking Fee refunds (ADR-015). The list is E7-78's (carry-forward from E7-37).
  */
 @RestController
 @RequestMapping("/api/v1/admin/venue-accounts")
@@ -76,12 +75,18 @@ public class AdminVenueAccountController {
             @RequestParam(required = false) VenueAccountStatus accountStatus,
             @RequestParam(required = false) String cursor,
             @RequestParam(required = false) @Min(1) @Max(100) Integer limit) {
-        throw NotImplementedYet.stub();
+        VenueAccounts.AccountPage page = accounts.list(accountStatus, cursor, limit);
+        return meta.data(new PageView<>(page.items().stream().map(AdminVenueAccountListItem::of).toList(),
+                page.nextCursor()));
     }
 
     @PostMapping("/{venueAccountId}/disable")
     @Operation(operationId = "adminDisableVenueAccount",
-            summary = "Disable Dashboard access; marketplace status is untouched (FR-VEN-06, FR-VEN-08)")
+            summary = "Disable Dashboard access; marketplace status is untouched (FR-VEN-06, FR-VEN-08)",
+            description = "In the same transaction (O10, FR-VEN-09): PENDING requests go VENUE_RESPONSE_EXPIRED, "
+                    + "AWAITING_CUSTOMER_CONFIRMATION bookings and Tournaments awaiting approval are CANCELLED "
+                    + "VENUE_ACCOUNT_DISABLED, CONFIRMED and ACTIVE bookings continue. A replay with the same "
+                    + "Idempotency-Key changes nothing again.")
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     @ApiError(status = 422, codes = ApiErrorCode.IDEMPOTENCY_KEY_REUSED)
     public DataResponse<AdminVenueAccountView> disable(
@@ -154,6 +159,11 @@ public class AdminVenueAccountController {
             @NotNull VenueAccountStatus accountStatus,
             @NotNull @Schema(example = "Level Up Nasr City") String venueName,
             @NotNull VenueAccountLanguage languagePreference) {
+
+        static AdminVenueAccountListItem of(VenueAccounts.AccountListItem row) {
+            return new AdminVenueAccountListItem(row.id(), row.venueId(), row.loginIdentifier(), row.accountStatus(),
+                    row.venueName(), row.languagePreference());
+        }
     }
 
     /** Account status changes carry the admin's reason (arch 03 §5 {@code setAccountStatus(…, reason)}). */

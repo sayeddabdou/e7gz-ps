@@ -37,6 +37,7 @@ import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.common.codes.ActorType;
+import ps.e7gz.common.codes.VenueAccountStatus;
 import ps.e7gz.messaging.api.IdempotentRequest;
 import ps.e7gz.messaging.api.IntegrationEvents;
 import ps.e7gz.messaging.api.OutboxConsumer;
@@ -59,6 +60,7 @@ import ps.e7gz.support.IntegrationTest;
 import ps.e7gz.support.boundary.DueJobs;
 import ps.e7gz.support.boundary.TestCommands;
 import ps.e7gz.venue.api.HoursChangeBookings;
+import ps.e7gz.venue.internal.VenueAccounts;
 
 /**
  * E7-55 against the real database: each booking event creates its notifications exactly once (the task's "done when"),
@@ -95,6 +97,9 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
 
     @Autowired
     HoursChangeBookings hoursChangeBookings;
+
+    @Autowired
+    VenueAccounts venueAccounts;
 
     JdbcClient db;
     BookingFlows flows;
@@ -207,6 +212,42 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
         assertThat(customerCodes(booking)).containsExactlyInAnyOrder("BOOKING_CREATED", "VENUE_RESPONSE_EXPIRED",
                 "REJECTED_AFTER_EXPIRY");
         assertThat(venueCodes(booking)).containsExactly("VENUE_NEW_BOOKING_REQUEST");
+    }
+
+    /**
+     * E7-78, PO decision E1 (19 Nov 2026): a PENDING request a Venue Account disable moved to VENUE_RESPONSE_EXPIRED
+     * creates no customer notification at all - its VenueResponseExpired is handled twice and redelivered, and still
+     * nothing - while an ordinary expiry keeps its VENUE_RESPONSE_EXPIRED.
+     */
+    @Test
+    void aRequestExpiredByAnAccountDisableTellsNoOneWhileAnOrdinaryExpiryStillDoes() {
+        Booking disabled = flows.pending();
+        Booking ordinary = flows.pending();
+        venueAccounts.setStatus(anAdmin().create().id(), disabled.venueAccountId(),
+                VenueAccountStatus.DISABLED, "Support ticket 7");
+        flows.expire(ordinary);
+
+        drainTwiceAndRedeliver(disabled, IntegrationEvents.VENUE_RESPONSE_EXPIRED);
+        drain();
+
+        assertThat(customerCodes(disabled)).containsExactly("BOOKING_CREATED");
+        assertThat(customerCodes(ordinary)).containsExactlyInAnyOrder("BOOKING_CREATED", "VENUE_RESPONSE_EXPIRED");
+    }
+
+    /**
+     * E7-78, PO decision E2 (FR-ATT-25): a disable overlapping an ACTIVE booking tells its customer once with
+     * ACTIVE_SESSION_ATTENDANCE_RECORDING_AFFECTED, made by its one event even when handled twice and redelivered.
+     */
+    @Test
+    void aDisableOverlappingAnActiveBookingTellsTheCustomerOnce() {
+        Booking booking = flows.active(Duration.ofMinutes(20));
+        venueAccounts.setStatus(anAdmin().create().id(), booking.venueAccountId(),
+                VenueAccountStatus.DISABLED, "Support ticket 7");
+
+        drainTwiceAndRedeliver(booking, IntegrationEvents.ACTIVE_SESSION_ATTENDANCE_RECORDING_AFFECTED);
+
+        assertMadeOnceBy(booking, IntegrationEvents.ACTIVE_SESSION_ATTENDANCE_RECORDING_AFFECTED,
+                "CUSTOMER ACTIVE_SESSION_ATTENDANCE_RECORDING_AFFECTED " + booking.customerId());
     }
 
     /**

@@ -13,6 +13,7 @@
  * <p>Filled by:
  * <ul>
  *   <li>E7-73 Tournament entity (early)</li>
+ *   <li>E7-78 Venue Account disable: Tournaments awaiting approval (venue.api.AccountDisableTournaments)</li>
  *   <li>E7-91 Tournament creation and holds (O16 part 1)</li>
  *   <li>E7-92 Approval, rejection, timeout (T7–T9)</li>
  *   <li>E7-93 Join, leave, checkpoint, start, cancel</li>

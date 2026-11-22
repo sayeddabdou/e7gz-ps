@@ -27,9 +27,12 @@ class JdbcInterruptionAttendance implements InterruptionAttendance {
     private final AttendanceStore store;
     private final BookingOutcomes trust;
     private final Outbox outbox;
+    private final AttendanceProtection protection;
 
-    JdbcInterruptionAttendance(AttendanceStore store, BookingOutcomes trust, Outbox outbox) {
+    JdbcInterruptionAttendance(AttendanceStore store, BookingOutcomes trust, Outbox outbox,
+                               AttendanceProtection protection) {
         this.store = store;
+        this.protection = protection;
         this.trust = trust;
         this.outbox = outbox;
     }
@@ -57,6 +60,8 @@ class JdbcInterruptionAttendance implements InterruptionAttendance {
         if (booking.source() == BookingSource.ONLINE && result == AttendanceResult.ATTENDED_INTERRUPTED) {
             trust.recordInterruption(command, booking.customerId(), bookingId, booking.startAt());
         }
+        // E7-78, FR-ATT-18: an early termination is protected too; its result stays the interruption model's
+        protection.applyAtResolution(command, booking, result);
         outbox.publish(command, AttendanceEvents.resolved(booking, result));
         return result;
     }
