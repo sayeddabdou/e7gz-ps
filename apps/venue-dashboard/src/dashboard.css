@@ -40,6 +40,19 @@ button:not(:disabled):hover,
   transform: translateY(-1px);
 }
 
+.venue-legal-link {
+  background: var(--e7gz-color-surface-raised);
+  color: var(--e7gz-color-text-venue);
+  transition: background-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.venue-legal-link:hover,
+.venue-legal-link:focus-visible {
+  background: var(--e7gz-color-brand-venue);
+  color: var(--e7gz-color-text-inverse);
+  transform: translateY(-1px);
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.58;

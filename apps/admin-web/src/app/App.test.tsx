@@ -4,7 +4,11 @@ import { App } from "./App";
 
 const readyConfig = {
   ok: true as const,
-  config: { apiBaseUrl: "http://127.0.0.1:4010" },
+  config: {
+    apiBaseUrl: "http://127.0.0.1:4010",
+    privacyPolicyUrl: "https://legal.example/privacy",
+    termsUrl: "https://legal.example/terms",
+  },
 };
 
 const sessionResponse = (accessToken: string) => new Response(
@@ -57,6 +61,8 @@ describe("Platform Admin shell", () => {
     await waitFor(() => expect(screen.getByRole("navigation", { name: "Admin navigation" })).toBeTruthy());
     const links = within(screen.getByRole("navigation", { name: "Admin navigation" })).getAllByRole("link");
     expect(links.map((link) => link.textContent)).toEqual(expectedModules);
+    expect(screen.getByRole("link", { name: "Terms of Use" }).getAttribute("href")).toBe("https://legal.example/terms");
+    expect(screen.getByRole("link", { name: "Privacy Policy" }).getAttribute("href")).toBe("https://legal.example/privacy");
   });
 
   it("routes to an empty module page", async () => {

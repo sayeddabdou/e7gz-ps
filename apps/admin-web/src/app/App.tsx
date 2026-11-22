@@ -86,6 +86,10 @@ function ProtectedShell({
       <div className="admin-workspace">
         <header className="admin-topbar">
           <div className="admin-topbar-spacer" />
+          <nav aria-label={t.legal.navigation} className="admin-legal-links">
+            <a href={config.config.termsUrl} rel="noreferrer" target="_blank">{t.legal.terms}</a>
+            <a href={config.config.privacyPolicyUrl} rel="noreferrer" target="_blank">{t.legal.privacy}</a>
+          </nav>
           <div className="admin-profile"><span className="admin-avatar">PA</span><span><strong>Platform Admin</strong><small>Administrator</small></span></div>
           <button className="button button--secondary" disabled={loggingOut} type="button" onClick={onLogout}>{loggingOut ? t.auth.loggingOut : t.auth.logout}</button>
         </header>

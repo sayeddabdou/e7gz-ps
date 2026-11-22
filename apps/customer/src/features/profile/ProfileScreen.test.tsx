@@ -1,3 +1,4 @@
+import { Linking } from "react-native";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import type { CustomerProfile, CustomerProfileApi } from "./api";
 import { profileDateText, profileInitials, ProfileScreen } from "./ProfileScreen";
@@ -28,6 +29,63 @@ function profileApi(overrides: Partial<CustomerProfileApi> = {}): CustomerProfil
 }
 
 describe("customer profile", () => {
+  it("opens the Terms and Privacy Policy URLs returned by the legal endpoint", async () => {
+    const openUrl = jest.spyOn(Linking, "openURL").mockResolvedValue(undefined);
+    const legalApi = {
+      getLegalTexts: jest.fn().mockResolvedValue({
+        ok: true,
+        value: { version: "2026-11-15", termsUrl: "https://legal.example/terms", privacyUrl: "https://legal.example/privacy" },
+      }),
+    };
+    render(<ProfileScreen api={profileApi()} legalApi={legalApi} onLogout={jest.fn()} />);
+
+    fireEvent.press(await screen.findByRole("button", { name: "Terms of Use" }));
+    fireEvent.press(screen.getByRole("button", { name: "Privacy Policy" }));
+
+    expect(openUrl).toHaveBeenNthCalledWith(1, "https://legal.example/terms");
+    expect(openUrl).toHaveBeenNthCalledWith(2, "https://legal.example/privacy");
+  });
+
+  it("shows legal loading failure and retries the endpoint", async () => {
+    const legalApi = {
+      getLegalTexts: jest.fn()
+        .mockResolvedValueOnce({ ok: false })
+        .mockResolvedValueOnce({
+          ok: true,
+          value: { version: "2026-11-15", termsUrl: "https://legal.example/terms", privacyUrl: "https://legal.example/privacy" },
+        }),
+    };
+    render(<ProfileScreen api={profileApi()} legalApi={legalApi} onLogout={jest.fn()} />);
+
+    expect(await screen.findByText("The Terms and Privacy links could not be loaded.")).toBeTruthy();
+    fireEvent.press(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("button", { name: "Terms of Use" })).toBeTruthy();
+    expect(legalApi.getLegalTexts).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows a loading state while Profile legal links are being fetched", async () => {
+    const legalApi = { getLegalTexts: jest.fn(() => new Promise<never>(() => undefined)) };
+    render(<ProfileScreen api={profileApi()} legalApi={legalApi} onLogout={jest.fn()} />);
+
+    expect(await screen.findByText("Loading the current Terms and Privacy Policy…")).toBeTruthy();
+  });
+
+  it("maps a Profile legal-link opening failure", async () => {
+    jest.spyOn(Linking, "openURL").mockRejectedValue(new Error("cannot open"));
+    const legalApi = {
+      getLegalTexts: jest.fn().mockResolvedValue({
+        ok: true,
+        value: { version: "2026-11-15", termsUrl: "https://legal.example/terms", privacyUrl: "https://legal.example/privacy" },
+      }),
+    };
+    render(<ProfileScreen api={profileApi()} legalApi={legalApi} onLogout={jest.fn()} />);
+
+    fireEvent.press(await screen.findByRole("button", { name: "Terms of Use" }));
+
+    expect(await screen.findByText("The legal document could not be opened. Try again.")).toBeTruthy();
+  });
+
   it("shows the required profile summary and username cooldown", async () => {
     render(<ProfileScreen api={profileApi()} onLogout={jest.fn()} />);
 

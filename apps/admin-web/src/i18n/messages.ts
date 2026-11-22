@@ -21,6 +21,7 @@ export const messages = {
     },
   },
   configMissing: "Missing configuration:",
+  legal: { navigation: "Legal documents", terms: "Terms of Use", privacy: "Privacy Policy" },
   modules: {
     dashboard: "Dashboard",
     areas: "Areas",

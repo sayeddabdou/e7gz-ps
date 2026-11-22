@@ -4,18 +4,16 @@ import type { AppConfig } from "../../config";
 import { errorCodeOf } from "../../api";
 import type { ApiErrorCode } from "./errorMessages";
 
-// E7-124 made acceptedTermsVersion required on the server (PCR-013); the sign-up screen sends it from GET
-// /customer/legal in E7-122. Until then it stays optional here, and the server refuses a sign-up without it.
-type RegisterRequest = Omit<components["schemas"]["CustomerRegisterRequest"], "acceptedTermsVersion"> & {
-  acceptedTermsVersion?: string;
-};
+type RegisterRequest = components["schemas"]["CustomerRegisterRequest"];
 type LoginRequest = components["schemas"]["CustomerLoginRequest"];
+export type CustomerLegalTexts = components["schemas"]["CustomerLegalTexts"];
 
 export type AuthResult<T> =
   | { ok: true; value: T; serverTime: string }
   | { ok: false; code?: ApiErrorCode; serverTime?: string };
 
 export interface CustomerAuthApi {
+  getLegalTexts(): Promise<AuthResult<CustomerLegalTexts>>;
   register(request: RegisterRequest): Promise<AuthResult<{ phone: string; challengeId: string }>>;
   login(request: LoginRequest): Promise<AuthResult<TokenPair>>;
   verifyPhone(challengeId: string, code: string, password?: string): Promise<AuthResult<TokenPair>>;
@@ -31,10 +29,13 @@ function codeFrom(body: unknown): ApiErrorCode | undefined {
 export function createCustomerAuthApi(config: AppConfig, tokenStore: TokenStore): CustomerAuthApi {
   const client = createApiClient({ baseUrl: config.apiBaseUrl });
   return {
+    async getLegalTexts() {
+      const { data, error } = await client.GET("/api/v1/customer/legal");
+      if (data) return { ok: true, value: data.data, serverTime: data.meta.serverTime };
+      return { ok: false, code: codeFrom(error), serverTime: error?.meta.serverTime };
+    },
     async register(request) {
-      // Until E7-122 the field may be missing (see RegisterRequest); the server then answers VALIDATION_FAILED.
-      const body = request as components["schemas"]["CustomerRegisterRequest"];
-      const { data, error } = await client.POST("/api/v1/customer/auth/register", { body });
+      const { data, error } = await client.POST("/api/v1/customer/auth/register", { body: request });
       if (data) return { ok: true, value: { phone: request.phone, challengeId: data.data.otpChallengeId }, serverTime: data.meta.serverTime };
       return { ok: false, code: codeFrom(error), serverTime: error?.meta.serverTime };
     },

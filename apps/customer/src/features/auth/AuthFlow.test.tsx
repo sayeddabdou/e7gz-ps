@@ -1,3 +1,4 @@
+import { Linking } from "react-native";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import type { TokenStore } from "../../auth/tokenStore";
 import { AuthFlow } from "./AuthFlow";
@@ -20,6 +21,11 @@ const tokenStore: TokenStore = {
 
 function authApi(overrides: Partial<CustomerAuthApi> = {}): CustomerAuthApi {
   return {
+    getLegalTexts: jest.fn().mockResolvedValue({
+      ok: true,
+      value: { version: "2026-11-15", termsUrl: "https://legal.example/terms", privacyUrl: "https://legal.example/privacy" },
+      serverTime: "2026-11-17T10:00:00Z",
+    }),
     register: jest.fn(),
     login: jest.fn().mockResolvedValue({ ok: true, value: tokens, serverTime: "2026-10-01T10:00:00Z" }),
     verifyPhone: jest.fn(),
@@ -31,6 +37,75 @@ function authApi(overrides: Partial<CustomerAuthApi> = {}): CustomerAuthApi {
 }
 
 describe("customer authentication", () => {
+  it("requires agreement, opens both configured links, and sends the accepted version", async () => {
+    const openUrl = jest.spyOn(Linking, "openURL").mockResolvedValue(undefined);
+    const api = authApi({
+      register: jest.fn().mockResolvedValue({
+        ok: true,
+        value: { phone: "+201001234567", challengeId: "registration-1" },
+        serverTime: "2026-11-17T10:00:00Z",
+      }),
+    });
+    render(<AuthFlow api={api} tokenStore={tokenStore} onAuthenticated={jest.fn()} />);
+
+    fireEvent.press(screen.getByRole("button", { name: "Create an account" }));
+    await screen.findByRole("link", { name: "Terms of Use" });
+    expect(screen.getByRole("button", { name: "Continue" }).props.accessibilityState?.disabled).toBe(true);
+
+    fireEvent.press(screen.getByRole("link", { name: "Terms of Use" }));
+    fireEvent.press(screen.getByRole("link", { name: "Privacy Policy" }));
+    expect(openUrl).toHaveBeenNthCalledWith(1, "https://legal.example/terms");
+    expect(openUrl).toHaveBeenNthCalledWith(2, "https://legal.example/privacy");
+
+    fireEvent.press(screen.getByRole("checkbox", { name: "I agree to the Terms of Use and the Privacy Policy" }));
+    expect(screen.getByRole("button", { name: "Continue" }).props.accessibilityState?.disabled).toBe(false);
+    fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() => expect(api.register).toHaveBeenCalledWith(expect.objectContaining({ acceptedTermsVersion: "2026-11-15" })));
+  });
+
+  it("reloads the legal version every time registration is opened", async () => {
+    const getLegalTexts = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        value: { version: "2026-11-15", termsUrl: "https://legal.example/terms-v1", privacyUrl: "https://legal.example/privacy-v1" },
+        serverTime: "2026-11-17T10:00:00Z",
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        value: { version: "2026-11-21", termsUrl: "https://legal.example/terms-v2", privacyUrl: "https://legal.example/privacy-v2" },
+        serverTime: "2026-11-21T10:00:00Z",
+      });
+    const register = jest.fn().mockResolvedValue({
+      ok: true,
+      value: { phone: "+201001234567", challengeId: "registration-2" },
+      serverTime: "2026-11-21T10:00:00Z",
+    });
+    const api = authApi({ getLegalTexts, register });
+    render(<AuthFlow api={api} tokenStore={tokenStore} onAuthenticated={jest.fn()} />);
+
+    fireEvent.press(screen.getByRole("button", { name: "Create an account" }));
+    await screen.findByRole("link", { name: "Terms of Use" });
+    fireEvent.press(screen.getByRole("button", { name: "Already have an account? Log in" }));
+    fireEvent.press(screen.getByRole("button", { name: "Create an account" }));
+
+    await waitFor(() => expect(getLegalTexts).toHaveBeenCalledTimes(2));
+    fireEvent.press(await screen.findByRole("checkbox", { name: "I agree to the Terms of Use and the Privacy Policy" }));
+    fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() => expect(register).toHaveBeenCalledWith(expect.objectContaining({ acceptedTermsVersion: "2026-11-21" })));
+  });
+
+  it("maps a legal-link opening failure", async () => {
+    jest.spyOn(Linking, "openURL").mockRejectedValue(new Error("cannot open"));
+    render(<AuthFlow api={authApi()} tokenStore={tokenStore} onAuthenticated={jest.fn()} />);
+
+    fireEvent.press(screen.getByRole("button", { name: "Create an account" }));
+    fireEvent.press(await screen.findByRole("link", { name: "Terms of Use" }));
+
+    expect(await screen.findByText("The legal document could not be opened. Try again.")).toBeTruthy();
+  });
+
   it("shows a post-reset confirmation on the login screen", () => {
     render(<AuthFlow api={authApi()} tokenStore={tokenStore} notice="Password reset. Every session has ended. Log in with your new password." onAuthenticated={jest.fn()} />);
 
@@ -77,6 +152,7 @@ describe("customer authentication", () => {
       fireEvent.changeText(screen.getByLabelText("Email"), "omar@example.com");
       fireEvent.changeText(screen.getByLabelText("Username or phone"), "omar_h");
       fireEvent.changeText(screen.getByLabelText("Password"), "password1");
+      fireEvent.press(await screen.findByRole("checkbox", { name: "I agree to the Terms of Use and the Privacy Policy" }));
       fireEvent.press(screen.getByRole("button", { name: "Continue" }));
 
       await waitFor(() => expect(screen.getByRole("header", { name: "Verify your phone" })).toBeTruthy());
@@ -120,6 +196,7 @@ describe("customer authentication", () => {
     fireEvent.changeText(screen.getByLabelText("Email"), "omar@example.com");
     fireEvent.changeText(screen.getByLabelText("Username or phone"), "omar_h");
     fireEvent.changeText(screen.getByLabelText("Password"), "password1");
+    fireEvent.press(await screen.findByRole("checkbox", { name: "I agree to the Terms of Use and the Privacy Policy" }));
     fireEvent.press(screen.getByRole("button", { name: "Continue" }));
 
     fireEvent.press(await screen.findByRole("button", { name: "Resend code" }));
@@ -150,6 +227,7 @@ describe("customer authentication", () => {
     fireEvent.changeText(screen.getByLabelText("Username or phone"), "omar_h");
     fireEvent.changeText(screen.getByLabelText("Password"), "password1");
     fireEvent.changeText(screen.getByLabelText("Referral code (optional)"), "  k7m3qx9p  ");
+    fireEvent.press(await screen.findByRole("checkbox", { name: "I agree to the Terms of Use and the Privacy Policy" }));
     fireEvent.press(screen.getByRole("button", { name: "Continue" }));
 
     await waitFor(() => expect(api.register).toHaveBeenCalledWith(expect.objectContaining({ referralCode: "  k7m3qx9p  " })));
