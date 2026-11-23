@@ -5,7 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -142,12 +145,11 @@ public final class FaultInjection {
 
     /** The step of the {@link InjectedFault} in {@code failure}'s cause chain; 0 when there is none. */
     static int injected(Throwable failure) {
-        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+        // a cause chain can loop back on itself (A caused by B caused by A): stop at the first exception seen twice
+        Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Throwable cause = failure; cause != null && seen.add(cause); cause = cause.getCause()) {
             if (cause instanceof InjectedFault fault) {
                 return fault.step();
-            }
-            if (cause.getCause() == cause) {
-                break;
             }
         }
         return 0;

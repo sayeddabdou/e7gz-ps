@@ -124,4 +124,13 @@ class FaultInjectionTest {
         assertThat(FaultInjection.injected(wrapped)).isEqualTo(4);
         assertThat(FaultInjection.injected(new RuntimeException("no fault"))).isZero();
     }
+
+    @Test
+    void aCauseChainThatLoopsEnds() {
+        RuntimeException first = new RuntimeException("first");
+        RuntimeException second = new RuntimeException("second", first);
+        first.initCause(second);
+
+        assertThat(FaultInjection.injected(first)).isZero();
+    }
 }
