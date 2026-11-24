@@ -153,8 +153,17 @@ final class BookingNotificationRules {
                 default -> throw new PermanentDeliveryFailure("BookingRejected " + event.id()
                         + " has an unexpected terminalReason " + reason(event));
             }),
-            // E7-47 T1 (FR-BOK-18): ordinary expiry, its own code (FR-NTF-06)
-            Map.entry(IntegrationEvents.VENUE_RESPONSE_EXPIRED, event -> plan(customer("VENUE_RESPONSE_EXPIRED"))),
+            // E7-47 T1 (FR-BOK-18): ordinary expiry, its own code (FR-NTF-06). E7-78 (PO decision E1, 19 Nov 2026): the
+            // same transition caused by a Venue Account disable gets no notification at all - this code says the venue
+            // did not respond in time, which FR-NTF-06 and FR-VEN-11 forbid there; the app shows the cause from the
+            // Booking Event VENUE_RESPONSE_INTERRUPTED_BY_ACCOUNT_DISABLE
+            Map.entry(IntegrationEvents.VENUE_RESPONSE_EXPIRED, event ->
+                    event.payload().path(IntegrationEvents.INTERRUPTED_BY_ACCOUNT_DISABLE).asBoolean(false)
+                            ? Plan.NONE : plan(customer("VENUE_RESPONSE_EXPIRED"))),
+            // E7-78 (FR-ATT-25, PO decision E2 19 Nov 2026): a disable overlaps the customer's ACTIVE booking, which
+            // continues - §52.2 operational causes, In-App + Push, never cancellation wording (FR-NTF-07)
+            Map.entry(IntegrationEvents.ACTIVE_SESSION_ATTENDANCE_RECORDING_AFFECTED,
+                    event -> plan(customer("ACTIVE_SESSION_ATTENDANCE_RECORDING_AFFECTED"))),
             Map.entry(IntegrationEvents.BOOKING_CANCELLED, BookingNotificationRules::cancelled),
             // No notification (PO decision 13 Oct 2026): a walk-in has no customer; at CONFIRMED -> ACTIVE (E7-60) the
             // BOOKING_STARTS_SOON reminder finds the booking no longer CONFIRMED and supersedes itself

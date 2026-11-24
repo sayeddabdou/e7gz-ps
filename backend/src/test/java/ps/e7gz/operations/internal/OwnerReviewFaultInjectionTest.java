@@ -1,20 +1,14 @@
 package ps.e7gz.operations.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static ps.e7gz.operations.internal.EmergencyHttpTest.OWNER;
 import static ps.e7gz.operations.internal.EmergencyHttpTest.count;
 import static ps.e7gz.operations.internal.EmergencyHttpTest.dbNow;
 import static ps.e7gz.operations.internal.EmergencyHttpTest.statusOf;
 
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Proxy;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,6 +21,8 @@ import ps.e7gz.common.codes.EmergencyScope;
 import ps.e7gz.common.command.CommandRunner;
 import ps.e7gz.common.command.LockSet;
 import ps.e7gz.common.correlation.CorrelationId;
+import ps.e7gz.faultinjection.FaultInjection;
+import ps.e7gz.faultinjection.FaultInjection.Faults;
 import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.operations.api.EmergencyBookings;
 import ps.e7gz.operations.api.UnresolvedEmergencies;
@@ -92,40 +88,27 @@ class OwnerReviewFaultInjectionTest extends IntegrationTest {
 
     @Test
     void aFaultAtEveryStepOfTheOwnerReviewEntryLeavesNothingBehind() {
-        AtomicInteger calls = new AtomicInteger();
-        World counted = world();
-        end(counted, calls, Integer.MAX_VALUE);
-        int steps = calls.get();
-        assertThat(steps).as("the cascade's steps").isGreaterThanOrEqualTo(8);
-        assertThat(statusOf(counted.confirmed().bookingId())).isEqualTo("CANCELLED/RESOURCE_OWNER_REVIEW_REQUIRED");
-        assertThat(statusOf(counted.pending().bookingId())).isEqualTo("CANCELLED/RESOURCE_OWNER_REVIEW_REQUIRED");
-
-        List<Integer> checked = new ArrayList<>();
-        for (int step = 1; step <= steps; step++) {
-            World world = world();
-            int failAt = step;
-            assertThatThrownBy(() -> end(world, new AtomicInteger(), failAt))
-                    .as("step %d", step).hasMessageContaining("injected fault at step " + step);
-            nothingLeft(world, step);
-            checked.add(step);
-        }
-        assertThat(checked).hasSize(steps);
+        // E7-79: the shared harness counts the steps, then fails at each one on a fresh world
+        FaultInjection.atEveryStep(this::world, this::end, counted -> {
+            assertThat(statusOf(counted.confirmed().bookingId())).isEqualTo("CANCELLED/RESOURCE_OWNER_REVIEW_REQUIRED");
+            assertThat(statusOf(counted.pending().bookingId())).isEqualTo("CANCELLED/RESOURCE_OWNER_REVIEW_REQUIRED");
+        }, 8, OwnerReviewFaultInjectionTest::nothingLeft);
     }
 
-    private void end(World world, AtomicInteger calls, int failAt) {
+    private void end(World world, Faults faults) {
         Deps real = emergencies.deps();
-        EmergencyBookings bookings = faulty(EmergencyBookings.class, real.bookings(), calls, failAt);
-        Outbox outbox = faulty(Outbox.class, real.outbox(), calls, failAt);
-        ScheduledJobs jobs = faulty(ScheduledJobs.class, real.jobs(), calls, failAt);
+        EmergencyBookings bookings = faults.wrap(EmergencyBookings.class, real.bookings());
+        Outbox outbox = faults.wrap(Outbox.class, real.outbox());
+        ScheduledJobs jobs = faults.wrap(ScheduledJobs.class, real.jobs());
         TimerPauses timers = new TimerPauses(bookings, context.getBean(UnresolvedEmergencies.class),
                 context.getBean(OperatingSessions.class), context.getBean(VenueEligibility.class),
                 context.getBean(ResourceStates.class), jobs, outbox);
         Deps faulty = new Deps(bookings,
-                faulty(TournamentCascades.class, real.tournaments(), calls, failAt), real.resources(), real.catalog(),
+                faults.wrap(TournamentCascades.class, real.tournaments()), real.resources(), real.catalog(),
                 real.sessions(), real.commitments(), real.baseStates(),
-                faulty(AuditWriter.class, real.audit(), calls, failAt),
+                faults.wrap(AuditWriter.class, real.audit()),
                 outbox, jobs, real.gate(), real.closures(), real.json(), timers,
-                faulty(AdminAlerts.class, real.alerts(), calls, failAt));
+                faults.wrap(AdminAlerts.class, real.alerts()));
         BookingFlows.Booking at = world.confirmed();
         LockSet locks = LockSet.builder().venues(at.venueId()).resources(at.resourceId()).users(at.customerId())
                 .build();
@@ -163,26 +146,5 @@ class OwnerReviewFaultInjectionTest extends IntegrationTest {
         assertThat(count("SELECT count(*) FROM technical.outbox_event WHERE payload->>'venueId' = '"
                 + world.confirmed().venueId() + "' AND event_type IN ('ResourceRestrictionChanged','EmergencyEnded',"
                 + "'BookingCancelled')")).as("step %d: no event, so no notification", step).isZero();
-    }
-
-    /** {@code target} behind a proxy that counts every call into {@code calls} and throws at call {@code failAt}. */
-    @SuppressWarnings("unchecked")
-    private static <T> T faulty(Class<T> type, T target, AtomicInteger calls, int failAt) {
-        InvocationHandler handler = (proxy, method, args) -> {
-            if (method.getDeclaringClass() == Object.class) {
-                return method.invoke(target, args);
-            }
-            int step = calls.incrementAndGet();
-            if (step == failAt) {
-                throw new IllegalStateException("injected fault at step " + step + " (" + type.getSimpleName() + "."
-                        + method.getName() + ")");
-            }
-            try {
-                return method.invoke(target, args);
-            } catch (InvocationTargetException e) {
-                throw e.getCause();
-            }
-        };
-        return (T) Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[] {type}, handler);
     }
 }

@@ -344,7 +344,7 @@ Visual version with each person's tasks: `team-map.html` (open it in a browser) 
 3. Open Claude Code (Sayed, Amr) or Gemini CLI (Abdallah — with `node tools/ai-context/bundle.mjs E7-xx`) in the repo root. Paste the task's prompt from Jira.
 4. Let it work. Answer its questions. If it asks a PRODUCT question, ask Sayed — never guess.
 5. Review the diff yourself (git diff main). You must understand every line you push.
-6. Run the checks:  cd backend && ./gradlew check     |    pnpm -r lint typecheck build
+6. Test the task:  its own integration + unit tests (./gradlew test --tests '…'), its API with Postman locally, a frontend's pnpm --filter <app> lint typecheck test build. CI runs the full suite on push.
 7. Commit:  git commit -m "E7-46: online booking creation (O1)"   (small commits are fine)
 8. git fetch && git rebase origin/main   → fix conflicts → re-run checks
 9. git push -u origin HEAD → open PR titled "E7-46: Online booking creation (O1)", fill the template.
@@ -358,7 +358,7 @@ If a task is too big for one PR (> ~400 changed lines), split it into several PR
 ## 7. Definition of Done (PR checklist)
 
 - [ ] Every *Done when* item of the task is a passing test
-- [ ] `./gradlew check` and/or `pnpm -r lint typecheck build` green locally and in CI
+- [ ] The task's own tests green locally; the full `./gradlew check` and `pnpm -r lint typecheck build` green in CI
 - [ ] If an endpoint changed: `pnpm api:gen` run and `openapi.json` committed
 - [ ] Code only in the task's folders (§3); no edits to `docs/` or `V1__baseline.sql`
 - [ ] No hard-coded rule text, status names from prototypes, colours, `Instant.now()`, `float`/`double` money

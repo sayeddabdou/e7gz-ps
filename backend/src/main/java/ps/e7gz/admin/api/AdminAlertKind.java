@@ -39,5 +39,12 @@ public enum AdminAlertKind {
      * Admin is notified (raised by E7-84 in the entering command). Read-only for the Admin: the venue resolves it with
      * the Owner Password (FR-OPS-33; PO decision 19 Nov 2026, E7-77 D3).
      */
-    RESOURCE_OWNER_REVIEW_REQUIRED
+    RESOURCE_OWNER_REVIEW_REQUIRED,
+    /**
+     * FR-ATT-26, Spec v5 section 32.13 and 52.6 ("Account Disable overlapping an ACTIVE Booking"; catalogue
+     * {@code ADMIN_ACCOUNT_DISABLE_OVERLAPS_ACTIVE_BOOKING}): a Venue Account disable overlaps an ACTIVE Online Booking,
+     * which continues - one alert per booking per disable, raised in the disabling command (E7-78, PO decision E2 19
+     * Nov 2026). Information for the Platform Admin, who may later correct the attendance (FR-ATT-17).
+     */
+    ACCOUNT_DISABLE_OVERLAPS_ACTIVE_BOOKING
 }

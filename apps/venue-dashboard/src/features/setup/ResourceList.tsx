@@ -16,7 +16,7 @@ type Action =
   | { kind: "console"; resource: VenueResource; consoleType: ConsoleType };
 
 // Refusals about the PIN itself stay in the PIN dialog; any other refusal closes it and shows on the page.
-const pinCodes = new Set(["OWNER_PASSWORD_REQUIRED", "OWNER_PASSWORD_INVALID", "RATE_LIMITED"]);
+const pinCodes = new Set(["OWNER_PASSWORD_REQUIRED", "OWNER_PASSWORD_INVALID", "OWNER_PASSWORD_LOCKED", "RATE_LIMITED"]);
 
 export function ResourceList({ api }: { api: ApiClient }) {
   const t = useMessages();

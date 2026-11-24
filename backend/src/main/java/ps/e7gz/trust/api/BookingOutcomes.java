@@ -45,4 +45,13 @@ public interface BookingOutcomes {
      * have no reason to write the event themselves; none calls it yet.
      */
     void recordInterruption(CommandContext command, UUID customerId, UUID bookingId, Instant startAt);
+
+    /**
+     * Appends {@code BOOKING_ACCOUNT_DISABLE_ATTENDANCE_PROTECTION} for the Customer's Online Booking (E7-78; arch 07
+     * section 7.5, FR-ATT-19, FR-ATT-20) and recomputes the Trust Projection by full replay: it resets the consecutive
+     * no-show counter and does nothing else - no points, no progress, no change to the result. Written at attendance
+     * resolution, after that resolution's own outcome; the database checks that a disable interval qualifies
+     * ({@code attendance.assert_protection_trust_event}) and keeps at most one per booking.
+     */
+    void recordAttendanceProtection(CommandContext command, UUID customerId, UUID bookingId, Instant startAt);
 }
