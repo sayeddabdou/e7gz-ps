@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { logicalSpacing, webTokens } from "@e7gz/tokens/web";
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { createDashboardApiClient } from "../api";
@@ -16,6 +16,7 @@ import { directionOf, messages, MessagesContext, type Language, type Messages } 
 import "../dashboard.css";
 
 const languageStorageKey = "e7gz.venue.language";
+const pendingLanguageStorageKey = "e7gz.venue.language.pending";
 
 const routes = [
   { path: "/", label: "overview", icon: "⌂" },
@@ -48,6 +49,33 @@ function saveLanguage(language: Language): void {
     window.localStorage.setItem(languageStorageKey, language);
   } catch {
     // The UI still works when storage is unavailable.
+  }
+}
+
+function readPendingLanguage(): Language | undefined {
+  try {
+    const stored = window.localStorage.getItem(pendingLanguageStorageKey);
+    return stored === "en" || stored === "ar" ? stored : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function savePendingLanguage(language: Language): void {
+  try {
+    window.localStorage.setItem(pendingLanguageStorageKey, language);
+  } catch {
+    // The current page still keeps the venue's choice when storage is unavailable.
+  }
+}
+
+function clearPendingLanguage(language: Language): void {
+  try {
+    if (window.localStorage.getItem(pendingLanguageStorageKey) === language) {
+      window.localStorage.removeItem(pendingLanguageStorageKey);
+    }
+  } catch {
+    // A successful server save is sufficient when storage is unavailable.
   }
 }
 
@@ -210,7 +238,6 @@ function ProtectedShell({
   onAccessToken,
   onLanguagePreference,
   onLogout,
-  onToggleLanguage,
   onUnauthenticated,
   session,
   t,
@@ -222,7 +249,6 @@ function ProtectedShell({
   onAccessToken: (accessToken: string) => void;
   onLanguagePreference: (language: Language) => void;
   onLogout: () => void;
-  onToggleLanguage: () => void;
   onUnauthenticated: () => void;
   session: VenueSessionApi;
   t: Messages;
@@ -232,19 +258,53 @@ function ProtectedShell({
     () => accessToken,
     (request) => session.withRefresh(request, onAccessToken, onUnauthenticated),
   ), [accessToken, config, onAccessToken, onUnauthenticated, session]);
+  const languageChangedByUser = useRef(false);
+  const languageSaveInFlight = useRef(false);
   const streamRequest = useCallback((signal: AbortSignal) => session.withRefresh(new Request(
     `${config.config.apiBaseUrl.replace(/\/+$/u, "")}/api/v1/venue/stream`,
     { headers: { Authorization: `Bearer ${accessToken}`, Accept: "text/event-stream" }, signal },
   ), onAccessToken, onUnauthenticated), [accessToken, config, onAccessToken, onUnauthenticated, session]);
 
+  const persistLanguage = useCallback(async (language: Language) => {
+    try {
+      const result = await api.PATCH("/api/v1/venue/settings", { body: { languagePreference: language } });
+      if (result.error) return false;
+      clearPendingLanguage(language);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [api]);
+
   useEffect(() => {
+    const pendingLanguage = readPendingLanguage();
+    if (pendingLanguage) {
+      languageChangedByUser.current = true;
+      onLanguagePreference(pendingLanguage);
+      void persistLanguage(pendingLanguage);
+      return undefined;
+    }
     let active = true;
     void api.GET("/api/v1/venue/settings").then(({ data }) => {
       const preference = data?.data.languagePreference;
-      if (active && (preference === "en" || preference === "ar")) onLanguagePreference(preference);
+      if (active && !languageChangedByUser.current && (preference === "en" || preference === "ar")) onLanguagePreference(preference);
     }).catch(() => undefined);
     return () => { active = false; };
-  }, [api, onLanguagePreference]);
+  }, [api, onLanguagePreference, persistLanguage]);
+
+  const toggleLanguage = useCallback(async () => {
+    if (languageSaveInFlight.current) return;
+    const nextLanguage: Language = direction === "rtl" ? "en" : "ar";
+    languageSaveInFlight.current = true;
+    languageChangedByUser.current = true;
+    savePendingLanguage(nextLanguage);
+    onLanguagePreference(nextLanguage);
+    try {
+      await persistLanguage(nextLanguage);
+    } finally {
+      languageSaveInFlight.current = false;
+    }
+  }, [direction, onLanguagePreference, persistLanguage]);
 
   const logoutWithPushRevocation = useCallback(async () => {
     await revokeVenuePush({
@@ -298,7 +358,7 @@ function ProtectedShell({
             <h1 style={styles.brand}>{t.appTitle}</h1>
           </div>
           <div style={styles.topbarActions}>
-            <button style={styles.languageButton} type="button" onClick={onToggleLanguage}>{t.switchLanguage}</button>
+            <button style={styles.languageButton} type="button" onClick={() => void toggleLanguage()}>{t.switchLanguage}</button>
             <button disabled={loggingOut} style={styles.logoutButton} type="button" onClick={() => void logoutWithPushRevocation()}>{loggingOut ? t.auth.loggingOut : t.auth.logout}</button>
           </div>
         </header>
@@ -440,7 +500,6 @@ export function App({
               onAccessToken={setAccessToken}
               onLanguagePreference={setLanguagePreference}
               onLogout={() => void logout()}
-              onToggleLanguage={toggleLanguage}
               onUnauthenticated={unauthenticate}
               session={session!}
               t={t}

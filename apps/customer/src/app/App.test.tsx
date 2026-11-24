@@ -40,28 +40,25 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks());
 
 describe("Customer app shell", () => {
-  it("shows the four prototype tabs", async () => {
+  it("hides Tournaments until E7-95 and shows the three available tabs", async () => {
     render(<App config={config} tokenStore={tokenStore} profileApi={profileApi} />);
 
     await waitFor(() => expect(screen.getByText("Home")).toBeTruthy());
-    expect(screen.getByText("Tournaments")).toBeTruthy();
+    expect(screen.queryByText("Tournaments")).toBeNull();
     expect(screen.getByText("Bookings")).toBeTruthy();
     expect(screen.getByText("Profile")).toBeTruthy();
     expect(screen.getAllByTestId("tab-icon-home").length).toBeGreaterThan(0);
-    expect(screen.getAllByTestId("tab-icon-tournaments").length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("tab-icon-tournaments")).toBeNull();
     expect(screen.getAllByTestId("tab-icon-bookings").length).toBeGreaterThan(0);
     expect(screen.getAllByTestId("tab-icon-profile").length).toBeGreaterThan(0);
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
   }, 10_000);
 
-  it("navigates between empty feature screens", async () => {
+  it("navigates between the available feature screens", async () => {
     render(<App config={config} tokenStore={tokenStore} profileApi={profileApi} />);
 
     await waitFor(() => expect(screen.getByText("Home")).toBeTruthy());
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
-
-    fireEvent.press(screen.getByText("Tournaments"));
-    expect(screen.getByRole("header", { name: "Tournaments" })).toBeTruthy();
 
     (globalThis.fetch as jest.Mock).mockResolvedValue(
       new Response(JSON.stringify({ data: { items: [], nextCursor: null }, meta }), {

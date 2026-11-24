@@ -13,7 +13,7 @@ E7-11 needed a real app compiling against `@e7gz/api-client`, so the minimum was
 | Shared API client with secure token storage and one-shot refresh handling | `src/api/index.ts`, `src/auth/tokenStore.ts` |
 | English strings in a resource file | `src/i18n/en.ts` |
 | One working screen: active areas from the public `GET /api/v1/customer/areas`, with loading / success / error | `src/features/discovery/AreaList.tsx` (+ test) |
-| Bottom-tab shell matching the prototype: Home, Tournaments, Bookings, Profile | `src/app/App.tsx` (+ test) |
+| Bottom-tab shell: Home, Bookings, Profile. Tournaments stays hidden until E7-95 builds it. | `src/app/App.tsx` (+ test) |
 
 ## Commands
 

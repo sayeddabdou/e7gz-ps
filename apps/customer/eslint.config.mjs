@@ -9,6 +9,14 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   reactHooks.configs.flat.recommended,
   {
+    files: ["plugins/**/*.cjs"],
+    languageOptions: {
+      sourceType: "commonjs",
+      globals: { module: "readonly", require: "readonly" },
+    },
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
+  {
     plugins: { e7gz: hardcodedColors },
     rules: { "e7gz/no-hardcoded-colors": "error" },
   },

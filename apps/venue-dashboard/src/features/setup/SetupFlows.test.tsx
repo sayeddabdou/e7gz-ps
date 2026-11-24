@@ -53,6 +53,29 @@ describe("OwnerPasswordDialog", () => {
   });
 });
 
+describe("Owner PIN lock messages", () => {
+  it.each([
+    ["en", "OWNER_PASSWORD_LOCKED", "The Owner PIN is locked. Contact E7GZ support to unlock it."],
+    ["ar", "OWNER_PASSWORD_LOCKED", "رمز المالك مقفل. تواصل مع دعم E7GZ لإلغاء القفل."],
+    ["en", "RATE_LIMITED", "Too many attempts. Try again later."],
+    ["ar", "RATE_LIMITED", "محاولات كثيرة. حاول مرة أخرى لاحقًا."],
+  ] as const)("shows %s text for %s", async (language, code, expected) => {
+    renderWithApi((api) => <ResourceList api={api} />, async (request) => {
+      if (request.url.endsWith("/venue/settings")) return ok({ activities: ["PLAYSTATION"] });
+      if (request.method === "GET") return ok([]);
+      return failure(code, code === "RATE_LIMITED" ? 429 : 423);
+    }, language);
+    const t = messages[language];
+    await waitFor(() => expect((screen.getByRole("button", { name: t.setup.resources.add }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: t.setup.resources.add }));
+    fireEvent.change(screen.getByLabelText(t.setup.ownerPassword.label), { target: { value: "1111" } });
+    fireEvent.click(screen.getByRole("button", { name: t.setup.ownerPassword.confirm }));
+
+    expect(await screen.findByText(expected)).toBeTruthy();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+});
+
 describe("ResourceList protected actions", () => {
   it("creates a server-named room with activity, console and a fresh Owner Password", async () => {
     const requests = renderWithApi((api) => <ResourceList api={api} />, async (request) => {

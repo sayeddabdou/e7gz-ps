@@ -374,6 +374,16 @@ describe("BookingFlow", () => {
     expect(await screen.findByText("Verify your phone before creating a booking.")).toBeTruthy();
   });
 
+  it("shows the mapped rate-limit message when booking is throttled", async () => {
+    const fetch = jest.fn(async (request: Request) => request.method === "GET" ? ok(quote) : failed("RATE_LIMITED", 429));
+    renderFlow(fetch);
+    await reachSummary();
+
+    fireEvent.press(screen.getByRole("button", { name: "Confirm booking" }));
+
+    expect(await screen.findByText("Too many booking attempts. Try again later.")).toBeTruthy();
+  });
+
   it("shows quote errors with retry", async () => {
     let calls = 0;
     const fetch = jest.fn(async () => {

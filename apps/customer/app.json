@@ -2,7 +2,7 @@
   "expo": {
     "name": "E7GZ PS",
     "slug": "e7gz-ps",
-    "version": "0.0.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "platforms": [
       "ios",
@@ -13,14 +13,42 @@
       "bundler": "metro",
       "output": "single"
     },
+    "ios": {
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "versionCode": 1
+    },
     "plugins": [
-      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false,
+          "locationWhenInUsePermission": "Allow E7GZ PS to use your location to show venues near you.",
+          "motionUsagePermission": false,
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": false,
+          "isAndroidMotionActivityEnabled": false
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ],
       [
         "expo-notifications",
         {
           "defaultChannel": "booking-updates"
         }
-      ]
+      ],
+      "./plugins/withIosPrivacy.cjs"
     ]
   }
 }

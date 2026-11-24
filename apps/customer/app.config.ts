@@ -8,7 +8,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   // deployment (E7-101). Until they are given, the build has no Firebase iOS app and push is simply not offered.
   const googleServiceInfoPlist = process.env.GOOGLE_SERVICE_INFO_PLIST;
   const iosBundleIdentifier = process.env.IOS_BUNDLE_IDENTIFIER;
-  const plugins = [...(config.plugins ?? [])];
+  const iosPrivacyPlugin = "./plugins/withIosPrivacy.cjs";
+  const plugins = (config.plugins ?? []).filter((plugin) => plugin !== iosPrivacyPlugin && (!Array.isArray(plugin) || plugin[0] !== iosPrivacyPlugin));
   if (!plugins.some((plugin) => plugin === "expo-notifications" || (Array.isArray(plugin) && plugin[0] === "expo-notifications"))) {
     plugins.push(["expo-notifications", { defaultChannel: "booking-updates" }]);
   }
@@ -19,6 +20,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       ["expo-build-properties", { ios: { useFrameworks: "static" } }],
     );
   }
+  // Keep this last: it removes broad permissions added by native defaults after every other plugin has run.
+  plugins.push(iosPrivacyPlugin);
   return {
     ...config,
     name: config.name ?? "E7GZ PS",

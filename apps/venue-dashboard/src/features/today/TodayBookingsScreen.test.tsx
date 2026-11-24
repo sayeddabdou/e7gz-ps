@@ -176,6 +176,21 @@ describe("Booking detail", () => {
     expect(get).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    ["en", messages.en, "The Owner PIN is locked. Contact E7GZ support to unlock it."],
+    ["ar", messages.ar, "رمز المالك مقفل. تواصل مع دعم E7GZ لإلغاء القفل."],
+  ] as const)("shows the %s contact-support message when confirmed cancellation finds a long-locked PIN", async (_language, localized, expected) => {
+    const get = vi.fn().mockResolvedValue({ data: { data: { booking, history: [] }, meta: { correlationId: "c", serverTime: "2026-10-12T17:00:00Z" } } });
+    const post = vi.fn().mockResolvedValue({ error: { error: { code: "OWNER_PASSWORD_LOCKED" } }, response: { status: 423 } });
+    render(<MessagesContext.Provider value={localized}><BookingDetailScreen api={{ GET: get, POST: post } as unknown as ApiClient} bookingId="b-1" onBack={vi.fn()} /></MessagesContext.Provider>);
+
+    fireEvent.click(await screen.findByRole("button", { name: localized.bookings.detail.cancelConfirmed }));
+    fireEvent.change(screen.getByLabelText(localized.bookings.detail.ownerPin), { target: { value: "1234" } });
+    fireEvent.click(screen.getByRole("button", { name: localized.bookings.detail.confirmCancelConfirmed }));
+
+    expect(await screen.findByText(expected)).toBeTruthy();
+  });
+
   it("confirms manual cancellation and keeps its idempotency key for a network retry", async () => {
     const manual = { ...booking, source: "MANUAL" as const, customer: null, walkIn: { name: "Omar", phone: null } };
     const get = vi.fn().mockResolvedValue({ data: { data: { booking: manual, history: [] }, meta: { correlationId: "c", serverTime: "2026-10-12T17:00:00Z" } } });

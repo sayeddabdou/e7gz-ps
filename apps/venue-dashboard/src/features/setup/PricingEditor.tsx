@@ -17,7 +17,7 @@ type OverrideDraft = { SINGLE: string; MULTIPLAYER: string };
 type Slot = { activity: Activity; consoleType: ConsoleType | null; playMode: PlayMode | null };
 
 // Refusals about the PIN itself stay in the PIN dialog; any other refusal closes it and shows on the page.
-const pinCodes = new Set(["OWNER_PASSWORD_REQUIRED", "OWNER_PASSWORD_INVALID", "RATE_LIMITED"]);
+const pinCodes = new Set(["OWNER_PASSWORD_REQUIRED", "OWNER_PASSWORD_INVALID", "OWNER_PASSWORD_LOCKED", "RATE_LIMITED"]);
 
 /**
  * Every default price the venue's activities need (FR-VEN-43, FR-VEN-44): PlayStation per console × play mode,
