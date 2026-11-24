@@ -4,7 +4,11 @@ import { App } from "./App";
 
 const readyConfig = {
   ok: true as const,
-  config: { apiBaseUrl: "http://127.0.0.1:4010" },
+  config: {
+    apiBaseUrl: "http://127.0.0.1:4010",
+    privacyPolicyUrl: "https://legal.example/privacy",
+    termsUrl: "https://legal.example/terms",
+  },
 };
 
 const sessionResponse = (accessToken: string) => new Response(
@@ -121,6 +125,8 @@ describe("Venue Dashboard shell", () => {
     expect(sidebar.getAttribute("style")).not.toMatch(/(?:^|-)left|(?:^|-)right/u);
     expect(screen.getByRole("navigation", { name: "التنقل في لوحة التحكم" })).toBeTruthy();
     expect(window.localStorage.getItem("e7gz.venue.language")).toBe("ar");
+    expect(screen.getByRole("link", { name: "شروط الاستخدام" }).getAttribute("href")).toBe("https://legal.example/terms");
+    expect(screen.getByRole("link", { name: "سياسة الخصوصية" }).getAttribute("href")).toBe("https://legal.example/privacy");
   });
 
   it("uses the stored language, switches direction, and persists the choice", async () => {

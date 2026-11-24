@@ -1,9 +1,9 @@
-import { useEffect, useState, type ComponentProps } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useCallback, useEffect, useState, type ComponentProps } from "react";
+import { KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { nativeLogicalSpacing, nativeTokens } from "@e7gz/tokens/native";
 import type { TokenStore } from "../../auth/tokenStore";
 import { en as t } from "../../i18n/en";
-import type { CustomerAuthApi } from "./api";
+import type { CustomerAuthApi, CustomerLegalTexts } from "./api";
 import { resendDeadline, secondsUntil, serverClockOffset } from "./api";
 import { authErrorMessage } from "./errorMessages";
 
@@ -19,6 +19,26 @@ export function AuthFlow({ api, tokenStore, notice, onAuthenticated, onForgotPas
   const [clockOffset, setClockOffset] = useState(0);
   const [remaining, setRemaining] = useState(0);
   const [resent, setResent] = useState(false);
+  const [legal, setLegal] = useState<CustomerLegalTexts>();
+  const [legalLoading, setLegalLoading] = useState(false);
+  const [legalError, setLegalError] = useState(false);
+  const [acceptedLegal, setAcceptedLegal] = useState(false);
+
+  const loadLegal = useCallback(async () => {
+    setLegal(undefined);
+    setAcceptedLegal(false);
+    setLegalLoading(true);
+    setLegalError(false);
+    try {
+      const result = await api.getLegalTexts();
+      if (result.ok) setLegal(result.value);
+      else setLegalError(true);
+    } catch {
+      setLegalError(true);
+    } finally {
+      setLegalLoading(false);
+    }
+  }, [api]);
 
   useEffect(() => {
     if (!deadline) return undefined;
@@ -56,12 +76,14 @@ export function AuthFlow({ api, tokenStore, notice, onAuthenticated, onForgotPas
     if (result.ok) await finish(result.value); else setError(authErrorMessage(result.code));
   });
   const submitRegistration = () => run(async () => {
+    if (!legal || !acceptedLegal) return;
     const result = await api.register({
       fullName: form.fullName,
       username: form.username,
       phone: form.phone,
       email: form.email,
       password: form.password,
+      acceptedTermsVersion: legal.version,
       ...(form.referralCode ? { referralCode: form.referralCode } : {}),
     });
     if (result.ok) {
@@ -85,10 +107,19 @@ export function AuthFlow({ api, tokenStore, notice, onAuthenticated, onForgotPas
       startResendCountdown(result.serverTime);
     } else setError(authErrorMessage(result.code));
   });
+  const openLegalUrl = async (url: string) => {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      setError(t.auth.legal.openFailed);
+    }
+  };
 
   const title = step === "login" ? t.auth.login.title : step === "register" ? t.auth.register.title : t.auth.otp.title;
   const submitLabel = step === "login" ? t.auth.login.submit : step === "register" ? t.auth.register.submit : t.auth.otp.submit;
-  const submitDisabled = busy || (step === "otp" && resent && form.password.trim().length === 0);
+  const submitDisabled = busy
+    || (step === "register" && (!legal || !acceptedLegal))
+    || (step === "otp" && resent && form.password.trim().length === 0);
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -102,6 +133,34 @@ export function AuthFlow({ api, tokenStore, notice, onAuthenticated, onForgotPas
               <Field label={t.auth.fields.phone} value={form.phone} onChangeText={update("phone")} keyboardType="phone-pad" />
               <Field label={t.auth.fields.email} value={form.email} onChangeText={update("email")} keyboardType="email-address" />
               <Field label={t.auth.fields.referralCode} value={form.referralCode} onChangeText={update("referralCode")} autoCapitalize="characters" />
+              {legalLoading ? <Text style={styles.legalStatus}>{t.auth.legal.loading}</Text> : null}
+              {legalError ? (
+                <View style={styles.errorBox}>
+                  <Text accessibilityRole="alert" style={styles.error}>{t.auth.legal.loadFailed}</Text>
+                  <Pressable accessibilityRole="button" onPress={() => void loadLegal()} style={styles.retryButton}>
+                    <Text style={styles.linkText}>{t.auth.legal.retry}</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+              {legal ? (
+                <View style={styles.legalAgreement}>
+                  <Pressable
+                    accessibilityLabel={t.auth.legal.agreement}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: acceptedLegal }}
+                    onPress={() => setAcceptedLegal((value) => !value)}
+                    style={[styles.checkbox, acceptedLegal && styles.checkboxChecked]}
+                  >
+                    <Text style={[styles.checkboxMark, acceptedLegal && styles.checkboxMarkChecked]}>{acceptedLegal ? "✓" : ""}</Text>
+                  </Pressable>
+                  <Text style={styles.legalText}>
+                    {t.auth.legal.prefix}
+                    <Text accessibilityRole="link" onPress={() => void openLegalUrl(legal.termsUrl)} style={styles.legalLink}>{t.auth.legal.terms}</Text>
+                    {t.auth.legal.and}
+                    <Text accessibilityRole="link" onPress={() => void openLegalUrl(legal.privacyUrl)} style={styles.legalLink}>{t.auth.legal.privacy}</Text>
+                  </Text>
+                </View>
+              ) : null}
             </>
           ) : null}
           {step !== "otp" ? (
@@ -131,7 +190,15 @@ export function AuthFlow({ api, tokenStore, notice, onAuthenticated, onForgotPas
                 <Text style={styles.linkText}>{t.profile.passwordReset.forgot}</Text>
               </Pressable>
             ) : null}
-            <Pressable accessibilityRole="button" onPress={() => { setError(undefined); setStep(step === "login" ? "register" : "login"); }} style={styles.linkButton}>
+            <Pressable accessibilityRole="button" onPress={() => {
+              setError(undefined);
+              if (step === "login") {
+                setStep("register");
+                void loadLegal();
+              } else {
+                setStep("login");
+              }
+            }} style={styles.linkButton}>
               <Text style={styles.linkText}>{step === "login" ? t.auth.login.createAccount : t.auth.register.haveAccount}</Text>
             </Pressable>
           </>
@@ -169,4 +236,13 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.55 },
   linkButton: { alignItems: "center", padding: nativeTokens.spacing["4xl"] },
   linkText: { color: nativeTokens.color.brand.primary, fontSize: nativeTokens.typography.fontSize.bodySmall, fontWeight: nativeTokens.typography.fontWeight.bold },
+  legalAgreement: { alignItems: "flex-start", flexDirection: "row", gap: nativeTokens.spacing.md, marginBottom: nativeTokens.spacing["2xl"] },
+  legalStatus: { color: nativeTokens.color.text.muted, marginBottom: nativeTokens.spacing["2xl"] },
+  legalText: { color: nativeTokens.color.text.customer, flex: 1, fontSize: nativeTokens.typography.fontSize.bodySmall, lineHeight: 22 },
+  legalLink: { color: nativeTokens.color.brand.primary, fontWeight: nativeTokens.typography.fontWeight.bold, textDecorationLine: "underline" },
+  checkbox: { alignItems: "center", borderColor: nativeTokens.color.border.customer, borderRadius: nativeTokens.radius.sm, borderWidth: nativeTokens.spacing.hairline, height: 24, justifyContent: "center", width: 24 },
+  checkboxChecked: { backgroundColor: nativeTokens.color.brand.primary, borderColor: nativeTokens.color.brand.primary },
+  checkboxMark: { color: nativeTokens.color.text.customer, fontWeight: nativeTokens.typography.fontWeight.bold },
+  checkboxMarkChecked: { color: nativeTokens.color.text.inverse },
+  retryButton: { alignSelf: "flex-start", paddingTop: nativeTokens.spacing.md },
 });

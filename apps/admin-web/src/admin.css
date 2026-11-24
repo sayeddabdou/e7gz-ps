@@ -204,6 +204,34 @@ a:hover {
   flex: 1;
 }
 
+.admin-legal-links {
+  align-items: center;
+  background: var(--e7gz-color-surface-info);
+  border: var(--e7gz-space-hairline) solid var(--e7gz-color-border-admin);
+  border-radius: var(--e7gz-radius-lg);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--e7gz-font-size-body-small);
+  font-weight: var(--e7gz-font-weight-semibold);
+  gap: var(--e7gz-space-xxs);
+  padding: var(--e7gz-space-xxs);
+}
+
+.admin-legal-links a {
+  background: var(--e7gz-color-surface-raised);
+  border-radius: var(--e7gz-radius-md);
+  color: var(--e7gz-color-text-admin);
+  padding: var(--e7gz-space-sm) var(--e7gz-space-lg);
+  white-space: nowrap;
+}
+
+.admin-legal-links a:hover,
+.admin-legal-links a:focus-visible {
+  background: var(--e7gz-color-brand-primary);
+  color: var(--e7gz-color-text-inverse);
+  transform: translateY(-1px);
+}
+
 .admin-profile {
   align-items: center;
   display: flex;

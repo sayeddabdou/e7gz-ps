@@ -112,12 +112,14 @@ type ProfilePage = "profile" | "standing" | "points" | "wallet" | "referrals";
 function ProfileTabScreen({
   api,
   profileApi,
+  legalApi,
   onLogout,
   onPasswordResetComplete,
   onOpenBooking,
 }: {
   api: ApiClient;
   profileApi: CustomerProfileApi;
+  legalApi?: Pick<CustomerAuthApi, "getLegalTexts">;
   onLogout(): void | Promise<void>;
   onPasswordResetComplete(): void | Promise<void>;
   onOpenBooking(bookingId: string): void;
@@ -130,6 +132,7 @@ function ProfileTabScreen({
   return (
     <ProfileScreen
       api={profileApi}
+      legalApi={legalApi}
       onLogout={onLogout}
       onPasswordResetComplete={onPasswordResetComplete}
       onOpenStanding={() => setPage("standing")}
@@ -330,6 +333,7 @@ export function App({
                   <ProfileTabScreen
                     api={api}
                     profileApi={activeProfileApi}
+                    legalApi={typeof customerAuth?.getLegalTexts === "function" ? customerAuth : undefined}
                     onLogout={logout}
                     onPasswordResetComplete={finishPasswordReset}
                     onOpenBooking={(bookingId) => {

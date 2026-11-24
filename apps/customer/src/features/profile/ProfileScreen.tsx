@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { Linking, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { nativeTokens } from "@e7gz/tokens/native";
 import { en as t } from "../../i18n/en";
@@ -8,6 +8,7 @@ import { profileErrorMessage } from "./errorMessages";
 import { PasswordResetFlow } from "./PasswordResetFlow";
 import { Field, Notice, PrimaryButton, SecondaryButton, profileStyles as styles } from "./ui";
 import { useResendCountdown } from "./useResendCountdown";
+import type { CustomerAuthApi, CustomerLegalTexts } from "../auth/api";
 
 type Mode = "summary" | "name" | "username" | "phone" | "phoneOtp" | "password";
 
@@ -21,6 +22,7 @@ export function profileInitials(fullName: string): string {
 
 export function ProfileScreen({
   api,
+  legalApi,
   onLogout,
   onPasswordResetComplete = onLogout,
   onOpenStanding,
@@ -29,6 +31,7 @@ export function ProfileScreen({
   onOpenReferrals,
 }: {
   api: CustomerProfileApi;
+  legalApi?: Pick<CustomerAuthApi, "getLegalTexts">;
   onLogout(): void | Promise<void>;
   onPasswordResetComplete?(): void | Promise<void>;
   onOpenStanding?(): void;
@@ -37,6 +40,9 @@ export function ProfileScreen({
   onOpenReferrals?(): void;
 }) {
   const [profile, setProfile] = useState<CustomerProfile>();
+  const [legal, setLegal] = useState<CustomerLegalTexts>();
+  const [legalStatus, setLegalStatus] = useState<"idle" | "loading" | "ready" | "error">(legalApi ? "loading" : "idle");
+  const [legalLoadVersion, setLegalLoadVersion] = useState(0);
   const [mode, setMode] = useState<Mode>("summary");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -64,10 +70,35 @@ export function ProfileScreen({
     return () => { active = false; };
   }, [api, loadVersion]);
 
+  useEffect(() => {
+    if (!legalApi) return undefined;
+    let active = true;
+    void legalApi.getLegalTexts().then((result) => {
+      if (!active) return;
+      if (result.ok) {
+        setLegal(result.value);
+        setLegalStatus("ready");
+      } else {
+        setLegalStatus("error");
+      }
+    }).catch(() => {
+      if (active) setLegalStatus("error");
+    });
+    return () => { active = false; };
+  }, [legalApi, legalLoadVersion]);
+
+  const reloadLegal = () => {
+    if (!legalApi) return;
+    setLegal(undefined);
+    setLegalStatus("loading");
+    setLegalLoadVersion((current) => current + 1);
+  };
+
   const reload = () => {
     setLoading(true);
     setError(undefined);
     setLoadVersion((current) => current + 1);
+    reloadLegal();
   };
 
   const run = async (action: () => Promise<void>) => {
@@ -94,6 +125,14 @@ export function ProfileScreen({
     setProfile(next);
     setSuccess(message);
     setMode("summary");
+  };
+
+  const openLegalUrl = async (url: string) => {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      setError(t.profile.legalOpenFailed);
+    }
   };
 
   const saveName = () => run(async () => {
@@ -190,6 +229,13 @@ export function ProfileScreen({
       <Text accessibilityRole="header" style={styles.title}>{t.profile.title}</Text>
       {success ? <Notice kind="success">{success}</Notice> : null}
       {error ? <Notice kind="error">{error}</Notice> : null}
+      {legalStatus === "loading" ? <Notice kind="info">{t.profile.legalLoading}</Notice> : null}
+      {legalStatus === "error" ? (
+        <View style={styles.card}>
+          <Notice kind="error">{t.profile.legalLoadFailed}</Notice>
+          <SecondaryButton label={t.profile.retry} onPress={reloadLegal} />
+        </View>
+      ) : null}
       <View style={styles.identityCard}>
         <View style={styles.avatar}><Text style={styles.avatarText}>{profileInitials(profile.fullName)}</Text></View>
         <View style={styles.identityDetails}>
@@ -215,6 +261,8 @@ export function ProfileScreen({
         />
         <ActionRow label={t.profile.changePhone} onPress={() => { setPhone(""); show("phone"); }} />
         {profile.phoneVerified ? <ActionRow label={t.profile.resetPassword} onPress={() => show("password")} /> : null}
+        {legal ? <ActionRow label={t.profile.terms} onPress={() => void openLegalUrl(legal.termsUrl)} /> : null}
+        {legal ? <ActionRow label={t.profile.privacy} onPress={() => void openLegalUrl(legal.privacyUrl)} /> : null}
         <LogoutButton onLogout={onLogout} />
       </View>
     </ScrollView>

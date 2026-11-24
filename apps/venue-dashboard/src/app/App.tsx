@@ -163,6 +163,26 @@ const styles = {
     paddingBlock: webTokens.spacing.md,
     paddingInline: webTokens.spacing.xl,
   },
+  legalNavigation: {
+    alignItems: "center",
+    backgroundColor: webTokens.color.surface.venueSubtle,
+    border: `${webTokens.spacing.hairline}px solid ${webTokens.color.border.venue}`,
+    borderRadius: webTokens.radius.lg,
+    display: "flex",
+    gap: webTokens.spacing.xxs,
+    padding: webTokens.spacing.xxs,
+  },
+  legalLink: {
+    alignItems: "center",
+    borderRadius: webTokens.radius.md,
+    display: "inline-flex",
+    fontSize: webTokens.typography.fontSize.bodySmall,
+    fontWeight: webTokens.typography.fontWeight.semibold,
+    paddingBlock: webTokens.spacing.sm,
+    paddingInline: webTokens.spacing.lg,
+    textDecoration: "none",
+    whiteSpace: "nowrap",
+  },
   pageHeading: {
     fontSize: webTokens.typography.fontSize.displaySmall,
     fontWeight: webTokens.typography.fontWeight.extrabold,
@@ -369,6 +389,10 @@ function ProtectedShell({
             <h1 style={styles.brand}>{t.appTitle}</h1>
           </div>
           <div style={styles.topbarActions}>
+            <nav aria-label={t.legal.navigation} style={styles.legalNavigation}>
+              <a className="venue-legal-link" href={config.config.termsUrl} rel="noreferrer" style={styles.legalLink} target="_blank">{t.legal.terms}</a>
+              <a className="venue-legal-link" href={config.config.privacyPolicyUrl} rel="noreferrer" style={styles.legalLink} target="_blank">{t.legal.privacy}</a>
+            </nav>
             <button style={styles.languageButton} type="button" onClick={() => void toggleLanguage()}>{t.switchLanguage}</button>
             <button disabled={loggingOut} style={styles.logoutButton} type="button" onClick={() => void logoutWithPushRevocation()}>{loggingOut ? t.auth.loggingOut : t.auth.logout}</button>
           </div>
