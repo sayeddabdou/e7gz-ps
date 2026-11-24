@@ -127,6 +127,73 @@ describe("Venue Dashboard shell", () => {
     expect(window.localStorage.getItem("e7gz.venue.language")).toBe("en");
   });
 
+  it("saves a header language change to the venue account so Arabic survives reload", async () => {
+    let accountLanguage: "en" | "ar" = "en";
+    const requests: Request[] = [];
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      const url = request.url;
+      if (url.endsWith("/api/v1/venue/settings") && request.method === "PATCH") {
+        requests.push(request.clone());
+        const body = await request.json() as { languagePreference: "en" | "ar" };
+        accountLanguage = body.languagePreference;
+        return settingsResponse(accountLanguage);
+      }
+      return defaultResponse(input, accountLanguage);
+    });
+    vi.stubGlobal("fetch", fetch);
+    const first = render(<App config={readyConfig} />);
+
+    await screen.findByTestId("venue-sidebar");
+    const languageButton = screen.getByRole("button", { name: "العربية" });
+    fireEvent.click(languageButton);
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(await requests[0]!.json()).toEqual({ languagePreference: "ar" });
+    expect(screen.getByRole("main").getAttribute("dir")).toBe("rtl");
+
+    first.unmount();
+    window.localStorage.clear();
+    render(<App config={readyConfig} />);
+    await waitFor(() => expect(screen.getByRole("main").getAttribute("dir")).toBe("rtl"));
+  });
+
+  it("keeps a failed language change locally and retries it after reload", async () => {
+    let accountLanguage: "en" | "ar" = "en";
+    let patchAttempts = 0;
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      if (request.url.endsWith("/api/v1/venue/settings") && request.method === "PATCH") {
+        patchAttempts += 1;
+        if (patchAttempts === 1) {
+          return new Response(JSON.stringify({
+            error: { code: "RATE_LIMITED" },
+            meta: { correlationId: "c-rate", serverTime: "2026-10-02T10:00:00Z" },
+          }), { status: 429, headers: { "Content-Type": "application/json" } });
+        }
+        const body = await request.json() as { languagePreference: "en" | "ar" };
+        accountLanguage = body.languagePreference;
+        return settingsResponse(accountLanguage);
+      }
+      return defaultResponse(input, accountLanguage);
+    });
+    vi.stubGlobal("fetch", fetch);
+    const first = render(<App config={readyConfig} />);
+
+    await screen.findByTestId("venue-sidebar");
+    fireEvent.click(screen.getByRole("button", { name: "العربية" }));
+    await waitFor(() => expect(patchAttempts).toBe(1));
+    expect(screen.getByRole("main").getAttribute("dir")).toBe("rtl");
+    expect(window.localStorage.getItem("e7gz.venue.language")).toBe("ar");
+
+    first.unmount();
+    render(<App config={readyConfig} />);
+
+    await waitFor(() => expect(patchAttempts).toBe(2));
+    expect(screen.getByRole("main").getAttribute("dir")).toBe("rtl");
+    expect(accountLanguage).toBe("ar");
+    expect(window.localStorage.getItem("e7gz.venue.language.pending")).toBeNull();
+  });
+
   it("routes between empty Dashboard modules", async () => {
     render(<App config={readyConfig} />);
 

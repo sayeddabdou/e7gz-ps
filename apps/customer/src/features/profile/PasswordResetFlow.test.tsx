@@ -76,6 +76,28 @@ describe("password reset", () => {
     expect(await screen.findByText("No account with a verified phone matches this number.")).toBeTruthy();
   });
 
+  it("shows the mapped rate-limit message on password-reset request", async () => {
+    const api = profileApi({ requestPasswordReset: jest.fn().mockResolvedValue({ ok: false, code: "RATE_LIMITED" }) });
+    render(<PasswordResetFlow api={api} onCancel={jest.fn()} onComplete={jest.fn()} />);
+
+    fireEvent.changeText(screen.getByLabelText("Phone number"), "+201001234567");
+    fireEvent.press(screen.getByRole("button", { name: "Send reset code" }));
+
+    expect(await screen.findByText("Too many attempts. Try again later.")).toBeTruthy();
+  });
+
+  it("shows the mapped rate-limit message when completing a password reset", async () => {
+    const api = profileApi({ completePasswordReset: jest.fn().mockResolvedValue({ ok: false, code: "RATE_LIMITED" }) });
+    render(<PasswordResetFlow api={api} initialPhone="+201001234567" onCancel={jest.fn()} onComplete={jest.fn()} />);
+
+    fireEvent.press(screen.getByRole("button", { name: "Send reset code" }));
+    fireEvent.changeText(await screen.findByLabelText("Verification code"), "482913");
+    fireEvent.changeText(screen.getByLabelText("New password"), "newPassword1");
+    fireEvent.press(screen.getByRole("button", { name: "Reset password" }));
+
+    expect(await screen.findByText("Too many attempts. Try again later.")).toBeTruthy();
+  });
+
   it("starts the reset resend countdown from server time", async () => {
     jest.useFakeTimers().setSystemTime(new Date("2026-10-23T10:00:00Z"));
     const api = profileApi({

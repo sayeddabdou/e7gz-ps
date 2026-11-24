@@ -26,7 +26,6 @@ import { en as t } from "../i18n/en";
 
 type RootTabs = {
   home: undefined;
-  tournaments: undefined;
   bookings: undefined;
   profile: undefined;
 };
@@ -48,18 +47,6 @@ const navigationTheme = {
   },
 };
 
-function Screen({ title }: { title: string }) {
-  return (
-    <SafeAreaView edges={["top"]} style={styles.screen}>
-      <Text accessibilityRole="header" style={styles.title}>{title}</Text>
-    </SafeAreaView>
-  );
-}
-
-function TournamentsScreen() {
-  return <Screen title={t.tabs.tournaments} />;
-}
-
 function tabIcon(
   testID: string,
   active: TabIconName,
@@ -76,7 +63,6 @@ function tabIcon(
 }
 
 const homeIcon = tabIcon("tab-icon-home", "home", "home-outline");
-const tournamentsIcon = tabIcon("tab-icon-tournaments", "trophy", "trophy-outline");
 const bookingsIcon = tabIcon("tab-icon-bookings", "calendar", "calendar-outline");
 const profileIcon = tabIcon("tab-icon-profile", "person", "person-outline");
 
@@ -316,15 +302,6 @@ export function App({
               {() => <HomeScreen api={api} onOpenMyBookings={() => navigationRef.navigate("bookings")} onOpenProfile={() => navigationRef.navigate("profile")} />}
             </Tab.Screen>
             <Tab.Screen
-              name="tournaments"
-              component={TournamentsScreen}
-              options={{
-                tabBarIcon: tournamentsIcon,
-                tabBarLabel: t.tabs.tournaments,
-                title: t.tabs.tournaments,
-              }}
-            />
-            <Tab.Screen
               name="bookings"
               options={{
                 tabBarIcon: bookingsIcon,
@@ -379,12 +356,6 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: nativeTokens.color.surface.raised,
-  },
-  title: {
-    color: nativeTokens.color.text.customer,
-    fontSize: nativeTokens.typography.fontSize.heading,
-    fontWeight: nativeTokens.typography.fontWeight.extrabold,
-    marginBottom: nativeTokens.spacing["3xl"],
   },
   tabBar: {
     backgroundColor: nativeTokens.color.surface.raised,
