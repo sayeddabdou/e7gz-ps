@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import type { components } from "@e7gz/api-client";
 import { webTokens } from "@e7gz/tokens/web";
 import { apiErrorOf, type ApiClient } from "../../api";
+import { localDateTimeToInstant } from "../../formatters";
 import { useMessages } from "../../i18n";
 import { createIdempotencyKey } from "../operations";
 import { bookingErrorMessage } from "./errorMessages";
@@ -25,26 +26,6 @@ const styles = {
   error: { backgroundColor: webTokens.color.feedback.dangerSurface, borderRadius: webTokens.radius.lg, color: webTokens.color.feedback.danger, padding: webTokens.spacing.xl },
   success: { backgroundColor: webTokens.color.feedback.successSurface, borderRadius: webTokens.radius.lg, color: webTokens.color.feedback.success, padding: webTokens.spacing.xl },
 } satisfies Record<string, CSSProperties>;
-
-const cairoFormatter = new Intl.DateTimeFormat("en-CA", {
-  day: "2-digit", hour: "2-digit", hour12: false, minute: "2-digit", month: "2-digit",
-  second: "2-digit", timeZone: "Africa/Cairo", year: "numeric",
-});
-
-/** Converts a venue-local datetime input to an instant without using the device timezone. */
-export function cairoLocalToInstant(value: string): string | undefined {
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/u.exec(value);
-  if (!match) return undefined;
-  const [, year, month, day, hour, minute] = match;
-  const wallTime = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
-  let instant = wallTime;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const parts = Object.fromEntries(cairoFormatter.formatToParts(new Date(instant)).map((part) => [part.type, part.value]));
-    const renderedWallTime = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour) % 24, Number(parts.minute), Number(parts.second));
-    instant = wallTime - (renderedWallTime - instant);
-  }
-  return new Date(instant).toISOString();
-}
 
 function resourceLabel(resource: VenueResource, activity: Record<VenueResource["activity"], string>): string {
   return [resource.name, activity[resource.activity], resource.consoleType].filter(Boolean).join(" · ");
@@ -96,7 +77,7 @@ export function ManualBookingScreen({ api, onOpenBooking }: { api: ApiClient; on
 
   const submit = async () => {
     if (submittingRef.current || !selected) return;
-    const instant = startKind === "future" ? cairoLocalToInstant(startAt) : undefined;
+    const instant = startKind === "future" ? localDateTimeToInstant(startAt) : undefined;
     if (startKind === "future" && !instant) {
       setFieldError(t.startRequired);
       return;

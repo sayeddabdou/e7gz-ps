@@ -503,6 +503,41 @@ describe("OpeningHoursEditor", () => {
     expect(commits(requests)).toHaveLength(1);
   });
 
+  it("links an opening-hours conversion commit to its emergency", async () => {
+    const emergencyId = "44444444-4444-4444-8444-444444444444";
+    const requests = renderWithApi((api) => <OpeningHoursEditor api={api} emergencyId={emergencyId} />, async (request) => {
+      if (request.url.endsWith("/opening-hours") && request.method === "GET") return hoursGet();
+      if (request.url.endsWith("/resources") && request.method === "GET") return room();
+      if (request.url.endsWith("/preview")) return affectedPreview(false);
+      if (request.url.endsWith("/commit")) return savedHours();
+      throw new Error(`Unexpected request: ${request.method} ${request.url}`);
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Preview changes" }));
+    expect(await screen.findByText("Room 1")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText(/I understand that saving these hours cancels/u));
+    fireEvent.click(screen.getByRole("button", { name: "Save opening hours" }));
+    await waitFor(() => expect(commits(requests)).toHaveLength(1));
+    expect(await commits(requests)[0]!.clone().json()).toEqual(expect.objectContaining({ emergencyId }));
+  });
+
+  it("maps an operational-state change while converting emergency hours", async () => {
+    const requests = renderWithApi((api) => <OpeningHoursEditor api={api} emergencyId="44444444-4444-4444-8444-444444444444" />, async (request) => {
+      if (request.url.endsWith("/opening-hours") && request.method === "GET") return hoursGet();
+      if (request.url.endsWith("/resources") && request.method === "GET") return room();
+      if (request.url.endsWith("/preview")) return ok({ previewToken: "p-state", ownerPasswordRequired: false, affected: [] });
+      if (request.url.endsWith("/commit")) return failure("OPERATIONAL_STATE_CHANGED", 409);
+      throw new Error(`Unexpected request: ${request.method} ${request.url}`);
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Preview changes" }));
+    expect(await screen.findByText("No bookings are affected.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Save opening hours" }));
+
+    expect(await screen.findByText("This operational state changed. Refresh and look again.")).toBeTruthy();
+    expect(commits(requests)).toHaveLength(1);
+  });
+
   it("refreshes an initially empty preview when commit reports a changed affected set", async () => {
     let previewCalls = 0;
     const requests = renderWithApi((api) => <OpeningHoursEditor api={api} />, async (request) => {

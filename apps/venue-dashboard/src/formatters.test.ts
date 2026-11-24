@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatBusinessDate, formatCountdown, formatDateTime, formatInteger, formatMoney, formatTime } from "./formatters";
+import { formatBusinessDate, formatCountdown, formatDateTime, formatInteger, formatMoney, formatTime, instantToLocalDateTime, localDateTimeToInstant } from "./formatters";
 
 describe("Dashboard formatters", () => {
   it("formats numbers and EGP money consistently for English and Arabic", () => {
@@ -25,5 +25,11 @@ describe("Dashboard formatters", () => {
     expect(formatDateTime("2026-10-12T15:04:00Z", "ar-EG")).toMatch(/[١٢]/u);
     expect(formatTime("2026-10-12T15:04:00Z", "ar-EG")).toMatch(/[٦٠٤]/u);
     expect(formatBusinessDate("2026-10-12", "ar-EG")).toMatch(/[١٢]/u);
+  });
+
+  it("round-trips venue-local form values without using the device time zone", () => {
+    expect(instantToLocalDateTime("2026-12-08T08:00:00Z", "Africa/Cairo")).toBe("2026-12-08T10:00");
+    expect(localDateTimeToInstant("2026-12-08T10:00", "Africa/Cairo")).toBe("2026-12-08T08:00:00.000Z");
+    expect(instantToLocalDateTime("2026-12-08T08:00:00Z", "UTC")).toBe("2026-12-08T08:00");
   });
 });

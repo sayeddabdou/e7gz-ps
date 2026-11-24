@@ -17,7 +17,7 @@ type VenueResource = components["schemas"]["VenueResource"];
 const toInputTime = (time: string | null) => time?.slice(0, 5) ?? "";
 const toApiTime = (time: string) => `${time}:00`;
 
-export function OpeningHoursEditor({ api }: { api: ApiClient }) {
+export function OpeningHoursEditor({ api, emergencyId }: { api: ApiClient; emergencyId?: string }) {
   const t = useMessages();
   const [proposal, setProposal] = useState<Proposal>();
   const [preview, setPreview] = useState<Preview>();
@@ -112,7 +112,7 @@ export function OpeningHoursEditor({ api }: { api: ApiClient }) {
       commitKeys.current.set(preview.previewToken, idempotencyKey);
       const result = await api.POST("/api/v1/venue/opening-hours/commit", {
         params: { header: { "Idempotency-Key": idempotencyKey } },
-        body: { proposal, previewToken: preview.previewToken, ...(ownerPassword ? { ownerPassword } : {}) },
+        body: { proposal, previewToken: preview.previewToken, ...(emergencyId ? { emergencyId } : {}), ...(ownerPassword ? { ownerPassword } : {}) },
       });
       if (result.data) {
         setPreview(undefined);

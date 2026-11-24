@@ -1,4 +1,4 @@
-const cairoTimeZone = "Africa/Cairo";
+export const cairoTimeZone = "Africa/Cairo";
 
 type Money = { amount: string; currency: string };
 
@@ -40,12 +40,46 @@ export function formatMoney(money: Money, locale: string): string {
   return `${localizedDecimal(money.amount, locale)} ${money.currency}`;
 }
 
-export function formatDateTime(instant: string, locale: string): string {
+export function formatDateTime(instant: string, locale: string, timeZone = cairoTimeZone): string {
   return new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
     timeStyle: "short",
-    timeZone: cairoTimeZone,
+    timeZone,
   }).format(new Date(instant));
+}
+
+function localParts(instant: Date, timeZone: string): Record<string, string> {
+  return Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+    minute: "2-digit",
+    month: "2-digit",
+    second: "2-digit",
+    timeZone,
+    year: "numeric",
+  }).formatToParts(instant).map((part) => [part.type, part.value]));
+}
+
+/** Renders an API instant for a datetime-local field without using the device time zone. */
+export function instantToLocalDateTime(instant: string, timeZone = cairoTimeZone): string {
+  const parts = localParts(new Date(instant), timeZone);
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+}
+
+/** Converts a datetime-local value to an API instant without using the device time zone. */
+export function localDateTimeToInstant(value: string, timeZone = cairoTimeZone): string | undefined {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/u.exec(value);
+  if (!match) return undefined;
+  const [, year, month, day, hour, minute] = match;
+  const wallTime = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+  let instant = wallTime;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const parts = localParts(new Date(instant), timeZone);
+    const renderedWallTime = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute), Number(parts.second));
+    instant = wallTime - (renderedWallTime - instant);
+  }
+  return new Date(instant).toISOString();
 }
 
 export function formatDate(instant: string | number, locale: string, timeZone = cairoTimeZone): string {

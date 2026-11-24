@@ -4,7 +4,7 @@ import { BrowserRouter, NavLink, Navigate, Route, Routes, useNavigate, useParams
 import { createDashboardApiClient } from "../api";
 import type { ConfigResult } from "../config";
 import { AvailabilitySchedule } from "../features/schedule";
-import { PricingEditor, ResourceList, SettingsPage } from "../features/setup";
+import { OpeningHoursEditor, PricingEditor, ResourceList, SettingsPage } from "../features/setup";
 import { createVenueSessionApi, VenueLoginScreen, type VenueSessionApi } from "../features/auth";
 import { LiveRequestsProvider, MissedRequestsScreen, PendingRequestsScreen, useLiveRequests } from "../features/requests";
 import { revokeVenuePush } from "../features/requests/pushSubscription";
@@ -12,6 +12,7 @@ import { NotificationsScreen } from "../features/notifications";
 import { BookingDetailScreen, BookingHistoryScreen, TodayBookingsScreen } from "../features/today";
 import { ManualBookingScreen } from "../features/walk-in";
 import { OverviewScreen } from "../features/overview";
+import { OperationsScreen } from "../features/operations";
 import { directionOf, messages, MessagesContext, type Language, type Messages } from "../i18n";
 import "../dashboard.css";
 
@@ -230,6 +231,16 @@ function BookingDetailRoute({ api, backLabel, backTo }: { api: ReturnType<typeof
   return bookingId ? <BookingDetailScreen api={api} backLabel={backLabel} bookingId={bookingId} key={bookingId} onBack={() => navigate(backTo)} /> : <Navigate replace to={backTo} />;
 }
 
+function OperationsRoute({ api }: { api: ReturnType<typeof createDashboardApiClient> }) {
+  const navigate = useNavigate();
+  return <OperationsScreen api={api} onOpenHoursChange={(emergencyId) => navigate(`/maintenance/emergencies/${emergencyId}/hours`)} />;
+}
+
+function EmergencyHoursRoute({ api }: { api: ReturnType<typeof createDashboardApiClient> }) {
+  const { emergencyId } = useParams();
+  return emergencyId ? <OpeningHoursEditor api={api} emergencyId={emergencyId} /> : <Navigate replace to="/maintenance" />;
+}
+
 function ProtectedShell({
   accessToken,
   config,
@@ -389,6 +400,8 @@ function ProtectedShell({
                     <PricingEditor api={api} />
                   ) : route.path === "/schedule" ? (
                     <AvailabilitySchedule api={api} direction={direction} />
+                  ) : route.path === "/maintenance" ? (
+                    <OperationsRoute api={api} />
                   ) : route.path === "/settings" ? (
                     <SettingsPage api={api} onLanguagePreference={onLanguagePreference} />
                   ) : (
@@ -399,6 +412,7 @@ function ProtectedShell({
             ))}
             <Route path="/bookings/:bookingId" element={<BookingDetailRoute api={api} backTo="/bookings" />} />
             <Route path="/booking-history/:bookingId" element={<BookingDetailRoute api={api} backLabel={t.bookings.detail.backHistory} backTo="/booking-history" />} />
+            <Route path="/maintenance/emergencies/:emergencyId/hours" element={<EmergencyHoursRoute api={api} />} />
             <Route path="*" element={<Navigate replace to="/" />} />
           </Routes>
         </section>
