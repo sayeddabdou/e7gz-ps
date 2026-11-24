@@ -110,7 +110,9 @@ public final class DatabaseErrorCodes {
                     "uq_user_account_phone_e164", ApiErrorCode.PHONE_TAKEN,             // FR-ACC-01
                     "ux_venue_login_normalized", ApiErrorCode.VENUE_LOGIN_IDENTIFIER_TAKEN, // FR-VEN-01, E7-22
                     "uq_venue_account_venue", ApiErrorCode.VENUE_ACCOUNT_ALREADY_EXISTS, // FR-VEN-01, E7-22
-                    "ux_area_name_normalized", ApiErrorCode.AREA_NAME_TAKEN),               // FR-VEN-12, E7-23
+                    "ux_area_name_normalized", ApiErrorCode.AREA_NAME_TAKEN,                // FR-VEN-12, E7-23
+                    // one pending Player-hosted request per creator, platform-wide (FR-TRN-11, E7-91)
+                    "ux_tournament_one_pending_creator", ApiErrorCode.PENDING_TOURNAMENT_REQUEST_EXISTS),
             // Removing a venue activity that rooms, prices or availability still reference (PO decision 2 Oct 2026, E7-23)
             FOREIGN_KEY_VIOLATION, Map.of(
                     "fk_resource_venue_activity", ApiErrorCode.VENUE_ACTIVITY_IN_USE,

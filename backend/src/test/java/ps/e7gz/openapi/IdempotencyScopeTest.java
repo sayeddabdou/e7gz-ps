@@ -64,7 +64,10 @@ class IdempotencyScopeTest {
             "post /api/v1/venue/emergencies/{emergencyId}/convert",             // conversion, E7-82
             // PO decision 19 Nov 2026 (E7-77): O10 cancels AWAITING bookings and refunds them (E7-78).
             "post /api/v1/admin/venue-accounts/{venueAccountId}/disable",
-            "post /api/v1/admin/venue-accounts/{venueAccountId}/enable");
+            "post /api/v1/admin/venue-accounts/{venueAccountId}/enable",
+            // Sprint 6: tournament creation holds rooms (ADR-015 "tournaments"), E7-91.
+            "post /api/v1/customer/tournaments",
+            "post /api/v1/venue/tournaments");
 
     /** Writes outside ADR-015's scope, so the header is accepted but optional. */
     static final Map<String, List<String>> OPTIONAL = Map.of(

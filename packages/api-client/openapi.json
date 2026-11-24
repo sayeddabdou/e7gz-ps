@@ -3497,6 +3497,239 @@
         ],
         "type": "object"
       },
+      "CustomerTournament": {
+        "properties": {
+          "activity": {
+            "$ref": "#/components/schemas/Activity"
+          },
+          "approvalExpiresAt": {
+            "description": "The venue must answer before this instant (FR-TRN-10); show the countdown from it, never from the device clock.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "capacity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "checkpointAt": {
+            "description": "startAt - 1 hour: the minimum of 8 is checked here (FR-TRN-03).",
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "creationFee": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "creatorParticipates": {
+            "type": "boolean"
+          },
+          "durationMinutes": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "endAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "entryFee": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "hostType": {
+            "$ref": "#/components/schemas/TournamentHostType"
+          },
+          "inviteCode": {
+            "description": "null while PENDING_VENUE_APPROVAL: the code is inactive until the venue accepts (FR-TRN-07).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "playMode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prize": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "resources": {
+            "items": {
+              "$ref": "#/components/schemas/CustomerTournamentResource"
+            },
+            "type": "array"
+          },
+          "startAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TournamentStatus"
+          },
+          "tournamentId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "venueCost": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Fixed at request creation (FR-TRN-28); informational (FR-TRN-29)."
+          },
+          "venueId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/TournamentVisibility"
+          }
+        },
+        "required": [
+          "activity",
+          "approvalExpiresAt",
+          "capacity",
+          "checkpointAt",
+          "createdAt",
+          "creationFee",
+          "creatorParticipates",
+          "durationMinutes",
+          "endAt",
+          "entryFee",
+          "hostType",
+          "prize",
+          "resources",
+          "startAt",
+          "status",
+          "tournamentId",
+          "venueCost",
+          "venueId",
+          "visibility"
+        ],
+        "type": "object"
+      },
+      "CustomerTournamentCreateRequest": {
+        "properties": {
+          "activity": {
+            "$ref": "#/components/schemas/Activity"
+          },
+          "capacity": {
+            "description": "Participants, 8-32 (FR-TRN-03).",
+            "example": 16,
+            "format": "int32",
+            "maximum": 32,
+            "minimum": 8,
+            "type": "integer"
+          },
+          "creatorParticipates": {
+            "description": "Organizer + Participant (true) or Organizer Only (false); a participating creator counts in the capacity (FR-TRN-05).",
+            "type": "boolean"
+          },
+          "durationMinutes": {
+            "description": "Nominal minutes: at least 60, in steps of 30 (FR-TRN-03).",
+            "example": 180,
+            "format": "int32",
+            "minimum": 60,
+            "type": "integer"
+          },
+          "entryFee": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Informational only (FR-TRN-29); 0.00 when absent."
+          },
+          "playMode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayMode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Required for PLAYSTATION, absent otherwise (FR-TRN-04)."
+          },
+          "prize": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Informational only (FR-TRN-29); 0.00 when absent."
+          },
+          "resourceIds": {
+            "description": "1-4 distinct rooms or tables of the venue (FR-TRN-03).",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "startAt": {
+            "description": "At least 2 hours from now (FR-TRN-03).",
+            "example": "2026-12-24T16:00:00Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "venueId": {
+            "example": "b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e",
+            "format": "uuid",
+            "type": "string"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/TournamentVisibility"
+          }
+        },
+        "required": [
+          "activity",
+          "capacity",
+          "creatorParticipates",
+          "durationMinutes",
+          "resourceIds",
+          "startAt",
+          "venueId",
+          "visibility"
+        ],
+        "type": "object"
+      },
+      "CustomerTournamentResource": {
+        "properties": {
+          "consoleType": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConsoleType"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PlayStation only."
+          },
+          "resourceId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resourceId"
+        ],
+        "type": "object"
+      },
       "CustomerUsernameChangeRequest": {
         "properties": {
           "username": {
@@ -4499,6 +4732,21 @@
         ],
         "type": "object"
       },
+      "DataResponseCustomerTournament": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CustomerTournament"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
       "DataResponseCustomerVenueDetails": {
         "properties": {
           "data": {
@@ -5321,6 +5569,21 @@
         ],
         "type": "object"
       },
+      "DataResponseVenueTournament": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/VenueTournament"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "type": "object"
+      },
       "DataResponseVenueVapidPublicKey": {
         "properties": {
           "data": {
@@ -5894,6 +6157,32 @@
           "TOURNAMENT_HOLD",
           "MAINTENANCE",
           "CLOSURE"
+        ],
+        "type": "string"
+      },
+      "TournamentHostType": {
+        "enum": [
+          "PLAYER",
+          "VENUE"
+        ],
+        "type": "string"
+      },
+      "TournamentStatus": {
+        "enum": [
+          "PENDING_VENUE_APPROVAL",
+          "WAITING_FOR_PLAYERS",
+          "CONFIRMED",
+          "ACTIVE",
+          "COMPLETED",
+          "REJECTED",
+          "CANCELLED"
+        ],
+        "type": "string"
+      },
+      "TournamentVisibility": {
+        "enum": [
+          "PUBLIC",
+          "PRIVATE"
         ],
         "type": "string"
       },
@@ -8119,6 +8408,220 @@
           "TOURNAMENT"
         ],
         "type": "string"
+      },
+      "VenueTournament": {
+        "properties": {
+          "activity": {
+            "$ref": "#/components/schemas/Activity"
+          },
+          "businessDate": {
+            "description": "The operating day of the Operating Session it fits in; revenue is recognised on it when the tournament completes (FR-TRN-30).",
+            "format": "date",
+            "type": "string"
+          },
+          "capacity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "checkpointAt": {
+            "description": "startAt - 1 hour: the minimum of 8 is checked here (FR-TRN-03).",
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "durationMinutes": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "endAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "entryFee": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "hostType": {
+            "$ref": "#/components/schemas/TournamentHostType"
+          },
+          "inviteCode": {
+            "description": "The private tournament's code, to copy and share (FR-TRN-06); null when public.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "playMode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prize": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "resources": {
+            "items": {
+              "$ref": "#/components/schemas/VenueTournamentResource"
+            },
+            "type": "array"
+          },
+          "startAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TournamentStatus"
+          },
+          "tournamentId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "venueCost": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Fixed at creation (FR-TRN-28); informational (FR-TRN-29)."
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/TournamentVisibility"
+          }
+        },
+        "required": [
+          "activity",
+          "businessDate",
+          "capacity",
+          "checkpointAt",
+          "createdAt",
+          "durationMinutes",
+          "endAt",
+          "entryFee",
+          "hostType",
+          "prize",
+          "resources",
+          "startAt",
+          "status",
+          "tournamentId",
+          "venueCost",
+          "visibility"
+        ],
+        "type": "object"
+      },
+      "VenueTournamentCreateRequest": {
+        "properties": {
+          "activity": {
+            "$ref": "#/components/schemas/Activity"
+          },
+          "capacity": {
+            "description": "Participants, 8-32 (FR-TRN-03).",
+            "example": 16,
+            "format": "int32",
+            "maximum": 32,
+            "minimum": 8,
+            "type": "integer"
+          },
+          "durationMinutes": {
+            "description": "Nominal minutes: at least 60, in steps of 30 (FR-TRN-03).",
+            "example": 180,
+            "format": "int32",
+            "minimum": 60,
+            "type": "integer"
+          },
+          "entryFee": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Informational only (FR-TRN-29); 0.00 when absent."
+          },
+          "playMode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayMode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Required for PLAYSTATION, absent otherwise (FR-TRN-04)."
+          },
+          "prize": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Informational only (FR-TRN-29); 0.00 when absent."
+          },
+          "resourceIds": {
+            "description": "1-4 distinct rooms or tables of this venue (FR-TRN-03).",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "startAt": {
+            "description": "At least 2 hours from now (FR-TRN-03).",
+            "example": "2026-12-24T16:00:00Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/TournamentVisibility"
+          }
+        },
+        "required": [
+          "activity",
+          "capacity",
+          "durationMinutes",
+          "resourceIds",
+          "startAt",
+          "visibility"
+        ],
+        "type": "object"
+      },
+      "VenueTournamentResource": {
+        "properties": {
+          "consoleType": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConsoleType"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PlayStation only."
+          },
+          "hourlyPrice": {
+            "$ref": "#/components/schemas/Money",
+            "description": "The hourly price snapshot the venue cost was computed from (FR-TRN-28)."
+          },
+          "resourceId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hourlyPrice",
+          "resourceId"
+        ],
+        "type": "object"
       },
       "VenueVapidPublicKey": {
         "properties": {
@@ -13225,7 +13728,7 @@
         ]
       },
       "put": {
-        "description": "Omitted fields keep their value; a value equal to the current one changes nothing; none given is VALIDATION_FAILED. Amounts are from 0.00. Every change takes effect now and only for bookings created after it; Points pay the fee of the mode in force (PCR-010). While no payment provider collects the fee (the launch setting), a bookingFee or bookingFeePerHour above 0.00 is VALIDATION_FAILED on that field (PCR-010 item 10). Implemented by E7-68.",
+        "description": "Omitted fields keep their value; a value equal to the current one changes nothing; none given is VALIDATION_FAILED. Amounts are from 0.00. Every change takes effect now and only for bookings created after it; Points pay the fee of the mode in force (PCR-010). While no payment provider collects the fee (the launch setting), a bookingFee, bookingFeePerHour or tournamentCreationFee above 0.00 is VALIDATION_FAILED on that field (PCR-010 items 10 and 11). Implemented by E7-68 and E7-91.",
         "operationId": "adminChangeFees",
         "parameters": [
           {
@@ -35428,6 +35931,400 @@
         ]
       }
     },
+    "/api/v1/customer/tournaments": {
+      "post": {
+        "description": "Only an operational Verified Player may ask (FR-TRN-02): otherwise VERIFIED_PLAYER_REQUIRED; a phone not verified, a ban or a deleted account are their own 403s. 8-32 participants, 1-4 distinct rooms or tables of the venue and the activity, at least 60 minutes in 30-minute steps, playMode exactly for PLAYSTATION (VALIDATION_FAILED on the field otherwise). The whole interval must fit one Operating Session (FR-TRN-04: INTERVAL_NOT_WITHIN_ONE_SESSION) and the request must be made at least 2 hours before startAt (TOURNAMENT_CREATION_CUTOFF_PASSED). One pending request per creator anywhere (PENDING_TOURNAMENT_REQUEST_EXISTS) and 5 minutes after a rejection or expiry before asking the same venue for the same interval again (TOURNAMENT_RETRY_COOLDOWN_ACTIVE; FR-TRN-11). Existing reservations always win (FR-TRN-08): a room with a booking, a hold, maintenance, a closure or an emergency in the interval is 409 TOURNAMENT_RESOURCE_CONFLICT and nothing is changed; a room not ACTIVE or under owner review is RESOURCE_NOT_ELIGIBLE (also when the venue has no price for it, FR-VEN-45); a selling block is VENUE_SELLING_BLOCK_ACTIVE / RESOURCE_SELLING_BLOCK_ACTIVE (FR-TRN-33). A venue not ACTIVE or whose account is disabled is VENUE_NOT_ELIGIBLE_FOR_NEW_ACTIVITY; an unknown venue or a room of another venue is NOT_FOUND. The venue cost is fixed now: the hourly price of each room x the duration, half-up to 2 decimals per room, summed (FR-TRN-28); entryFee and prize are informational (FR-TRN-29), 0.00 when absent. approvalExpiresAt = MIN(createdAt + 10 minutes, checkpointAt) (FR-TRN-10). While pending the tournament is not in Discover and nobody may join; a private tournament's inviteCode is null until the venue accepts (FR-TRN-07). Implemented by E7-91.",
+        "operationId": "customerCreateTournament",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerTournamentCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseCustomerTournament"
+                }
+              }
+            },
+            "description": "Created",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VERIFIED_PLAYER_REQUIRED",
+                                "PHONE_VERIFICATION_REQUIRED",
+                                "ACCOUNT_BANNED_FOR_THIS_ACTION",
+                                "ACCOUNT_DELETED",
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VERIFIED_PLAYER_REQUIRED | PHONE_VERIFICATION_REQUIRED | ACCOUNT_BANNED_FOR_THIS_ACTION | ACCOUNT_DELETED | FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NOT_FOUND"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "TOURNAMENT_RESOURCE_CONFLICT"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: TOURNAMENT_RESOURCE_CONFLICT",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "TOURNAMENT_CREATION_CUTOFF_PASSED",
+                                "PENDING_TOURNAMENT_REQUEST_EXISTS",
+                                "TOURNAMENT_RETRY_COOLDOWN_ACTIVE",
+                                "INTERVAL_NOT_WITHIN_ONE_SESSION",
+                                "VENUE_NOT_ELIGIBLE_FOR_NEW_ACTIVITY",
+                                "RESOURCE_NOT_ELIGIBLE",
+                                "VENUE_SELLING_BLOCK_ACTIVE",
+                                "RESOURCE_SELLING_BLOCK_ACTIVE",
+                                "IDEMPOTENCY_KEY_REUSED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: TOURNAMENT_CREATION_CUTOFF_PASSED | PENDING_TOURNAMENT_REQUEST_EXISTS | TOURNAMENT_RETRY_COOLDOWN_ACTIVE | INTERVAL_NOT_WITHIN_ONE_SESSION | VENUE_NOT_ELIGIBLE_FOR_NEW_ACTIVITY | RESOURCE_NOT_ELIGIBLE | VENUE_SELLING_BLOCK_ACTIVE | RESOURCE_SELLING_BLOCK_ACTIVE | IDEMPOTENCY_KEY_REUSED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Ask a venue to host a tournament: PENDING_VENUE_APPROVAL with Approval Holds (FR-TRN-02, FR-TRN-03, FR-TRN-09)",
+        "tags": [
+          "customer-tournaments"
+        ]
+      }
+    },
     "/api/v1/customer/venues": {
       "get": {
         "operationId": "customerListVenues",
@@ -57249,6 +58146,394 @@
         "summary": "Server-sent change signals for this venue account (ADR-014, arch 08 §5)",
         "tags": [
           "venue-stream"
+        ]
+      }
+    },
+    "/api/v1/venue/tournaments": {
+      "post": {
+        "description": "No Verified Player and no approval needed (FR-TRN-02); no Owner Password. 8-32 participants, 1-4 distinct rooms or tables of this venue and the activity, at least 60 minutes in 30-minute steps, playMode exactly for PLAYSTATION (VALIDATION_FAILED on the field otherwise). The whole interval must fit one Operating Session (FR-TRN-04: INTERVAL_NOT_WITHIN_ONE_SESSION), created at least 2 hours before startAt (TOURNAMENT_CREATION_CUTOFF_PASSED). Existing reservations always win (FR-TRN-08): a room with a booking, a hold, maintenance, a closure or an emergency in the interval is 409 TOURNAMENT_RESOURCE_CONFLICT and nothing is changed - a tournament never cancels a booking; a room not ACTIVE or under owner review is RESOURCE_NOT_ELIGIBLE (also when it has no price, FR-VEN-45); a selling block is VENUE_SELLING_BLOCK_ACTIVE / RESOURCE_SELLING_BLOCK_ACTIVE (FR-TRN-33). A venue not ACTIVE in the marketplace is VENUE_NOT_ELIGIBLE_FOR_NEW_ACTIVITY; an account disabled meanwhile is FORBIDDEN (the token itself stops working: 401). A room of another venue is NOT_FOUND. The venue cost is fixed now (FR-TRN-28); entryFee and prize are informational (FR-TRN-29), 0.00 when absent. A private tournament gets its inviteCode at once (FR-TRN-06). Implemented by E7-91.",
+        "operationId": "venueCreateTournament",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Accepted; generated when absent; echoed on every response (arch 09 §1.2).",
+            "in": "header",
+            "name": "X-Correlation-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VenueTournamentCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponseVenueTournament"
+                }
+              }
+            },
+            "description": "Created",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "VALIDATION_FAILED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: VALIDATION_FAILED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "UNAUTHENTICATED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: UNAUTHENTICATED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "FORBIDDEN"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: FORBIDDEN",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "NOT_FOUND"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: NOT_FOUND",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "TOURNAMENT_RESOURCE_CONFLICT"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: TOURNAMENT_RESOURCE_CONFLICT",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "TOURNAMENT_CREATION_CUTOFF_PASSED",
+                                "INTERVAL_NOT_WITHIN_ONE_SESSION",
+                                "VENUE_NOT_ELIGIBLE_FOR_NEW_ACTIVITY",
+                                "RESOURCE_NOT_ELIGIBLE",
+                                "VENUE_SELLING_BLOCK_ACTIVE",
+                                "RESOURCE_SELLING_BLOCK_ACTIVE",
+                                "IDEMPOTENCY_KEY_REUSED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: TOURNAMENT_CREATION_CUTOFF_PASSED | INTERVAL_NOT_WITHIN_ONE_SESSION | VENUE_NOT_ELIGIBLE_FOR_NEW_ACTIVITY | RESOURCE_NOT_ELIGIBLE | VENUE_SELLING_BLOCK_ACTIVE | RESOURCE_SELLING_BLOCK_ACTIVE | IDEMPOTENCY_KEY_REUSED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "error": {
+                          "properties": {
+                            "code": {
+                              "enum": [
+                                "RATE_LIMITED"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "error.code: RATE_LIMITED",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnexpectedErrorResponse"
+                }
+              }
+            },
+            "description": "Unexpected failure: only the correlation ID, never a code or message.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create a venue-hosted tournament: WAITING_FOR_PLAYERS with Tournament Holds (FR-TRN-02, FR-TRN-03, FR-TRN-09)",
+        "tags": [
+          "venue-tournaments"
         ]
       }
     }
