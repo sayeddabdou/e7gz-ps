@@ -5,7 +5,7 @@ import type { AppConfig } from "../config";
 export type ApiClient = ReturnType<typeof createApiClient>;
 
 export function createAdminApiClient(
-  config: AppConfig,
+  config: Pick<AppConfig, "apiBaseUrl">,
   getAccessToken?: ApiClientOptions["getAccessToken"],
   fetch?: ApiClientOptions["fetch"],
 ): ApiClient {

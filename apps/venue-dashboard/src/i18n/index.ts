@@ -27,6 +27,7 @@ const en = {
       unexpected: "Something went wrong. Try again.",
     },
   },
+  legal: { navigation: "Legal documents", terms: "Terms of Use", privacy: "Privacy Policy" },
   configMissing: "Missing configuration:",
   navigation: {
     overview: "Overview",
@@ -570,6 +571,7 @@ const ar: Messages = {
       unexpected: "حدث خطأ. حاول مرة أخرى.",
     },
   },
+  legal: { navigation: "المستندات القانونية", terms: "شروط الاستخدام", privacy: "سياسة الخصوصية" },
   configMissing: "إعدادات ناقصة:",
   navigation: {
     overview: "نظرة عامة",

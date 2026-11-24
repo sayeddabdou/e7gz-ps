@@ -22,7 +22,7 @@ pnpm --filter @e7gz/venue-dashboard dev:mock        # http://localhost:5173 agai
 pnpm --filter @e7gz/venue-dashboard lint | typecheck | test | build
 ```
 
-Against a real backend: set `VITE_API_BASE_URL` (e.g. `http://localhost:8080`) and run `dev`. Venue authentication uses the backend's HttpOnly refresh cookie; the short-lived access token stays in memory and is never configured or stored by the browser app.
+Against a real backend: set `VITE_API_BASE_URL` (e.g. `http://localhost:8080`), `VITE_LEGAL_TERMS_URL`, and `VITE_LEGAL_PRIVACY_URL`, then run `dev`. The two legal URLs are public deployment settings shown in the account header. The example values use `e7gz.example`; replace them with the real domain at deployment. Venue authentication uses the backend's HttpOnly refresh cookie; the short-lived access token stays in memory and is never configured or stored by the browser app.
 
 For local cookie-session testing, start the backend with both web origins allowed:
 
