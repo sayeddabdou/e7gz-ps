@@ -71,6 +71,23 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("Venue Dashboard shell", () => {
+  it("opens the emergency hours conversion route", async () => {
+    window.history.replaceState({}, "", "/maintenance/emergencies/44444444-4444-4444-8444-444444444444/hours");
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith("/api/v1/venue/opening-hours")) return new Response(JSON.stringify({
+        data: { defaultOpen: "10:00:00", defaultClose: "23:00:00", defaultFullDay: false, timezone: "Africa/Cairo", version: 1, days: Array.from({ length: 7 }, (_, weekday) => ({ weekday, mode: "DEFAULT", customOpen: null, customClose: null })) },
+        meta: { correlationId: "c-1", serverTime: "2026-10-02T10:00:00Z" },
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (url.endsWith("/api/v1/venue/resources")) return new Response(JSON.stringify({ data: [], meta: { correlationId: "c-1", serverTime: "2026-10-02T10:00:00Z" } }), { status: 200, headers: { "Content-Type": "application/json" } });
+      return defaultResponse(input);
+    }));
+
+    render(<App config={readyConfig} />);
+
+    expect(await screen.findByRole("heading", { name: "Opening hours" })).toBeTruthy();
+  });
+
   it("renders the reference dashboard shell without replacing existing controls", async () => {
     render(<App config={readyConfig} />);
 
