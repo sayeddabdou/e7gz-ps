@@ -169,7 +169,10 @@ export function OpeningHoursEditor({ api, emergencyId }: { api: ApiClient; emerg
             {proposal.days.map((day) => (
               <div key={day.weekday} style={styles.row}>
                 <strong>{t.setup.hours.weekdays[day.weekday]}</strong>
-                <select aria-describedby={dayError === day.weekday ? `opening-day-${day.weekday}-error` : undefined} aria-invalid={dayError === day.weekday} aria-label={`${t.setup.hours.weekdays[day.weekday]} ${t.setup.hours.dayMode}`} style={{ ...styles.input, ...(dayError === day.weekday ? styles.invalidInput : {}) }} value={day.mode} onChange={(event) => updateDay(day.weekday, { mode: event.target.value as OpeningDayMode })}>
+                <select aria-describedby={dayError === day.weekday ? `opening-day-${day.weekday}-error` : undefined} aria-invalid={dayError === day.weekday} aria-label={`${t.setup.hours.weekdays[day.weekday]} ${t.setup.hours.dayMode}`} style={{ ...styles.input, ...(dayError === day.weekday ? styles.invalidInput : {}) }} value={day.mode} onChange={(event) => {
+                  const mode = event.target.value as OpeningDayMode;
+                  updateDay(day.weekday, mode === "CUSTOM" ? { mode } : { mode, customOpen: null, customClose: null });
+                }}>
                   {Object.entries(t.setup.hours.modes).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
                 {day.mode === "CUSTOM" ? <>
