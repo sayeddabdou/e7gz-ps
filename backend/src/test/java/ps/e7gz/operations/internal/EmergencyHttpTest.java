@@ -113,6 +113,9 @@ class EmergencyHttpTest extends IntegrationTest {
         assertThat(count("SELECT count(*) FROM venue.venue_selling_block WHERE emergency_id = '" + id
                 + "' AND active")).as("the venue's selling block (FR-OPS-15)").isOne();
         assertThat(events(IntegrationEvents.EMERGENCY_DECLARED, booking.venueId())).isOne();
+        // E7-80 (Spec v5 section 52.6 "Emergency declarations", Q1): one Admin Alert, in the declaring command
+        assertThat(count("SELECT count(*) FROM admin.admin_alert WHERE kind = 'EMERGENCY_DECLARED'"
+                + " AND subject_type = 'EMERGENCY' AND subject_id = '" + id + "'")).isOne();
         assertThat(count("SELECT count(*) FROM technical.outbox_event WHERE event_type = 'BookingCancelled'"
                 + " AND payload->>'bookingId' = '" + booking.bookingId() + "'")).as("notified after commit").isOne();
         assertThat(count("SELECT count(*) FROM loyalty.booking_fee_refund WHERE booking_id = '" + booking.bookingId()

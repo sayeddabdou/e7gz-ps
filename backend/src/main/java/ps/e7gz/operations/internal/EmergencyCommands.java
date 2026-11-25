@@ -19,6 +19,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
 import ps.e7gz.admin.api.AdminAlerts;
+import ps.e7gz.admin.api.NewAdminAlert;
 import ps.e7gz.audit.api.AuditActor;
 import ps.e7gz.audit.api.AuditRecord;
 import ps.e7gz.audit.api.AuditWriter;
@@ -389,6 +390,9 @@ final class EmergencyCommands {
                 .payload(payload)
                 .build());
         publish(context, deps, IntegrationEvents.EMERGENCY_DECLARED, emergency);
+        // E7-80 (Spec v5 section 52.6, Q1): the Platform Admin's alert, committed with the declaration
+        deps.alerts().raise(context, NewAdminAlert.emergencyDeclared(id, venueId, emergency.scope().name(),
+                emergency.resourceId(), declaration.correlationId()));
         return emergency;
     }
 
