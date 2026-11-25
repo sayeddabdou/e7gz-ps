@@ -86,7 +86,8 @@ final class BookingNotificationRules {
      * and the resolution of a still-expired request at its start (T6, E7-118):
      * the customer gets the generic {@code BOOKING_AUTO_CANCELLED} (PO decision 13 Oct 2026) and the venue
      * {@code VENUE_BOOKING_AUTO_CANCELLED} (PO decision 12 Oct 2026). E7-80's cascades write the same reasons and want
-     * their own customer codes ({@code BOOKING_CANCELLED_VENUE_EMERGENCY}, ...), so E7-80 tells its events apart here.
+     * their own customer codes ({@code BOOKING_CANCELLED_VENUE_EMERGENCY}, ...): E7-80 tells them apart by the event's
+     * {@code cause} in {@link #operationalCustomerCode}.
      */
     static final Map<BookingTerminalReason, Plan> CANCELLED = Map.ofEntries(
             // E7-49 (D4: the customer notification of the customer's own cancel is E7-55's; PO decision 13 Oct 2026)
@@ -229,7 +230,33 @@ final class BookingNotificationRules {
         if (reason == BookingTerminalReason.VENUE_OPENING_HOURS_CHANGED && manual(event)) {
             return Plan.NONE;
         }
+        String customerCode = operationalCustomerCode(reason, event.payload().path(IntegrationEvents.CANCEL_CAUSE)
+                .asText(""));
+        if (customerCode != null) {
+            return plan(customer(customerCode), venue("VENUE_BOOKING_AUTO_CANCELLED"));
+        }
         return CANCELLED.getOrDefault(reason, Plan.NONE);
+    }
+
+    /**
+     * E7-80 (PO decisions 25 Nov 2026, Q2, Q3, R3; Spec v5 section 52.2 operational causes, FR-NTF-06): the customer
+     * code of an operational cancellation by its reason and {@code cause}, or {@code null} for the {@link #CANCELLED}
+     * entry. An emergency or owner-review cascade and the start time each have their own code; an Accept stopped by its
+     * cause, T6 and an event without a (known) cause keep the generic one (PO decision 13 Oct 2026). A Venue Closure has
+     * no code of its own (Q3); an integrity error always has its own.
+     */
+    static String operationalCustomerCode(BookingTerminalReason reason, String cause) {
+        boolean cascade = IntegrationEvents.CAUSE_CASCADE.equals(cause);
+        boolean startTime = IntegrationEvents.CAUSE_START_TIME.equals(cause);
+        return switch (reason) {
+            case SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR -> "BOOKING_CANCELLED_SYSTEM_INTEGRITY_ERROR";
+            case VENUE_EMERGENCY_CLOSURE -> cascade ? "BOOKING_CANCELLED_VENUE_EMERGENCY"
+                    : startTime ? "BOOKING_START_CANCELLED_EMERGENCY" : null;
+            case RESOURCE_EMERGENCY_OUTAGE -> cascade ? "BOOKING_CANCELLED_RESOURCE_EMERGENCY"
+                    : startTime ? "BOOKING_START_CANCELLED_EMERGENCY" : null;
+            case RESOURCE_OWNER_REVIEW_REQUIRED -> cascade || startTime ? "BOOKING_CANCELLED_OWNER_REVIEW" : null;
+            default -> null;
+        };
     }
 
     /**

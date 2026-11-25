@@ -66,8 +66,9 @@ class BookingNotificationRulesTest extends IntegrationTest {
                 .isEqualTo(new Plan(List.of(new Send(Recipient.CUSTOMER, "VENUE_OPENING_HOURS_CHANGED")),
                         Optional.empty()));
         // ... and the two other start-time reasons (Spec v5 section 31.3; delayed-start no-show, Amr Heiba 17 Oct 2026)
+        // (E7-80: without a cause; an integrity error has its own code, OperationalCancellationRulesTest)
         for (String operational : List.of("VENUE_EMERGENCY_CLOSURE", "RESOURCE_EMERGENCY_OUTAGE",
-                "RESOURCE_OWNER_REVIEW_REQUIRED", "VENUE_CLOSURE", "SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR")) {
+                "RESOURCE_OWNER_REVIEW_REQUIRED", "VENUE_CLOSURE")) {
             assertThat(codes(IntegrationEvents.BOOKING_CANCELLED, Map.of("terminalReason", operational)))
                     .as(operational).containsExactly("CUSTOMER BOOKING_AUTO_CANCELLED",
                             "VENUE VENUE_BOOKING_AUTO_CANCELLED");
@@ -77,6 +78,9 @@ class BookingNotificationRulesTest extends IntegrationTest {
                 .isEqualTo(new Plan(List.of(new Send(Recipient.CUSTOMER, "BOOKING_CANCELLED_BAN"),
                         new Send(Recipient.VENUE, "VENUE_BOOKING_AUTO_CANCELLED")), Optional.empty()));
     }
+
+    private static final List<String> CAUSES = List.of(IntegrationEvents.CAUSE_CASCADE,
+            IntegrationEvents.CAUSE_START_TIME, IntegrationEvents.CAUSE_ACCEPT, IntegrationEvents.CAUSE_EXPIRED_REQUEST);
 
     /**
      * E7-58: the five canonical Late Confirm events (D2) make six notifications - LateConfirmTimedOut one for each
@@ -369,8 +373,12 @@ class BookingNotificationRulesTest extends IntegrationTest {
 
     private static List<Map<String, Object>> payloadsOf(String type) {
         if (type.equals(IntegrationEvents.BOOKING_CANCELLED)) {
+            // E7-80: every reason without a cause, and with each cause (Q2)
             return BookingNotificationRules.CANCELLED.keySet().stream()
-                    .map(reason -> Map.<String, Object>of("terminalReason", reason.name())).toList();
+                    .flatMap(reason -> Stream.concat(Stream.of(Map.<String, Object>of("terminalReason", reason.name())),
+                            CAUSES.stream().map(cause -> Map.<String, Object>of("terminalReason", reason.name(),
+                                    IntegrationEvents.CANCEL_CAUSE, cause))))
+                    .toList();
         }
         if (type.equals(IntegrationEvents.BOOKING_REJECTED)) {
             return Stream.of(BookingTerminalReason.VENUE_REJECTED, BookingTerminalReason.REJECTED_AFTER_EXPIRY)
