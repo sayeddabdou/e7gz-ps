@@ -95,6 +95,8 @@ class RefundNotificationConsumer implements OutboxConsumer {
             Map<String, Object> params = new LinkedHashMap<>();
             params.put("amount", refund.amount());
             params.put("refundedAs", refund.refundedAs().name());
+            // the push names the part that came back: a split refund's two messages differ (R1, final review I2)
+            params.put(NotificationTemplates.VARIANT, refund.refundedAs().name());
             notifications.notifyOnce(context,
                     OperationalNotificationConsumer.id("outbox:" + event.id(), code, booking.customerId()),
                     NotificationRequest.aboutBooking(code, NotificationRecipientType.CUSTOMER, booking.customerId(),

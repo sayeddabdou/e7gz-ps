@@ -159,6 +159,47 @@ class OperationalNotificationsIntegrationTest extends IntegrationTest {
                 .isEqualTo(deadline.minus(Duration.ofMinutes(3)));
     }
 
+    /**
+     * Final review I1: the dispatcher may hand a retried TimerPaused over after its TimerResumed. The reminder follows
+     * the booking as it is now, so a stale pause never leaves it PAUSED behind a running response timer.
+     */
+    @Test
+    void aPauseDeliveredAfterItsResumeLeavesTheReminderRunning() throws Exception {
+        BookingFlows.Booking booking = flows.pending();
+        drain();
+        String key = ps.e7gz.notification.api.BookingReminders.venuePendingRequestExpiringKey(booking.bookingId());
+        String body = declareVenue(booking, dbNow().plus(Duration.ofMinutes(20))).andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        UUID emergency = UUID.fromString(json.readTree(body).path("data").path("id").asText());
+        mvc.perform(post(EMERGENCIES + "/" + emergency + "/end").header("Authorization", venue(booking))
+                .header("Idempotency-Key", UUID.randomUUID().toString()).contentType(MediaType.APPLICATION_JSON)
+                .content("{}")).andExpect(status().isOk());
+
+        bookings.handle(outboxEvent(ps.e7gz.messaging.api.IntegrationEvents.TIMER_RESUMED, booking.bookingId()));
+        bookings.handle(outboxEvent(ps.e7gz.messaging.api.IntegrationEvents.TIMER_PAUSED, booking.bookingId()));
+
+        assertThat(reminderStatus(key)).isEqualTo("PENDING");
+    }
+
+    ps.e7gz.messaging.api.OutboxEvent outboxEvent(String type, UUID bookingId) {
+        return OWNER.sql("""
+                        SELECT id, event_type, aggregate_type, aggregate_id, CAST(payload AS text) AS payload,
+                               correlation_id, created_at
+                          FROM technical.outbox_event WHERE event_type = :type AND payload ->> 'bookingId' = :booking""")
+                .param("type", type).param("booking", bookingId.toString())
+                .query((rs, n) -> {
+                    try {
+                        return new ps.e7gz.messaging.api.OutboxEvent(rs.getLong("id"), rs.getString("event_type"),
+                                rs.getString("aggregate_type"), rs.getObject("aggregate_id", UUID.class),
+                                json.readTree(rs.getString("payload")), rs.getObject("correlation_id", UUID.class),
+                                rs.getTimestamp("created_at").toInstant(), 0);
+                    } catch (java.io.IOException e) {
+                        throw new IllegalStateException(e);
+                    }
+                })
+                .single();
+    }
+
     String reminderStatus(String key) {
         return OWNER.sql("SELECT status FROM technical.scheduled_job WHERE idempotency_key = :key")
                 .param("key", key).query(String.class).single();
