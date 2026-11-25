@@ -108,6 +108,21 @@ public final class IntegrationEvents {
     public static final String BOOKING_CANCELLED = "BookingCancelled";
 
     /**
+     * Optional {@code BookingCancelled} member: what cancelled the booking, where its {@code terminalReason} alone does
+     * not say it (E7-80, PO decision 25 Nov 2026 Q2: one customer code per cause). Absent on every other cancellation
+     * and on events written before E7-80: the consumer treats absent as the generic case.
+     */
+    public static final String CANCEL_CAUSE = "cause";
+    /** An emergency or owner-review cascade ended the booking (E7-82, E7-84). */
+    public static final String CAUSE_CASCADE = "CASCADE";
+    /** The start-time resolution cancelled it (E7-60 T4; an emergency's overdue start, E7-82). */
+    public static final String CAUSE_START_TIME = "START_TIME";
+    /** A venue's Accept stopped by its operational cause (FR-BOK-16, E7-47). */
+    public static final String CAUSE_ACCEPT = "ACCEPT";
+    /** A still-expired request resolved at its original start (T6, FR-BOK-23, E7-118). */
+    public static final String CAUSE_EXPIRED_REQUEST = "EXPIRED_REQUEST";
+
+    /**
      * {@code {bookingId, customerId, venueId, venueName, resourceId, startAt, endAt, lateConfirmExpiresAt}},
      * aggregate {@code BOOKING}: the venue sent a Late Confirmation - VENUE_RESPONSE_EXPIRED ->
      * AWAITING_CUSTOMER_CONFIRMATION with its hold, until {@code lateConfirmExpiresAt} = MIN(initiation + 5 min,
