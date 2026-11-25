@@ -301,6 +301,14 @@ public final class IntegrationEvents {
     public static final String LOYALTY_POINTS_LEDGER_COMMITTED = "LOYALTY_POINTS_LEDGER_COMMITTED";
 
     /**
+     * Written by the loyalty producer functions ({@code loyalty.write_outbox}) for every Wallet ledger row: a Booking Fee
+     * paid from the Wallet ({@code {walletTransactionId, receiptId, bookingId, amount < 0, ...}}, PCR-009) or a refund
+     * credited to it ({@code {walletTransactionId, refundId, receiptId, bookingId, amount > 0, ...}}), plus
+     * {@code recipientUserId} and {@code occurredAt}. Consumed since E7-80 for the refund confirmation.
+     */
+    public static final String LOYALTY_WALLET_LEDGER_COMMITTED = "LOYALTY_WALLET_LEDGER_COMMITTED";
+
+    /**
      * {@code {venueId, resourceId, maintenanceId}}, aggregate {@code MAINTENANCE}: the venue created a Maintenance window
      * on one of its rooms (FR-OPS-01, arch 08 section 3.2; E7-81, Sprint 2 review, PO decision 12 Oct 2026). Its two
      * siblings below carry the same payload.
