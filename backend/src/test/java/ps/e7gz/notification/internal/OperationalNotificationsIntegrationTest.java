@@ -30,6 +30,7 @@ import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.common.security.AccessTokens;
 import ps.e7gz.messaging.internal.OutboxDrain;
 import ps.e7gz.notification.api.NotifiedBookings;
+import ps.e7gz.notification.api.NotifiedMaintenance;
 import ps.e7gz.scheduling.api.ScheduledJobs;
 import ps.e7gz.support.IntegrationTest;
 import ps.e7gz.support.PostgresTestContainer;
@@ -75,6 +76,9 @@ class OperationalNotificationsIntegrationTest extends IntegrationTest {
     @Autowired
     ScheduledJobs jobs;
 
+    @Autowired
+    NotifiedMaintenance maintenance;
+
     JdbcClient db;
     BookingFlows flows;
     OperationalNotificationConsumer operational;
@@ -85,7 +89,7 @@ class OperationalNotificationsIntegrationTest extends IntegrationTest {
     void setUp() {
         db = JdbcClient.create(appDataSource);
         flows = BookingFlows.of(context);
-        operational = new OperationalNotificationConsumer(runner, notifications);
+        operational = new OperationalNotificationConsumer(runner, notifications, jobs, maintenance);
         bookings = new BookingNotificationConsumer(runner, notifier, notifiedBookings, jobs);
         correlation = CorrelationId.open(CorrelationId.generate());
     }

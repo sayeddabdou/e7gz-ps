@@ -7,12 +7,14 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import ps.e7gz.common.codes.NotificationRecipientType;
 import ps.e7gz.messaging.api.IntegrationEvents;
 import ps.e7gz.messaging.api.OutboxEvent;
 import ps.e7gz.notification.api.NotificationRequest;
+import ps.e7gz.notification.internal.NotificationTemplates.Language;
 
 /** E7-80: the venue's operational notifications by event (Spec v5 section 52.5, FR-NTF-09, FR-OPS-29). */
 class OperationalNotificationRulesTest {
@@ -72,6 +74,23 @@ class OperationalNotificationRulesTest {
         assertThat(OperationalNotificationRules.eventTypes()).contains(IntegrationEvents.EMERGENCY_DECLARED,
                 IntegrationEvents.RESOURCE_RESTRICTION_CHANGED);
     }
+
+    /** Carry-forward from E7-44: every venue code these consumers send has English and Arabic push copy. */
+    @Test
+    void everyVenueCodeHasEnglishAndArabicPushCopy() {
+        Map<Language, Properties> copy = new NotificationTemplates().all();
+        for (String code : VENUE_CODES) {
+            for (Language language : List.of(Language.EN, Language.AR)) {
+                for (String part : List.of("title", "body")) {
+                    assertThat(copy.get(language).getProperty(code + ".push." + part))
+                            .as(language + " " + code + "." + part).isNotBlank();
+                }
+            }
+        }
+    }
+
+    static final List<String> VENUE_CODES = List.of(OperationalNotificationRules.OWNER_EMERGENCY_NOTICE,
+            OperationalNotificationRules.OWNER_REVIEW_ENTERED, MaintenanceStartingSoonHandler.CODE);
 
     static List<NotificationRequest> plan(String type, Map<String, Object> extra) {
         Map<String, Object> payload = new LinkedHashMap<>();
