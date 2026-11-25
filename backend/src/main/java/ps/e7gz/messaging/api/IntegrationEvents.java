@@ -324,6 +324,13 @@ public final class IntegrationEvents {
      * decision 12 Oct 2026), in the command that declares it. Its three siblings below carry the same payload.
      */
     public static final String EMERGENCY_DECLARED = "EmergencyDeclared";
+    /**
+     * The expected end passed with the Emergency still active: ACTIVE -> AWAITING_CONFIRMATION (FR-OPS-18; E7-82). As
+     * {@link #EMERGENCY_DECLARED} plus {@code ownerReviewEntered}: whether that same step entered an Owner Review
+     * (FR-OPS-26). E7-80 (FR-OPS-25, PO decision 25 Nov 2026 R2): the venue's one emergency reminder, unless the review
+     * was entered - then its owner-review notice says it.
+     */
+    public static final String EMERGENCY_AWAITING_CONFIRMATION = "EmergencyAwaitingConfirmation";
     /** The expected end moved later (FR-OPS-22); as {@link #EMERGENCY_DECLARED}. */
     public static final String EMERGENCY_EXTENDED = "EmergencyExtended";
     /** END EMERGENCY: the selling block ended (FR-OPS-19); as {@link #EMERGENCY_DECLARED}. */

@@ -69,6 +69,27 @@ class OperationalNotificationRulesTest {
                 "ownerReviewId", UUID.randomUUID().toString()))).isEmpty();
     }
 
+    /** FR-OPS-25 (R2): one reminder when the emergency awaits confirmation, unless that step entered Owner Review. */
+    @Test
+    void awaitingConfirmationRemindsTheVenue() {
+        String emergency = UUID.randomUUID().toString();
+        List<NotificationRequest> sends = plan(IntegrationEvents.EMERGENCY_AWAITING_CONFIRMATION,
+                Map.of("emergencyId", emergency, "scope", "VENUE", "ownerReviewEntered", false));
+
+        assertThat(sends).singleElement().satisfies(send -> {
+            assertThat(send.code()).isEqualTo("VENUE_EMERGENCY_REMINDER");
+            assertThat(send.recipientId()).isEqualTo(VENUE);
+            assertThat(send.params()).containsEntry("emergencyId", emergency);
+        });
+    }
+
+    @Test
+    void awaitingConfirmationThatEnteredOwnerReviewRemindsNobody() {
+        assertThat(plan(IntegrationEvents.EMERGENCY_AWAITING_CONFIRMATION, Map.of("emergencyId",
+                UUID.randomUUID().toString(), "scope", "RESOURCE", "resourceId", UUID.randomUUID().toString(),
+                "ownerReviewEntered", true))).isEmpty();
+    }
+
     @Test
     void theConsumerSubscribesToItsEvents() {
         assertThat(OperationalNotificationRules.eventTypes()).contains(IntegrationEvents.EMERGENCY_DECLARED,
@@ -90,7 +111,8 @@ class OperationalNotificationRulesTest {
     }
 
     static final List<String> VENUE_CODES = List.of(OperationalNotificationRules.OWNER_EMERGENCY_NOTICE,
-            OperationalNotificationRules.OWNER_REVIEW_ENTERED, MaintenanceStartingSoonHandler.CODE);
+            OperationalNotificationRules.OWNER_REVIEW_ENTERED, MaintenanceStartingSoonHandler.CODE,
+            OperationalNotificationRules.EMERGENCY_REMINDER);
 
     static List<NotificationRequest> plan(String type, Map<String, Object> extra) {
         Map<String, Object> payload = new LinkedHashMap<>();

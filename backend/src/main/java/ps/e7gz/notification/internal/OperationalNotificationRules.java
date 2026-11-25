@@ -20,6 +20,10 @@ import ps.e7gz.notification.api.NotificationRequest;
  * <ul>
  *   <li>{@code EmergencyDeclared}: "Owner notification of Emergency Closure, Resource Emergency Outage"
  *       ({@code VENUE_OWNER_EMERGENCY_NOTICE}). One venue login, so the owner is the venue itself.</li>
+ *   <li>{@code EmergencyAwaitingConfirmation}: "Emergency operational reminders" (section 42.7, FR-OPS-25;
+ *       {@code VENUE_EMERGENCY_REMINDER}), once - the expected end passed with the Emergency still active, which is also
+ *       when manual confirmation is required (PO decision 25 Nov 2026 R2). None when that step entered an Owner
+ *       Review: {@code VENUE_OWNER_REVIEW_ENTERED} says it.</li>
  *   <li>{@code ResourceRestrictionChanged} into OWNER_REVIEW_REQUIRED: "Owner-review entry"
  *       ({@code VENUE_OWNER_REVIEW_ENTERED}, FR-OPS-29). Its resolution tells no one.</li>
  * </ul>
@@ -31,9 +35,11 @@ final class OperationalNotificationRules {
     static final String OWNER_EMERGENCY_NOTICE = "VENUE_OWNER_EMERGENCY_NOTICE";
     static final String OWNER_REVIEW_ENTERED = "VENUE_OWNER_REVIEW_ENTERED";
     static final String OWNER_REVIEW_REQUIRED = "OWNER_REVIEW_REQUIRED";
+    static final String EMERGENCY_REMINDER = "VENUE_EMERGENCY_REMINDER";
 
     private static final Map<String, Function<OutboxEvent, List<NotificationRequest>>> RULES = Map.of(
             IntegrationEvents.EMERGENCY_DECLARED, OperationalNotificationRules::declared,
+            IntegrationEvents.EMERGENCY_AWAITING_CONFIRMATION, OperationalNotificationRules::awaitingConfirmation,
             IntegrationEvents.RESOURCE_RESTRICTION_CHANGED, OperationalNotificationRules::restrictionChanged);
 
     private OperationalNotificationRules() {
@@ -52,13 +58,24 @@ final class OperationalNotificationRules {
     }
 
     private static List<NotificationRequest> declared(OutboxEvent event) {
+        return List.of(toVenue(event, OWNER_EMERGENCY_NOTICE, emergencyParams(event)));
+    }
+
+    private static List<NotificationRequest> awaitingConfirmation(OutboxEvent event) {
+        if (event.payload().path("ownerReviewEntered").asBoolean(false)) {
+            return List.of();
+        }
+        return List.of(toVenue(event, EMERGENCY_REMINDER, emergencyParams(event)));
+    }
+
+    private static Map<String, Object> emergencyParams(OutboxEvent event) {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("emergencyId", event.text("emergencyId"));
         params.put("scope", event.text("scope"));
         if (event.payload().path("resourceId").isTextual()) {
             params.put("resourceId", event.text("resourceId"));
         }
-        return List.of(toVenue(event, OWNER_EMERGENCY_NOTICE, params));
+        return params;
     }
 
     private static List<NotificationRequest> restrictionChanged(OutboxEvent event) {

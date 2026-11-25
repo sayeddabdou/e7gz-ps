@@ -404,6 +404,11 @@ class EmergencyHttpTest extends IntegrationTest {
                 + "' AND active")).as("the block stays (FR-OPS-17)").isOne();
         assertThat(fireExpectedEnd(id, expectedEnd)).as("a second fire changes nothing")
                 .isEqualTo(EmergencyCommands.ExpectedEndOutcome.SUPERSEDED);
+        // E7-80 (FR-OPS-25, R2): one awaiting event - the venue's one reminder - and no owner review for a venue scope
+        assertThat(count("SELECT count(*) FROM technical.outbox_event WHERE event_type = '"
+                + IntegrationEvents.EMERGENCY_AWAITING_CONFIRMATION + "' AND payload->>'emergencyId' = '" + id
+                + "' AND payload->>'ownerReviewEntered' = 'false' AND payload->>'venueId' = '" + booking.venueId()
+                + "'")).isOne();
     }
 
     /** FR-OPS-19, FR-OPS-10, D6: END closes the block in the same commit; nothing cancelled comes back. */
