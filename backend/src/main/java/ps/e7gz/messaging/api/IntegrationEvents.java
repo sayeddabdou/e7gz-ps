@@ -343,6 +343,14 @@ public final class IntegrationEvents {
     public static final String RESOURCE_RESTRICTION_CHANGED = "ResourceRestrictionChanged";
 
     /**
+     * {@code {tournamentId, venueId, creatorUserId, startAt, endAt, approvalExpiresAt}}, aggregate {@code TOURNAMENT}: a
+     * Verified Player asked the Venue to host a Tournament; it is PENDING_VENUE_APPROVAL with Approval Holds until
+     * {@code approvalExpiresAt} (arch 03 section 14, arch 06 section 3.4, FR-TRN-10). E7-91 writes it; E7-89 notifies the
+     * Venue. The holds themselves are {@link #RESERVATION_HELD}.
+     */
+    public static final String TOURNAMENT_REQUESTED = "TournamentRequested";
+
+    /**
      * Every event that can change a venue's availability and so refreshes its Nearest Availability rows (arch 05
      * section 5.3, arch 08 section 7): reservation hold or release, Resource state, selling blocks (maintenance,
      * closures, emergencies), opening hours and prices. Each carries the {@code venueId} it touches;

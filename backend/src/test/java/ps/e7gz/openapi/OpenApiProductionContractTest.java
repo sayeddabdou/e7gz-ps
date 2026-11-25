@@ -33,6 +33,9 @@ import ps.e7gz.common.codes.OpeningDayMode;
 import ps.e7gz.common.codes.OperationalRestriction;
 import ps.e7gz.common.codes.PlayMode;
 import ps.e7gz.common.codes.ResourceBaseState;
+import ps.e7gz.common.codes.TournamentHostType;
+import ps.e7gz.common.codes.TournamentStatus;
+import ps.e7gz.common.codes.TournamentVisibility;
 import ps.e7gz.common.codes.VenueAccountLanguage;
 import ps.e7gz.common.codes.VenueAccountStatus;
 import ps.e7gz.support.IntegrationTest;
@@ -308,7 +311,11 @@ class OpenApiProductionContractTest extends IntegrationTest {
                 Map.entry("BookingHistoryEntryKind", BookingHistoryEntryKind.values()),
                 Map.entry("BookingEventType", BookingEventType.values()),
                 Map.entry("AttendanceResult", AttendanceResult.values()),
-                Map.entry("DevicePlatform", DevicePlatform.values()));
+                Map.entry("DevicePlatform", DevicePlatform.values()),
+                // Sprint 6 (E7-91)
+                Map.entry("TournamentStatus", TournamentStatus.values()),
+                Map.entry("TournamentHostType", TournamentHostType.values()),
+                Map.entry("TournamentVisibility", TournamentVisibility.values()));
         Map<String, String> checks = Map.ofEntries(
                 Map.entry("Activity", "ck_resource_activity"),
                 Map.entry("ConsoleType", "ck_resource_console_type"),
@@ -325,7 +332,10 @@ class OpenApiProductionContractTest extends IntegrationTest {
                 Map.entry("BookingHistoryEntryKind", "ck_booking_history_entry_kind"),
                 Map.entry("BookingEventType", "ck_booking_history_event_type_values"),
                 Map.entry("AttendanceResult", "ck_attendance_result_values"),
-                Map.entry("DevicePlatform", "ck_device_token_platform"));
+                Map.entry("DevicePlatform", "ck_device_token_platform"),
+                Map.entry("TournamentStatus", "ck_tournament_status_values"),
+                Map.entry("TournamentHostType", "ck_tournament_host_type"),
+                Map.entry("TournamentVisibility", "ck_tournament_visibility"));
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 
         enums.forEach((name, values) -> {
