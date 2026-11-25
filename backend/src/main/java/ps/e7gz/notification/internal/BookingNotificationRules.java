@@ -44,7 +44,14 @@ final class BookingNotificationRules {
         /** On {@code BookingCreated}: the venue, 3 minutes before its response deadline. */
         VENUE_PENDING_REQUEST_EXPIRING,
         /** On the Accept's {@code BookingConfirmed}: the customer, 20 minutes before the start. */
-        BOOKING_STARTS_SOON
+        BOOKING_STARTS_SOON,
+        /**
+         * On {@code TimerPaused} of a venue-response timer (FR-OPS-34; E7-80): the venue's request-expiring reminder
+         * pauses with T1 ("pauses with the response timer", {@code BookingReminders}).
+         */
+        PAUSE_VENUE_PENDING_REQUEST_EXPIRING,
+        /** On its {@code TimerResumed}: the reminder re-armed at the new deadline minus 3 minutes (E7-80). */
+        REARM_VENUE_PENDING_REQUEST_EXPIRING
     }
 
     /** What one event does: the notifications and at most one reminder. */
@@ -185,8 +192,13 @@ final class BookingNotificationRules {
                     venue("VENUE_CUSTOMER_CONFIRMATION_EXPIRED"))),
             // E7-83 (FR-OPS-41, Spec v5 section 44.6; PCR-008 leaves it to E7-83): an Emergency paused the customer's
             // Late Confirm countdown - §52.2 "Late Confirmation Paused". A paused venue-response timer tells no one
+            // E7-80 (FR-OPS-34): a paused venue-response timer pauses the venue's request-expiring reminder with it,
+            // and its resume re-arms it; neither tells anyone
             Map.entry(IntegrationEvents.TIMER_PAUSED, event -> "LATE_CONFIRM".equals(event.text("pauseKind"))
-                    ? plan(customer("LATE_CONFIRMATION_PAUSED")) : Plan.NONE),
+                    ? plan(customer("LATE_CONFIRMATION_PAUSED"))
+                    : plan(Reminder.PAUSE_VENUE_PENDING_REQUEST_EXPIRING)),
+            Map.entry(IntegrationEvents.TIMER_RESUMED, event -> "VENUE_RESPONSE".equals(event.text("pauseKind"))
+                    ? plan(Reminder.REARM_VENUE_PENDING_REQUEST_EXPIRING) : Plan.NONE),
             // E7-59 attendance (O13). §52.2 "Check-in Recorded" and "No-show Recorded", the customer only: the venue
             // recorded them itself. Mark Present - Late has no §52.2 notification of its own; its customer-facing
             // outcome is "Attendance-Unconfirmed Completion" at completion (E7-61)

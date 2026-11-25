@@ -115,6 +115,14 @@ class BookingNotificationConsumer implements OutboxConsumer {
                                 BookingReminders.venuePendingRequestExpiringKey(booking.bookingId())));
                     }
                 }
+                case PAUSE_VENUE_PENDING_REQUEST_EXPIRING ->
+                        jobs.pause(context, BookingReminders.venuePendingRequestExpiringKey(booking.bookingId()));
+                case REARM_VENUE_PENDING_REQUEST_EXPIRING -> {
+                    // the new deadline the resume stored (TimerResumed.deadline); a due time already past fires now
+                    Instant deadline = Instant.parse(event.text("deadline"));
+                    jobs.rearmIfHeld(context, BookingReminders.venuePendingRequestExpiringKey(booking.bookingId()),
+                            deadline.minus(VenuePendingRequestExpiringHandler.LEAD));
+                }
                 case BOOKING_STARTS_SOON -> {
                     Instant due = booking.startAt().minus(BookingStartsSoonHandler.LEAD);
                     // Confirmed less than 20 minutes before its start: no reminder (PO decision 12 Oct 2026)

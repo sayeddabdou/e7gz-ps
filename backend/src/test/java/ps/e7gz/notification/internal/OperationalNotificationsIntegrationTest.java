@@ -127,6 +127,43 @@ class OperationalNotificationsIntegrationTest extends IntegrationTest {
         assertThat(bookingCount(booking.venueId(), booking.bookingId(), "VENUE_BOOKING_AUTO_CANCELLED")).isOne();
     }
 
+    /**
+     * FR-OPS-34 ("pauses with the response timer", ps.e7gz.notification.api.BookingReminders; E7-80): an Emergency that
+     * pauses a pending request's response timer pauses the venue's "request expiring" reminder too, and the resume
+     * re-arms it at the new deadline minus 3 minutes.
+     */
+    @Test
+    void pausedResponseTimerPausesVenueReminderAndResumeRearmsIt() throws Exception {
+        BookingFlows.Booking booking = flows.pending();
+        drain();
+        String key = ps.e7gz.notification.api.BookingReminders.venuePendingRequestExpiringKey(booking.bookingId());
+        assertThat(reminderStatus(key)).isEqualTo("PENDING");
+
+        String body = declareVenue(booking, dbNow().plus(Duration.ofMinutes(20))).andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        UUID emergency = UUID.fromString(json.readTree(body).path("data").path("id").asText());
+        drain();
+
+        assertThat(reminderStatus(key)).as("paused with T1").isEqualTo("PAUSED");
+
+        mvc.perform(post(EMERGENCIES + "/" + emergency + "/end").header("Authorization", venue(booking))
+                .header("Idempotency-Key", UUID.randomUUID().toString()).contentType(MediaType.APPLICATION_JSON)
+                .content("{}")).andExpect(status().isOk());
+        drain();
+
+        Instant deadline = OWNER.sql("SELECT venue_response_expires_at FROM booking.booking WHERE id = :id")
+                .param("id", booking.bookingId()).query(OffsetDateTime.class).single().toInstant();
+        assertThat(reminderStatus(key)).as("re-armed").isEqualTo("PENDING");
+        assertThat(OWNER.sql("SELECT due_at FROM technical.scheduled_job WHERE idempotency_key = :key")
+                .param("key", key).query(OffsetDateTime.class).single().toInstant())
+                .isEqualTo(deadline.minus(Duration.ofMinutes(3)));
+    }
+
+    String reminderStatus(String key) {
+        return OWNER.sql("SELECT status FROM technical.scheduled_job WHERE idempotency_key = :key")
+                .param("key", key).query(String.class).single();
+    }
+
     // ------------------------------------------------------------------------------------------------ helpers
 
     void drain() {

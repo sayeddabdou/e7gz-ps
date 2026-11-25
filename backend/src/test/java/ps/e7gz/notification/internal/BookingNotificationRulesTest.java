@@ -166,7 +166,7 @@ class BookingNotificationRulesTest extends IntegrationTest {
      * venue's ACTIVE session (E7-78): nineteen, and nothing else.
      */
     @Test
-    void nineteenEventsHaveARule() {
+    void twentyEventsHaveARule() {
         assertThat(BookingNotificationRules.eventTypes()).containsExactlyInAnyOrder(
                 IntegrationEvents.BOOKING_CREATED, IntegrationEvents.BOOKING_CONFIRMED,
                 IntegrationEvents.BOOKING_REJECTED, IntegrationEvents.VENUE_RESPONSE_EXPIRED,
@@ -177,7 +177,7 @@ class BookingNotificationRulesTest extends IntegrationTest {
                 IntegrationEvents.LATE_PRESENT_RECORDED, IntegrationEvents.NO_SHOW_RECORDED,
                 IntegrationEvents.BOOKING_COMPLETED, IntegrationEvents.ATTENDANCE_RESOLVED,
                 IntegrationEvents.ATTENDANCE_CORRECTED, IntegrationEvents.TIMER_PAUSED,
-                IntegrationEvents.ACTIVE_SESSION_ATTENDANCE_RECORDING_AFFECTED);
+                IntegrationEvents.TIMER_RESUMED, IntegrationEvents.ACTIVE_SESSION_ATTENDANCE_RECORDING_AFFECTED);
     }
 
     /**
@@ -200,6 +200,12 @@ class BookingNotificationRulesTest extends IntegrationTest {
         assertThat(codes(IntegrationEvents.TIMER_PAUSED, Map.of("pauseKind", "LATE_CONFIRM")))
                 .containsExactly("CUSTOMER LATE_CONFIRMATION_PAUSED");
         assertThat(codes(IntegrationEvents.TIMER_PAUSED, Map.of("pauseKind", "VENUE_RESPONSE"))).isEmpty();
+        // E7-80 (FR-OPS-34): the paused response timer pauses the venue's reminder; its resume re-arms it, telling no one
+        assertThat(plan(IntegrationEvents.TIMER_PAUSED, Map.of("pauseKind", "VENUE_RESPONSE")).reminder())
+                .contains(Reminder.PAUSE_VENUE_PENDING_REQUEST_EXPIRING);
+        assertThat(plan(IntegrationEvents.TIMER_RESUMED, Map.of("pauseKind", "VENUE_RESPONSE")))
+                .isEqualTo(new Plan(List.of(), Optional.of(Reminder.REARM_VENUE_PENDING_REQUEST_EXPIRING)));
+        assertThat(plan(IntegrationEvents.TIMER_RESUMED, Map.of("pauseKind", "LATE_CONFIRM"))).isEqualTo(Plan.NONE);
     }
 
     /**
@@ -391,7 +397,7 @@ class BookingNotificationRulesTest extends IntegrationTest {
         if (type.equals(IntegrationEvents.ATTENDANCE_CORRECTED)) {
             return List.of(Map.of("correction", "NO_SHOW_REVERSED"), Map.of("correction", "ATTENDANCE_CORRECTED"));
         }
-        if (type.equals(IntegrationEvents.TIMER_PAUSED)) {
+        if (type.equals(IntegrationEvents.TIMER_PAUSED) || type.equals(IntegrationEvents.TIMER_RESUMED)) {
             return List.of(Map.of("pauseKind", "LATE_CONFIRM"), Map.of("pauseKind", "VENUE_RESPONSE"));
         }
         return List.of(Map.of(), Map.of("source", "MANUAL"));
