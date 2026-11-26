@@ -206,6 +206,7 @@ export const messages = {
       ownerPasswordLongLock: "Owner PIN long-locked",
       operational: "Operational alert",
       openVenue: "Open venue",
+      venueUnavailable: "Venue link unavailable. Refresh to try again.",
     },
   },
   photos: {

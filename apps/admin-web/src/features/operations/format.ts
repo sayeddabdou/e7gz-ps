@@ -1,5 +1,5 @@
 export const adminDateTime = (value: string | null) => value
-  ? new Intl.DateTimeFormat("en-EG", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
+  ? new Intl.DateTimeFormat("en-EG", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Cairo" }).format(new Date(value))
   : "—";
 
 export const codeLabel = (value: string | null) => value

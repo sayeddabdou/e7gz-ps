@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { createAdminApiClient } from "../../api";
@@ -96,5 +96,66 @@ describe("E7-86 Admin operations", () => {
     expect(screen.getByText("OTP challenge")).toBeTruthy();
     expect(screen.getByText("Correlation ID")).toBeTruthy();
     expect(screen.queryByText(/PermanentDeliveryFailure|internal implementation detail/u)).toBeNull();
+  });
+
+  it("ignores a late Load more page after the owner-review filter changes", async () => {
+    let resolveOpenPageTwo: ((response: Response) => void) | undefined;
+    let markPageTwoComplete: (() => void) | undefined;
+    const openPageTwo = new Promise<Response>((resolve) => { resolveOpenPageTwo = resolve; });
+    const pageTwoComplete = new Promise<void>((resolve) => { markPageTwoComplete = resolve; });
+    const review = (id: string, venueName: string, resolved: boolean) => ({
+      id, venueId: `venue-${id}`, venueName, resourceId: `resource-${id}`, resourceName: "Room 1",
+      enteredAt: "2026-11-25T10:00:00Z", resolution: resolved ? "RESTORED" : null,
+      resolvedAt: resolved ? "2026-11-25T11:00:00Z" : null,
+    });
+    const api = createAdminApiClient({ apiBaseUrl: "http://api" }, () => "token", async (request) => {
+      const query = new URL(request.url).searchParams;
+      if (query.has("cursor")) {
+        const response = await openPageTwo;
+        markPageTwoComplete?.();
+        return response;
+      }
+      return query.get("resolved") === "true"
+        ? json(200, { data: { items: [review("resolved", "RESOLVED-ONLY", true)], nextCursor: null }, meta })
+        : json(200, { data: { items: [review("open-1", "OPEN-PAGE-1", false)], nextCursor: "open-page-2" }, meta });
+    });
+
+    render(<MemoryRouter><OwnerReviewsScreen api={api} /></MemoryRouter>);
+    await screen.findByText("OPEN-PAGE-1");
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    fireEvent.change(screen.getByLabelText("Review state"), { target: { value: "resolved" } });
+    await screen.findByText("RESOLVED-ONLY");
+    await act(async () => {
+      resolveOpenPageTwo?.(json(200, { data: { items: [review("open-2", "OPEN-PAGE-2", false)], nextCursor: null }, meta }));
+      await pageTwoComplete;
+    });
+
+    expect(screen.queryByText("OPEN-PAGE-2")).toBeNull();
+    expect(screen.getByText("RESOLVED-ONLY")).toBeTruthy();
+  });
+
+  it("loads venue accounts only for visible long-lock alerts and reports a failed lookup", async () => {
+    let venueAccountRequests = 0;
+    const operational = { id: "al-3", kind: "OUTBOX_DEAD_LETTER", severity: "SEV_2", subjectType: "OTP_CHALLENGE", subjectId: "otp-1", payload: { eventId: 69 }, correlationId: "c-1", createdAt: "2026-11-25T10:00:00Z", acknowledgedAt: null, acknowledgedByAdminId: null };
+    const apiWithoutLongLock = createAdminApiClient({ apiBaseUrl: "http://api" }, () => "token", async (request) => {
+      if (request.url.includes("venue-accounts")) venueAccountRequests += 1;
+      return json(200, { data: { items: [operational], nextCursor: null }, meta });
+    });
+    const view = render(<MemoryRouter><AlertsScreen api={apiWithoutLongLock} /></MemoryRouter>);
+    await screen.findByText("Operational alert");
+    expect(venueAccountRequests).toBe(0);
+
+    const longLock = { ...operational, id: "al-4", kind: "OWNER_PASSWORD_LONG_LOCK", subjectType: "VENUE_ACCOUNT", subjectId: "missing-account" };
+    const apiWithFailedLookup = createAdminApiClient({ apiBaseUrl: "http://api" }, () => "token", async (request) => {
+      if (request.url.includes("venue-accounts")) {
+        venueAccountRequests += 1;
+        throw new TypeError("network");
+      }
+      return json(200, { data: { items: [longLock], nextCursor: null }, meta });
+    });
+    view.rerender(<MemoryRouter><AlertsScreen api={apiWithFailedLookup} /></MemoryRouter>);
+
+    expect(await screen.findByText("Venue link unavailable. Refresh to try again.")).toBeTruthy();
+    expect(venueAccountRequests).toBe(1);
   });
 });
