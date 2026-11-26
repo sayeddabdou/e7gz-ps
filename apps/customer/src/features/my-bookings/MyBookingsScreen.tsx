@@ -9,7 +9,14 @@ import { en as t } from "../../i18n/en";
 import { formatMoney } from "../discovery/format";
 import { NotificationInbox } from "../notifications/NotificationInbox";
 import { LateConfirmPanel } from "../late-confirm";
-import { bookingEventText, bookingReasonText, bookingStatusText, canRequestCancellation } from "./bookingText";
+import {
+  bookingDetailReasonText,
+  bookingEventText,
+  bookingReasonText,
+  bookingStatusText,
+  canRequestCancellation,
+  isOperationalBookingReason,
+} from "./bookingText";
 import { customerBookingErrorMessage } from "./errorMessages";
 
 type Bucket = components["schemas"]["CustomerBookingBucket"];
@@ -210,8 +217,14 @@ function BookingDetailScreen({
   if (error || !booking || !serverTime) {
     return <View style={styles.screen}><BackHeader title={t.myBookings.detailTitle} onBack={onBack} /><ErrorState message={error ?? t.myBookings.errors.unexpected} retry={() => void load()} /></View>;
   }
-  const reason = bookingReasonText(booking.status, booking.terminalReason);
+  const reason = bookingDetailReasonText(booking);
+  const operationalReason = isOperationalBookingReason(booking.terminalReason);
   const canCancel = canRequestCancellation(booking.status, booking.startAt, serverTime);
+  const showOperationalRefund = booking.status === "CANCELLED" && operationalReason && !booking.bookingFee.displayAsFree;
+  const showPointsRefund = showOperationalRefund && booking.bookingFeePayment.pointsUsed > 0;
+  const showWalletRefund = showOperationalRefund
+    && (!isZeroMoney(booking.bookingFeePayment.paidByWallet.amount)
+      || !isZeroMoney(booking.bookingFeePayment.leftToPay.amount));
   return (
     <View style={styles.screen}>
       <BackHeader title={booking.status === "AWAITING_CUSTOMER_CONFIRMATION" ? t.lateConfirm.title : t.myBookings.detailTitle} onBack={onBack} />
@@ -226,7 +239,13 @@ function BookingDetailScreen({
           />
         ) : null}
         <View style={styles.card}>
-          <View style={styles.rowBetween}><Text style={styles.cardTitle}>{booking.venue.name}</Text><StatusPill status={booking.status} /></View>
+          <View style={styles.rowBetween}>
+            <Text style={styles.cardTitle}>{booking.venue.name}</Text>
+            <StatusPill
+              status={booking.status}
+              label={booking.status === "VENUE_RESPONSE_EXPIRED" ? reason : undefined}
+            />
+          </View>
           <Text style={styles.body}>{resourceLabel(booking.resource)}</Text>
           <DetailRow label={t.myBookings.date} value={formatDate(booking.startAt)} />
           <DetailRow label={t.myBookings.time} value={formatTimeRange(booking.startAt, booking.endAt)} />
@@ -244,7 +263,13 @@ function BookingDetailScreen({
               <DetailRow label={t.booking.leftToPay} value={formatMoney(booking.bookingFeePayment.leftToPay) ?? ""} />
             </>
           ) : null}
-          {reason ? <DetailRow label={t.myBookings.reason} value={reason} /> : null}
+          {reason && !operationalReason ? <DetailRow label={t.myBookings.reason} value={reason} /> : null}
+          {reason && operationalReason ? (
+            <View style={styles.infoBox}>
+              <Text style={styles.infoTitle}>{t.myBookings.operationalUpdate}</Text>
+              <Text style={styles.infoText}>{reason}</Text>
+            </View>
+          ) : null}
           {booking.status === "PENDING" && booking.venueResponsePaused ? (
             <DetailRow label={t.myBookings.venueResponse} value={t.myBookings.responsePaused} />
           ) : null}
@@ -254,6 +279,15 @@ function BookingDetailScreen({
           {booking.venue.phone ? <DetailRow label={t.myBookings.venuePhone} value={booking.venue.phone} /> : null}
           <Text style={styles.bookingId}>{`${t.myBookings.bookingId} ${booking.bookingId}`}</Text>
         </View>
+        {showOperationalRefund ? (
+          <View style={styles.refundBox}>
+            <Text style={styles.infoTitle}>{t.myBookings.refundTitle}</Text>
+            {showPointsRefund ? (
+              <Text style={styles.infoText}>{t.myBookings.refundPoints(booking.bookingFeePayment.pointsUsed.toLocaleString("en"))}</Text>
+            ) : null}
+            {showWalletRefund ? <Text style={styles.infoText}>{t.myBookings.refundWallet}</Text> : null}
+          </View>
+        ) : null}
         {booking.history.length ? (
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>{t.myBookings.history}</Text>
@@ -295,10 +329,10 @@ function BookingDetailScreen({
 function BackHeader({ title, onBack }: { title: string; onBack(): void }) {
   return <View style={styles.header}><Pressable accessibilityRole="button" onPress={onBack} style={styles.backButton}><Text style={styles.backText}>‹</Text></Pressable><Text accessibilityRole="header" style={styles.title}>{title}</Text></View>;
 }
-function StatusPill({ status }: { status: components["schemas"]["BookingStatus"] }) {
+function StatusPill({ status, label }: { status: components["schemas"]["BookingStatus"]; label?: string }) {
   const warning = status === "PENDING" || status === "AWAITING_CUSTOMER_CONFIRMATION";
   const success = status === "CONFIRMED" || status === "ACTIVE" || status === "COMPLETED";
-  return <View style={[styles.pill, warning ? styles.pillWarning : success ? styles.pillSuccess : styles.pillDanger]}><Text style={[styles.pillText, warning ? styles.warningText : success ? styles.successText : styles.errorText]}>{bookingStatusText(status)}</Text></View>;
+  return <View style={[styles.pill, warning ? styles.pillWarning : success ? styles.pillSuccess : styles.pillDanger]}><Text style={[styles.pillText, warning ? styles.warningText : success ? styles.successText : styles.errorText]}>{label ?? bookingStatusText(status)}</Text></View>;
 }
 function DetailRow({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
   return <View style={styles.detailRow}><Text style={styles.muted}>{label}</Text><Text style={strong ? styles.cardTitle : styles.body}>{value}</Text></View>;
@@ -306,6 +340,7 @@ function DetailRow({ label, value, strong = false }: { label: string; value: str
 function ErrorState({ message, retry }: { message: string; retry(): void }) {
   return <View style={styles.errorBox}><Text accessibilityRole="alert" style={styles.errorText}>{message}</Text><Pressable accessibilityRole="button" onPress={retry}><Text style={styles.link}>{t.retry}</Text></Pressable></View>;
 }
+function isZeroMoney(value: string) { return /^0(?:\.0+)?$/u.test(value); }
 function dedupe(items: BookingSummary[]) { return [...new Map(items.map((item) => [item.bookingId, item])).values()]; }
 function resourceLabel(resource: BookingSummary["resource"] | BookingDetail["resource"]) { return [resource.name, resource.consoleType, resource.playMode ? t.discovery.playModes[resource.playMode] : undefined].filter(Boolean).join(" · "); }
 function formatDate(value: string) { return new Intl.DateTimeFormat("en-EG", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "Africa/Cairo" }).format(new Date(value)); }
@@ -357,6 +392,10 @@ export const styles = StyleSheet.create({
   errorText: { color: nativeTokens.color.feedback.danger },
   errorBox: { gap: nativeTokens.spacing.md, padding: nativeTokens.spacing["5xl"], borderRadius: nativeTokens.radius["3xl"], backgroundColor: nativeTokens.color.feedback.dangerSurface },
   successBox: { padding: nativeTokens.spacing["4xl"], borderRadius: nativeTokens.radius["3xl"], backgroundColor: nativeTokens.color.feedback.successSurface },
+  infoBox: { gap: nativeTokens.spacing.sm, padding: nativeTokens.spacing["4xl"], borderRadius: nativeTokens.radius["3xl"], backgroundColor: nativeTokens.color.surface.info },
+  refundBox: { gap: nativeTokens.spacing.md, padding: nativeTokens.spacing["4xl"], borderRadius: nativeTokens.radius["3xl"], backgroundColor: nativeTokens.color.feedback.successSurface },
+  infoTitle: { color: nativeTokens.color.text.customer, fontSize: nativeTokens.typography.fontSize.titleSmall, fontWeight: nativeTokens.typography.fontWeight.bold },
+  infoText: { color: nativeTokens.color.text.customer, fontSize: nativeTokens.typography.fontSize.body },
   link: { color: nativeTokens.color.brand.primary, fontWeight: nativeTokens.typography.fontWeight.bold },
   empty: { alignItems: "center", gap: nativeTokens.spacing.md, paddingVertical: nativeTokens.spacing["10xl"] },
   emptyTitle: { color: nativeTokens.color.text.customer, fontSize: nativeTokens.typography.fontSize.headingSmall, fontWeight: nativeTokens.typography.fontWeight.bold },

@@ -52,11 +52,12 @@ describe("LateConfirmPanel", () => {
     expect(screen.getByText("04:59")).toBeTruthy();
   });
 
-  it("shows the paused state, disables Accept, and leaves Decline available", () => {
+  it("shows the paused state without deriving a misleading countdown from the stale deadline", () => {
     const api = createCustomerApiClient(config, jest.fn());
-    render(<LateConfirmPanel api={api} booking={{ ...booking, lateConfirm: { ...booking.lateConfirm, paused: true } }} serverTime={meta.serverTime} onReload={jest.fn()} />);
+    render(<LateConfirmPanel api={api} booking={{ ...booking, lateConfirm: { ...booking.lateConfirm, paused: true } }} serverTime="2026-10-12T17:10:00Z" onReload={jest.fn()} />);
 
     expect(screen.getByText("Confirmation temporarily paused due to venue/resource issue.")).toBeTruthy();
+    expect(screen.queryByText(/\d{2}:\d{2}(?: remaining)?/u)).toBeNull();
     expect(screen.getByRole("button", { name: "Accept Booking" }).props.accessibilityState.disabled).toBe(true);
     expect(screen.getByRole("button", { name: "Decline" }).props.accessibilityState.disabled).toBe(false);
   });

@@ -1,4 +1,4 @@
-import { customerNotificationCodes, notificationMessage } from "./notificationMessages";
+import { customerNotificationCodes, notificationMessage, operationalNotificationCodes } from "./notificationMessages";
 
 describe("customer notification text map", () => {
   it("maps every launch customer push code without backend prose", () => {
@@ -13,5 +13,14 @@ describe("customer notification text map", () => {
     expect(notificationMessage("BOOKING_REJECTED", { venueName: "Level Up" })).toBe("The venue rejected your booking request at Level Up.");
     expect(notificationMessage("BOOKING_CANCELLED_VENUE_ACCOUNT_DISABLED", {})).toBe("Venue is temporarily unable to confirm this booking.");
     expect(notificationMessage("FUTURE_CODE", { message: "backend prose" })).toBe("You have a new account update.");
+  });
+
+  it("maps every operational notification and never calls attendance impact a cancellation", () => {
+    for (const code of operationalNotificationCodes) {
+      expect(notificationMessage(code, {})).not.toBe("You have a new account update.");
+    }
+    expect(notificationMessage("ACTIVE_SESSION_ATTENDANCE_RECORDING_AFFECTED", {})).not.toMatch(/cancel/iu);
+    expect(notificationMessage("OPERATIONAL_REFUND_CONFIRMED", {})).toMatch(/Wallet|Points/u);
+    expect(notificationMessage("BOOKING_FEE_REFUND_CONFIRMED", {})).toMatch(/Wallet|Points/u);
   });
 });
