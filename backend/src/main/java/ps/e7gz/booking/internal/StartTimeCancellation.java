@@ -21,6 +21,7 @@ import ps.e7gz.inventory.ledger.api.ActiveReservation;
 import ps.e7gz.inventory.ledger.api.ReservationLedger;
 import ps.e7gz.inventory.ledger.api.ReservationOwner;
 import ps.e7gz.loyalty.api.BookingFeeRefunds;
+import ps.e7gz.messaging.api.IntegrationEvents;
 import ps.e7gz.messaging.api.Outbox;
 
 /**
@@ -84,8 +85,9 @@ class StartTimeCancellation {
         ledger.release(context, reservation.id(), startAt, reason.name());
         UUID history = store.insertTransition(context, booking.bookingId(), startAt, BookingStatus.CONFIRMED,
                 BookingStatus.CANCELLED, reason, ActorType.SYSTEM, null, CorrelationId.require());
-        outbox.publish(context, booking.source() == BookingSource.ONLINE ? BookingEvents.cancelled(booking, reason)
-                : BookingEvents.manualCancelled(booking, reason));
+        outbox.publish(context, booking.source() == BookingSource.ONLINE ? BookingEvents.cancelled(booking, reason,
+                IntegrationEvents.CAUSE_START_TIME)
+                : BookingEvents.manualCancelled(booking, reason, IntegrationEvents.CAUSE_START_TIME));
         if (reason == BookingTerminalReason.SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR) {
             alerts.raise(context, NewAdminAlert.resourceStateIntegrityError(booking.bookingId(), booking.resourceId(),
                     cancel.unexpectedBaseState(), startAt, context.commandNow(), null, CorrelationId.require()));

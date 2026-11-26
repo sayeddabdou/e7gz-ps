@@ -113,6 +113,9 @@ class EmergencyHttpTest extends IntegrationTest {
         assertThat(count("SELECT count(*) FROM venue.venue_selling_block WHERE emergency_id = '" + id
                 + "' AND active")).as("the venue's selling block (FR-OPS-15)").isOne();
         assertThat(events(IntegrationEvents.EMERGENCY_DECLARED, booking.venueId())).isOne();
+        // E7-80 (Spec v5 section 52.6 "Emergency declarations", Q1): one Admin Alert, in the declaring command
+        assertThat(count("SELECT count(*) FROM admin.admin_alert WHERE kind = 'EMERGENCY_DECLARED'"
+                + " AND subject_type = 'EMERGENCY' AND subject_id = '" + id + "'")).isOne();
         assertThat(count("SELECT count(*) FROM technical.outbox_event WHERE event_type = 'BookingCancelled'"
                 + " AND payload->>'bookingId' = '" + booking.bookingId() + "'")).as("notified after commit").isOne();
         assertThat(count("SELECT count(*) FROM loyalty.booking_fee_refund WHERE booking_id = '" + booking.bookingId()
@@ -404,6 +407,11 @@ class EmergencyHttpTest extends IntegrationTest {
                 + "' AND active")).as("the block stays (FR-OPS-17)").isOne();
         assertThat(fireExpectedEnd(id, expectedEnd)).as("a second fire changes nothing")
                 .isEqualTo(EmergencyCommands.ExpectedEndOutcome.SUPERSEDED);
+        // E7-80 (FR-OPS-25, R2): one awaiting event - the venue's one reminder - and no owner review for a venue scope
+        assertThat(count("SELECT count(*) FROM technical.outbox_event WHERE event_type = '"
+                + IntegrationEvents.EMERGENCY_AWAITING_CONFIRMATION + "' AND payload->>'emergencyId' = '" + id
+                + "' AND payload->>'ownerReviewEntered' = 'false' AND payload->>'venueId' = '" + booking.venueId()
+                + "'")).isOne();
     }
 
     /** FR-OPS-19, FR-OPS-10, D6: END closes the block in the same commit; nothing cancelled comes back. */

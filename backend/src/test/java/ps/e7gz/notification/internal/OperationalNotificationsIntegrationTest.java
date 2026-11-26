@@ -1,0 +1,276 @@
+package ps.e7gz.notification.internal;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static ps.e7gz.support.PostgresTestContainer.DATABASE;
+import static ps.e7gz.support.PostgresTestContainer.MIGRATOR;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.util.UUID;
+import javax.sql.DataSource;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.context.ApplicationContext;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import ps.e7gz.booking.internal.BookingFlows;
+import ps.e7gz.common.codes.AuthSubjectType;
+import ps.e7gz.common.command.CommandRunner;
+import ps.e7gz.common.correlation.CorrelationId;
+import ps.e7gz.common.security.AccessTokens;
+import ps.e7gz.messaging.internal.OutboxDrain;
+import ps.e7gz.notification.api.NotifiedBookings;
+import ps.e7gz.notification.api.NotifiedMaintenance;
+import ps.e7gz.scheduling.api.ScheduledJobs;
+import ps.e7gz.support.IntegrationTest;
+import ps.e7gz.support.PostgresTestContainer;
+
+/**
+ * E7-80 (Spec v5 section 52.5, FR-OPS-29; PO decisions 25 Nov 2026): the venue's operational notifications from the
+ * real E7-82 / E7-84 commands through the real outbox, every event delivered twice as a dispatcher retry would.
+ */
+@AutoConfigureMockMvc
+class OperationalNotificationsIntegrationTest extends IntegrationTest {
+
+    static final String EMERGENCIES = "/api/v1/venue/emergencies";
+    static final JdbcClient OWNER = JdbcClient.create(new SingleConnectionDataSource(
+            PostgresTestContainer.jdbcUrl(DATABASE), MIGRATOR, MIGRATOR, true));
+
+    @Autowired
+    MockMvc mvc;
+
+    @Autowired
+    AccessTokens accessTokens;
+
+    @Autowired
+    ApplicationContext context;
+
+    @Autowired
+    DataSource appDataSource;
+
+    @Autowired
+    ObjectMapper json;
+
+    @Autowired
+    CommandRunner runner;
+
+    @Autowired
+    NotificationService notifications;
+
+    @Autowired
+    BookingNotifier notifier;
+
+    @Autowired
+    NotifiedBookings notifiedBookings;
+
+    @Autowired
+    ScheduledJobs jobs;
+
+    @Autowired
+    NotifiedMaintenance maintenance;
+
+    JdbcClient db;
+    BookingFlows flows;
+    OperationalNotificationConsumer operational;
+    BookingNotificationConsumer bookings;
+    CorrelationId.Scope correlation;
+
+    @BeforeEach
+    void setUp() {
+        db = JdbcClient.create(appDataSource);
+        flows = BookingFlows.of(context);
+        operational = new OperationalNotificationConsumer(runner, notifications, jobs, maintenance);
+        bookings = new BookingNotificationConsumer(runner, notifier, notifiedBookings, jobs);
+        correlation = CorrelationId.open(CorrelationId.generate());
+    }
+
+    @AfterEach
+    void tearDown() {
+        correlation.close();
+    }
+
+    @Test
+    void declarationNotifiesVenueOnce() throws Exception {
+        BookingFlows.Booking booking = flows.pending();
+        declareVenue(booking, booking.startAt().plus(Duration.ofMinutes(60))).andExpect(status().isCreated());
+
+        drain();
+
+        assertThat(count(booking.venueId(), "VENUE_OWNER_EMERGENCY_NOTICE")).isOne();
+    }
+
+    @Test
+    void ownerReviewEntryNotifiesVenueOnceAndItsCascadeHasItsOwnCode() throws Exception {
+        BookingFlows.Booking booking = flows.pending();
+        UUID emergency = declareResource(booking, dbNow().plus(Duration.ofMinutes(20)));
+        overThreshold(booking.resourceId());
+        mvc.perform(post(EMERGENCIES + "/" + emergency + "/end").header("Authorization", venue(booking))
+                .header("Idempotency-Key", UUID.randomUUID().toString()).contentType(MediaType.APPLICATION_JSON)
+                .content("{}")).andExpect(status().isOk());
+
+        drain();
+
+        assertThat(count(booking.venueId(), "VENUE_OWNER_REVIEW_ENTERED")).isOne();
+        assertThat(count(booking.venueId(), "VENUE_OWNER_EMERGENCY_NOTICE")).as("the declaration's").isOne();
+        assertThat(bookingCount(booking.customerId(), booking.bookingId(), "BOOKING_CANCELLED_OWNER_REVIEW")).isOne();
+        assertThat(bookingCount(booking.customerId(), booking.bookingId(), "BOOKING_AUTO_CANCELLED")).isZero();
+        assertThat(bookingCount(booking.venueId(), booking.bookingId(), "VENUE_BOOKING_AUTO_CANCELLED")).isOne();
+    }
+
+    /**
+     * FR-OPS-34 ("pauses with the response timer", ps.e7gz.notification.api.BookingReminders; E7-80): an Emergency that
+     * pauses a pending request's response timer pauses the venue's "request expiring" reminder too, and the resume
+     * re-arms it at the new deadline minus 3 minutes.
+     */
+    @Test
+    void pausedResponseTimerPausesVenueReminderAndResumeRearmsIt() throws Exception {
+        BookingFlows.Booking booking = flows.pending();
+        drain();
+        String key = ps.e7gz.notification.api.BookingReminders.venuePendingRequestExpiringKey(booking.bookingId());
+        assertThat(reminderStatus(key)).isEqualTo("PENDING");
+
+        String body = declareVenue(booking, dbNow().plus(Duration.ofMinutes(20))).andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        UUID emergency = UUID.fromString(json.readTree(body).path("data").path("id").asText());
+        drain();
+
+        assertThat(reminderStatus(key)).as("paused with T1").isEqualTo("PAUSED");
+
+        mvc.perform(post(EMERGENCIES + "/" + emergency + "/end").header("Authorization", venue(booking))
+                .header("Idempotency-Key", UUID.randomUUID().toString()).contentType(MediaType.APPLICATION_JSON)
+                .content("{}")).andExpect(status().isOk());
+        drain();
+
+        Instant deadline = OWNER.sql("SELECT venue_response_expires_at FROM booking.booking WHERE id = :id")
+                .param("id", booking.bookingId()).query(OffsetDateTime.class).single().toInstant();
+        assertThat(reminderStatus(key)).as("re-armed").isEqualTo("PENDING");
+        assertThat(OWNER.sql("SELECT due_at FROM technical.scheduled_job WHERE idempotency_key = :key")
+                .param("key", key).query(OffsetDateTime.class).single().toInstant())
+                .isEqualTo(deadline.minus(Duration.ofMinutes(3)));
+    }
+
+    /**
+     * Final review I1: the dispatcher may hand a retried TimerPaused over after its TimerResumed. The reminder follows
+     * the booking as it is now, so a stale pause never leaves it PAUSED behind a running response timer.
+     */
+    @Test
+    void aPauseDeliveredAfterItsResumeLeavesTheReminderRunning() throws Exception {
+        BookingFlows.Booking booking = flows.pending();
+        drain();
+        String key = ps.e7gz.notification.api.BookingReminders.venuePendingRequestExpiringKey(booking.bookingId());
+        String body = declareVenue(booking, dbNow().plus(Duration.ofMinutes(20))).andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        UUID emergency = UUID.fromString(json.readTree(body).path("data").path("id").asText());
+        mvc.perform(post(EMERGENCIES + "/" + emergency + "/end").header("Authorization", venue(booking))
+                .header("Idempotency-Key", UUID.randomUUID().toString()).contentType(MediaType.APPLICATION_JSON)
+                .content("{}")).andExpect(status().isOk());
+
+        bookings.handle(outboxEvent(ps.e7gz.messaging.api.IntegrationEvents.TIMER_RESUMED, booking.bookingId()));
+        bookings.handle(outboxEvent(ps.e7gz.messaging.api.IntegrationEvents.TIMER_PAUSED, booking.bookingId()));
+
+        assertThat(reminderStatus(key)).isEqualTo("PENDING");
+    }
+
+    ps.e7gz.messaging.api.OutboxEvent outboxEvent(String type, UUID bookingId) {
+        return OWNER.sql("""
+                        SELECT id, event_type, aggregate_type, aggregate_id, CAST(payload AS text) AS payload,
+                               correlation_id, created_at
+                          FROM technical.outbox_event WHERE event_type = :type AND payload ->> 'bookingId' = :booking""")
+                .param("type", type).param("booking", bookingId.toString())
+                .query((rs, n) -> {
+                    try {
+                        return new ps.e7gz.messaging.api.OutboxEvent(rs.getLong("id"), rs.getString("event_type"),
+                                rs.getString("aggregate_type"), rs.getObject("aggregate_id", UUID.class),
+                                json.readTree(rs.getString("payload")), rs.getObject("correlation_id", UUID.class),
+                                rs.getTimestamp("created_at").toInstant(), 0);
+                    } catch (java.io.IOException e) {
+                        throw new IllegalStateException(e);
+                    }
+                })
+                .single();
+    }
+
+    String reminderStatus(String key) {
+        return OWNER.sql("SELECT status FROM technical.scheduled_job WHERE idempotency_key = :key")
+                .param("key", key).query(String.class).single();
+    }
+
+    // ------------------------------------------------------------------------------------------------ helpers
+
+    void drain() {
+        OutboxDrain.drain(appDataSource, json, OperationalCancellationNotificationsIntegrationTest.twice(operational),
+                OperationalCancellationNotificationsIntegrationTest.twice(bookings));
+    }
+
+    ResultActions declareVenue(BookingFlows.Booking at, Instant expectedEnd) throws Exception {
+        return mvc.perform(post(EMERGENCIES + "/venue-closure").header("Authorization", venue(at))
+                .header("Idempotency-Key", UUID.randomUUID().toString()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"reason\":\"Power cut\",\"expectedEndAt\":\"" + expectedEnd + "\"}"));
+    }
+
+    UUID declareResource(BookingFlows.Booking at, Instant expectedReturn) throws Exception {
+        String body = mvc.perform(post(EMERGENCIES + "/resource-outage").header("Authorization", venue(at))
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"resourceId\":\"" + at.resourceId() + "\",\"reason\":\"Console overheating\","
+                                + "\"expectedReturnAt\":\"" + expectedReturn + "\"}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        return UUID.fromString(json.readTree(body).path("data").path("id").asText());
+    }
+
+    String venue(BookingFlows.Booking at) {
+        return "Bearer " + accessTokens.issue(AuthSubjectType.VENUE, at.venueAccountId());
+    }
+
+    long count(UUID recipient, String code) {
+        return db.sql("SELECT count(*) FROM notification.notification WHERE recipient_id = :r AND code = :code")
+                .param("r", recipient).param("code", code).query(Long.class).single();
+    }
+
+    long bookingCount(UUID recipient, UUID bookingId, String code) {
+        return db.sql("""
+                        SELECT count(*) FROM notification.notification
+                         WHERE recipient_id = :r AND booking_id = :b AND code = :code""")
+                .param("r", recipient).param("b", bookingId).param("code", code).query(Long.class).single();
+    }
+
+    static Instant dbNow() {
+        return OWNER.sql("SELECT clock_timestamp()").query(OffsetDateTime.class).single().toInstant();
+    }
+
+    /** As OwnerReviewHttpTest: 26 hours of Maintenance that ended four hours ago, planted behind the guards. */
+    static void overThreshold(UUID room) {
+        SingleConnectionDataSource owner = new SingleConnectionDataSource(PostgresTestContainer.jdbcUrl(DATABASE),
+                MIGRATOR, MIGRATOR, true);
+        try {
+            JdbcClient jdbc = JdbcClient.create(owner);
+            UUID id = UUID.randomUUID();
+            jdbc.sql("SET session_replication_role = replica").update();
+            jdbc.sql("INSERT INTO operations.maintenance_window (id, resource_id, period, reason, owner_password_used)"
+                            + " VALUES (:id, :room, tstzrange(clock_timestamp() - interval '30 hours',"
+                            + " clock_timestamp() - interval '4 hours', '[)'), 'Repeated faults', true)")
+                    .param("id", id).param("room", room).update();
+            jdbc.sql("""
+                            INSERT INTO inventory.resource_reservation (id, resource_id, reservation_type, maintenance_id,
+                                                                        planned_start, planned_end, planned_range,
+                                                                        actual_reservation_start, active_flag)
+                            SELECT gen_random_uuid(), m.resource_id, 'MAINTENANCE', m.id, lower(m.period),
+                                   upper(m.period), m.period, lower(m.period), true
+                              FROM operations.maintenance_window m WHERE m.id = :id""")
+                    .param("id", id).update();
+            jdbc.sql("SET session_replication_role = origin").update();
+        } finally {
+            owner.destroy();
+        }
+    }
+}

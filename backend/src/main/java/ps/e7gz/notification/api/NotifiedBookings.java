@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.UUID;
 import ps.e7gz.common.codes.BookingSource;
 import ps.e7gz.common.codes.BookingStatus;
+import ps.e7gz.common.codes.BookingTerminalReason;
 import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.command.CommandScope;
 import ps.e7gz.common.command.LockSet;
@@ -31,10 +32,12 @@ public interface NotifiedBookings {
      * @param venueName              the venue's name now (the customer app shows it, E7-51)
      * @param venueResponseExpiresAt the stored response deadline of an Online Booking; {@code null} for a Manual one
      * @param responsePaused         the venue-response timer is paused (FR-OPS-34)
+     * @param terminalReason         why it ended; {@code null} while it has not (E7-80: the refund confirmation's code)
      */
     record NotifiedBooking(UUID bookingId, UUID customerId, UUID venueId, String venueName, UUID resourceId,
                            BookingSource source, BookingStatus status, Instant startAt,
-                           Instant venueResponseExpiresAt, boolean responsePaused) {
+                           Instant venueResponseExpiresAt, boolean responsePaused,
+                           BookingTerminalReason terminalReason) {
 
         public NotifiedBooking {
             Objects.requireNonNull(bookingId, "bookingId");
@@ -64,13 +67,13 @@ public interface NotifiedBookings {
          */
         public NotifiedBooking withVenueName(String eventVenueName) {
             return new NotifiedBooking(bookingId, customerId, venueId, eventVenueName, resourceId, source, status,
-                    startAt, venueResponseExpiresAt, responsePaused);
+                    startAt, venueResponseExpiresAt, responsePaused, terminalReason);
         }
 
         /** The same booking with another start (tests hit the reminder's boundaries with it; start_at is immutable). */
         public NotifiedBooking withStartAt(Instant otherStart) {
             return new NotifiedBooking(bookingId, customerId, venueId, venueName, resourceId, source, status,
-                    otherStart, venueResponseExpiresAt, responsePaused);
+                    otherStart, venueResponseExpiresAt, responsePaused, terminalReason);
         }
     }
 }

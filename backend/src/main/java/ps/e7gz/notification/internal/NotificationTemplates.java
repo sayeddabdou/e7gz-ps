@@ -75,10 +75,20 @@ class NotificationTemplates {
         return Map.copyOf(byLanguage);
     }
 
+    /**
+     * E7-80 (final review I2, PO decision 25 Nov 2026 R1): a {@code variant} param picks the code's wording for that
+     * variant, {@code <CODE>.<VARIANT>.<part>}, when the language has one; otherwise the code's own wording.
+     */
     private Rendered render(String code, Language language, String first, String second, Map<String, String> params) {
-        return new Rendered(fill(template(code, language, first), code, params),
-                fill(template(code, language, second), code, params));
+        String variant = params.get(VARIANT);
+        String keyed = variant != null && byLanguage.get(language).getProperty(code + "." + variant + "." + first) != null
+                ? code + "." + variant : code;
+        return new Rendered(fill(template(keyed, language, first), code, params),
+                fill(template(keyed, language, second), code, params));
     }
+
+    /** The param that picks a variant wording. */
+    static final String VARIANT = "variant";
 
     private String template(String code, Language language, String part) {
         return Optional.ofNullable(byLanguage.get(language).getProperty(code + "." + part))

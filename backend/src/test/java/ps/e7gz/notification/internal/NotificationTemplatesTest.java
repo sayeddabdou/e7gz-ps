@@ -42,6 +42,13 @@ class NotificationTemplatesTest extends IntegrationTest {
         for (Map.Entry<Language, Properties> language : templates.all().entrySet()) {
             for (String key : language.getValue().stringPropertyNames()) {
                 String[] parts = key.split("\\.");
+                // E7-80 (I2): <CODE>.<VARIANT>.<channel>.<part> is a variant wording of a code that has its own
+                if (parts.length == 4) {
+                    assertThat(parts[1]).as(key + ": an upper-case variant").matches("[A-Z][A-Z0-9_]*");
+                    assertThat(language.getValue().getProperty(parts[0] + "." + parts[2] + "." + parts[3]))
+                            .as(key + ": the code's own wording exists").isNotBlank();
+                    parts = new String[] {parts[0], parts[2], parts[3]};
+                }
                 assertThat(parts).as(key).hasSize(3);
                 assertThat(allowed).as(key + ": a catalogue code").containsKey(parts[0]);
                 assertThat(CHANNEL).as(key + ": push or email").containsKey(parts[1]);

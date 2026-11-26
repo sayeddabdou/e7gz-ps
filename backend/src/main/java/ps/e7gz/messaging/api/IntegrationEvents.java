@@ -108,6 +108,21 @@ public final class IntegrationEvents {
     public static final String BOOKING_CANCELLED = "BookingCancelled";
 
     /**
+     * Optional {@code BookingCancelled} member: what cancelled the booking, where its {@code terminalReason} alone does
+     * not say it (E7-80, PO decision 25 Nov 2026 Q2: one customer code per cause). Absent on every other cancellation
+     * and on events written before E7-80: the consumer treats absent as the generic case.
+     */
+    public static final String CANCEL_CAUSE = "cause";
+    /** An emergency or owner-review cascade ended the booking (E7-82, E7-84). */
+    public static final String CAUSE_CASCADE = "CASCADE";
+    /** The start-time resolution cancelled it (E7-60 T4; an emergency's overdue start, E7-82). */
+    public static final String CAUSE_START_TIME = "START_TIME";
+    /** A venue's Accept stopped by its operational cause (FR-BOK-16, E7-47). */
+    public static final String CAUSE_ACCEPT = "ACCEPT";
+    /** A still-expired request resolved at its original start (T6, FR-BOK-23, E7-118). */
+    public static final String CAUSE_EXPIRED_REQUEST = "EXPIRED_REQUEST";
+
+    /**
      * {@code {bookingId, customerId, venueId, venueName, resourceId, startAt, endAt, lateConfirmExpiresAt}},
      * aggregate {@code BOOKING}: the venue sent a Late Confirmation - VENUE_RESPONSE_EXPIRED ->
      * AWAITING_CUSTOMER_CONFIRMATION with its hold, until {@code lateConfirmExpiresAt} = MIN(initiation + 5 min,
@@ -286,6 +301,14 @@ public final class IntegrationEvents {
     public static final String LOYALTY_POINTS_LEDGER_COMMITTED = "LOYALTY_POINTS_LEDGER_COMMITTED";
 
     /**
+     * Written by the loyalty producer functions ({@code loyalty.write_outbox}) for every Wallet ledger row: a Booking Fee
+     * paid from the Wallet ({@code {walletTransactionId, receiptId, bookingId, amount < 0, ...}}, PCR-009) or a refund
+     * credited to it ({@code {walletTransactionId, refundId, receiptId, bookingId, amount > 0, ...}}), plus
+     * {@code recipientUserId} and {@code occurredAt}. Consumed since E7-80 for the refund confirmation.
+     */
+    public static final String LOYALTY_WALLET_LEDGER_COMMITTED = "LOYALTY_WALLET_LEDGER_COMMITTED";
+
+    /**
      * {@code {venueId, resourceId, maintenanceId}}, aggregate {@code MAINTENANCE}: the venue created a Maintenance window
      * on one of its rooms (FR-OPS-01, arch 08 section 3.2; E7-81, Sprint 2 review, PO decision 12 Oct 2026). Its two
      * siblings below carry the same payload.
@@ -309,6 +332,13 @@ public final class IntegrationEvents {
      * decision 12 Oct 2026), in the command that declares it. Its three siblings below carry the same payload.
      */
     public static final String EMERGENCY_DECLARED = "EmergencyDeclared";
+    /**
+     * The expected end passed with the Emergency still active: ACTIVE -> AWAITING_CONFIRMATION (FR-OPS-18; E7-82). As
+     * {@link #EMERGENCY_DECLARED} plus {@code ownerReviewEntered}: whether that same step entered an Owner Review
+     * (FR-OPS-26). E7-80 (FR-OPS-25, PO decision 25 Nov 2026 R2): the venue's one emergency reminder, unless the review
+     * was entered - then its owner-review notice says it.
+     */
+    public static final String EMERGENCY_AWAITING_CONFIRMATION = "EmergencyAwaitingConfirmation";
     /** The expected end moved later (FR-OPS-22); as {@link #EMERGENCY_DECLARED}. */
     public static final String EMERGENCY_EXTENDED = "EmergencyExtended";
     /** END EMERGENCY: the selling block ended (FR-OPS-19); as {@link #EMERGENCY_DECLARED}. */

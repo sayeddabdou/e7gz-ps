@@ -12,6 +12,7 @@ import javax.sql.DataSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import ps.e7gz.admin.api.AdminAlerts;
 import ps.e7gz.audit.api.AuditWriter;
 import ps.e7gz.common.codes.VenueAccountLanguage;
 import ps.e7gz.common.codes.VenueAccountStatus;
@@ -69,7 +70,7 @@ public class VenueAccounts implements VenueAccountVenues {
                   AreaLookup areas, Notifications notifications, Outbox outbox, VenueBrowserPush browserPush,
                   Idempotency idempotency, OwnerPasswordAttempts attempts, AccountDisableBookings disableBookings,
                   AccountDisableTournaments disableTournaments, AccountRestrictions restrictions,
-                  DataSource appDataSource) {
+                  AdminAlerts alerts, DataSource appDataSource) {
         this.runner = runner;
         this.gate = gate;
         this.passwords = passwords;
@@ -81,7 +82,7 @@ public class VenueAccounts implements VenueAccountVenues {
         this.idempotency = idempotency;
         this.attempts = attempts;
         this.disableDeps = new VenueAccountCommands.DisableDeps(disableBookings, disableTournaments, restrictions,
-                audit, outbox, browserPush);
+                audit, outbox, browserPush, alerts);
         this.jdbc = JdbcClient.create(appDataSource);
     }
 

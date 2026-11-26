@@ -46,5 +46,16 @@ public enum AdminAlertKind {
      * which continues - one alert per booking per disable, raised in the disabling command (E7-78, PO decision E2 19
      * Nov 2026). Information for the Platform Admin, who may later correct the attendance (FR-ATT-17).
      */
-    ACCOUNT_DISABLE_OVERLAPS_ACTIVE_BOOKING
+    ACCOUNT_DISABLE_OVERLAPS_ACTIVE_BOOKING,
+    /**
+     * Spec v5 section 52.6 "Emergency declarations" (FR-NTF-10): a venue Emergency Closure or a resource Emergency
+     * Outage was declared - raised in the declaring command (E7-80, PO decision 25 Nov 2026 Q1: the admin alert inbox,
+     * no per-admin notification). Information: the venue ends or converts it.
+     */
+    EMERGENCY_DECLARED,
+    /**
+     * Spec v5 section 52.6 "Venue Account Disabled" (FR-NTF-10): the Platform Admin disabled a venue account - raised
+     * in the disabling command (E7-80, PO decision 25 Nov 2026 Q1: the admin alert inbox).
+     */
+    VENUE_ACCOUNT_DISABLED
 }

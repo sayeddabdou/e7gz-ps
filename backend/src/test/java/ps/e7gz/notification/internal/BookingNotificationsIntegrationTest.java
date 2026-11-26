@@ -929,7 +929,7 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
         drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_CANCELLED);
 
         assertMadeOnceBy(booking, IntegrationEvents.BOOKING_CANCELLED,
-                "CUSTOMER BOOKING_AUTO_CANCELLED " + booking.customerId(),
+                "CUSTOMER BOOKING_CANCELLED_SYSTEM_INTEGRITY_ERROR " + booking.customerId(),
                 "VENUE VENUE_BOOKING_AUTO_CANCELLED " + booking.venueId());
         assertThat(customerCodes(booking)).doesNotContain("NO_SHOW_RECORDED");
     }
@@ -938,7 +938,8 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
 
     /**
      * E7-60: a start-time cancellation by T4 tells the customer and the venue once each (Spec v5 section 31.3: the
-     * customer is notified; PO decision 12 Oct 2026: VENUE_BOOKING_AUTO_CANCELLED), even when redelivered.
+     * customer is notified; PO decision 12 Oct 2026: VENUE_BOOKING_AUTO_CANCELLED), even when redelivered. The room
+     * disabled behind the guards is an integrity error: since E7-80 (Q2) the customer gets its own code.
      */
     @Test
     void aStartTimeCancellationByTheStartTellsEachSideOnce() {
@@ -949,7 +950,7 @@ class BookingNotificationsIntegrationTest extends IntegrationTest {
         drainTwiceAndRedeliver(booking, IntegrationEvents.BOOKING_CANCELLED);
 
         assertMadeOnceBy(booking, IntegrationEvents.BOOKING_CANCELLED,
-                "CUSTOMER BOOKING_AUTO_CANCELLED " + booking.customerId(),
+                "CUSTOMER BOOKING_CANCELLED_SYSTEM_INTEGRITY_ERROR " + booking.customerId(),
                 "VENUE VENUE_BOOKING_AUTO_CANCELLED " + booking.venueId());
     }
 
