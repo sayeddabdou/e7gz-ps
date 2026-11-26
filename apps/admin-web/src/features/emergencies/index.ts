@@ -1,2 +1,1 @@
-// Filled by E7-86.
-export {};
+export { EmergenciesScreen } from "./EmergenciesScreen";
