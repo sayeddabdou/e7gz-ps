@@ -399,6 +399,41 @@ describe("OpeningHoursEditor", () => {
     }
   });
 
+  it("clears hidden custom times when every weekday is changed to closed", async () => {
+    let previewBody: { proposal?: { days?: Array<{ mode: string; customOpen: string | null; customClose: string | null }> } } | undefined;
+    renderWithApi((api) => <OpeningHoursEditor api={api} />, async (request) => {
+      if (request.url.endsWith("/opening-hours") && request.method === "GET") return ok({
+        defaultOpen: "09:00:00",
+        defaultClose: "22:00:00",
+        defaultFullDay: false,
+        timezone: "Africa/Cairo",
+        version: 1,
+        days: Array.from({ length: 7 }, (_, weekday) => weekday === 2
+          ? { weekday, mode: "CUSTOM", customOpen: "13:39:00", customClose: "04:39:00" }
+          : { weekday, mode: "DEFAULT", customOpen: null, customClose: null }),
+      });
+      if (request.url.endsWith("/resources") && request.method === "GET") return ok([]);
+      if (request.url.endsWith("/preview")) {
+        previewBody = await request.clone().json() as typeof previewBody;
+        return ok({ previewToken: "p-closed", ownerPasswordRequired: false, affected: [] });
+      }
+      throw new Error(`Unexpected request: ${request.method} ${request.url}`);
+    });
+
+    await screen.findByLabelText("Monday Schedule mode");
+    for (const weekday of ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]) {
+      fireEvent.change(screen.getByLabelText(`${weekday} Schedule mode`), { target: { value: "CLOSED" } });
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Preview changes" }));
+
+    expect(await screen.findByText("No bookings are affected.")).toBeTruthy();
+    expect(previewBody?.proposal?.days).toEqual(Array.from({ length: 7 }, () => ({
+      mode: "CLOSED",
+      customOpen: null,
+      customClose: null,
+    })).map((day, weekday) => ({ weekday, ...day })));
+  });
+
   const hoursGet = () => ok({ defaultOpen: "10:00:00", defaultClose: "23:00:00", defaultFullDay: false, timezone: "Africa/Cairo", version: 1, days: Array.from({ length: 7 }, (_, weekday) => ({ weekday, mode: "DEFAULT", customOpen: null, customClose: null })) });
   const savedHours = () => ok({ defaultOpen: "15:00:00", defaultClose: "23:00:00", defaultFullDay: false, timezone: "Africa/Cairo", version: 2, days: Array.from({ length: 7 }, (_, weekday) => ({ weekday, mode: "DEFAULT", customOpen: null, customClose: null })) });
   const room = () => ok([{ id: "r-1", name: "Room 1", activity: "PLAYSTATION", consoleType: "PS5", baseState: "ACTIVE", operationalRestriction: "NONE" }]);

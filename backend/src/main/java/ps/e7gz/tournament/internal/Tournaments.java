@@ -23,6 +23,8 @@ import ps.e7gz.common.codes.TournamentResourceRemovalCause;
 import ps.e7gz.common.codes.TournamentTerminalReason;
 import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.correlation.CorrelationId;
+import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.error.ApiException;
 import ps.e7gz.common.money.Money;
 import ps.e7gz.inventory.ledger.api.NewReservation;
 import ps.e7gz.inventory.ledger.api.ReservationLedger;
@@ -78,7 +80,7 @@ class Tournaments implements TournamentCascades {
                     :playMode, :capacity, :startAt, :nominalMinutes, :visibility, :inviteCode,
                     :venueCostTotal, config.effective_numeric('tournament.creation_fee', tournament.command_now()),
                     :entryFee, :prize, :businessDate, :operatingSessionId)
-            RETURNING status, created_at, end_at, checkpoint_at, approval_expires_at
+            RETURNING status, created_at, end_at, checkpoint_at, approval_expires_at, creation_fee_snapshot
             """;
 
     static final String INSERT_RESOURCE = """
@@ -172,14 +174,29 @@ class Tournaments implements TournamentCascades {
      * history row and its audit event (actor the Creator or the Venue Account), the Creator's participant row when the
      * Creator plays, and the timers due from its state. Runs with a correlation ID open.
      *
-     * @throws IllegalArgumentException when a Resource does not exist or has no price for the activity and play mode
-     *                                  (FR-VEN-45); every other refusal is the database's
+     * @throws IllegalArgumentException when a Resource does not exist
+     * @throws ApiException             {@code RESOURCE_NOT_ELIGIBLE} when a Resource has no price for the activity and
+     *                                  play mode (FR-VEN-45: creation is blocked where the configuration is missing);
+     *                                  every other refusal is the database's
      */
     Created create(CommandContext command, NewTournament tournament) {
+        return create(command, tournament, HoldGate.NONE);
+    }
+
+    /**
+     * As {@link #create(CommandContext, NewTournament)}, with {@code gate} asked about each Resource after the
+     * Tournament row was accepted by its insert guards and before the Resource is held (E7-91). That is the order of
+     * arch 06 section 3.4: the creator, the cutoff and the one-pending rule first, then every assigned Resource
+     * (FR-TRN-33), then the holds (FR-TRN-09). A gate that throws rolls the whole command back.
+     */
+    Created create(CommandContext command, NewTournament tournament, HoldGate gate) {
         Objects.requireNonNull(command, "command");
         Objects.requireNonNull(tournament, "tournament");
+        Objects.requireNonNull(gate, "gate");
         UUID correlationId = CorrelationId.require();
 
+        // FR-TRN-28, arch 03 section 7: the venue cost is snapshot now, at request creation (player) or creation
+        // (venue), from the historical hourly prices: half-up per line item, summed; it is never recomputed
         List<Snapshot> snapshots = new ArrayList<>();
         Money venueCost = Money.ZERO;
         for (UUID resourceId : tournament.resourceIds()) {
@@ -215,7 +232,9 @@ class Tournaments implements TournamentCascades {
                 ? ReservationOwner.tournamentApprovalHold(tournament.id())
                 : ReservationOwner.tournamentHold(tournament.id());
         List<UUID> reservationIds = new ArrayList<>();
+        List<Assignment> assignments = new ArrayList<>();
         for (Snapshot snapshot : snapshots) {
+            gate.beforeHold(command, snapshot.resourceId(), tournament.startAt(), row.endAt());
             UUID reservationId = ledger.create(command,
                     new NewReservation(snapshot.resourceId(), owner, tournament.startAt(), row.endAt()));
             reservationIds.add(reservationId);
@@ -227,6 +246,7 @@ class Tournaments implements TournamentCascades {
                     .param("hourlyPrice", snapshot.hourlyPrice().amount())
                     .param("reservationId", reservationId)
                     .update();
+            assignments.add(new Assignment(snapshot.resourceId(), snapshot.consoleType(), snapshot.hourlyPrice()));
         }
 
         AuditActor actor = player != null
@@ -246,16 +266,17 @@ class Tournaments implements TournamentCascades {
         schedule(command, COMPLETION, tournament.id(), row.endAt());
 
         return new Created(tournament.id(), row.status(), row.createdAt(), row.approvalExpiresAt(),
-                row.checkpointAt(), row.endAt(), venueCost, List.copyOf(reservationIds));
+                row.checkpointAt(), row.endAt(), venueCost, row.creationFee(), List.copyOf(reservationIds),
+                List.copyOf(assignments));
     }
 
     /** The price and console snapshots of one Resource, from their own modules (the E7-30 rule on reads). */
     private Snapshot snapshot(CommandContext command, NewTournament tournament, UUID resourceId) {
         ResourceCatalog.Entry entry = resources.find(command, resourceId)
                 .orElseThrow(() -> new IllegalArgumentException("No Resource " + resourceId));
+        // FR-VEN-45: no price, no Tournament - the same public code as an Online Booking without one
         Money hourly = prices.resolve(command, resourceId, tournament.playMode())
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "No price for Resource " + resourceId + " and play mode " + tournament.playMode()));
+                .orElseThrow(() -> new ApiException(ApiErrorCode.RESOURCE_NOT_ELIGIBLE));
         String console = entry.consoleType() == null ? null : entry.consoleType().name();
         return new Snapshot(resourceId, console, hourly);
     }
@@ -439,7 +460,8 @@ class Tournaments implements TournamentCascades {
     private static Inserted inserted(ResultSet rs, int row) throws SQLException {
         OffsetDateTime approval = rs.getObject("approval_expires_at", OffsetDateTime.class);
         return new Inserted(TournamentStatus.valueOf(rs.getString("status")), instant(rs, "created_at"),
-                instant(rs, "end_at"), instant(rs, "checkpoint_at"), approval == null ? null : approval.toInstant());
+                instant(rs, "end_at"), instant(rs, "checkpoint_at"), approval == null ? null : approval.toInstant(),
+                Money.of(rs.getBigDecimal("creation_fee_snapshot")));
     }
 
     private static Header header(ResultSet rs, int row) throws SQLException {
@@ -461,9 +483,33 @@ class Tournaments implements TournamentCascades {
         return OffsetDateTime.ofInstant(instant, ZoneOffset.UTC);
     }
 
-    /** What creation wrote, as the database derived it. */
+    /**
+     * Asked about each Resource of a new Tournament after its row was inserted and before the Resource is held, inside
+     * the creating command (E7-91: the canonical availability predicate, FR-TRN-33).
+     */
+    @FunctionalInterface
+    interface HoldGate {
+
+        /** No question asked: the database alone refuses (the early aggregate tests and the cascades' fixtures). */
+        HoldGate NONE = (command, resourceId, startAt, endAt) -> { };
+
+        /** Throws to refuse the whole creation. */
+        void beforeHold(CommandContext command, UUID resourceId, Instant startAt, Instant endAt);
+    }
+
+    /**
+     * What creation wrote, as the database derived it.
+     *
+     * @param creationFee the Tournament Creation Fee snapshot (Product section 5.3, FR-ADM-10)
+     * @param assignments the Resources in request order, with their console and hourly price snapshots
+     */
     record Created(UUID id, TournamentStatus status, Instant createdAt, Instant approvalExpiresAt,
-                   Instant checkpointAt, Instant endAt, Money venueCostTotal, List<UUID> reservationIds) {
+                   Instant checkpointAt, Instant endAt, Money venueCostTotal, Money creationFee,
+                   List<UUID> reservationIds, List<Assignment> assignments) {
+    }
+
+    /** One held Resource and its snapshots ({@code tournament.tournament_resource}); console {@code null} off PlayStation. */
+    record Assignment(UUID resourceId, String consoleType, Money hourlyPrice) {
     }
 
     record Current(UUID id, UUID venueId, TournamentStatus status, long version) {
@@ -473,7 +519,7 @@ class Tournaments implements TournamentCascades {
     }
 
     private record Inserted(TournamentStatus status, Instant createdAt, Instant endAt, Instant checkpointAt,
-                            Instant approvalExpiresAt) {
+                            Instant approvalExpiresAt, Money creationFee) {
     }
 
     private record Header(UUID id, UUID venueId, TournamentHostType hostType, TournamentStatus status, Instant startAt,
