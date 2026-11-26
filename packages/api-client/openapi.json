@@ -17684,7 +17684,7 @@
     },
     "/api/v1/admin/tournaments": {
       "get": {
-        "description": "Ordered by createdAt, newest first; cursor paging (arch 09 §1.2). Every filter is optional. Sprint 6 contract stub (E7-88).",
+        "description": "Ordered by createdAt, newest first; cursor paging (arch 09 §1.2). Every filter is optional. Implemented by E7-126.",
         "operationId": "adminListTournaments",
         "parameters": [
           {
@@ -17965,7 +17965,7 @@
     },
     "/api/v1/admin/tournaments/{tournamentId}": {
       "get": {
-        "description": "Any tournament, any state. An INELIGIBLE participant shows as INELIGIBLE only, like on the other surfaces (arch 09 §3.4). Sprint 6 contract stub (E7-88).",
+        "description": "Any tournament, any state. An INELIGIBLE participant shows as INELIGIBLE only, like on the other surfaces (arch 09 §3.4). Implemented by E7-126.",
         "operationId": "adminGetTournament",
         "parameters": [
           {
@@ -37605,7 +37605,7 @@
     },
     "/api/v1/customer/tournaments": {
       "get": {
-        "description": "Only PUBLIC tournaments in WAITING_FOR_PLAYERS or CONFIRMED with now < startAt, at venues that are live. A private tournament, a request still PENDING_VENUE_APPROVAL and an ended tournament never appear (FR-TRN-07). Ordered by startAt, then id; cursor paging (arch 09 §1.2). A full tournament is still listed (capacityOccupiedCount = capacity) so the app can show it as full. Sprint 6 contract stub (E7-88).",
+        "description": "Only PUBLIC tournaments in WAITING_FOR_PLAYERS or CONFIRMED with now < startAt, at venues that are live. A private tournament, a request still PENDING_VENUE_APPROVAL and an ended tournament never appear (FR-TRN-07). Ordered by startAt, then id; cursor paging (arch 09 §1.2). A full tournament is still listed (capacityOccupiedCount = capacity) so the app can show it as full. Implemented by E7-126.",
         "operationId": "customerDiscoverTournaments",
         "parameters": [
           {
@@ -60641,7 +60641,7 @@
     },
     "/api/v1/venue/tournaments": {
       "get": {
-        "description": "ended=false (default): PENDING_VENUE_APPROVAL, WAITING_FOR_PLAYERS, CONFIRMED and ACTIVE, soonest startAt first, so pending requests with their approvalExpiresAt countdown are on top of the day; ended=true: COMPLETED, CANCELLED and REJECTED, newest startAt first. status narrows to one state. Cursor paging (arch 09 §1.2). Sprint 6 contract stub (E7-88).",
+        "description": "ended=false (default): PENDING_VENUE_APPROVAL, WAITING_FOR_PLAYERS, CONFIRMED and ACTIVE, soonest startAt first, so pending requests with their approvalExpiresAt countdown are on top of the day; ended=true: COMPLETED, CANCELLED and REJECTED, newest startAt first. status narrows to one state. Cursor paging (arch 09 §1.2). Implemented by E7-126.",
         "operationId": "venueListTournaments",
         "parameters": [
           {
@@ -61298,7 +61298,7 @@
     },
     "/api/v1/venue/tournaments/{tournamentId}": {
       "get": {
-        "description": "A tournament of another venue is NOT_FOUND. Visible in every state, a pending request included (FR-TRN-07: the venue may view it). inviteCode is answered for a PRIVATE tournament once accepted, to copy and share (FR-TRN-06). An INELIGIBLE participant shows as INELIGIBLE only; its cause is never answered (arch 09 §3.4, PCR-001). Sprint 6 contract stub (E7-88).",
+        "description": "A tournament of another venue is NOT_FOUND. Visible in every state, a pending request included (FR-TRN-07: the venue may view it). inviteCode is answered for a PRIVATE tournament once accepted, to copy and share (FR-TRN-06). An INELIGIBLE participant shows as INELIGIBLE only; its cause is never answered (arch 09 §3.4, PCR-001). Implemented by E7-126.",
         "operationId": "venueGetTournament",
         "parameters": [
           {

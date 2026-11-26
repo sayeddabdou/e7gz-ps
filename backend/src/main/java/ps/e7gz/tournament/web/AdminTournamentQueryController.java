@@ -36,7 +36,7 @@ import ps.e7gz.common.web.PageView;
 
 /**
  * Platform Admin — reading tournaments (arch 09 §5 {@code GET /admin/tournaments}; FR-ADM-08). Sprint 6 contract
- * (E7-88), stubs answering 501 until they are implemented. The Admin cancel is {@code AdminTournamentController}
+ * (E7-88), stubs answering 501 until E7-126 implements them. The Admin cancel is {@code AdminTournamentController}
  * (E7-93). {@code /{tournamentId}} is added by the PO decision of 26 Nov 2026 (E7-88: the Admin's detail screen,
  * E7-97). Admin DTOs only (arch 09 §1.1).
  */
@@ -51,7 +51,7 @@ public class AdminTournamentQueryController {
     @Operation(operationId = "adminListTournaments",
             summary = "Tournaments of every venue, newest first (arch 09 §5, FR-ADM-08)",
             description = "Ordered by createdAt, newest first; cursor paging (arch 09 §1.2). Every filter is optional. "
-                    + "Sprint 6 contract stub (E7-88).")
+                    + "Implemented by E7-126.")
     @ApiError(status = 400, codes = ApiErrorCode.VALIDATION_FAILED)
     public DataResponse<PageView<AdminTournamentListing>> list(
             @Parameter(description = "Only this venue's tournaments.") @RequestParam(required = false) UUID venueId,
@@ -67,7 +67,7 @@ public class AdminTournamentQueryController {
     @Operation(operationId = "adminGetTournament",
             summary = "One tournament with its participants (FR-ADM-08; PO decision 26 Nov 2026)",
             description = "Any tournament, any state. An INELIGIBLE participant shows as INELIGIBLE only, like on the "
-                    + "other surfaces (arch 09 §3.4). Sprint 6 contract stub (E7-88).")
+                    + "other surfaces (arch 09 §3.4). Implemented by E7-126.")
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     public DataResponse<AdminTournamentDetail> get(@PathVariable UUID tournamentId) {
         throw NotImplementedYet.stub();

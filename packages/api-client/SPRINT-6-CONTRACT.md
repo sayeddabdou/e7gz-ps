@@ -56,6 +56,6 @@ Sources: arch 09 §1, §3.4, §4.1, §4.3, §5 · FRS §4.10 (FR-TRN-01…FR-TRN
 - **E7-96 (Dashboard)**: requests on top from `GET /venue/tournaments` (`status=PENDING_VENUE_APPROVAL` for the request list), countdown from `approvalExpiresAt`; the participants view and the invite code from `/{id}`. Ask for the Owner PIN on cancel only when the server answers `423 OWNER_PASSWORD_REQUIRED` (a CONFIRMED tournament); operational termination always asks.
 - **E7-97 (Admin)**: list and detail from `GET /admin/tournaments` and `/{id}`; cancel needs a reason.
 
-## 4. Not decided yet
+## 4. Who implements the reads
 
-- **Which task implements the reads.** No Sprint 6 task names them (E7-91…E7-94 are writes and cascades). The tournament module is the Engine lane's.
+**E7-126 (S6-E5, Engine lane)**, a new task after E7-93 (PO decision, 26 Nov 2026). It fills all seven stubs and replaces their lines in `Sprint6StubHttpTest` with its own tests.

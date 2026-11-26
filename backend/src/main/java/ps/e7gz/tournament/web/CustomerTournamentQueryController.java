@@ -36,7 +36,7 @@ import ps.e7gz.common.web.PageView;
 
 /**
  * Customer — reading tournaments (arch 09 §3.4; FR-TRN-06, FR-TRN-07, FR-TRN-12, FR-TRN-13). Sprint 6 contract (E7-88),
- * stubs answering 501 until they are implemented. The writes (create, join, leave, remove, cancel) are in
+ * stubs answering 501 until E7-126 implements them. The writes (create, join, leave, remove, cancel) are in
  * {@link CustomerTournamentController} (E7-91, E7-93); the reads sit here so the contract does not touch those files.
  * GET {@code /customer/tournaments} is arch 09's public Discover; {@code /mine} and {@code /{tournamentId}} are added by
  * the PO decision of 26 Nov 2026 (E7-88: the app shows its own tournaments and a detail screen, and FR-TRN-07 lets the
@@ -56,7 +56,7 @@ public class CustomerTournamentQueryController {
                     + "that are live. A private tournament, a request still PENDING_VENUE_APPROVAL and an ended "
                     + "tournament never appear (FR-TRN-07). Ordered by startAt, then id; cursor paging (arch 09 §1.2). "
                     + "A full tournament is still listed (capacityOccupiedCount = capacity) so the app can show it as "
-                    + "full. Sprint 6 contract stub (E7-88).")
+                    + "full. Implemented by E7-126.")
     @ApiError(status = 400, codes = ApiErrorCode.VALIDATION_FAILED)
     public DataResponse<PageView<CustomerTournamentListing>> discover(
             @Parameter(description = "Only tournaments at venues of this area.")

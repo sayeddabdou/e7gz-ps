@@ -37,7 +37,7 @@ import ps.e7gz.common.web.PageView;
 
 /**
  * Venue Dashboard — reading the venue's tournaments (arch 09 §4.1 {@code GET /venue/tournaments}; FR-TRN-06,
- * FR-TRN-07, FR-TRN-10, FR-TRN-12). Sprint 6 contract (E7-88), stubs answering 501 until they are implemented. The
+ * FR-TRN-07, FR-TRN-10, FR-TRN-12). Sprint 6 contract (E7-88), stubs answering 501 until E7-126 implements them. The
  * writes (create, approve, reject, cancel, operational-termination) are in {@link VenueTournamentController} (E7-91,
  * E7-92, E7-93). {@code /{tournamentId}} (with its participants) is added by the PO decision of 26 Nov 2026 (E7-88:
  * the Dashboard's participants view, E7-96). Only the signed-in venue's own tournaments; Venue DTOs only (arch 09
@@ -56,7 +56,7 @@ public class VenueTournamentQueryController {
             description = "ended=false (default): PENDING_VENUE_APPROVAL, WAITING_FOR_PLAYERS, CONFIRMED and ACTIVE, "
                     + "soonest startAt first, so pending requests with their approvalExpiresAt countdown are on top of "
                     + "the day; ended=true: COMPLETED, CANCELLED and REJECTED, newest startAt first. status narrows to "
-                    + "one state. Cursor paging (arch 09 §1.2). Sprint 6 contract stub (E7-88).")
+                    + "one state. Cursor paging (arch 09 §1.2). Implemented by E7-126.")
     @ApiError(status = 400, codes = ApiErrorCode.VALIDATION_FAILED)
     public DataResponse<PageView<VenueTournamentListing>> list(
             @Parameter(description = "false (default): not yet ended; true: ended.")
@@ -73,7 +73,7 @@ public class VenueTournamentQueryController {
             description = "A tournament of another venue is NOT_FOUND. Visible in every state, a pending request "
                     + "included (FR-TRN-07: the venue may view it). inviteCode is answered for a PRIVATE tournament "
                     + "once accepted, to copy and share (FR-TRN-06). An INELIGIBLE participant shows as INELIGIBLE "
-                    + "only; its cause is never answered (arch 09 §3.4, PCR-001). Sprint 6 contract stub (E7-88).")
+                    + "only; its cause is never answered (arch 09 §3.4, PCR-001). Implemented by E7-126.")
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     public DataResponse<VenueTournamentDetail> get(@PathVariable UUID tournamentId) {
         throw NotImplementedYet.stub();
