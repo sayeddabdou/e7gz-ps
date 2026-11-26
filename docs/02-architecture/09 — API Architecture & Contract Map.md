@@ -311,6 +311,7 @@ Venues with marketplace `ONBOARDING`, `INACTIVE` or `SUSPENDED` are absent from 
 | Method | Path | FR |
 |---|---|---|
 | `GET` | `/customer/tournaments?areaId=&activity=` — public Discover only | `FR-TRN-06`, `FR-TRN-07` |
+| `GET` | `/customer/tournaments/mine?ended=` — the tournaments the customer created or joined · `/customer/tournaments/{id}` — detail, visible to the creator and participants (any state) and to anyone for an accepted public tournament, otherwise `NOT_FOUND`; `inviteCode` and `participants` to the creator only. Product Owner decision, 26 Nov 2026 (E7-88) | `FR-TRN-06`, `FR-TRN-07`, `FR-TRN-12` |
 | `POST` | `/customer/tournaments/join-private {inviteCode}` | `FR-TRN-06` |
 | `POST` | `/customer/tournaments` — player-hosted create | `FR-TRN-02`, `FR-TRN-03` |
 | `POST` | `/customer/tournaments/{id}/join` · `/leave` — Join evaluates Tournament Capacity Occupancy, not checkpoint Active Participant count | `FR-TRN-12`, `FR-TRN-26` |
@@ -399,6 +400,7 @@ The venue- and room-side failures of the same route (`FR-LCF-02`, `FR-LCF-03`) r
 | `POST` | `/venue/owner-password` `{current, next}` | **yes** | `FR-VEN-46` |
 | `GET` | `/venue/reviews` — **view only** | — | `FR-VEN-39` |
 | `GET` `POST` | `/venue/tournaments` · `/{id}/approve` · `/reject` · `/cancel` · `/operational-termination` | conditional | `FR-TRN-21`, `FR-TRN-23`, `FR-TRN-24` |
+| `GET` | `/venue/tournaments?ended=&status=` (cursor paging) · `/venue/tournaments/{id}` — detail with participants and the private invite code. Product Owner decision, 26 Nov 2026 (E7-88) | — | `FR-TRN-06`, `FR-TRN-07`, `FR-TRN-12` |
 | `GET` `PATCH` | `/venue/settings` — the venue's profile and language preference; `PATCH {name?, address?, phone?, languagePreference?}` | — | `FR-VEN-40`; editable fields — Product Owner decision, 3 Oct 2026 |
 | `GET` | `/venue/images` — visible photos in order, each with a signed GET URL | — | `FR-DIS-03`, PCR-005 |
 | `POST` | `/venue/images` `{contentType, sizeBytes}` → `{image, uploadUrl, uploadExpiresAt}` — signed PUT; nothing is visible yet | — | PCR-005, arch 12 §2 |
@@ -452,7 +454,7 @@ Rules (`ADR-011`): the Owner Password is a PIN of exactly 4 digits (PCR-006). Bo
 | Attendance remediation | `POST /admin/bookings/{id}/attendance/reverse-check-in` · `/reverse-late-present` · `/reverse-no-show` `{reason}` · `/correct` `{correctedOutcome, reason}` — in the Sprint 4 contract (Product Owner decision D1, 17 Oct 2026, E7-65) | `FR-ATT-11`, `FR-ATT-13` |
 | No-show records | `GET /admin/no-shows` | `FR-ADM-07` |
 | Trust | `POST /admin/users/{id}/trust-adjustment` `{counterAfter, penaltyStageAfter, reason}` · `POST /admin/users/{id}/bans/{banId}/lift` `{reason}` · `/shorten` `{endsAt, reason}` · `/correct` `{reason}` — ban routes sit under the user; `/correct` kept (Product Owner decision D2, 17 Oct 2026, E7-65) | `FR-TRS-27` |
-| Tournaments | `GET /admin/tournaments` · `POST /{id}/cancel` | `FR-ADM-08` |
+| Tournaments | `GET /admin/tournaments?venueId=&status=&hostType=` · `GET /{id}` — detail with participants, Product Owner decision 26 Nov 2026 (E7-88) · `POST /{id}/cancel` | `FR-ADM-08` |
 | Wallet · Points · Referrals | `GET /admin/wallet` · `/points` · `GET /admin/users/{id}/wallet` · `/points` (one user's history) · `POST /points/adjust` `{userId, amount, reason}` · `GET /referrals` · `POST /referrals/{id}/invalidate` `{reason}` | `FR-ADM-09`, `FR-PTS-09`, `FR-PTS-11` |
 | Fees | `GET PUT /admin/fees` — global booking fee: its mode (`bookingFeeMode`: `PER_BOOKING` · `PER_HOUR`), the per-booking amount (`bookingFee`) and the per-hour amount (`bookingFeePerHour`); tournament creation fee | `FR-ADM-10`, PCR-010 |
 | Points settings | `GET PUT /admin/points/settings` — completed-booking points, referral points, wallet-refund switch, and the Points per fee unit (`pointsPerFeeUnit`, even, from 2; PCR-010), through `loyalty.configure` (Product Owner decision D3, 17 Oct 2026, E7-65) | `FR-PTS-01`, `FR-PTS-07`, `01 §14` A8, PCR-010 |
