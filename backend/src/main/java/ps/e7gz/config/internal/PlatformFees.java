@@ -44,7 +44,9 @@ import ps.e7gz.messaging.api.StoredResponse;
  *
  * <p>PO decision 15 Nov 2026 (PCR-010 item 10): while no payment provider collects the fee
  * ({@code e7gz.payments.fee-collection-enabled=false}, the launch setting), a Booking Fee above EGP 0 - per booking or
- * per hour - is refused as {@code VALIDATION_FAILED} on its field. The Tournament Creation Fee is not part of this rule.
+ * per hour - is refused as {@code VALIDATION_FAILED} on its field. PO decision 16 Nov 2026 (PCR-010 item 11, E7-91): the
+ * Tournament Creation Fee follows the same rule - nothing could collect it either, so it stays EGP 0 (FR-TRN-03) until
+ * collection is enabled.
  */
 @Component
 @EnableConfigurationProperties(PaymentCollectionProperties.class)
@@ -109,8 +111,9 @@ public class PlatformFees {
 
     /**
      * Changes the named fees once per Idempotency-Key; the answer is the fees after the change. {@code VALIDATION_FAILED}
-     * before any idempotency record when nothing is named, the reason is blank, or a Booking Fee above EGP 0 is asked
-     * for while no payment provider collects it (PO decision 15 Nov 2026).
+     * before any idempotency record when nothing is named, the reason is blank, or a Booking Fee or a Tournament
+     * Creation Fee above EGP 0 is asked for while no payment provider collects it (PCR-010 items 10 and 11; PO decisions
+     * 15 and 16 Nov 2026).
      */
     public <R> IdempotentResult<R> change(UUID adminId, Change change, IdempotentRequest key, StoredResponse<R> response,
                                           Function<Fees, R> view) {
@@ -127,14 +130,16 @@ public class PlatformFees {
         if (!feeCollectionEnabled) {
             refuseAFeeNobodyCollects(change.bookingFee(), "bookingFee");
             refuseAFeeNobodyCollects(change.bookingFeePerHour(), "bookingFeePerHour");
+            refuseAFeeNobodyCollects(change.tournamentCreationFee(), "tournamentCreationFee");
         }
         return runner.run(idempotency.wrap(Objects.requireNonNull(key, "key"), response,
                 new ChangeFees<>(adminId, CorrelationId.require(), change, view)));
     }
 
     /**
-     * PCR-010 item 10: without a payment provider the money part of a fee is never collected, so only Customers who
-     * hold Points would pay. The fee stays EGP 0 until collection is enabled.
+     * PCR-010 items 10 and 11: without a payment provider the money part of a fee is never collected, so only
+     * Customers who hold Points would pay a Booking Fee, and nobody a Tournament Creation Fee. The fee stays EGP 0 until
+     * collection is enabled.
      */
     private static void refuseAFeeNobodyCollects(Money requested, String field) {
         if (requested != null && requested.amount().signum() > 0) {

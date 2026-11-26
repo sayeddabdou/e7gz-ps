@@ -51,6 +51,14 @@ class DatabaseErrorCodesTest {
         assertThat(DatabaseErrorCodes.codeFor("23505", "idempotency_record_pk")).isEmpty();
     }
 
+    /** FR-TRN-11 (E7-91): a creator's second pending Player-hosted request anywhere. */
+    @Test
+    void theOnePendingRequestIndexIsPendingTournamentRequestExists() {
+        assertThat(DatabaseErrorCodes.codeFor("23505", "ux_tournament_one_pending_creator"))
+                .contains(ApiErrorCode.PENDING_TOURNAMENT_REQUEST_EXISTS);
+        assertThat(DatabaseErrorCodes.codeFor("P0001", "ux_tournament_one_pending_creator")).isEmpty();
+    }
+
     @Test
     void noIdentifierOrUnmappedIdentifierIsUnexpected() {
         assertThat(DatabaseErrorCodes.codeFor("P0001", null)).isEmpty();
