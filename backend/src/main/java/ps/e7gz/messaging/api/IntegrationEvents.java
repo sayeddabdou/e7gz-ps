@@ -368,10 +368,22 @@ public final class IntegrationEvents {
      * See {@link #TOURNAMENT_APPROVED}: a Player-hosted Tournament CANCELLED with its {@code terminalReason} and the
      * actor who cancelled it - VENUE_DID_NOT_APPROVE_TOURNAMENT_IN_TIME (T7) and VENUE_ACCOUNT_DISABLED (E7-92);
      * MINIMUM_PARTICIPANTS_NOT_REACHED or a condition in force at the checkpoint or the start, CREATOR_CANCELLED,
-     * VENUE_CANCELLED, TOURNAMENT_OPERATIONAL_TERMINATION and ADMIN_CANCELLED (E7-93). The participants' own
-     * notifications are E7-89's.
+     * VENUE_CANCELLED, TOURNAMENT_OPERATIONAL_TERMINATION and ADMIN_CANCELLED (E7-93); by SYSTEM, the resource,
+     * emergency and Owner Review reasons of the operational cascades and CREATOR_VERIFIED_STATUS_REVOKED (E7-94). The
+     * participants' own notifications are E7-89's.
      */
     public static final String TOURNAMENT_CANCELLED = "TournamentCancelled";
+
+    /**
+     * {@code {tournamentId, venueId, creatorUserId?, resourceId, removalCause, remainingResourceIds}}, aggregate
+     * {@code TOURNAMENT}: an ACTIVE Tournament lost one Resource to a Resource Emergency Outage or an Owner Review and
+     * goes on with the others (arch 06 section 3.5, FR-TRN-27; E7-94). {@code remainingResourceIds} is a list of the
+     * Resources still assigned; {@code creatorUserId} is absent for a Venue-hosted Tournament. E7-89 turns it into
+     * <b>Tournament Resource Availability Changed</b> (In-App + Push) for the Creator and the current Participants
+     * (Spec v5 section 37.12, notification code {@code TOURNAMENT_RESOURCE_AVAILABILITY_CHANGED}). A loss that leaves
+     * no operational Resource writes {@link #TOURNAMENT_CANCELLED} instead.
+     */
+    public static final String TOURNAMENT_RESOURCE_AVAILABILITY_CHANGED = "TournamentResourceAvailabilityChanged";
 
     /**
      * Every event that can change a venue's availability and so refreshes its Nearest Availability rows (arch 05

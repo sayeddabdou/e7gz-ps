@@ -56,13 +56,6 @@ class VerifiedPlayerTransitions {
             RETURNING occurred_at
             """;
 
-    /** Section 8.9: what a revocation cancels. CONFIRMED and ACTIVE remain. */
-    static final String CANCELLABLE_TOURNAMENTS = """
-            SELECT EXISTS (SELECT 1 FROM tournament.tournament t
-                            WHERE t.host_type = 'PLAYER' AND t.creator_user_id = :user
-                              AND t.status IN ('PENDING_VENUE_APPROVAL', 'WAITING_FOR_PLAYERS'))
-            """;
-
     static final String INSERT_CASCADE = """
             INSERT INTO trust.cascade_execution (id, cascade_type, cascade_key, subject_user_id, source_id, executed_at,
                                                  correlation_id)
@@ -133,16 +126,12 @@ class VerifiedPlayerTransitions {
         return transitionId;
     }
 
-    /** Section 8.9, once per {@code transition_id}: the unique cascade key is this transition's own. */
+    /**
+     * Section 8.9, once per {@code transition_id}: the unique cascade key is this transition's own. The Tournament
+     * module carries it out (E7-94); a second run for the same transition is refused by the key.
+     */
     private void cascade(CommandContext command, UUID userId, UUID id, UUID transitionId, Instant at) {
-        VerifiedPlayerTournamentCascade owner = tournaments.getIfAvailable();
-        if (owner != null) {
-            owner.cancelPendingHostedTournaments(command, userId, transitionId);
-        } else if (Boolean.TRUE.equals(command.jdbc().sql(CANCELLABLE_TOURNAMENTS).param("user", userId)
-                .query(Boolean.class).single())) {
-            throw new IllegalStateException("Verified Player revocation of user " + userId
-                    + " must cancel its pending Player-hosted Tournaments (FR-TRN-20), and E7-94 is not deployed");
-        }
+        tournaments.getObject().cancelPendingHostedTournaments(command, userId, transitionId);
         command.jdbc().sql(INSERT_CASCADE)
                 .param("id", UUID.randomUUID())
                 .param("key", cascadeKey(transitionId))

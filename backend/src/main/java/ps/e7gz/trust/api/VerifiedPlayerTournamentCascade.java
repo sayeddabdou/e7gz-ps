@@ -9,9 +9,10 @@ import ps.e7gz.common.command.CommandContext;
  * {@code CREATOR_VERIFIED_STATUS_REVOKED}; CONFIRMED and ACTIVE remain. Trust records the cascade once per
  * {@code transition_id} ({@code VP_TOURNAMENT_CASCADE:{transitionId}}) and calls this once for it.
  *
- * <p>Implemented by the Tournament module (E7-94), which depends on Trust. Until then no Player-hosted Tournament can
- * exist (no command creates one), and a revocation that finds one is refused rather than left half-done - the database
- * refuses it at commit too ({@code tournament.assert_verified_player_tournament_cascade}).
+ * <p>Implemented by the Tournament module (E7-94), which depends on Trust. The database proves the result at commit
+ * ({@code tournament.assert_verified_player_tournament_cascade}). Calling it again for the same transition changes
+ * nothing. The command must name the Creator in its lock set, so that {@code begin_command} locks the Creator's
+ * Tournaments.
  */
 public interface VerifiedPlayerTournamentCascade {
 

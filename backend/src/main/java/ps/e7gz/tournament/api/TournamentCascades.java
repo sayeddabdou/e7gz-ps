@@ -47,7 +47,9 @@ public interface TournamentCascades {
      * already be written in this command: the database accepts a condition-driven reason only when it is the highest
      * cause in force (FR-TRN-31).
      *
-     * <p>No notification is sent here: the cascade that cancels notifies the people it affects (arch 06 section 2.7).
+     * <p>E7-94: a Player-hosted Tournament's Creator is told in the same transaction
+     * ({@code TournamentCancelled}, actor SYSTEM), as on every other cancellation path; the participants' notifications
+     * are E7-89's.
      *
      * @return {@code true} when this call cancelled it; {@code false} when it was already terminal (nothing changes)
      * @throws IllegalArgumentException when no such Tournament exists
@@ -55,14 +57,39 @@ public interface TournamentCascades {
     boolean cancel(CommandContext command, UUID tournamentId, TournamentTerminalReason reason);
 
     /**
-     * E7-82 (FR-TRN-27, FR-OPS-12): an ACTIVE Tournament loses one Resource to a Resource Emergency Outage (or an Owner
-     * Review, E7-84) and continues on the others: the assignment is marked removed at {@link CommandContext#commandNow()}
-     * with {@code cause}, and its hold is released with the cause as release reason. A Tournament left with no operational
-     * Resource must then be cancelled by the caller ({@link #cancel}); the database refuses the commit otherwise
-     * ({@code operations.assert_emergency_cascade_complete}).
+     * E7-94, the resource-loss handler (arch 06 section 3.5, FR-TRN-27, FR-OPS-12, FR-OPS-28): an assigned Resource is
+     * lost to a Resource Emergency Outage or an Owner Review, whose row the caller has already written in this command.
+     * <ul>
+     *   <li><b>Before the start</b> - any state, PENDING_VENUE_APPROVAL included - the whole Tournament is
+     *       {@link ResourceLoss#CANCELLED} under the highest reason in force (FR-TRN-31): the resource reason, or a
+     *       higher one.</li>
+     *   <li><b>ACTIVE</b>: the assignment is marked removed at {@link CommandContext#commandNow()} with {@code cause}
+     *       and its hold released. While at least one operational Resource remains - the database's own count
+     *       ({@code tournament.highest_current_cancellation_reason}) - the Tournament {@link ResourceLoss#CONTINUES} and
+     *       {@code TournamentResourceAvailabilityChanged} is written for its Creator and Participants; with none left it
+     *       is {@link ResourceLoss#CANCELLED} under the resource reason.</li>
+     * </ul>
+     * The stored venue cost is never recomputed (FR-TRN-28): only the assignment and its hold change. A boundary that is
+     * already due (checkpoint, start) is resolved first, as of its own instant, so the loss meets the state the
+     * Tournament is really in. Running it again for the same Resource changes nothing.
      *
-     * @return {@code false}, changing nothing, when the Resource is not (or no longer) assigned to it
+     * @return what happened to the Tournament; {@link ResourceLoss#NOT_AFFECTED} when it is terminal, or the Resource
+     *         is not (or no longer) assigned to it
+     * @throws IllegalArgumentException when no such Tournament exists
      */
-    boolean removeResource(CommandContext command, UUID tournamentId, UUID resourceId,
-                           TournamentResourceRemovalCause cause);
+    ResourceLoss loseResource(CommandContext command, UUID tournamentId, UUID resourceId,
+                              TournamentResourceRemovalCause cause);
+
+    /** The outcome of {@link #loseResource}. */
+    enum ResourceLoss {
+
+        /** The Tournament was CANCELLED by this loss. */
+        CANCELLED,
+
+        /** An ACTIVE Tournament lost the Resource and goes on with the others. */
+        CONTINUES,
+
+        /** Nothing changed: the Tournament is terminal, or the Resource is not assigned to it. */
+        NOT_AFFECTED
+    }
 }

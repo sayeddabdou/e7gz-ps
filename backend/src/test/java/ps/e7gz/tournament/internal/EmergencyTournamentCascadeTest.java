@@ -45,9 +45,8 @@ import ps.e7gz.support.fixtures.Fixtures;
 /**
  * E7-82 (S5-E2) — the Tournament part of an Emergency's cascade (arch 06 section 2.5, FR-OPS-08, FR-OPS-12, FR-TRN-27):
  * a venue Emergency cancels the live Tournaments of its window; a resource Emergency cancels a pre-start one using the
- * failed room. The ACTIVE branch (FR-TRN-27: an ACTIVE Tournament loses the room and goes on) is not tested here: no
- * command reaches ACTIVE before the Tournament start of Sprint 6, and planting one means faking its whole checkpoint
- * chain.
+ * failed room. The ACTIVE branch (FR-TRN-27: an ACTIVE Tournament loses the room and goes on) is E7-94's
+ * {@link TournamentResourceLossIntegrationTest}.
  */
 @AutoConfigureMockMvc
 class EmergencyTournamentCascadeTest extends IntegrationTest {
