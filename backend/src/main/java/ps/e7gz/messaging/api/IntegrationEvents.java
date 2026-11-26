@@ -351,6 +351,26 @@ public final class IntegrationEvents {
     public static final String TOURNAMENT_REQUESTED = "TournamentRequested";
 
     /**
+     * The Venue's answer to a Player-hosted request and the request's other outcomes, each for the Player Creator
+     * (arch 03 section 14, arch 08 section 3; E7-92, FR-TRN-10, FR-TRN-18), aggregate {@code TOURNAMENT}, payload
+     * {@code {tournamentId, venueId, recipientType: CUSTOMER, recipientId, actorType, historySequence, startAt, endAt}}
+     * - and {@code terminalReason} on {@link #TOURNAMENT_REJECTED} and {@link #TOURNAMENT_CANCELLED}. The database
+     * requires the rejection's row, with that payload, in the rejecting transaction
+     * ({@code tournament.assert_rejection_notification_outbox}). E7-89 turns them into the creator's notifications; the
+     * reason tells which: an approval timeout blames the Venue's silence, an account disable never does (FR-TRN-18).
+     */
+    public static final String TOURNAMENT_APPROVED = "TournamentApproved";
+
+    /** See {@link #TOURNAMENT_APPROVED}: REJECTED / VENUE_REJECTED_TOURNAMENT. */
+    public static final String TOURNAMENT_REJECTED = "TournamentRejected";
+
+    /**
+     * See {@link #TOURNAMENT_APPROVED}: a request CANCELLED with its {@code terminalReason} - so far
+     * VENUE_DID_NOT_APPROVE_TOURNAMENT_IN_TIME (T7) and VENUE_ACCOUNT_DISABLED (E7-92).
+     */
+    public static final String TOURNAMENT_CANCELLED = "TournamentCancelled";
+
+    /**
      * Every event that can change a venue's availability and so refreshes its Nearest Availability rows (arch 05
      * section 5.3, arch 08 section 7): reservation hold or release, Resource state, selling blocks (maintenance,
      * closures, emergencies), opening hours and prices. Each carries the {@code venueId} it touches;

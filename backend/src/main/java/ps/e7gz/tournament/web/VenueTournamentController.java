@@ -17,6 +17,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -28,6 +29,7 @@ import ps.e7gz.common.codes.ConsoleType;
 import ps.e7gz.common.codes.PlayMode;
 import ps.e7gz.common.codes.TournamentHostType;
 import ps.e7gz.common.codes.TournamentStatus;
+import ps.e7gz.common.codes.TournamentTerminalReason;
 import ps.e7gz.common.codes.TournamentVisibility;
 import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.security.AuthenticatedSubject;
@@ -40,14 +42,16 @@ import ps.e7gz.messaging.api.Idempotency;
 import ps.e7gz.messaging.api.IdempotentResult;
 import ps.e7gz.messaging.api.ResultAggregate;
 import ps.e7gz.messaging.api.StoredResponse;
+import ps.e7gz.tournament.internal.AnsweredTournament;
 import ps.e7gz.tournament.internal.CreatedTournament;
+import ps.e7gz.tournament.internal.TournamentApproval;
 import ps.e7gz.tournament.internal.TournamentCreation;
 import ps.e7gz.tournament.internal.TournamentRequest;
 
 /**
  * Venue Dashboard - Tournaments (arch 09 section 4.2). This controller holds the Venue-hosted creation of E7-91 (O16
- * part 1); the list, approve, reject, cancel and operational termination are the Sprint 6 contract's (E7-88) and
- * E7-92/E7-93's. Every route acts for the signed-in account's own Venue, never one named by the request. The Venue DTOs
+ * part 1) and the answer to a Player's request of E7-92 (approve, reject); the list, cancel and operational
+ * termination are the Sprint 6 contract's (E7-88) and E7-93's. Every route acts for the signed-in account's own Venue, never one named by the request. The Venue DTOs
  * are their own (arch 09 section 1.1). Creation holds rooms, so the Idempotency-Key is required (ADR-015); it needs no
  * Owner Password (FR-TRN-24 lists only the cancellations).
  */
@@ -59,13 +63,19 @@ public class VenueTournamentController {
 
     /** {@code technical.idempotency_record.endpoint} (arch 08 section 6). */
     static final String CREATE_ENDPOINT = "POST /api/v1/venue/tournaments";
+    static final String APPROVE_ENDPOINT = "POST /api/v1/venue/tournaments/{tournamentId}/approve";
+    static final String REJECT_ENDPOINT = "POST /api/v1/venue/tournaments/{tournamentId}/reject";
+    private static final String TOURNAMENT_ID = "tournamentId";
 
     private final TournamentCreation creation;
+    private final TournamentApproval approval;
     private final Idempotency idempotency;
     private final ResponseMetaFactory meta;
 
-    public VenueTournamentController(TournamentCreation creation, Idempotency idempotency, ResponseMetaFactory meta) {
+    public VenueTournamentController(TournamentCreation creation, TournamentApproval approval,
+                                     Idempotency idempotency, ResponseMetaFactory meta) {
         this.creation = creation;
+        this.approval = approval;
         this.idempotency = idempotency;
         this.meta = meta;
     }
@@ -112,6 +122,75 @@ public class VenueTournamentController {
                 idempotency.request(venue, CREATE_ENDPOINT, idempotencyKey, Map.of(), request),
                 response, VenueTournament::of);
         return ResponseEntity.status(result.status()).body(meta.data(result.body()));
+    }
+
+    @PostMapping("/{tournamentId}/approve")
+    @Operation(operationId = "venueApproveTournament",
+            summary = "Approve a player's tournament request: WAITING_FOR_PLAYERS, its Approval Holds become "
+                    + "Tournament Holds (FR-TRN-10, FR-TRN-09)",
+            description = "Only while the request is PENDING_VENUE_APPROVAL and now < approvalExpiresAt = "
+                    + "MIN(createdAt + 10 minutes, checkpointAt). At or after approvalExpiresAt it is DEADLINE_PASSED, "
+                    + "also before the timeout has been applied (the boundary is the deadline instant); a request the "
+                    + "timeout already cancelled is DEADLINE_PASSED too. A tournament no longer pending (already "
+                    + "answered, cancelled, or venue-hosted) is OPERATIONAL_STATE_CHANGED. The holds are converted in "
+                    + "the same transaction, so the rooms are never free in between. A private tournament's invite "
+                    + "code becomes active now (FR-TRN-07). No Owner Password (FR-TRN-24). A venue account that is not "
+                    + "ENABLED is FORBIDDEN. A tournament of another venue is NOT_FOUND. The creator is notified "
+                    + "(TournamentApproved). Implemented by E7-92.")
+    @ApiError(status = 403, codes = ApiErrorCode.FORBIDDEN)
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
+    @ApiError(status = 409, codes = ApiErrorCode.OPERATIONAL_STATE_CHANGED)
+    @ApiError(status = 422, codes = {ApiErrorCode.DEADLINE_PASSED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
+    public DataResponse<VenueTournamentAnswer> approve(
+            @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+            @PathVariable UUID tournamentId,
+            @AuthenticationPrincipal AuthenticatedSubject venue) {
+        IdempotentResult<VenueTournamentAnswer> result = approval.approve(venue.id(), tournamentId,
+                idempotency.request(venue, APPROVE_ENDPOINT, idempotencyKey, Map.of(TOURNAMENT_ID, tournamentId), null),
+                answerResponse(), VenueTournamentAnswer::of);
+        return meta.data(result.body());
+    }
+
+    @PostMapping("/{tournamentId}/reject")
+    @Operation(operationId = "venueRejectTournament",
+            summary = "Reject a player's tournament request: REJECTED / VENUE_REJECTED_TOURNAMENT (FR-TRN-10)",
+            description = "Only while the request is PENDING_VENUE_APPROVAL and now < approvalExpiresAt; at or after "
+                    + "it, or once the timeout cancelled it, DEADLINE_PASSED. A tournament no longer pending is "
+                    + "OPERATIONAL_STATE_CHANGED. The Approval Holds are released at once. The creator may not request "
+                    + "the same venue and interval again for 5 minutes (FR-TRN-11). No reason text and no Owner "
+                    + "Password (FR-TRN-24). A tournament of another venue is NOT_FOUND. The creator is notified "
+                    + "(TournamentRejected). Implemented by E7-92.")
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
+    @ApiError(status = 409, codes = ApiErrorCode.OPERATIONAL_STATE_CHANGED)
+    @ApiError(status = 422, codes = {ApiErrorCode.DEADLINE_PASSED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
+    public DataResponse<VenueTournamentAnswer> reject(
+            @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+            @PathVariable UUID tournamentId,
+            @AuthenticationPrincipal AuthenticatedSubject venue) {
+        IdempotentResult<VenueTournamentAnswer> result = approval.reject(venue.id(), tournamentId,
+                idempotency.request(venue, REJECT_ENDPOINT, idempotencyKey, Map.of(TOURNAMENT_ID, tournamentId), null),
+                answerResponse(), VenueTournamentAnswer::of);
+        return meta.data(result.body());
+    }
+
+    private static StoredResponse<VenueTournamentAnswer> answerResponse() {
+        return StoredResponse.of(VenueTournamentAnswer.class, 200,
+                (VenueTournamentAnswer answer) -> new ResultAggregate(CustomerTournamentController.TOURNAMENT_AGGREGATE,
+                        answer.tournamentId()));
+    }
+
+    /** The request after the venue's answer. */
+    @Schema(name = "VenueTournamentAnswer")
+    public record VenueTournamentAnswer(
+            @NotNull UUID tournamentId,
+            @NotNull @Schema(description = "WAITING_FOR_PLAYERS once approved, REJECTED once rejected.")
+            TournamentStatus status,
+            @Schema(nullable = true, description = "VENUE_REJECTED_TOURNAMENT once rejected; null once approved.")
+            TournamentTerminalReason terminalReason) {
+
+        static VenueTournamentAnswer of(AnsweredTournament answered) {
+            return new VenueTournamentAnswer(answered.id(), answered.status(), answered.terminalReason());
+        }
     }
 
     @Schema(name = "VenueTournamentCreateRequest")

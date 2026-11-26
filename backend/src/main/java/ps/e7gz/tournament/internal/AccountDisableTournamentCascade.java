@@ -4,8 +4,10 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
+import ps.e7gz.audit.api.AuditActor;
 import ps.e7gz.common.codes.TournamentTerminalReason;
 import ps.e7gz.common.command.CommandContext;
+import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.venue.api.AccountDisableTournaments;
 
 /**
@@ -26,9 +28,11 @@ class AccountDisableTournamentCascade implements AccountDisableTournaments {
             """;
 
     private final Tournaments tournaments;
+    private final Outbox outbox;
 
-    AccountDisableTournamentCascade(Tournaments tournaments) {
+    AccountDisableTournamentCascade(Tournaments tournaments, Outbox outbox) {
         this.tournaments = tournaments;
+        this.outbox = outbox;
     }
 
     @Override
@@ -40,12 +44,21 @@ class AccountDisableTournamentCascade implements AccountDisableTournaments {
                 .param("id", id).query(UUID.class).list())).toList();
     }
 
+    /**
+     * E7-92: each creator is told in the same transaction ({@code TournamentCancelled} with
+     * {@code VENUE_ACCOUNT_DISABLED}), so E7-89's notification can say the request ended without blaming the Venue's
+     * silence (FR-TRN-18).
+     */
     @Override
     public void cancel(CommandContext command, List<UUID> tournamentIds) {
+        TournamentTerminalReason reason = TournamentTerminalReason.VENUE_ACCOUNT_DISABLED;
         for (UUID id : List.copyOf(tournamentIds)) {
-            if (!tournaments.cancel(command, id, TournamentTerminalReason.VENUE_ACCOUNT_DISABLED)) {
-                throw new IllegalStateException("Tournament " + id + " was terminal under the disable's locks");
-            }
+            Tournaments.Current request = tournaments.current(command, id)
+                    .orElseThrow(() -> new IllegalArgumentException("No Tournament " + id));
+            int sequence = tournaments.cancelled(command, id, reason, AuditActor.system(), command.commandNow())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Tournament " + id + " was terminal under the disable's locks"));
+            outbox.publish(command, TournamentAnswerEvents.cancelled(request, sequence, reason));
         }
     }
 }
