@@ -365,8 +365,11 @@ public final class IntegrationEvents {
     public static final String TOURNAMENT_REJECTED = "TournamentRejected";
 
     /**
-     * See {@link #TOURNAMENT_APPROVED}: a request CANCELLED with its {@code terminalReason} - so far
-     * VENUE_DID_NOT_APPROVE_TOURNAMENT_IN_TIME (T7) and VENUE_ACCOUNT_DISABLED (E7-92).
+     * See {@link #TOURNAMENT_APPROVED}: a Player-hosted Tournament CANCELLED with its {@code terminalReason} and the
+     * actor who cancelled it - VENUE_DID_NOT_APPROVE_TOURNAMENT_IN_TIME (T7) and VENUE_ACCOUNT_DISABLED (E7-92);
+     * MINIMUM_PARTICIPANTS_NOT_REACHED or a condition in force at the checkpoint or the start, CREATOR_CANCELLED,
+     * VENUE_CANCELLED, TOURNAMENT_OPERATIONAL_TERMINATION and ADMIN_CANCELLED (E7-93). The participants' own
+     * notifications are E7-89's.
      */
     public static final String TOURNAMENT_CANCELLED = "TournamentCancelled";
 

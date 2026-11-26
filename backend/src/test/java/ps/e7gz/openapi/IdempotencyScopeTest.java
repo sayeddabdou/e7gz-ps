@@ -70,7 +70,16 @@ class IdempotencyScopeTest {
             "post /api/v1/venue/tournaments",
             // Sprint 6: the venue's answer turns Approval Holds into Tournament Holds or releases them, E7-92.
             "post /api/v1/venue/tournaments/{tournamentId}/approve",
-            "post /api/v1/venue/tournaments/{tournamentId}/reject");
+            "post /api/v1/venue/tournaments/{tournamentId}/reject",
+            // Sprint 6: participations and cancellations move commitments to held rooms (ADR-015), E7-93.
+            "post /api/v1/customer/tournaments/{tournamentId}/join",
+            "post /api/v1/customer/tournaments/join-private",
+            "post /api/v1/customer/tournaments/{tournamentId}/leave",
+            "post /api/v1/customer/tournaments/{tournamentId}/participants/{userId}/remove",
+            "post /api/v1/customer/tournaments/{tournamentId}/cancel",
+            "post /api/v1/venue/tournaments/{tournamentId}/cancel",
+            "post /api/v1/venue/tournaments/{tournamentId}/operational-termination",
+            "post /api/v1/admin/tournaments/{tournamentId}/cancel");
 
     /** Writes outside ADR-015's scope, so the header is accepted but optional. */
     static final Map<String, List<String>> OPTIONAL = Map.of(

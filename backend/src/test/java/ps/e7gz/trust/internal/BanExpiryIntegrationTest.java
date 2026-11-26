@@ -27,6 +27,7 @@ import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.support.IntegrationTest;
 import ps.e7gz.support.PostgresTestContainer;
 import ps.e7gz.support.boundary.DueJobs;
+import ps.e7gz.tournament.internal.TournamentFlows;
 import ps.e7gz.support.boundary.TestCommands;
 import ps.e7gz.trust.api.TrustReconciler;
 
@@ -100,6 +101,36 @@ class BanExpiryIntegrationTest extends IntegrationTest {
 
         Booking again = customer.nextPending(Duration.ofHours(4));
         assertThat(again.bookingId()).isNotNull();
+    }
+
+    /**
+     * E7-93 (ADR-023, FR-TRN-26) end to end: the Ban the third no-show activates makes the customer's Tournament
+     * participation INELIGIBLE/BAN in that same command - Trust's reconciliation hands it to the Tournament module -
+     * and its expiry, fired by the real worker, restores it to JOINED before the Tournament starts.
+     */
+    @Test
+    void aBanTakesTheCustomerOutOfATournamentAndItsExpiryBringsThemBack() {
+        TournamentFlows tournaments = TournamentFlows.of(context);
+        UUID tournament = tournaments.openTournament();
+        BookingFlows.Customer customer = flows.customer();
+        Booking first = customer.nextActive(Duration.ofMinutes(20));
+        tournaments.join(first.customerId(), tournament);
+        attendance.noShow(first.venueAccountId(), first.bookingId());
+        Booking last = null;
+        for (int i = 0; i < 2; i++) {
+            last = customer.nextActive(Duration.ofMinutes(20));
+            attendance.noShow(last.venueAccountId(), last.bookingId());
+        }
+
+        assertThat(TournamentFlows.participant(tournament, first.customerId())).isEqualTo("INELIGIBLE:BAN");
+
+        UUID ban = ban(first.customerId());
+        endedEightDaysAgo(ban);
+        fireNow(last, ban);
+
+        assertThat(OWNER.sql("SELECT status FROM trust.ban_instance WHERE id = :id").param("id", ban)
+                .query(String.class).single()).isEqualTo("EXPIRED");
+        assertThat(TournamentFlows.participant(tournament, first.customerId())).isEqualTo("JOINED:");
     }
 
     /** Fired before the Ban's end (an extension moved it, or an early wake): rescheduled to the end, nothing expired. */
