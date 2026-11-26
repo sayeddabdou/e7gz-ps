@@ -171,6 +171,7 @@ Full tournament lifecycle, approval, checkpoint, participants, resource loss. Ro
 | S6-E2 | E7-92 | Engine | Approval, rejection, timeout (T7–T9) | The venue approves or rejects in time; otherwise it is cancelled. | S6-E1 |
 | S6-E3 | E7-93 | Engine | Join, leave, checkpoint, start, cancel | Players join and leave; minimum check; start; cancel. | S6-E2 |
 | S6-E4 | E7-94 | Engine | Resource loss, Verified Player cascade, precedence | Losing rooms, losing a badge, bans and deleted accounts in tournaments. | S6-E3, S4-E4 |
+| S6-E5 | E7-126 | Engine | Tournament reads: Discover, lists and detail | Fill the 7 tournament read stubs of the Sprint 6 contract: Discover, my tournaments, venue and admin lists, a detail on each surface. | S6-P0, S6-E3 |
 
 ### Sprint 7 — Reviews, admin and launch (3 – 14 Jan 2027)
 
@@ -3734,6 +3735,35 @@ Done when (write these as tests first where possible):
 - Losing 3 of 4 resources continues; losing the 4th cancels; stored cost unchanged; J10 passes.
 
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
+Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
+```
+
+### S6-E5 (E7-126) — Tournament reads: Discover, lists and detail
+
+**What this task does:** Fill the 7 tournament read stubs of the Sprint 6 contract: Discover, my tournaments, venue and admin lists, a detail on each surface.
+
+Lane: Engine · Depends on: S6-P0, S6-E3
+
+Why this task exists (PO decision 26 Nov 2026, E7-88): E7-91, E7-92 and E7-93 built the tournament writes, but no Sprint 6 task owned the reads, and E7-95, E7-96 and E7-97 need them.
+
+```text
+Read CLAUDE.md first. You are implementing task S6-E5 — "Tournament reads: Discover, lists and detail" (Engine lane) of the E7GZ PS build plan.
+
+Read only these docs for this task:
+- packages/api-client/SPRINT-6-CONTRACT.md
+- arch 09 §3.4, §4.1, §5
+- FRS FR-TRN-06, FR-TRN-07, FR-TRN-12, FR-TRN-13, FR-TRN-26
+- PCR-001
+
+Do:
+1. Implement the 7 read stubs of the Sprint 6 contract (E7-88) in tournament/web/*TournamentQueryController, as read-only queries; replace their lines in Sprint6StubHttpTest with this task's own tests.
+
+Done when (write these as tests first where possible):
+- Discover lists only PUBLIC WAITING_FOR_PLAYERS/CONFIRMED tournaments with now < startAt; a private or pending one never appears.
+- What a caller may not see is 404 NOT_FOUND, never 403; inviteCode and participants go to the creator only (customer side).
+- No response carries a phone, an email or the INELIGIBLE cause.
+
+Constraints: stay inside this task's module(s); do not change the contract; do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
 

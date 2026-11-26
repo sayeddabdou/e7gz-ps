@@ -2723,6 +2723,30 @@
   ],
   "prompt": "Read CLAUDE.md first. You are implementing task S6-E4 — \"Resource loss, Verified Player cascade, precedence\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- arch 06 §3.5, §3.6\n- arch 07 §5.7\n\nDo:\n1. Resource loss before/during; O15 cascade once per transition; ban/deletion precedence.\n\nDone when (write these as tests first where possible):\n- Losing 3 of 4 resources continues; losing the 4th cancels; stored cost unchanged; J10 passes.\n\nConstraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
  },
+ "E7-126": {
+  "id": "S6-E5",
+  "title": "Tournament reads: Discover, lists and detail",
+  "owner": "Amr",
+  "what": "Fill the 7 tournament read stubs of the Sprint 6 contract: Discover, my tournaments, venue and admin lists, a detail on each surface.",
+  "read": [
+   "packages/api-client/SPRINT-6-CONTRACT.md",
+   "arch 09 §3.4, §4.1, §5",
+   "FRS FR-TRN-06, FR-TRN-07, FR-TRN-12, FR-TRN-13, FR-TRN-26",
+   "PCR-001"
+  ],
+  "steps": [
+   "Implement the 7 read stubs of the Sprint 6 contract (E7-88) in tournament/web/*TournamentQueryController, as read-only queries; replace their lines in Sprint6StubHttpTest with this task's own tests."
+  ],
+  "done": [
+   "Discover lists only PUBLIC WAITING_FOR_PLAYERS/CONFIRMED tournaments with now < startAt; a private or pending one never appears.",
+   "What a caller may not see is 404 NOT_FOUND, never 403; inviteCode and participants go to the creator only (customer side).",
+   "No response carries a phone, an email or the INELIGIBLE cause."
+  ],
+  "folders": [
+   "backend/src/main/java/ps/e7gz/tournament/"
+  ],
+  "prompt": "Read CLAUDE.md first. You are implementing task S6-E5 — \"Tournament reads: Discover, lists and detail\" (Engine lane) of the E7GZ PS build plan.\n\nRead only these docs for this task:\n- packages/api-client/SPRINT-6-CONTRACT.md\n- arch 09 §3.4, §4.1, §5\n- FRS FR-TRN-06, FR-TRN-07, FR-TRN-12, FR-TRN-13, FR-TRN-26\n- PCR-001\n\nDo:\n1. Implement the 7 read stubs of the Sprint 6 contract (E7-88) in tournament/web/*TournamentQueryController, as read-only queries; replace their lines in Sprint6StubHttpTest with this task's own tests.\n\nDone when (write these as tests first where possible):\n- Discover lists only PUBLIC WAITING_FOR_PLAYERS/CONFIRMED tournaments with now < startAt; a private or pending one never appears.\n- What a caller may not see is 404 NOT_FOUND, never 403; inviteCode and participants go to the creator only (customer side).\n- No response carries a phone, an email or the INELIGIBLE cause.\n\nConstraints: stay inside this task's module(s); do not change the contract; do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.\nFinish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first."
+ },
  "E7-95": {
   "id": "S6-C1",
   "title": "Customer app: tournaments",
