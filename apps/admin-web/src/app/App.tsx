@@ -3,14 +3,18 @@ import { BrowserRouter, NavLink, Navigate, Route, Routes } from "react-router-do
 import { createAdminApiClient } from "../api";
 import type { ConfigResult } from "../config";
 import { AreaList } from "../features/areas/AreaList";
+import { AlertsScreen } from "../features/alerts";
 import { ActivityList } from "../features/activities/ActivityList";
 import { AdminLoginScreen, createAdminSessionApi, type AdminSessionApi } from "../features/auth";
 import { FeesScreen, GlobalRulesScreen } from "../features/configuration";
+import { EmergenciesScreen } from "../features/emergencies";
+import { OwnerReviewsScreen } from "../features/owner-review";
 import { PointsScreen } from "../features/points";
 import { ReferralsScreen } from "../features/referrals";
 import { AttendanceCorrectionScreen } from "../features/trust";
 import { UserDetailScreen, UsersScreen } from "../features/users";
 import { VerifiedPlayersScreen } from "../features/verified-players";
+import { VenueAccountsScreen } from "../features/venue-accounts";
 import { Onboarding } from "../features/venues/Onboarding";
 import { VenueDetail } from "../features/venues/VenueDetail";
 import { VenueList } from "../features/venues/VenueList";
@@ -100,6 +104,7 @@ function ProtectedShell({
               if (module.path === "/areas") content = <AreaList api={api} />;
               if (module.path === "/venues") content = <VenueList api={api} />;
               if (module.path === "/venue-onboarding") content = <Onboarding api={api} />;
+              if (module.path === "/venue-accounts") content = <VenueAccountsScreen api={api} />;
               if (module.path === "/activities") content = <ActivityList api={api} />;
               if (module.path === "/users") content = <UsersScreen api={api} />;
               if (module.path === "/verified-players") content = <VerifiedPlayersScreen api={api} />;
@@ -108,10 +113,13 @@ function ProtectedShell({
               if (module.path === "/referrals") content = <ReferralsScreen api={api} />;
               if (module.path === "/fees") content = <FeesScreen api={api} />;
               if (module.path === "/global-rules") content = <GlobalRulesScreen api={api} />;
+              if (module.path === "/notifications") content = <AlertsScreen api={api} />;
               return <Route key={module.path} path={module.path} element={content} />;
             })}
             <Route path="/venues/:venueId" element={<VenueDetail api={api} />} />
             <Route path="/users/:userId" element={<UserDetailScreen api={api} />} />
+            <Route path="/owner-reviews" element={<OwnerReviewsScreen api={api} />} />
+            <Route path="/emergencies" element={<EmergenciesScreen api={api} />} />
             <Route path="*" element={<Navigate replace to="/" />} />
           </Routes>
         </section>
