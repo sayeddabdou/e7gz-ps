@@ -41,8 +41,9 @@ import ps.e7gz.tournament.api.TournamentCascades;
  * The Tournament aggregate, early (E7-73, S4-E5; roadmap section 7 dependency note, arch 04 section 4.4): a Tournament
  * with its 1-4 Resource assignments and holds, its append-only history, its timers and - when the Player Creator plays -
  * the Creator's participant row. Enough for the Sprint 5 cascades to find and cancel Tournaments; creation is here so
- * the cascades can be tested against real Tournaments, and E7-91 builds the creation flow on it. No approval, join,
- * leave, checkpoint, start or completion transitions yet (E7-92, E7-93).
+ * the cascades can be tested against real Tournaments, and E7-91 builds the creation flow on it. E7-92 adds the
+ * Venue's answer to a Player-hosted request - approve (its Approval Holds become Tournament Holds) and reject - and the
+ * approval expiry (T7). No join, leave, checkpoint, start or completion transitions yet (E7-93).
  *
  * <p>Explicit SQL on the caller's command transaction ({@link CommandContext#jdbc()}), inside
  * {@code tournament.begin_command} (arch 04 section 2.1). The database is the authority: its row guards refuse a bad
@@ -94,7 +95,7 @@ class Tournaments implements TournamentCascades {
             INSERT INTO tournament.tournament_history (id, tournament_id, to_status, terminal_reason, actor_type,
                                                        actor_id, correlation_id)
             VALUES (:id, :tournamentId, :toStatus, :terminalReason, :actorType, :actorId, :correlationId)
-            RETURNING occurred_at
+            RETURNING sequence
             """;
 
     /** {@code status}, {@code joined_at} and {@code status_changed_at} are set by {@code tr_guard_tournament_participant}. */
@@ -105,9 +106,37 @@ class Tournaments implements TournamentCascades {
             """;
 
     static final String CURRENT = """
-            SELECT t.id, t.venue_id, t.host_type, t.status, t.start_at, t.end_at, t.version
+            SELECT t.id, t.venue_id, t.host_type, t.status, t.terminal_reason, t.creator_user_id, t.start_at, t.end_at,
+                   t.approval_expires_at, t.version
               FROM tournament.tournament t
              WHERE t.id = :id
+            """;
+
+    /** PENDING_VENUE_APPROVAL -> WAITING_FOR_PLAYERS (FR-TRN-10); the guard owns the deadline and the revalidation. */
+    static final String APPROVE = """
+            UPDATE tournament.tournament
+               SET status = 'WAITING_FOR_PLAYERS', version = version + 1
+             WHERE id = :id AND version = :version
+            """;
+
+    /** PENDING_VENUE_APPROVAL -> REJECTED / VENUE_REJECTED_TOURNAMENT ({@code ck_tournament_rejected_reason}). */
+    static final String REJECT = """
+            UPDATE tournament.tournament
+               SET status = 'REJECTED', terminal_reason = 'VENUE_REJECTED_TOURNAMENT', version = version + 1
+             WHERE id = :id AND version = :version
+            """;
+
+    /** Every assignment with the hold it points at now (an Approval Hold while the request is pending). */
+    static final String ASSIGNMENTS = """
+            SELECT tr.id, tr.resource_id, tr.reservation_id
+              FROM tournament.tournament_resource tr
+             WHERE tr.tournament_id = :id
+             ORDER BY tr.resource_id
+            """;
+
+    /** Points an assignment at its new Tournament Hold, once ({@code tournament.guard_tournament_resource}). */
+    static final String REPOINT = """
+            UPDATE tournament.tournament_resource SET reservation_id = :reservationId WHERE id = :id
             """;
 
     static final String CANCEL = """
@@ -351,34 +380,143 @@ class Tournaments implements TournamentCascades {
      */
     boolean cancel(CommandContext command, UUID tournamentId, TournamentTerminalReason reason, AuditActor actor) {
         Objects.requireNonNull(command, "command");
+        return cancelled(command, tournamentId, reason, actor, command.commandNow()).isPresent();
+    }
+
+    /**
+     * As {@link #cancel(CommandContext, UUID, TournamentTerminalReason, AuditActor)}, with the holds released at
+     * {@code releaseAt} - the approval deadline for T7 (E7-92: the boundary, never the worker's time, arch 08 section
+     * 2.2) - and the new history row's sequence returned for the creator's notification.
+     *
+     * @return the sequence of the {@code CANCELLED} history row; empty, changing nothing, when already terminal
+     */
+    Optional<Integer> cancelled(CommandContext command, UUID tournamentId, TournamentTerminalReason reason,
+                                AuditActor actor, Instant releaseAt) {
+        Objects.requireNonNull(command, "command");
         Objects.requireNonNull(tournamentId, "tournamentId");
         Objects.requireNonNull(reason, "reason");
         Objects.requireNonNull(actor, "actor");
+        Objects.requireNonNull(releaseAt, "releaseAt");
         Current current = current(command, tournamentId)
                 .orElseThrow(() -> new IllegalArgumentException("No Tournament " + tournamentId));
         if (!LIVE.contains(current.status().name())) {
-            return false;
+            return Optional.empty();
         }
         UUID correlationId = CorrelationId.require();
-        int updated = command.jdbc().sql(CANCEL)
+        requireOne(command.jdbc().sql(CANCEL)
                 .param("id", tournamentId)
                 .param("reason", reason.name())
                 .param("version", current.version())
-                .update();
-        if (updated != 1) {
-            // The row is locked by begin_command, so its version cannot move under this command.
-            throw new IllegalStateException("Tournament " + tournamentId + " changed under its own lock");
-        }
-        transition(command, tournamentId, current.venueId(), current.status(), TournamentStatus.CANCELLED, reason,
-                actor, correlationId);
+                .update(), tournamentId);
+        int sequence = transition(command, tournamentId, current.venueId(), current.status(),
+                TournamentStatus.CANCELLED, reason, actor, correlationId);
         for (UUID reservationId : command.jdbc().sql(RESERVATIONS).param("id", tournamentId).query(UUID.class)
                 .list()) {
-            ledger.release(command, reservationId, command.commandNow(), reason.name());
+            ledger.release(command, reservationId, releaseAt, reason.name());
         }
-        for (String timer : TIMERS) {
+        supersedeTimers(command, tournamentId, TIMERS);
+        return Optional.of(sequence);
+    }
+
+    // ------------------------------------------------------------------------------------------------ the answer
+
+    /**
+     * The Venue approves a Player-hosted request (FR-TRN-10, FR-TRN-09; arch 05 section 3.2, E7-92):
+     * {@code PENDING_VENUE_APPROVAL -> WAITING_FOR_PLAYERS} by the Venue Account, and in the same transaction every
+     * Approval Hold is released and a {@code TOURNAMENT_HOLD} on the same Resource and interval takes its place - so
+     * there is no moment, committed or not, in which a room of the Tournament is unheld for another booking. The
+     * approval expiry (T7) is withdrawn; the checkpoint, start and completion timers stay.
+     *
+     * <p>The database decides: the guard refuses at or after {@code approvalExpiresAt}, without an ENABLED Venue
+     * Account, or when a Resource or hold is no longer operationally eligible (arch 05 section 4 row 7,
+     * {@code tournament.assert_resources_operational}); {@code guard_tournament_resource} lets an assignment change
+     * its hold once, from a released Approval Hold to an active Tournament Hold; the deferred aggregate check refuses a
+     * WAITING Tournament without a standard hold on every Resource or with a live approval timer. The caller has
+     * checked that it is still pending and inside its window, so a refusal here is a broken invariant.
+     *
+     * @return the sequence of the new history row
+     */
+    int approve(CommandContext command, Current pending, UUID venueAccountId) {
+        Objects.requireNonNull(command, "command");
+        requirePending(pending);
+        UUID correlationId = CorrelationId.require();
+        // first the state, while the Approval Holds are still active: the guard revalidates them
+        requireOne(command.jdbc().sql(APPROVE)
+                .param("id", pending.id())
+                .param("version", pending.version())
+                .update(), pending.id());
+        Instant now = command.commandNow();
+        for (HeldAssignment assignment : command.jdbc().sql(ASSIGNMENTS).param("id", pending.id())
+                .query((rs, row) -> new HeldAssignment(rs.getObject("id", UUID.class),
+                        rs.getObject("resource_id", UUID.class), rs.getObject("reservation_id", UUID.class)))
+                .list()) {
+            if (!ledger.release(command, assignment.reservationId(), now,
+                    TournamentStatus.WAITING_FOR_PLAYERS.name())) {
+                throw new IllegalStateException("Approval Hold " + assignment.reservationId() + " of Tournament "
+                        + pending.id() + " was not active");
+            }
+            UUID hold = ledger.create(command, new NewReservation(assignment.resourceId(),
+                    ReservationOwner.tournamentHold(pending.id()), pending.startAt(), pending.endAt()));
+            command.jdbc().sql(REPOINT).param("id", assignment.id()).param("reservationId", hold).update();
+        }
+        int sequence = transition(command, pending.id(), pending.venueId(), TournamentStatus.PENDING_VENUE_APPROVAL,
+                TournamentStatus.WAITING_FOR_PLAYERS, null, AuditActor.venue(venueAccountId), correlationId);
+        supersedeTimers(command, pending.id(), List.of(APPROVAL_EXPIRY));
+        return sequence;
+    }
+
+    /**
+     * The Venue rejects a Player-hosted request (FR-TRN-10): {@code REJECTED} with {@code VENUE_REJECTED_TOURNAMENT} -
+     * never a cancellation reason ({@code ck_tournament_rejected_reason}) - by the Venue Account, every Approval Hold
+     * released at the command instant and every timer withdrawn. The 5-minute retry cooldown for the same Venue and
+     * interval follows from this history row ({@code tr_00_prepare_tournament_insert}, FR-TRN-11). The database also
+     * requires the creator's {@code TournamentRejected} outbox row in this transaction
+     * ({@code tournament.assert_rejection_notification_outbox}); the caller writes it with the returned sequence.
+     *
+     * @return the sequence of the new history row
+     */
+    int reject(CommandContext command, Current pending, UUID venueAccountId) {
+        Objects.requireNonNull(command, "command");
+        requirePending(pending);
+        UUID correlationId = CorrelationId.require();
+        requireOne(command.jdbc().sql(REJECT)
+                .param("id", pending.id())
+                .param("version", pending.version())
+                .update(), pending.id());
+        int sequence = transition(command, pending.id(), pending.venueId(), TournamentStatus.PENDING_VENUE_APPROVAL,
+                TournamentStatus.REJECTED, TournamentTerminalReason.VENUE_REJECTED_TOURNAMENT,
+                AuditActor.venue(venueAccountId), correlationId);
+        for (UUID reservationId : command.jdbc().sql(RESERVATIONS).param("id", pending.id()).query(UUID.class)
+                .list()) {
+            ledger.release(command, reservationId, command.commandNow(),
+                    TournamentTerminalReason.VENUE_REJECTED_TOURNAMENT.name());
+        }
+        supersedeTimers(command, pending.id(), TIMERS);
+        return sequence;
+    }
+
+    private static void requirePending(Current pending) {
+        Objects.requireNonNull(pending, "pending");
+        if (pending.status() != TournamentStatus.PENDING_VENUE_APPROVAL) {
+            throw new IllegalStateException("Tournament " + pending.id() + " is " + pending.status());
+        }
+    }
+
+    /** The row is locked by begin_command, so its version cannot move under this command. */
+    private static void requireOne(int updated, UUID tournamentId) {
+        if (updated != 1) {
+            throw new IllegalStateException("Tournament " + tournamentId + " changed under its own lock");
+        }
+    }
+
+    /**
+     * Withdraws the Tournament's pending timers of these types. A timer a worker holds right now is left to it: that is
+     * the job being fired (T7), which the worker marks DONE in this same transaction.
+     */
+    private void supersedeTimers(CommandContext command, UUID tournamentId, List<String> types) {
+        for (String timer : types) {
             jobs.supersede(command, timer + ":" + tournamentId);
         }
-        return true;
     }
 
     @Override
@@ -414,11 +552,13 @@ class Tournaments implements TournamentCascades {
      * correlation ID, same instant ({@code tournament.assert_tournament_history_chain}). The history row's instant is the
      * database's (the creation instant for the first row, the command instant after it); the audit row is written at
      * the command instant, which is the same instant in both cases.
+     *
+     * @return the history row's {@code sequence} (1 for the creation row)
      */
-    private void transition(CommandContext command, UUID tournamentId, UUID venueId, TournamentStatus from,
-                            TournamentStatus to, TournamentTerminalReason reason, AuditActor actor,
-                            UUID correlationId) {
-        command.jdbc().sql(INSERT_HISTORY)
+    private int transition(CommandContext command, UUID tournamentId, UUID venueId, TournamentStatus from,
+                           TournamentStatus to, TournamentTerminalReason reason, AuditActor actor,
+                           UUID correlationId) {
+        int sequence = command.jdbc().sql(INSERT_HISTORY)
                 .param("id", UUID.randomUUID())
                 .param("tournamentId", tournamentId)
                 .param("toStatus", to.name())
@@ -426,7 +566,7 @@ class Tournaments implements TournamentCascades {
                 .param("actorType", actor.actorType().name())
                 .param("actorId", actor.actorId())
                 .param("correlationId", correlationId)
-                .query(OffsetDateTime.class).single();
+                .query(Integer.class).single();
         Map<String, Object> payload = new LinkedHashMap<>();
         if (reason != null) {
             payload.put("terminalReason", reason.name());
@@ -437,6 +577,7 @@ class Tournaments implements TournamentCascades {
                 .payload(payload)
                 .contextVenue(venueId)
                 .build());
+        return sequence;
     }
 
     private List<LiveTournament> withResources(CommandContext command, List<Header> headers) {
@@ -471,8 +612,13 @@ class Tournaments implements TournamentCascades {
     }
 
     private static Current current(ResultSet rs, int row) throws SQLException {
+        String reason = rs.getString("terminal_reason");
+        OffsetDateTime approval = rs.getObject("approval_expires_at", OffsetDateTime.class);
         return new Current(rs.getObject("id", UUID.class), rs.getObject("venue_id", UUID.class),
-                TournamentStatus.valueOf(rs.getString("status")), rs.getLong("version"));
+                TournamentHostType.valueOf(rs.getString("host_type")), TournamentStatus.valueOf(rs.getString("status")),
+                reason == null ? null : TournamentTerminalReason.valueOf(reason),
+                rs.getObject("creator_user_id", UUID.class), instant(rs, "start_at"), instant(rs, "end_at"),
+                approval == null ? null : approval.toInstant(), rs.getLong("version"));
     }
 
     private static Instant instant(ResultSet rs, String column) throws SQLException {
@@ -512,7 +658,19 @@ class Tournaments implements TournamentCascades {
     record Assignment(UUID resourceId, String consoleType, Money hourlyPrice) {
     }
 
-    record Current(UUID id, UUID venueId, TournamentStatus status, long version) {
+    /**
+     * The Tournament as this command reads it.
+     *
+     * @param terminalReason    {@code null} while live
+     * @param creatorUserId     {@code null} for a Venue-hosted Tournament
+     * @param approvalExpiresAt {@code null} for a Venue-hosted Tournament
+     */
+    record Current(UUID id, UUID venueId, TournamentHostType hostType, TournamentStatus status,
+                   TournamentTerminalReason terminalReason, UUID creatorUserId, Instant startAt, Instant endAt,
+                   Instant approvalExpiresAt, long version) {
+    }
+
+    private record HeldAssignment(UUID id, UUID resourceId, UUID reservationId) {
     }
 
     private record Snapshot(UUID resourceId, String consoleType, Money hourlyPrice) {
