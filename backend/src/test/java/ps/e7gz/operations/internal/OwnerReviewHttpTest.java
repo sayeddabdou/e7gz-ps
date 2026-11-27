@@ -215,6 +215,10 @@ class OwnerReviewHttpTest extends IntegrationTest {
                 .query(String.class).single()).isEqualTo("AWAITING_CONFIRMATION");
         assertThat(restriction(pending.resourceId())).isEqualTo("OWNER_REVIEW_REQUIRED");
         assertThat(statusOf(pending.bookingId())).isEqualTo("CANCELLED/RESOURCE_OWNER_REVIEW_REQUIRED");
+        // E7-80 (R2): the awaiting event says the review was entered, so the venue gets its owner-review notice only
+        assertThat(count("SELECT count(*) FROM technical.outbox_event WHERE event_type = '"
+                + IntegrationEvents.EMERGENCY_AWAITING_CONFIRMATION + "' AND payload->>'emergencyId' = '" + emergency
+                + "' AND payload->>'ownerReviewEntered' = 'true'")).isOne();
 
         // the actual end later enters nothing new: the review and its cascade are not repeated
         end(pending, emergency).andExpect(status().isOk());

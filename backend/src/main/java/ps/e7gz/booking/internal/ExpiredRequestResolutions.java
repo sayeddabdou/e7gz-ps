@@ -16,6 +16,7 @@ import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.inventory.ledger.api.ReservationLedger;
 import ps.e7gz.inventory.ledger.api.ReservationOwner;
 import ps.e7gz.loyalty.api.BookingFeeRefunds;
+import ps.e7gz.messaging.api.IntegrationEvents;
 import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.scheduling.api.JobOutcome;
 import ps.e7gz.scheduling.api.NewJob;
@@ -133,7 +134,7 @@ class ExpiredRequestResolutions implements VenueResponseExpiredResolutions {
                 BookingStatus.VENUE_RESPONSE_EXPIRED, BookingStatus.CANCELLED, reason, ActorType.SYSTEM, null,
                 CorrelationId.require());
         refunds.recordDecision(context, booking.customerId(), booking.bookingId(), history);
-        outbox.publish(context, BookingEvents.cancelled(booking, reason));
+        outbox.publish(context, BookingEvents.cancelled(booking, reason, IntegrationEvents.CAUSE_EXPIRED_REQUEST));
         return JobOutcome.done();
     }
 

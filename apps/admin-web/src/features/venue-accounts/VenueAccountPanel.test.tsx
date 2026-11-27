@@ -48,6 +48,7 @@ describe("VenueAccountPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Disable account" }));
     await screen.findByRole("button", { name: "Enable account" });
     expect(JSON.parse(await requests[0]!.text())).toEqual({ reason: "Owner request" });
+    fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Access restored" } });
     fireEvent.click(screen.getByRole("button", { name: "Enable account" }));
     await screen.findByRole("button", { name: "Disable account" });
     fireEvent.click(screen.getByRole("button", { name: "Reset login password" }));
