@@ -237,4 +237,72 @@ describe("MyBookingsScreen", () => {
     expect(screen.getByText(/Venue is temporarily unable to confirm this booking/)).toBeTruthy();
     expect(screen.queryByText("VENUE_RESPONSE_INTERRUPTED_BY_ACCOUNT_DISABLE")).toBeNull();
   });
+
+  it("shows the account-disable expiry copy from history instead of ordinary non-response", async () => {
+    const disabledExpiry = {
+      ...detail,
+      status: "VENUE_RESPONSE_EXPIRED" as const,
+      displayBucket: "cancelled" as const,
+      history: [{
+        at: "2026-10-12T17:00:00Z",
+        kind: "BOOKING_EVENT" as const,
+        eventType: "VENUE_RESPONSE_INTERRUPTED_BY_ACCOUNT_DISABLE" as const,
+        fromStatus: null,
+        toStatus: null,
+        terminalReason: null,
+      }],
+    };
+    const api = createCustomerApiClient(config, async (request: Request) => request.url.includes("/bookings/b-1")
+      ? response(disabledExpiry)
+      : response({ items: [], nextCursor: null }));
+    render(<MyBookingsScreen api={api} openBookingId="b-1" />);
+
+    expect((await screen.findAllByText("Venue is temporarily unable to confirm this booking")).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Venue did not respond in time")).toBeNull();
+  });
+
+  it("shows operational cancellation and returns the Booking Fee to Wallet and Points", async () => {
+    const cancelled = {
+      ...detail,
+      status: "CANCELLED" as const,
+      displayBucket: "cancelled" as const,
+      terminalReason: "VENUE_EMERGENCY_CLOSURE" as const,
+      bookingFee: { amount: "20.00", currency: "EGP" as const, displayAsFree: false },
+      bookingFeePayment: {
+        pointsUsed: 10_000,
+        paidByPoints: { amount: "10.00", currency: "EGP" as const },
+        paidByWallet: { amount: "10.00", currency: "EGP" as const },
+        leftToPay: { amount: "0.00", currency: "EGP" as const },
+      },
+    };
+    const api = createCustomerApiClient(config, async (request: Request) => request.url.includes("/bookings/b-1")
+      ? response(cancelled)
+      : response({ items: [], nextCursor: null }));
+    render(<MyBookingsScreen api={api} openBookingId="b-1" />);
+
+    expect(await screen.findByText("Operational update")).toBeTruthy();
+    expect(screen.getByText("Cancelled because of a venue emergency.")).toBeTruthy();
+    expect(screen.getByText("Booking Fee refund")).toBeTruthy();
+    expect(screen.getByText("10,000 points return to your Points balance.")).toBeTruthy();
+    expect(screen.getByText("Any paid money part returns to your E7GZ Wallet balance.")).toBeTruthy();
+    expect(screen.queryByText(/cash|card|bank/iu)).toBeNull();
+  });
+
+  it("keeps cancellation available without showing a stale venue-response countdown while paused", async () => {
+    const paused = {
+      ...detail,
+      status: "PENDING" as const,
+      venueResponseExpiresAt: "2026-10-12T17:05:00Z",
+      venueResponsePaused: true,
+    };
+    const api = createCustomerApiClient(config, async (request: Request) => request.url.includes("/bookings/b-1")
+      ? response(paused)
+      : response({ items: [], nextCursor: null }));
+    render(<MyBookingsScreen api={api} openBookingId="b-1" />);
+
+    expect(await screen.findByText("Venue response countdown is paused.")).toBeTruthy();
+    expect(screen.queryByText(/\d{2}:\d{2} remaining/u)).toBeNull();
+    expect(screen.queryByText("Time remaining")).toBeNull();
+    expect(screen.getByRole("button", { name: "Cancel booking" })).toBeTruthy();
+  });
 });

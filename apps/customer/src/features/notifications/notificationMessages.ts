@@ -26,6 +26,25 @@ export const customerNotificationCodes = [
 ] as const;
 
 type CustomerNotificationCode = typeof customerNotificationCodes[number];
+
+// Spec v5 §52.2 operational/platform catalogue. Keeping the subset explicit makes a missing customer message fail tests.
+export const operationalNotificationCodes = [
+  "VENUE_OPENING_HOURS_CHANGED",
+  "BOOKING_CANCELLED_VENUE_EMERGENCY",
+  "BOOKING_CANCELLED_RESOURCE_EMERGENCY",
+  "BOOKING_CANCELLED_OWNER_REVIEW",
+  "BOOKING_RESPONSE_INTERRUPTED_BY_EMERGENCY",
+  "LATE_CONFIRM_INTERRUPTED_BY_EMERGENCY",
+  "BOOKING_CANCELLED_VENUE_ACCOUNT_DISABLED",
+  "BOOKING_CANCELLED_SYSTEM_INTEGRITY_ERROR",
+  "BOOKING_START_CANCELLED_EMERGENCY",
+  "ACTIVE_BOOKING_INTERRUPTED",
+  "ACTIVE_SESSION_ATTENDANCE_RECORDING_AFFECTED",
+  "OPERATIONAL_REFUND_CONFIRMED",
+  "BOOKING_FEE_REFUND_CONFIRMED",
+  "LATE_CONFIRM_ELIGIBILITY_RESTORED",
+] as const satisfies readonly CustomerNotificationCode[];
+
 const messages = en.notifications.messages satisfies Record<CustomerNotificationCode, string>;
 
 export function notificationMessage(code: string, params: Record<string, unknown>): string {
