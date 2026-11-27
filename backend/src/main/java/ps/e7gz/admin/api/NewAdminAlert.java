@@ -65,6 +65,31 @@ public record NewAdminAlert(AdminAlertKind kind, AdminAlertSeverity severity, St
      * informational: the revocation and its tournament cascade are already done in the same command. About the USER,
      * with the transition ID and its cause (ADMIN or TRUST_CORRECTION); never a name or a reason text.
      */
+    /** Spec v5 section 52.6 "Emergency declarations" (E7-80, Q1). SEV_3: information, nothing for the admin to fix. */
+    public static NewAdminAlert emergencyDeclared(UUID emergencyId, UUID venueId, String scope, UUID resourceId,
+                                                  UUID correlationId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("emergencyId", Objects.requireNonNull(emergencyId, "emergencyId").toString());
+        payload.put("venueId", Objects.requireNonNull(venueId, "venueId").toString());
+        payload.put("scope", Objects.requireNonNull(scope, "scope"));
+        if (resourceId != null) {
+            payload.put("resourceId", resourceId.toString());
+        }
+        return new NewAdminAlert(AdminAlertKind.EMERGENCY_DECLARED, AdminAlertSeverity.SEV_3, "EMERGENCY", emergencyId,
+                payload, correlationId);
+    }
+
+    /** Spec v5 section 52.6 "Venue Account Disabled" (E7-80, Q1). SEV_3: the admin made the change. */
+    public static NewAdminAlert venueAccountDisabled(UUID venueAccountId, UUID venueId, UUID adminId,
+                                                     UUID correlationId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("venueAccountId", Objects.requireNonNull(venueAccountId, "venueAccountId").toString());
+        payload.put("venueId", Objects.requireNonNull(venueId, "venueId").toString());
+        payload.put("adminId", Objects.requireNonNull(adminId, "adminId").toString());
+        return new NewAdminAlert(AdminAlertKind.VENUE_ACCOUNT_DISABLED, AdminAlertSeverity.SEV_3, "VENUE_ACCOUNT",
+                venueAccountId, payload, correlationId);
+    }
+
     public static NewAdminAlert verifiedPlayerRevoked(UUID userId, UUID transitionId, String cause,
                                                       UUID correlationId) {
         Map<String, Object> payload = new LinkedHashMap<>();

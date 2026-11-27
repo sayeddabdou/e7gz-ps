@@ -738,6 +738,57 @@ legend {
   margin-block-end: var(--e7gz-space-3xl);
 }
 
+.action-dialog {
+  background: var(--e7gz-color-surface-raised);
+  border: var(--e7gz-space-hairline) solid var(--e7gz-color-border-admin);
+  border-radius: var(--e7gz-radius-2xl);
+  box-shadow: var(--e7gz-shadow-card);
+  display: grid;
+  gap: var(--e7gz-space-xl);
+  margin-block-start: var(--e7gz-space-3xl);
+  padding: var(--e7gz-space-5xl);
+}
+
+.action-dialog h3,
+.action-dialog p {
+  margin: 0;
+}
+
+.alert-facts {
+  background: var(--e7gz-color-surface-admin-subtle);
+  border-radius: var(--e7gz-radius-md);
+  display: grid;
+  gap: var(--e7gz-space-sm);
+  margin: var(--e7gz-space-sm) 0 0;
+  padding: var(--e7gz-space-md);
+}
+
+.alert-fact {
+  display: grid;
+  font-size: var(--e7gz-font-size-caption);
+  gap: var(--e7gz-space-xs);
+  grid-template-columns: minmax(92px, auto) minmax(0, 1fr);
+}
+
+.alert-fact dt {
+  color: var(--e7gz-color-text-subtle);
+  font-weight: var(--e7gz-font-weight-bold);
+}
+
+.alert-fact dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.alert-subject,
+.alert-subject small {
+  overflow-wrap: anywhere;
+}
+
+.alerts-table th:nth-child(2) {
+  width: 42%;
+}
+
 label small,
 td small {
   color: var(--e7gz-color-text-subtle);

@@ -66,8 +66,9 @@ class BookingNotificationRulesTest extends IntegrationTest {
                 .isEqualTo(new Plan(List.of(new Send(Recipient.CUSTOMER, "VENUE_OPENING_HOURS_CHANGED")),
                         Optional.empty()));
         // ... and the two other start-time reasons (Spec v5 section 31.3; delayed-start no-show, Amr Heiba 17 Oct 2026)
+        // (E7-80: without a cause; an integrity error has its own code, OperationalCancellationRulesTest)
         for (String operational : List.of("VENUE_EMERGENCY_CLOSURE", "RESOURCE_EMERGENCY_OUTAGE",
-                "RESOURCE_OWNER_REVIEW_REQUIRED", "VENUE_CLOSURE", "SYSTEM_RESOURCE_STATE_INTEGRITY_ERROR")) {
+                "RESOURCE_OWNER_REVIEW_REQUIRED", "VENUE_CLOSURE")) {
             assertThat(codes(IntegrationEvents.BOOKING_CANCELLED, Map.of("terminalReason", operational)))
                     .as(operational).containsExactly("CUSTOMER BOOKING_AUTO_CANCELLED",
                             "VENUE VENUE_BOOKING_AUTO_CANCELLED");
@@ -77,6 +78,9 @@ class BookingNotificationRulesTest extends IntegrationTest {
                 .isEqualTo(new Plan(List.of(new Send(Recipient.CUSTOMER, "BOOKING_CANCELLED_BAN"),
                         new Send(Recipient.VENUE, "VENUE_BOOKING_AUTO_CANCELLED")), Optional.empty()));
     }
+
+    private static final List<String> CAUSES = List.of(IntegrationEvents.CAUSE_CASCADE,
+            IntegrationEvents.CAUSE_START_TIME, IntegrationEvents.CAUSE_ACCEPT, IntegrationEvents.CAUSE_EXPIRED_REQUEST);
 
     /**
      * E7-58: the five canonical Late Confirm events (D2) make six notifications - LateConfirmTimedOut one for each
@@ -162,7 +166,7 @@ class BookingNotificationRulesTest extends IntegrationTest {
      * venue's ACTIVE session (E7-78): nineteen, and nothing else.
      */
     @Test
-    void nineteenEventsHaveARule() {
+    void twentyEventsHaveARule() {
         assertThat(BookingNotificationRules.eventTypes()).containsExactlyInAnyOrder(
                 IntegrationEvents.BOOKING_CREATED, IntegrationEvents.BOOKING_CONFIRMED,
                 IntegrationEvents.BOOKING_REJECTED, IntegrationEvents.VENUE_RESPONSE_EXPIRED,
@@ -173,7 +177,7 @@ class BookingNotificationRulesTest extends IntegrationTest {
                 IntegrationEvents.LATE_PRESENT_RECORDED, IntegrationEvents.NO_SHOW_RECORDED,
                 IntegrationEvents.BOOKING_COMPLETED, IntegrationEvents.ATTENDANCE_RESOLVED,
                 IntegrationEvents.ATTENDANCE_CORRECTED, IntegrationEvents.TIMER_PAUSED,
-                IntegrationEvents.ACTIVE_SESSION_ATTENDANCE_RECORDING_AFFECTED);
+                IntegrationEvents.TIMER_RESUMED, IntegrationEvents.ACTIVE_SESSION_ATTENDANCE_RECORDING_AFFECTED);
     }
 
     /**
@@ -196,6 +200,12 @@ class BookingNotificationRulesTest extends IntegrationTest {
         assertThat(codes(IntegrationEvents.TIMER_PAUSED, Map.of("pauseKind", "LATE_CONFIRM")))
                 .containsExactly("CUSTOMER LATE_CONFIRMATION_PAUSED");
         assertThat(codes(IntegrationEvents.TIMER_PAUSED, Map.of("pauseKind", "VENUE_RESPONSE"))).isEmpty();
+        // E7-80 (FR-OPS-34): the paused response timer pauses the venue's reminder; its resume re-arms it, telling no one
+        assertThat(plan(IntegrationEvents.TIMER_PAUSED, Map.of("pauseKind", "VENUE_RESPONSE")).reminder())
+                .contains(Reminder.PAUSE_VENUE_PENDING_REQUEST_EXPIRING);
+        assertThat(plan(IntegrationEvents.TIMER_RESUMED, Map.of("pauseKind", "VENUE_RESPONSE")))
+                .isEqualTo(new Plan(List.of(), Optional.of(Reminder.REARM_VENUE_PENDING_REQUEST_EXPIRING)));
+        assertThat(plan(IntegrationEvents.TIMER_RESUMED, Map.of("pauseKind", "LATE_CONFIRM"))).isEqualTo(Plan.NONE);
     }
 
     /**
@@ -369,8 +379,12 @@ class BookingNotificationRulesTest extends IntegrationTest {
 
     private static List<Map<String, Object>> payloadsOf(String type) {
         if (type.equals(IntegrationEvents.BOOKING_CANCELLED)) {
+            // E7-80: every reason without a cause, and with each cause (Q2)
             return BookingNotificationRules.CANCELLED.keySet().stream()
-                    .map(reason -> Map.<String, Object>of("terminalReason", reason.name())).toList();
+                    .flatMap(reason -> Stream.concat(Stream.of(Map.<String, Object>of("terminalReason", reason.name())),
+                            CAUSES.stream().map(cause -> Map.<String, Object>of("terminalReason", reason.name(),
+                                    IntegrationEvents.CANCEL_CAUSE, cause))))
+                    .toList();
         }
         if (type.equals(IntegrationEvents.BOOKING_REJECTED)) {
             return Stream.of(BookingTerminalReason.VENUE_REJECTED, BookingTerminalReason.REJECTED_AFTER_EXPIRY)
@@ -383,7 +397,7 @@ class BookingNotificationRulesTest extends IntegrationTest {
         if (type.equals(IntegrationEvents.ATTENDANCE_CORRECTED)) {
             return List.of(Map.of("correction", "NO_SHOW_REVERSED"), Map.of("correction", "ATTENDANCE_CORRECTED"));
         }
-        if (type.equals(IntegrationEvents.TIMER_PAUSED)) {
+        if (type.equals(IntegrationEvents.TIMER_PAUSED) || type.equals(IntegrationEvents.TIMER_RESUMED)) {
             return List.of(Map.of("pauseKind", "LATE_CONFIRM"), Map.of("pauseKind", "VENUE_RESPONSE"));
         }
         return List.of(Map.of(), Map.of("source", "MANUAL"));

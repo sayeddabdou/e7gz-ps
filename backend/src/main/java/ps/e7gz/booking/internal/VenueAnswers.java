@@ -30,6 +30,7 @@ import ps.e7gz.inventory.ledger.api.ReservationLedger;
 import ps.e7gz.inventory.ledger.api.ReservationOwner;
 import ps.e7gz.loyalty.api.BookingFeeRefunds;
 import ps.e7gz.messaging.api.CommandAnswer;
+import ps.e7gz.messaging.api.IntegrationEvents;
 import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.operations.api.ResponseTimerPauses;
 import ps.e7gz.operations.api.UnresolvedEmergencies;
@@ -186,7 +187,7 @@ class VenueAnswers {
                 BookingStatus.CANCELLED, cause.reason(), ActorType.SYSTEM, null, CorrelationId.require());
         refunds.recordDecision(context, booking.customerId(), booking.bookingId(), history);
         jobs.supersede(context, venueResponseExpiryKey(booking.bookingId()));
-        outbox.publish(context, BookingEvents.cancelled(booking, cause.reason()));
+        outbox.publish(context, BookingEvents.cancelled(booking, cause.reason(), IntegrationEvents.CAUSE_ACCEPT));
         return new ApiException(cause.code());
     }
 

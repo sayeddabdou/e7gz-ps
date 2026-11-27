@@ -19,6 +19,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
 import ps.e7gz.admin.api.AdminAlerts;
+import ps.e7gz.admin.api.NewAdminAlert;
 import ps.e7gz.audit.api.AuditActor;
 import ps.e7gz.audit.api.AuditRecord;
 import ps.e7gz.audit.api.AuditWriter;
@@ -387,6 +388,9 @@ final class EmergencyCommands {
                 .payload(payload)
                 .build());
         publish(context, deps, IntegrationEvents.EMERGENCY_DECLARED, emergency);
+        // E7-80 (Spec v5 section 52.6, Q1): the Platform Admin's alert, committed with the declaration
+        deps.alerts().raise(context, NewAdminAlert.emergencyDeclared(id, venueId, emergency.scope().name(),
+                emergency.resourceId(), declaration.correlationId()));
         return emergency;
     }
 
@@ -930,14 +934,17 @@ final class EmergencyCommands {
         OwnerReviewCommands.Before reviewBefore = OwnerReviewCommands.beforeBoundary(context, deps, emergency);
         context.jdbc().sql("UPDATE operations.emergency SET status = 'AWAITING_CONFIRMATION' WHERE id = :id")
                 .param("id", emergencyId).update();
-        OwnerReviewCommands.afterBoundary(context, deps, read(context, emergency.venueId(), emergencyId).orElseThrow(),
-                reviewBefore, locks);
+        boolean ownerReviewEntered = OwnerReviewCommands.afterBoundary(context, deps,
+                read(context, emergency.venueId(), emergencyId).orElseThrow(), reviewBefore, locks).isPresent();
         deps.audit().write(context, AuditRecord.builder(OperationsAuditAction.EMERGENCY_AWAITING_CONFIRMATION,
                         AuditActor.system(), emergencyId, CorrelationId.require())
                 .contextVenue(emergency.venueId())
                 .stateChange(EmergencyStatus.ACTIVE.name(), EmergencyStatus.AWAITING_CONFIRMATION.name())
                 .payload(subjectPayload(emergency, Map.of("expectedEndAt", emergency.expectedEndAt().toString())))
                 .build());
+        // E7-80 (FR-OPS-25, R2): the venue's reminder, after commit
+        publish(context, deps, IntegrationEvents.EMERGENCY_AWAITING_CONFIRMATION, emergency,
+                Map.of("ownerReviewEntered", ownerReviewEntered));
         return ExpectedEndOutcome.DONE;
     }
 
@@ -1156,6 +1163,12 @@ final class EmergencyCommands {
 
     /** {@code {venueId, emergencyId, scope, resourceId?}}: the Nearest Availability consumer refreshes the venue. */
     private static void publish(CommandContext context, Deps deps, String type, Emergency emergency) {
+        publish(context, deps, type, emergency, Map.of());
+    }
+
+    /** As above, with {@code extra} members (E7-80: {@code ownerReviewEntered} of the awaiting event). */
+    private static void publish(CommandContext context, Deps deps, String type, Emergency emergency,
+                                Map<String, Object> extra) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("venueId", emergency.venueId().toString());
         payload.put("emergencyId", emergency.id().toString());
@@ -1163,6 +1176,7 @@ final class EmergencyCommands {
         if (emergency.resourceId() != null) {
             payload.put("resourceId", emergency.resourceId().toString());
         }
+        payload.putAll(extra);
         deps.outbox().publish(context, new NewOutboxEvent(type, SUBJECT_TYPE, emergency.id(), payload));
     }
 }

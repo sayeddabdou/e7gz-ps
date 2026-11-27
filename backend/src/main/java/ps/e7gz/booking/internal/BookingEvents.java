@@ -2,6 +2,7 @@ package ps.e7gz.booking.internal;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import ps.e7gz.booking.internal.VenueAnswerStore.Facts;
 import ps.e7gz.common.codes.BookingSource;
 import ps.e7gz.common.codes.BookingTerminalReason;
@@ -74,6 +75,11 @@ final class BookingEvents {
         return event(IntegrationEvents.BOOKING_CANCELLED, booking, payload);
     }
 
+    /** As {@link #cancelled(Facts, BookingTerminalReason)}, naming its {@code cause} (E7-80, Q2). */
+    static NewOutboxEvent cancelled(Facts booking, BookingTerminalReason reason, String cause) {
+        return withCause(cancelled(booking, reason), cause);
+    }
+
     /**
      * {@code BookingConfirmed} for a future Manual Booking, created CONFIRMED (PO decision 10 Oct 2026, E7-48, D6): the
      * {@code BookingCreated} fields with {@code customerId} null, plus {@code source} MANUAL. Never
@@ -96,6 +102,17 @@ final class BookingEvents {
         Map<String, Object> payload = manual(booking);
         payload.put("terminalReason", reason.name());
         return event(IntegrationEvents.BOOKING_CANCELLED, booking, payload);
+    }
+
+    /** As {@link #manualCancelled(Facts, BookingTerminalReason)}, naming its {@code cause} (E7-80, Q2). */
+    static NewOutboxEvent manualCancelled(Facts booking, BookingTerminalReason reason, String cause) {
+        return withCause(manualCancelled(booking, reason), cause);
+    }
+
+    private static NewOutboxEvent withCause(NewOutboxEvent event, String cause) {
+        Map<String, Object> payload = new LinkedHashMap<>(event.payload());
+        payload.put(IntegrationEvents.CANCEL_CAUSE, Objects.requireNonNull(cause, "cause"));
+        return new NewOutboxEvent(event.eventType(), event.aggregateType(), event.aggregateId(), payload);
     }
 
     /** The base fields ({@code customerId} null for a Manual Booking) plus {@code source}. */

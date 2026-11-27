@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import ps.e7gz.admin.api.AdminAlerts;
+import ps.e7gz.admin.api.NewAdminAlert;
 import ps.e7gz.audit.api.AuditActor;
 import ps.e7gz.audit.api.AuditRecord;
 import ps.e7gz.audit.api.AuditWriter;
@@ -178,7 +180,7 @@ final class VenueAccountCommands {
     /** What a disable writes besides the account row (O10; E7-78): the three ports and the shared writers. */
     record DisableDeps(AccountDisableBookings bookings, AccountDisableTournaments tournaments,
                        AccountRestrictions restrictions, AuditWriter audit, Outbox outbox,
-                       VenueBrowserPush browserPush) {
+                       VenueBrowserPush browserPush, AdminAlerts alerts) {
     }
 
     /** The disable reaches a booking or Tournament its lock set does not hold: plan again (E7-82's pattern). */
@@ -317,6 +319,9 @@ final class VenueAccountCommands {
                     "VENUE_ACCOUNT", venueAccountId, Map.of("venueAccountId", venueAccountId, "venueId", venueId)));
             // ... and its browsers get no more Web Push (PO decision 10 Oct 2026, E7-44 review).
             deps.browserPush().revokeAll(context, venueAccountId);
+            // E7-80 (Spec v5 section 52.6 "Venue Account Disabled", Q1): the admin alert, with the disable
+            deps.alerts().raise(context, NewAdminAlert.venueAccountDisabled(venueAccountId, venueId, adminId,
+                    correlationId));
         }
     }
 

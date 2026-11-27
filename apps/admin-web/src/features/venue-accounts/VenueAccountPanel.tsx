@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import type { components } from "@e7gz/api-client";
-import { errorCodeOf, errorFieldOf, idempotencyHeaders, type ApiClient } from "../../api";
+import { createIdempotencyKey, errorCodeOf, errorFieldOf, idempotencyHeaders, type ApiClient } from "../../api";
 import { adminErrorMessage } from "../adminErrors";
 import { messages as t } from "../../i18n/messages";
 
@@ -18,6 +18,8 @@ export function VenueAccountPanel({ api, venueId, initial }: { api: ApiClient; v
   const [resetKind, setResetKind] = useState<"login" | "pin">();
   const [newPassword, setNewPassword] = useState("");
   const [reason, setReason] = useState("");
+  const accountStatusKey = useRef(createIdempotencyKey());
+  const changingStatus = useRef(false);
   const create = async (event: FormEvent) => {
     event.preventDefault(); if (!/^\d{4}$/.test(ownerPin)) { setError(t.errors.fields.initialOwnerPassword); return; }
     if (!/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(password)) { setError(t.errors.fields.password); return; }
@@ -28,13 +30,14 @@ export function VenueAccountPanel({ api, venueId, initial }: { api: ApiClient; v
     } catch { setError(t.networkError); }
   };
   const setEnabled = async (enabled: boolean) => {
-    if (!account) return;
+    if (!account || changingStatus.current) return;
     const path = enabled ? "/api/v1/admin/venue-accounts/{venueAccountId}/enable" as const : "/api/v1/admin/venue-accounts/{venueAccountId}/disable" as const;
-    if (!reason.trim()) { setError("Enter a reason."); return; }
+    if (!reason.trim()) { setError(t.errors.fields.reason); return; }
+    changingStatus.current = true;
     try {
-      const result = await api.POST(path, { params: { path: { venueAccountId: account.id }, header: idempotencyHeaders() }, body: { reason: reason.trim() } });
-      if (result.data) setAccount(result.data.data); else setError(adminErrorMessage(errorCodeOf(result.error)));
-    } catch { setError(t.networkError); }
+      const result = await api.POST(path, { params: { path: { venueAccountId: account.id }, header: idempotencyHeaders(accountStatusKey.current) }, body: { reason: reason.trim() } });
+      if (result.data) { setAccount(result.data.data); setReason(""); accountStatusKey.current = createIdempotencyKey(); } else setError(adminErrorMessage(errorCodeOf(result.error)));
+    } catch { setError(t.networkError); } finally { changingStatus.current = false; }
   };
   const reset = async (event: FormEvent) => {
     event.preventDefault(); if (!account || !resetKind) return;
@@ -56,7 +59,7 @@ export function VenueAccountPanel({ api, venueId, initial }: { api: ApiClient; v
       <button className="button button--primary" type="submit">{t.account.create}</button>
     </form> : <>
       <p className="account-identifier">{account.loginIdentifier}</p>
-      <label>{t.venues.reason}<input value={reason} onChange={(event) => setReason(event.target.value)} /></label>
+      <label>{t.venues.reason}<input value={reason} onChange={(event) => { setReason(event.target.value); accountStatusKey.current = createIdempotencyKey(); }} /></label>
       <div className="form-actions"><button className="button button--secondary" type="button" onClick={() => void setEnabled(account.accountStatus === "DISABLED")}>{account.accountStatus === "DISABLED" ? t.account.enable : t.account.disable}</button>
       <button className="button button--secondary" type="button" onClick={() => setResetKind("login")}>{t.account.resetLogin}</button>
       <button className="button button--secondary" type="button" onClick={() => setResetKind("pin")}>{t.account.resetOwnerPin}</button></div>
