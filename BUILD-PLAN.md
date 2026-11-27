@@ -3258,6 +3258,18 @@ Plan review 16 Nov 2026 (order):
 PO decisions 19 Nov 2026 — Sprint 5 contract, E7-77 (do these too):
 - Refund notification copy (customer, venue and admin) says the Booking Fee went back to the E7GZ Wallet, or as Points when Points paid it. Never 'refunded to your card' or any wording that suggests money leaves the app (PO, 19 Nov 2026; PCR-009, PCR-010).
 
+PO decisions 25 Nov 2026 (E7-80, Q1-Q6, R1-R5; Sayed took every recommended pick):
+- Q1 Platform Admin events of section 52.6 (emergency declared, venue account disabled) are Admin Alerts raised in their own commands (new kinds EMERGENCY_DECLARED, VENUE_ACCOUNT_DISABLED); owner review keeps its RESOURCE_OWNER_REVIEW_REQUIRED alert; the ADMIN_* catalogue codes stay unused.
+- Q2 One customer code per cause of an operational cancellation: BookingCancelled carries a cause (CASCADE, START_TIME, ACCEPT, EXPIRED_REQUEST). Cascade: BOOKING_CANCELLED_VENUE_EMERGENCY / _RESOURCE_EMERGENCY / _OWNER_REVIEW; start time with an emergency: BOOKING_START_CANCELLED_EMERGENCY; integrity error: BOOKING_CANCELLED_SYSTEM_INTEGRITY_ERROR; an Accept stopped by its cause and T6 stay BOOKING_AUTO_CANCELLED. The venue always gets one VENUE_BOOKING_AUTO_CANCELLED.
+- Q3 Venue Closure cancellations: customer BOOKING_AUTO_CANCELLED, venue VENUE_BOOKING_AUTO_CANCELLED per booking.
+- Q4 Maintenance Starting Soon: 30 minutes before the start, fixed in code; an edit moves it, a delete withdraws it, a window created less than 30 minutes before its start gets none.
+- Q5/R2 One VENUE_EMERGENCY_REMINDER when the emergency moves to AWAITING_CONFIRMATION (covers the three FR-OPS-25 moments); none when that step entered an Owner Review (VENUE_OWNER_REVIEW_ENTERED says it); no admin alert there.
+- R3 A start-time cancellation under Owner Review gives BOOKING_CANCELLED_OWNER_REVIEW; under a Closure the generic code.
+- Q6/R1/R4 Refund confirmation only when an amount above 0 was given back, one per ledger part (Wallet credit, Points returned); OPERATIONAL_REFUND_CONFIRMED when the booking's terminalReason is operational (emergencies, owner review, closure, account disable, integrity error, the three *_INTERRUPTED_BY_EMERGENCY), else BOOKING_FEE_REFUND_CONFIRMED.
+- R5 No POINTS_* message on a refund (E7-67 rule stays); the refund confirmation says the Points came back.
+- Owner notices (VENUE_OWNER_EMERGENCY_NOTICE, VENUE_OWNER_REVIEW_ENTERED) go to the venue itself (one login), In-App + Push.
+- Also: the venue's request-expiring reminder pauses and resumes with the response timer (FR-OPS-34, named for E7-80 in BookingReminders).
+
 Constraints: stay inside this task's module(s); do not edit docs/ or V1__baseline.sql; follow CLAUDE.md §5.
 Finish by running the checks in CLAUDE.md §4, then give me a short summary, the files changed, and any question for the Product Owner. Do not open the PR — I will review first.
 ```
