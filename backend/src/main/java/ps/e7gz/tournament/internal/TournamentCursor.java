@@ -19,6 +19,10 @@ final class TournamentCursor {
 
     static final int DEFAULT_PAGE_SIZE = 20;
 
+    /** Every instant a Tournament row can hold lies well inside these bounds (years 1 to 9999). */
+    private static final Instant EARLIEST = Instant.parse("0001-01-01T00:00:00Z");
+    private static final Instant LATEST = Instant.parse("9999-12-31T23:59:59Z");
+
     private TournamentCursor() {
     }
 
@@ -47,7 +51,12 @@ final class TournamentCursor {
             if (bar < 0) {
                 throw new IllegalArgumentException("no separator");
             }
-            return new Position(Instant.parse(plain.substring(0, bar)), UUID.fromString(plain.substring(bar + 1)));
+            Instant at = Instant.parse(plain.substring(0, bar));
+            if (at.isBefore(EARLIEST) || at.isAfter(LATEST)) {
+                // Instant reaches far beyond PostgreSQL's timestamptz: such a cursor was never one of ours
+                throw new IllegalArgumentException("instant out of range");
+            }
+            return new Position(at, UUID.fromString(plain.substring(bar + 1)));
         } catch (IllegalArgumentException | DateTimeParseException e) {
             throw new ApiException(ApiErrorCode.VALIDATION_FAILED, "cursor");
         }

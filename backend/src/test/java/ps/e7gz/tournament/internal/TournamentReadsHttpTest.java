@@ -196,6 +196,13 @@ class TournamentReadsHttpTest extends IntegrationTest {
         mvc.perform(get(CUSTOMER).param("cursor", "not-a-cursor").header("Authorization", viewer))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+        // decodes as an Instant, but PostgreSQL's timestamptz cannot hold it: still the client's error, never a 500
+        String farFuture = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(
+                ("+1000000000-01-01T00:00:00Z|" + UUID.randomUUID()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        mvc.perform(get(VENUE).param("cursor", farFuture)
+                        .header("Authorization", token(AuthSubjectType.VENUE, world.account().id())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
     }
 
     @Test
