@@ -30,13 +30,15 @@ import ps.e7gz.common.error.ApiErrorCode;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
 import ps.e7gz.common.web.MoneyView;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.PageView;
+import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.tournament.internal.TournamentReads;
+import ps.e7gz.tournament.internal.TournamentRow;
 
 /**
  * Platform Admin — reading tournaments (arch 09 §5 {@code GET /admin/tournaments}; FR-ADM-08). Sprint 6 contract
- * (E7-88), stubs answering 501 until E7-126 implements them. The Admin cancel is {@code AdminTournamentController}
+ * (E7-88), implemented by E7-126 (S6-E5) on {@link TournamentReads}. The Admin cancel is {@code AdminTournamentController}
  * (E7-93). {@code /{tournamentId}} is added by the PO decision of 26 Nov 2026 (E7-88: the Admin's detail screen,
  * E7-97). Admin DTOs only (arch 09 §1.1).
  */
@@ -46,6 +48,14 @@ import ps.e7gz.common.web.PageView;
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 @Validated
 public class AdminTournamentQueryController {
+
+    private final TournamentReads reads;
+    private final ResponseMetaFactory meta;
+
+    public AdminTournamentQueryController(TournamentReads reads, ResponseMetaFactory meta) {
+        this.reads = reads;
+        this.meta = meta;
+    }
 
     @GetMapping
     @Operation(operationId = "adminListTournaments",
@@ -60,7 +70,9 @@ public class AdminTournamentQueryController {
             @RequestParam(required = false) TournamentHostType hostType,
             @RequestParam(required = false) String cursor,
             @RequestParam(required = false) @Min(1) @Max(100) Integer limit) {
-        throw NotImplementedYet.stub();
+        TournamentReads.Page<TournamentReads.Item> page = reads.adminList(venueId, status, hostType, cursor, limit);
+        return meta.data(new PageView<>(page.items().stream().map(AdminTournamentListing::of).toList(),
+                page.nextCursor()));
     }
 
     @GetMapping("/{tournamentId}")
@@ -70,7 +82,7 @@ public class AdminTournamentQueryController {
                     + "other surfaces (arch 09 §3.4). Implemented by E7-126.")
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     public DataResponse<AdminTournamentDetail> get(@PathVariable UUID tournamentId) {
-        throw NotImplementedYet.stub();
+        return meta.data(AdminTournamentDetail.of(reads.adminDetail(tournamentId)));
     }
 
     @Schema(name = "AdminTournamentListing")
@@ -94,6 +106,13 @@ public class AdminTournamentQueryController {
             @NotNull Instant startAt,
             @NotNull Instant endAt,
             @NotNull Instant createdAt) {
+
+        static AdminTournamentListing of(TournamentReads.Item item) {
+            TournamentRow t = item.row();
+            return new AdminTournamentListing(t.id(), t.venueId(), item.venueName(), t.hostType(), t.creatorUserId(),
+                    item.creatorUsername(), t.status(), t.terminalReason(), t.activity(), t.visibility(), t.capacity(),
+                    t.capacityOccupied(), t.startAt(), t.endAt(), t.createdAt());
+        }
     }
 
     @Schema(name = "AdminTournamentDetail")
@@ -126,6 +145,19 @@ public class AdminTournamentQueryController {
             @NotNull @Valid MoneyView prize,
             @NotNull @Schema(example = "[\"Room 2\", \"Room 3\"]") List<String> roomNames,
             @NotNull List<AdminTournamentParticipant> participants) {
+
+        static AdminTournamentDetail of(TournamentReads.Detail detail) {
+            TournamentReads.Item item = detail.item();
+            TournamentRow t = item.row();
+            return new AdminTournamentDetail(t.id(), t.venueId(), item.venueName(), t.hostType(), t.creatorUserId(),
+                    item.creatorUsername(), t.creatorParticipates(), t.status(), t.terminalReason(), t.activity(),
+                    t.playMode(), t.visibility(), t.capacity(), t.capacityOccupied(), t.startAt(), t.endAt(),
+                    t.durationMinutes(), t.checkpointAt(), item.approvalExpiresAt(), t.createdAt(), t.businessDate(),
+                    MoneyView.of(t.venueCost()), MoneyView.of(t.creationFee()), MoneyView.of(t.entryFee()),
+                    MoneyView.of(t.prize()), item.rooms().stream().map(TournamentReads.Room::name).toList(),
+                    detail.participants().stream().map(p -> new AdminTournamentParticipant(p.userId(), p.username(),
+                            p.status(), p.joinedAt())).toList());
+        }
     }
 
     @Schema(name = "AdminTournamentParticipant")

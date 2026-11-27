@@ -16,10 +16,10 @@ import ps.e7gz.support.IntegrationTest;
 import ps.e7gz.support.fixtures.Fixtures;
 
 /**
- * E7-88 — every Sprint 6 read stub is reachable through the real security chain and answers 501 until it is
- * implemented (clients build against {@code pnpm mock} meanwhile). Each route group refuses the other audiences, and
- * the query parameters are validated before the stub. A test fails here once its stub is filled: the task that fills
- * it replaces the line with its own tests. The Sprint 6 writes were built directly by E7-91, E7-92 and E7-93.
+ * E7-88 — the Sprint 6 read routes through the real security chain: each route group refuses the other audiences, and
+ * the query parameters are validated before the read. E7-126 filled all seven stubs and replaced their 501 lines with
+ * its own tests ({@code ps.e7gz.tournament.internal.TournamentReadsHttpTest}). The Sprint 6 writes were built
+ * directly by E7-91, E7-92 and E7-93.
  */
 @AutoConfigureMockMvc
 class Sprint6StubHttpTest extends IntegrationTest {
@@ -46,33 +46,6 @@ class Sprint6StubHttpTest extends IntegrationTest {
     }
 
     @Test
-    void theCustomerReadsAreStubs() throws Exception {
-        String id = UUID.randomUUID().toString();
-        mvc.perform(get(CUSTOMER).param("activity", "PLAYSTATION").header("Authorization", customer))
-                .andExpect(status().isNotImplemented());
-        mvc.perform(get(CUSTOMER + "/mine").param("ended", "true").header("Authorization", customer))
-                .andExpect(status().isNotImplemented());
-        mvc.perform(get(CUSTOMER + "/" + id).header("Authorization", customer))
-                .andExpect(status().isNotImplemented());
-    }
-
-    @Test
-    void theVenueReadsAreStubs() throws Exception {
-        mvc.perform(get(VENUE).param("status", "PENDING_VENUE_APPROVAL").header("Authorization", venue))
-                .andExpect(status().isNotImplemented());
-        mvc.perform(get(VENUE + "/" + UUID.randomUUID()).header("Authorization", venue))
-                .andExpect(status().isNotImplemented());
-    }
-
-    @Test
-    void theAdminReadsAreStubs() throws Exception {
-        mvc.perform(get(ADMIN).param("hostType", "PLAYER").header("Authorization", admin))
-                .andExpect(status().isNotImplemented());
-        mvc.perform(get(ADMIN + "/" + UUID.randomUUID()).header("Authorization", admin))
-                .andExpect(status().isNotImplemented());
-    }
-
-    @Test
     void eachRouteGroupRefusesTheOtherAudiences() throws Exception {
         // arch 09 §1.1: three route groups, each with its own audience.
         mvc.perform(get(ADMIN).header("Authorization", venue))
@@ -86,7 +59,7 @@ class Sprint6StubHttpTest extends IntegrationTest {
     }
 
     @Test
-    void theQueryParametersAreValidatedBeforeTheStub() throws Exception {
+    void theQueryParametersAreValidatedBeforeTheRead() throws Exception {
         // The contract's limits and code enums are real: the clients rely on them (arch 09 §1.2).
         mvc.perform(get(CUSTOMER).param("limit", "0").header("Authorization", customer))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
