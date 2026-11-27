@@ -8,6 +8,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -45,13 +48,14 @@ import ps.e7gz.messaging.api.StoredResponse;
 import ps.e7gz.tournament.internal.AnsweredTournament;
 import ps.e7gz.tournament.internal.CreatedTournament;
 import ps.e7gz.tournament.internal.TournamentApproval;
+import ps.e7gz.tournament.internal.TournamentCancellation;
 import ps.e7gz.tournament.internal.TournamentCreation;
 import ps.e7gz.tournament.internal.TournamentRequest;
 
 /**
  * Venue Dashboard - Tournaments (arch 09 section 4.2). This controller holds the Venue-hosted creation of E7-91 (O16
- * part 1) and the answer to a Player's request of E7-92 (approve, reject); the list, cancel and operational
- * termination are the Sprint 6 contract's (E7-88) and E7-93's. Every route acts for the signed-in account's own Venue, never one named by the request. The Venue DTOs
+ * part 1) and the answer to a Player's request of E7-92 (approve, reject) and the cancel and operational termination
+ * of E7-93; the list is the Sprint 6 contract's (E7-88). Every route acts for the signed-in account's own Venue, never one named by the request. The Venue DTOs
  * are their own (arch 09 section 1.1). Creation holds rooms, so the Idempotency-Key is required (ADR-015); it needs no
  * Owner Password (FR-TRN-24 lists only the cancellations).
  */
@@ -65,17 +69,22 @@ public class VenueTournamentController {
     static final String CREATE_ENDPOINT = "POST /api/v1/venue/tournaments";
     static final String APPROVE_ENDPOINT = "POST /api/v1/venue/tournaments/{tournamentId}/approve";
     static final String REJECT_ENDPOINT = "POST /api/v1/venue/tournaments/{tournamentId}/reject";
+    static final String CANCEL_ENDPOINT = "POST /api/v1/venue/tournaments/{tournamentId}/cancel";
+    static final String TERMINATE_ENDPOINT = "POST /api/v1/venue/tournaments/{tournamentId}/operational-termination";
     private static final String TOURNAMENT_ID = "tournamentId";
 
     private final TournamentCreation creation;
     private final TournamentApproval approval;
+    private final TournamentCancellation cancellation;
     private final Idempotency idempotency;
     private final ResponseMetaFactory meta;
 
     public VenueTournamentController(TournamentCreation creation, TournamentApproval approval,
-                                     Idempotency idempotency, ResponseMetaFactory meta) {
+                                     TournamentCancellation cancellation, Idempotency idempotency,
+                                     ResponseMetaFactory meta) {
         this.creation = creation;
         this.approval = approval;
+        this.cancellation = cancellation;
         this.idempotency = idempotency;
         this.meta = meta;
     }
@@ -171,6 +180,109 @@ public class VenueTournamentController {
                 idempotency.request(venue, REJECT_ENDPOINT, idempotencyKey, Map.of(TOURNAMENT_ID, tournamentId), null),
                 answerResponse(), VenueTournamentAnswer::of);
         return meta.data(result.body());
+    }
+
+    @PostMapping("/{tournamentId}/cancel")
+    @Operation(operationId = "venueCancelTournament",
+            summary = "Cancel a tournament before it starts: CANCELLED / VENUE_CANCELLED (FR-TRN-21, FR-TRN-24)",
+            description = "WAITING_FOR_PLAYERS: no Owner PIN. CONFIRMED: the Owner PIN in the body, never a header "
+                    + "(ADR-011) - absent or blank is OWNER_PASSWORD_REQUIRED, wrong is OWNER_PASSWORD_INVALID, every "
+                    + "attempt audited; a tournament the checkpoint confirms while the request is on its way answers "
+                    + "OWNER_PASSWORD_REQUIRED too. A request the venue has not approved is rejected, not cancelled, "
+                    + "and an ACTIVE tournament is stopped by operational-termination: both, like a tournament that "
+                    + "has ended or one an emergency or owner review is cancelling, are OPERATIONAL_STATE_CHANGED. "
+                    + "Every room hold is released. A tournament of another venue is NOT_FOUND. Implemented by E7-93.")
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
+    @ApiError(status = 409, codes = ApiErrorCode.OPERATIONAL_STATE_CHANGED)
+    @ApiError(status = 422, codes = ApiErrorCode.IDEMPOTENCY_KEY_REUSED)
+    @ApiError(status = 423, codes = {ApiErrorCode.OWNER_PASSWORD_REQUIRED, ApiErrorCode.OWNER_PASSWORD_INVALID,
+            ApiErrorCode.OWNER_PASSWORD_LOCKED})
+    @ApiError(status = 429, codes = ApiErrorCode.RATE_LIMITED)
+    public DataResponse<VenueTournamentCancellation> cancel(
+            @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+            @PathVariable UUID tournamentId,
+            @RequestBody(required = false) VenueTournamentCancelRequest request,
+            @AuthenticationPrincipal AuthenticatedSubject venue) {
+        VenueTournamentCancelRequest body = request == null ? new VenueTournamentCancelRequest(null) : request;
+        // The Owner PIN enters the fingerprint only as an HMAC (Idempotency#request) and is never stored
+        return meta.data(cancellation.cancelByVenue(venue.id(), tournamentId, body.ownerPassword(),
+                idempotency.request(venue, CANCEL_ENDPOINT, idempotencyKey, Map.of(TOURNAMENT_ID, tournamentId), body),
+                cancellationResponse(), VenueTournamentCancellation::of).body());
+    }
+
+    @PostMapping("/{tournamentId}/operational-termination")
+    @Operation(operationId = "venueTerminateTournament",
+            summary = "Tournament Operational Termination: ACTIVE -> CANCELLED / TOURNAMENT_OPERATIONAL_TERMINATION "
+                    + "(FR-TRN-23)",
+            description = "For a tournament-specific incident that does not need a venue closure. Only while ACTIVE "
+                    + "(OPERATIONAL_STATE_CHANGED otherwise). The Owner PIN and a reason are both mandatory: an "
+                    + "absent PIN is OWNER_PASSWORD_REQUIRED, a wrong one OWNER_PASSWORD_INVALID, a blank reason "
+                    + "VALIDATION_FAILED; the reason is kept in the audit. The remaining room holds are released. A "
+                    + "tournament of another venue is NOT_FOUND. Implemented by E7-93.")
+    @ApiError(status = 400, codes = ApiErrorCode.VALIDATION_FAILED)
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
+    @ApiError(status = 409, codes = ApiErrorCode.OPERATIONAL_STATE_CHANGED)
+    @ApiError(status = 422, codes = ApiErrorCode.IDEMPOTENCY_KEY_REUSED)
+    @ApiError(status = 423, codes = {ApiErrorCode.OWNER_PASSWORD_REQUIRED, ApiErrorCode.OWNER_PASSWORD_INVALID,
+            ApiErrorCode.OWNER_PASSWORD_LOCKED})
+    @ApiError(status = 429, codes = ApiErrorCode.RATE_LIMITED)
+    public DataResponse<VenueTournamentCancellation> terminate(
+            @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+            @PathVariable UUID tournamentId,
+            @Valid @RequestBody VenueTournamentTerminationRequest request,
+            @AuthenticationPrincipal AuthenticatedSubject venue) {
+        return meta.data(cancellation.terminate(venue.id(), tournamentId, request.ownerPassword(), request.reason(),
+                idempotency.request(venue, TERMINATE_ENDPOINT, idempotencyKey, Map.of(TOURNAMENT_ID, tournamentId),
+                        request),
+                cancellationResponse(), VenueTournamentCancellation::of).body());
+    }
+
+    private static StoredResponse<VenueTournamentCancellation> cancellationResponse() {
+        return StoredResponse.of(VenueTournamentCancellation.class, 200,
+                (VenueTournamentCancellation c) -> new ResultAggregate(CustomerTournamentController.TOURNAMENT_AGGREGATE,
+                        c.tournamentId()));
+    }
+
+    /** FR-TRN-24, ADR-011: the Owner PIN travels in the body; a WAITING_FOR_PLAYERS cancel needs none. */
+    @Schema(name = "VenueTournamentCancelRequest")
+    public record VenueTournamentCancelRequest(
+            @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY, nullable = true,
+                    description = "4-digit Owner PIN; required only when the tournament is CONFIRMED.")
+            String ownerPassword) {
+
+        @Override
+        public String toString() {
+            return "VenueTournamentCancelRequest[<redacted>]";
+        }
+    }
+
+    /** FR-TRN-23: the Owner PIN and a mandatory reason. */
+    @Schema(name = "VenueTournamentTerminationRequest")
+    public record VenueTournamentTerminationRequest(
+            @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY,
+                    requiredMode = Schema.RequiredMode.REQUIRED,
+                    description = "4-digit Owner PIN; absent or blank is 423 OWNER_PASSWORD_REQUIRED.")
+            String ownerPassword,
+            @NotBlank @Size(min = 1, max = 500) @Pattern(regexp = ".*\\S.*", flags = Pattern.Flag.DOTALL)
+            @Schema(example = "Power failure in the tournament hall") String reason) {
+
+        @Override
+        public String toString() {
+            return "VenueTournamentTerminationRequest[<redacted>]";
+        }
+    }
+
+    /** The tournament after the venue's cancellation or termination. */
+    @Schema(name = "VenueTournamentCancellation")
+    public record VenueTournamentCancellation(
+            @NotNull UUID tournamentId,
+            @NotNull @Schema(description = "CANCELLED.") TournamentStatus status,
+            @NotNull @Schema(description = "VENUE_CANCELLED, or TOURNAMENT_OPERATIONAL_TERMINATION.")
+            TournamentTerminalReason terminalReason) {
+
+        static VenueTournamentCancellation of(AnsweredTournament cancelled) {
+            return new VenueTournamentCancellation(cancelled.id(), cancelled.status(), cancelled.terminalReason());
+        }
     }
 
     private static StoredResponse<VenueTournamentAnswer> answerResponse() {

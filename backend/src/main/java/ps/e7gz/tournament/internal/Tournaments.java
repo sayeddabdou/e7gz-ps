@@ -17,10 +17,12 @@ import org.springframework.stereotype.Component;
 import ps.e7gz.audit.api.AuditActor;
 import ps.e7gz.audit.api.AuditRecord;
 import ps.e7gz.audit.api.AuditWriter;
+import ps.e7gz.audit.api.OwnerPasswordCheck;
 import ps.e7gz.common.codes.TournamentHostType;
 import ps.e7gz.common.codes.TournamentStatus;
 import ps.e7gz.common.codes.TournamentResourceRemovalCause;
 import ps.e7gz.common.codes.TournamentTerminalReason;
+import ps.e7gz.common.codes.TournamentVisibility;
 import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.common.correlation.CorrelationId;
 import ps.e7gz.common.error.ApiErrorCode;
@@ -43,7 +45,9 @@ import ps.e7gz.tournament.api.TournamentCascades;
  * the Creator's participant row. Enough for the Sprint 5 cascades to find and cancel Tournaments; creation is here so
  * the cascades can be tested against real Tournaments, and E7-91 builds the creation flow on it. E7-92 adds the
  * Venue's answer to a Player-hosted request - approve (its Approval Holds become Tournament Holds) and reject - and the
- * approval expiry (T7). No join, leave, checkpoint, start or completion transitions yet (E7-93).
+ * approval expiry (T7). E7-93 adds the lifecycle - the checkpoint (T8), the start and the completion (T9) - and
+ * cancellations with an Owner Password check or a reason on their audit row; the participant rows are
+ * {@link TournamentParticipants}'.
  *
  * <p>Explicit SQL on the caller's command transaction ({@link CommandContext#jdbc()}), inside
  * {@code tournament.begin_command} (arch 04 section 2.1). The database is the authority: its row guards refuse a bad
@@ -107,7 +111,7 @@ class Tournaments implements TournamentCascades {
 
     static final String CURRENT = """
             SELECT t.id, t.venue_id, t.host_type, t.status, t.terminal_reason, t.creator_user_id, t.start_at, t.end_at,
-                   t.approval_expires_at, t.version
+                   t.approval_expires_at, t.version, t.checkpoint_at, t.capacity, t.visibility, t.creator_participates
               FROM tournament.tournament t
              WHERE t.id = :id
             """;
@@ -137,6 +141,17 @@ class Tournaments implements TournamentCascades {
     /** Points an assignment at its new Tournament Hold, once ({@code tournament.guard_tournament_resource}). */
     static final String REPOINT = """
             UPDATE tournament.tournament_resource SET reservation_id = :reservationId WHERE id = :id
+            """;
+
+    /** One forward step of the lifecycle (T8, T9, completion); the guards own the instants and the revalidation. */
+    static final String ADVANCE = """
+            UPDATE tournament.tournament
+               SET status = :status, version = version + 1
+             WHERE id = :id AND version = :version
+            """;
+
+    static final String CONDITION_IN_FORCE = """
+            SELECT tournament.highest_current_cancellation_reason(:id, :from, CAST(:at AS timestamptz))
             """;
 
     static final String CANCEL = """
@@ -392,7 +407,18 @@ class Tournaments implements TournamentCascades {
      */
     Optional<Integer> cancelled(CommandContext command, UUID tournamentId, TournamentTerminalReason reason,
                                 AuditActor actor, Instant releaseAt) {
+        return cancelled(command, tournamentId, reason, actor, releaseAt, AuditDetail.NONE);
+    }
+
+    /**
+     * As {@link #cancelled(CommandContext, UUID, TournamentTerminalReason, AuditActor, Instant)}, with the Owner Password
+     * check and the actor's reason on the transition's audit row (E7-93: a Venue cancelling a CONFIRMED Tournament, an
+     * Operational Termination, a Platform Admin's cancellation).
+     */
+    Optional<Integer> cancelled(CommandContext command, UUID tournamentId, TournamentTerminalReason reason,
+                                AuditActor actor, Instant releaseAt, AuditDetail detail) {
         Objects.requireNonNull(command, "command");
+        Objects.requireNonNull(detail, "detail");
         Objects.requireNonNull(tournamentId, "tournamentId");
         Objects.requireNonNull(reason, "reason");
         Objects.requireNonNull(actor, "actor");
@@ -409,13 +435,84 @@ class Tournaments implements TournamentCascades {
                 .param("version", current.version())
                 .update(), tournamentId);
         int sequence = transition(command, tournamentId, current.venueId(), current.status(),
-                TournamentStatus.CANCELLED, reason, actor, correlationId);
-        for (UUID reservationId : command.jdbc().sql(RESERVATIONS).param("id", tournamentId).query(UUID.class)
-                .list()) {
-            ledger.release(command, reservationId, releaseAt, reason.name());
-        }
+                TournamentStatus.CANCELLED, reason, actor, correlationId, detail);
+        releaseHolds(command, tournamentId, releaseAt, reason.name());
         supersedeTimers(command, tournamentId, TIMERS);
         return Optional.of(sequence);
+    }
+
+    // ------------------------------------------------------------------------------------------------ the lifecycle
+
+    /**
+     * T8, the checkpoint decided for the minimum (FR-TRN-13, FR-TRN-15; E7-93): {@code WAITING_FOR_PLAYERS -> CONFIRMED}
+     * by SYSTEM, its timer withdrawn (or, leased, finished by its worker). The guard confirms only at or after
+     * {@code checkpointAt}, with at least 8 Active Participants as of {@code checkpointAt}, and after revalidating every
+     * Resource and its hold ({@code tournament.assert_resources_operational}).
+     */
+    int confirm(CommandContext command, Current waiting) {
+        return advance(command, waiting, TournamentStatus.WAITING_FOR_PLAYERS, TournamentStatus.CONFIRMED, CHECKPOINT);
+    }
+
+    /** T9, start (FR-TRN-17): {@code CONFIRMED -> ACTIVE} by SYSTEM at or after {@code startAt}, Resources revalidated. */
+    int start(CommandContext command, Current confirmed) {
+        return advance(command, confirmed, TournamentStatus.CONFIRMED, TournamentStatus.ACTIVE, START);
+    }
+
+    /**
+     * Completion (FR-TRN-30): {@code ACTIVE -> COMPLETED} by SYSTEM at or after {@code endAt}, every hold still active
+     * released at {@code endAt} - the boundary, not the worker's time - and the completion timer withdrawn. The stored
+     * venue cost becomes Dashboard revenue on its {@code businessDate} from this state alone: nothing is recomputed.
+     */
+    int complete(CommandContext command, Current active) {
+        int sequence = advance(command, active, TournamentStatus.ACTIVE, TournamentStatus.COMPLETED, COMPLETION);
+        releaseHolds(command, active.id(), active.endAt(), TournamentStatus.COMPLETED.name());
+        return sequence;
+    }
+
+    private int advance(CommandContext command, Current current, TournamentStatus from, TournamentStatus to,
+                        String timer) {
+        Objects.requireNonNull(command, "command");
+        Objects.requireNonNull(current, "current");
+        if (current.status() != from) {
+            throw new IllegalStateException("Tournament " + current.id() + " is " + current.status() + ", not " + from);
+        }
+        UUID correlationId = CorrelationId.require();
+        requireOne(command.jdbc().sql(ADVANCE)
+                .param("id", current.id())
+                .param("status", to.name())
+                .param("version", current.version())
+                .update(), current.id());
+        int sequence = transition(command, current.id(), current.venueId(), from, to, null, AuditActor.system(),
+                correlationId);
+        supersedeTimers(command, current.id(), List.of(timer));
+        return sequence;
+    }
+
+    /**
+     * The one reason a cancellation from {@code from} must carry at {@code at} by the frozen priority (FR-TRN-31, arch
+     * 06 section 3.2) - an Owner Review, an Emergency, a disabled Venue Account while pending, fewer than 8 Active
+     * Participants at or after the checkpoint, a revoked Creator - or empty when no condition is in force. The
+     * database's own resolver, evaluated as of the boundary when {@code at} is past it
+     * ({@code tournament.highest_current_cancellation_reason}); its guards accept no other reason.
+     */
+    Optional<TournamentTerminalReason> conditionInForce(CommandContext command, UUID tournamentId,
+                                                        TournamentStatus from, Instant at) {
+        return command.jdbc().sql(CONDITION_IN_FORCE)
+                .param("id", tournamentId)
+                .param("from", from.name())
+                .param("at", utc(at))
+                .query(String.class).list().stream()
+                .filter(Objects::nonNull)
+                .findFirst()
+                .map(TournamentTerminalReason::valueOf);
+    }
+
+    /** Every hold the Tournament ever had; the ledger releases the ones still active and skips the rest. */
+    private void releaseHolds(CommandContext command, UUID tournamentId, Instant releaseAt, String releaseReason) {
+        for (UUID reservationId : command.jdbc().sql(RESERVATIONS).param("id", tournamentId).query(UUID.class)
+                .list()) {
+            ledger.release(command, reservationId, releaseAt, releaseReason);
+        }
     }
 
     // ------------------------------------------------------------------------------------------------ the answer
@@ -558,6 +655,12 @@ class Tournaments implements TournamentCascades {
     private int transition(CommandContext command, UUID tournamentId, UUID venueId, TournamentStatus from,
                            TournamentStatus to, TournamentTerminalReason reason, AuditActor actor,
                            UUID correlationId) {
+        return transition(command, tournamentId, venueId, from, to, reason, actor, correlationId, AuditDetail.NONE);
+    }
+
+    private int transition(CommandContext command, UUID tournamentId, UUID venueId, TournamentStatus from,
+                           TournamentStatus to, TournamentTerminalReason reason, AuditActor actor,
+                           UUID correlationId, AuditDetail detail) {
         int sequence = command.jdbc().sql(INSERT_HISTORY)
                 .param("id", UUID.randomUUID())
                 .param("tournamentId", tournamentId)
@@ -571,12 +674,16 @@ class Tournaments implements TournamentCascades {
         if (reason != null) {
             payload.put("terminalReason", reason.name());
         }
-        audit.write(command, AuditRecord.builder(TournamentAuditAction.TOURNAMENT_STATUS_TRANSITION, actor,
+        AuditRecord.Builder record = AuditRecord.builder(TournamentAuditAction.TOURNAMENT_STATUS_TRANSITION, actor,
                         tournamentId, correlationId)
                 .stateChange(from == null ? null : from.name(), to.name())
                 .payload(payload)
-                .contextVenue(venueId)
-                .build());
+                .reason(detail.reason())
+                .contextVenue(venueId);
+        if (detail.ownerPassword() != null) {
+            record.ownerPasswordCheck(detail.ownerPassword());
+        }
+        audit.write(command, record.build());
         return sequence;
     }
 
@@ -614,11 +721,14 @@ class Tournaments implements TournamentCascades {
     private static Current current(ResultSet rs, int row) throws SQLException {
         String reason = rs.getString("terminal_reason");
         OffsetDateTime approval = rs.getObject("approval_expires_at", OffsetDateTime.class);
+        boolean creatorPlays = rs.getBoolean("creator_participates");
         return new Current(rs.getObject("id", UUID.class), rs.getObject("venue_id", UUID.class),
                 TournamentHostType.valueOf(rs.getString("host_type")), TournamentStatus.valueOf(rs.getString("status")),
                 reason == null ? null : TournamentTerminalReason.valueOf(reason),
                 rs.getObject("creator_user_id", UUID.class), instant(rs, "start_at"), instant(rs, "end_at"),
-                approval == null ? null : approval.toInstant(), rs.getLong("version"));
+                approval == null ? null : approval.toInstant(), rs.getLong("version"), instant(rs, "checkpoint_at"),
+                rs.getInt("capacity"), TournamentVisibility.valueOf(rs.getString("visibility")),
+                !rs.wasNull() && creatorPlays);
     }
 
     private static Instant instant(ResultSet rs, String column) throws SQLException {
@@ -661,13 +771,38 @@ class Tournaments implements TournamentCascades {
     /**
      * The Tournament as this command reads it.
      *
-     * @param terminalReason    {@code null} while live
-     * @param creatorUserId     {@code null} for a Venue-hosted Tournament
-     * @param approvalExpiresAt {@code null} for a Venue-hosted Tournament
+     * @param terminalReason      {@code null} while live
+     * @param creatorUserId       {@code null} for a Venue-hosted Tournament
+     * @param approvalExpiresAt   {@code null} for a Venue-hosted Tournament
+     * @param checkpointAt        {@code startAt - 1 hour} (FR-TRN-03)
+     * @param creatorParticipates whether the Player Creator plays; {@code false} for a Venue-hosted Tournament
      */
     record Current(UUID id, UUID venueId, TournamentHostType hostType, TournamentStatus status,
                    TournamentTerminalReason terminalReason, UUID creatorUserId, Instant startAt, Instant endAt,
-                   Instant approvalExpiresAt, long version) {
+                   Instant approvalExpiresAt, long version, Instant checkpointAt, int capacity,
+                   TournamentVisibility visibility, boolean creatorParticipates) {
+
+        boolean live() {
+            return LIVE.contains(status.name());
+        }
+
+        boolean playerHosted() {
+            return hostType == TournamentHostType.PLAYER;
+        }
+    }
+
+    /**
+     * What the {@code TOURNAMENT_STATUS_TRANSITION} audit row carries besides the transition (arch 10 section 8.1): the
+     * Owner Password check of a protected cancellation and the actor's reason. The database reads both from that very
+     * row ({@code tournament.assert_tournament_history_chain}): a Venue cancelling a CONFIRMED Tournament needs a
+     * successful check, an Operational Termination the check and a reason (FR-TRN-23, FR-TRN-24).
+     *
+     * @param ownerPassword {@code null} when the action has no Owner Password check
+     * @param reason        {@code null} when the actor gave none
+     */
+    record AuditDetail(OwnerPasswordCheck ownerPassword, String reason) {
+
+        static final AuditDetail NONE = new AuditDetail(null, null);
     }
 
     private record HeldAssignment(UUID id, UUID resourceId, UUID reservationId) {

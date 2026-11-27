@@ -8,6 +8,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
 import java.util.List;
@@ -16,6 +18,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -40,13 +43,19 @@ import ps.e7gz.messaging.api.Idempotency;
 import ps.e7gz.messaging.api.IdempotentResult;
 import ps.e7gz.messaging.api.ResultAggregate;
 import ps.e7gz.messaging.api.StoredResponse;
+import ps.e7gz.common.codes.TournamentParticipantStatus;
+import ps.e7gz.common.codes.TournamentTerminalReason;
+import ps.e7gz.tournament.internal.AnsweredTournament;
 import ps.e7gz.tournament.internal.CreatedTournament;
+import ps.e7gz.tournament.internal.TournamentCancellation;
+import ps.e7gz.tournament.internal.TournamentParticipation;
 import ps.e7gz.tournament.internal.TournamentCreation;
 import ps.e7gz.tournament.internal.TournamentRequest;
 
 /**
  * Customer App - Tournaments (arch 09 section 3.4). This controller holds the Player-hosted request of E7-91 (O16 part
- * 1); the other Customer tournament routes are the Sprint 6 contract's (E7-88) and E7-93's. The Customer DTOs are their
+ * 1) and join, join-private, leave, the organizer's remove and the creator's cancel of E7-93; the Discover list is the
+ * Sprint 6 contract's (E7-88). The Customer DTOs are their
  * own (arch 09 section 1.1). The request moves a commitment (Approval Holds), so the Idempotency-Key is required
  * (ADR-015).
  */
@@ -60,13 +69,26 @@ public class CustomerTournamentController {
     static final String CREATE_ENDPOINT = "POST /api/v1/customer/tournaments";
     static final String TOURNAMENT_AGGREGATE = "TOURNAMENT";
 
+    static final String JOIN_ENDPOINT = "POST /api/v1/customer/tournaments/{tournamentId}/join";
+    static final String JOIN_PRIVATE_ENDPOINT = "POST /api/v1/customer/tournaments/join-private";
+    static final String LEAVE_ENDPOINT = "POST /api/v1/customer/tournaments/{tournamentId}/leave";
+    static final String REMOVE_ENDPOINT =
+            "POST /api/v1/customer/tournaments/{tournamentId}/participants/{userId}/remove";
+    static final String CANCEL_ENDPOINT = "POST /api/v1/customer/tournaments/{tournamentId}/cancel";
+    private static final String TOURNAMENT_ID = "tournamentId";
+
     private final TournamentCreation creation;
+    private final TournamentParticipation participation;
+    private final TournamentCancellation cancellation;
     private final Idempotency idempotency;
     private final ResponseMetaFactory meta;
 
-    public CustomerTournamentController(TournamentCreation creation, Idempotency idempotency,
+    public CustomerTournamentController(TournamentCreation creation, TournamentParticipation participation,
+                                        TournamentCancellation cancellation, Idempotency idempotency,
                                         ResponseMetaFactory meta) {
         this.creation = creation;
+        this.participation = participation;
+        this.cancellation = cancellation;
         this.idempotency = idempotency;
         this.meta = meta;
     }
@@ -119,6 +141,155 @@ public class CustomerTournamentController {
                 idempotency.request(customer, CREATE_ENDPOINT, idempotencyKey, Map.of(), request),
                 response, CustomerTournament::of);
         return ResponseEntity.status(result.status()).body(meta.data(result.body()));
+    }
+
+    @PostMapping("/{tournamentId}/join")
+    @Operation(operationId = "customerJoinTournament",
+            summary = "Join a public tournament (FR-TRN-12, FR-TRN-06)",
+            description = "Only while the tournament is WAITING_FOR_PLAYERS or CONFIRMED and now < startAt; otherwise "
+                    + "TOURNAMENT_JOIN_WINDOW_CLOSED (also after the checkpoint cancelled it). Capacity counts JOINED "
+                    + "participants plus the slots a banned participant keeps before the start "
+                    + "(capacityOccupiedCount, FR-TRN-26): when they fill it, TOURNAMENT_CAPACITY_REACHED. An "
+                    + "unverified phone, a ban or a deleted account are their own 403s (FR-ACC-03, FR-ACC-17). A "
+                    + "private tournament is joined only with its code (join-private), and a request the venue has "
+                    + "not accepted yet is not joinable (FR-TRN-07): both are NOT_FOUND here. A participant the "
+                    + "organizer removed may not join again (FORBIDDEN); one who left may, while a slot is free. "
+                    + "Joining again while JOINED returns the participation unchanged. Implemented by E7-93.")
+    @ApiError(status = 403, codes = {ApiErrorCode.PHONE_VERIFICATION_REQUIRED,
+            ApiErrorCode.ACCOUNT_BANNED_FOR_THIS_ACTION, ApiErrorCode.ACCOUNT_DELETED, ApiErrorCode.FORBIDDEN})
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
+    @ApiError(status = 422, codes = {ApiErrorCode.TOURNAMENT_JOIN_WINDOW_CLOSED,
+            ApiErrorCode.TOURNAMENT_CAPACITY_REACHED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
+    public DataResponse<CustomerTournamentParticipation> join(
+            @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+            @PathVariable UUID tournamentId,
+            @AuthenticationPrincipal AuthenticatedSubject customer) {
+        return meta.data(participation.join(customer.id(), tournamentId,
+                idempotency.request(customer, JOIN_ENDPOINT, idempotencyKey, Map.of(TOURNAMENT_ID, tournamentId),
+                        null),
+                participationResponse(), CustomerTournamentParticipation::of).body());
+    }
+
+    @PostMapping("/join-private")
+    @Operation(operationId = "customerJoinPrivateTournament",
+            summary = "Join a private tournament with its invite code (FR-TRN-06, FR-TRN-12)",
+            description = "The same rules as join. An unknown code, a public tournament's id used as a code, or a "
+                    + "request the venue has not accepted yet (the code is inactive, FR-TRN-07) is NOT_FOUND. "
+                    + "Implemented by E7-93.")
+    @ApiError(status = 403, codes = {ApiErrorCode.PHONE_VERIFICATION_REQUIRED,
+            ApiErrorCode.ACCOUNT_BANNED_FOR_THIS_ACTION, ApiErrorCode.ACCOUNT_DELETED, ApiErrorCode.FORBIDDEN})
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
+    @ApiError(status = 422, codes = {ApiErrorCode.TOURNAMENT_JOIN_WINDOW_CLOSED,
+            ApiErrorCode.TOURNAMENT_CAPACITY_REACHED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
+    public DataResponse<CustomerTournamentParticipation> joinPrivate(
+            @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+            @Valid @RequestBody CustomerTournamentJoinPrivateRequest request,
+            @AuthenticationPrincipal AuthenticatedSubject customer) {
+        return meta.data(participation.joinPrivate(customer.id(), request.inviteCode(),
+                idempotency.request(customer, JOIN_PRIVATE_ENDPOINT, idempotencyKey, Map.of(), request),
+                participationResponse(), CustomerTournamentParticipation::of).body());
+    }
+
+    @PostMapping("/{tournamentId}/leave")
+    @Operation(operationId = "customerLeaveTournament",
+            summary = "Leave a tournament before it starts (FR-TRN-12)",
+            description = "Until startAt; at or after it DEADLINE_PASSED. Not a participant: NOT_FOUND. Already left "
+                    + "or removed, or the tournament has ended: OPERATIONAL_STATE_CHANGED. Falling below 8 before the "
+                    + "checkpoint does not cancel the tournament early. Implemented by E7-93.")
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
+    @ApiError(status = 409, codes = ApiErrorCode.OPERATIONAL_STATE_CHANGED)
+    @ApiError(status = 422, codes = {ApiErrorCode.DEADLINE_PASSED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
+    public DataResponse<CustomerTournamentParticipation> leave(
+            @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+            @PathVariable UUID tournamentId,
+            @AuthenticationPrincipal AuthenticatedSubject customer) {
+        return meta.data(participation.leave(customer.id(), tournamentId,
+                idempotency.request(customer, LEAVE_ENDPOINT, idempotencyKey, Map.of(TOURNAMENT_ID, tournamentId),
+                        null),
+                participationResponse(), CustomerTournamentParticipation::of).body());
+    }
+
+    @PostMapping("/{tournamentId}/participants/{userId}/remove")
+    @Operation(operationId = "customerRemoveTournamentParticipant",
+            summary = "The organizer removes a participant before the start (FR-TRN-12)",
+            description = "Only the creator of a player-hosted tournament, never themself (FORBIDDEN otherwise). Until "
+                    + "startAt; at or after it DEADLINE_PASSED. Not a participant: NOT_FOUND; already left or "
+                    + "removed: OPERATIONAL_STATE_CHANGED. A removed participant may not join again. Implemented by "
+                    + "E7-93.")
+    @ApiError(status = 403, codes = ApiErrorCode.FORBIDDEN)
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
+    @ApiError(status = 409, codes = ApiErrorCode.OPERATIONAL_STATE_CHANGED)
+    @ApiError(status = 422, codes = {ApiErrorCode.DEADLINE_PASSED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
+    public DataResponse<CustomerTournamentParticipation> remove(
+            @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+            @PathVariable UUID tournamentId,
+            @PathVariable UUID userId,
+            @AuthenticationPrincipal AuthenticatedSubject customer) {
+        return meta.data(participation.remove(customer.id(), tournamentId, userId,
+                idempotency.request(customer, REMOVE_ENDPOINT, idempotencyKey,
+                        Map.of(TOURNAMENT_ID, tournamentId, "userId", userId), null),
+                participationResponse(), CustomerTournamentParticipation::of).body());
+    }
+
+    @PostMapping("/{tournamentId}/cancel")
+    @Operation(operationId = "customerCancelTournament",
+            summary = "The creator cancels before the checkpoint: CANCELLED / CREATOR_CANCELLED (FR-TRN-21)",
+            description = "Only the creator of a player-hosted tournament (FORBIDDEN otherwise), while it is "
+                    + "PENDING_VENUE_APPROVAL or WAITING_FOR_PLAYERS and now < checkpointAt. At or after the checkpoint "
+                    + "- CONFIRMED or ACTIVE included - DEADLINE_PASSED: the creator must contact the venue or "
+                    + "support. A tournament that has ended, or one an emergency or owner review is cancelling, is "
+                    + "OPERATIONAL_STATE_CHANGED. Every room hold is released. Implemented by E7-93.")
+    @ApiError(status = 403, codes = ApiErrorCode.FORBIDDEN)
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
+    @ApiError(status = 409, codes = ApiErrorCode.OPERATIONAL_STATE_CHANGED)
+    @ApiError(status = 422, codes = {ApiErrorCode.DEADLINE_PASSED, ApiErrorCode.IDEMPOTENCY_KEY_REUSED})
+    public DataResponse<CustomerTournamentCancellation> cancel(
+            @RequestHeader(OpenApiConfig.IDEMPOTENCY_KEY) UUID idempotencyKey,
+            @PathVariable UUID tournamentId,
+            @AuthenticationPrincipal AuthenticatedSubject customer) {
+        return meta.data(cancellation.cancelByCreator(customer.id(), tournamentId,
+                idempotency.request(customer, CANCEL_ENDPOINT, idempotencyKey, Map.of(TOURNAMENT_ID, tournamentId),
+                        null),
+                StoredResponse.of(CustomerTournamentCancellation.class, 200,
+                        (CustomerTournamentCancellation c) -> new ResultAggregate(TOURNAMENT_AGGREGATE,
+                                c.tournamentId())),
+                CustomerTournamentCancellation::of).body());
+    }
+
+    private static StoredResponse<CustomerTournamentParticipation> participationResponse() {
+        return StoredResponse.of(CustomerTournamentParticipation.class, 200,
+                (CustomerTournamentParticipation p) -> new ResultAggregate(TOURNAMENT_AGGREGATE, p.tournamentId()));
+    }
+
+    @Schema(name = "CustomerTournamentJoinPrivateRequest")
+    public record CustomerTournamentJoinPrivateRequest(
+            @NotBlank @Size(max = 64) @Schema(description = "The code the organizer shared (FR-TRN-06).",
+                    example = "K7Q2M9XD") String inviteCode) {
+    }
+
+    /** The signed-in customer's participation after the action. */
+    @Schema(name = "CustomerTournamentParticipation")
+    public record CustomerTournamentParticipation(
+            @NotNull UUID tournamentId,
+            @NotNull UUID userId,
+            @NotNull @Schema(description = "JOINED after join, LEFT after leave, REMOVED after the organizer's "
+                    + "remove.") TournamentParticipantStatus participantStatus,
+            @NotNull TournamentStatus tournamentStatus) {
+
+        static CustomerTournamentParticipation of(TournamentParticipation.Participation p) {
+            return new CustomerTournamentParticipation(p.tournamentId(), p.userId(), p.status(), p.tournamentStatus());
+        }
+    }
+
+    @Schema(name = "CustomerTournamentCancellation")
+    public record CustomerTournamentCancellation(
+            @NotNull UUID tournamentId,
+            @NotNull @Schema(description = "CANCELLED.") TournamentStatus status,
+            @NotNull @Schema(description = "CREATOR_CANCELLED.") TournamentTerminalReason terminalReason) {
+
+        static CustomerTournamentCancellation of(AnsweredTournament cancelled) {
+            return new CustomerTournamentCancellation(cancelled.id(), cancelled.status(), cancelled.terminalReason());
+        }
     }
 
     /** An absent informational amount is EGP 0 (FR-TRN-29). */
