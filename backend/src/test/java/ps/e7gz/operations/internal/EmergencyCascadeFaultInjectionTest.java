@@ -14,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
+import ps.e7gz.admin.api.AdminAlerts;
 import ps.e7gz.attendance.internal.AttendanceFlows;
 import ps.e7gz.audit.api.AuditWriter;
 import ps.e7gz.booking.internal.BookingFlows;
@@ -105,7 +106,8 @@ class EmergencyCascadeFaultInjectionTest extends IntegrationTest {
                 faults.wrap(TournamentCascades.class, real.tournaments()), real.resources(), real.catalog(),
                 real.sessions(), real.commitments(), real.baseStates(),
                 faults.wrap(AuditWriter.class, real.audit()),
-                outbox, jobs, real.gate(), real.closures(), real.json(), timers, real.alerts());
+                outbox, jobs, real.gate(), real.closures(), real.json(), timers,
+                faults.wrap(AdminAlerts.class, real.alerts()));
         EmergencyCommands.Subject subject = new EmergencyCommands.Subject(world.venueId(), EmergencyScope.VENUE, null);
         Instant end = world.inside().startAt().plus(Duration.ofMinutes(60));
         LockSet locks = runner.run(new EmergencyCommands.Plan(world.venueId(), subject, null, end, real));
@@ -121,6 +123,8 @@ class EmergencyCascadeFaultInjectionTest extends IntegrationTest {
                 + "' AND response_pause_started_at IS NULL")).as("step %d: not paused", step).isOne();
         assertThat(count("SELECT count(*) FROM operations.emergency WHERE venue_id = '" + venue + "'"))
                 .as("step %d: no Emergency", step).isZero();
+        assertThat(count("SELECT count(*) FROM admin.admin_alert WHERE kind = 'EMERGENCY_DECLARED'"
+                + " AND payload->>'venueId' = '" + venue + "'")).as("step %d: no admin alert (E7-80)", step).isZero();
         assertThat(count("SELECT count(*) FROM venue.venue_selling_block WHERE venue_id = '" + venue + "'"))
                 .as("step %d: no block", step).isZero();
         assertThat(count("SELECT count(*) FROM inventory.resource_reservation rr JOIN booking.booking b"

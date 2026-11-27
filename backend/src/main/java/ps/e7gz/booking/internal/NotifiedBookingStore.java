@@ -3,6 +3,7 @@ package ps.e7gz.booking.internal;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
+import ps.e7gz.common.codes.BookingTerminalReason;
 import ps.e7gz.common.command.CommandContext;
 import ps.e7gz.notification.api.NotifiedBookings;
 import ps.e7gz.venue.api.VenueContacts;
@@ -26,7 +27,15 @@ class NotifiedBookingStore implements NotifiedBookings {
     public Optional<NotifiedBooking> find(CommandContext command, UUID bookingId) {
         return store.facts(command, bookingId).map(facts -> new NotifiedBooking(facts.bookingId(), facts.customerId(),
                 facts.venueId(), venueName(command, facts.venueId()), facts.resourceId(), facts.source(),
-                facts.status(), facts.startAt(), facts.venueResponseExpiresAt(), facts.responsePaused()));
+                facts.status(), facts.startAt(), facts.venueResponseExpiresAt(), facts.responsePaused(),
+                terminalReason(command, facts.bookingId())));
+    }
+
+    /** E7-80: the refund confirmation's code follows it (PO decision 25 Nov 2026 R4). */
+    private static BookingTerminalReason terminalReason(CommandContext command, UUID bookingId) {
+        String reason = command.jdbc().sql("SELECT terminal_reason FROM booking.booking WHERE id = :id")
+                .param("id", bookingId).query(String.class).optional().orElse(null);
+        return reason == null ? null : BookingTerminalReason.valueOf(reason);
     }
 
     private String venueName(CommandContext command, UUID venueId) {

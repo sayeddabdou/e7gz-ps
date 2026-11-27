@@ -66,6 +66,10 @@ class BookingNotificationConsumer implements OutboxConsumer {
         }
     }
 
+    private static boolean pendingOnline(NotifiedBooking booking) {
+        return booking.source() == BookingSource.ONLINE && booking.status() == BookingStatus.PENDING;
+    }
+
     /** The event's notifications and reminder, in one transaction. Locks nothing: it writes only its own rows. */
     private final class Deliver implements Command<Void> {
 
@@ -113,6 +117,21 @@ class BookingNotificationConsumer implements OutboxConsumer {
                                 BOOKING_SUBJECT, booking.bookingId(),
                                 booking.venueResponseExpiresAt().minus(VenuePendingRequestExpiringHandler.LEAD),
                                 BookingReminders.venuePendingRequestExpiringKey(booking.bookingId())));
+                    }
+                }
+                // E7-80 (FR-OPS-34): the reminder follows the response timer as it is NOW, never the event's order -
+                // a retried TimerPaused may be handed over after its TimerResumed (final review I1)
+                case PAUSE_VENUE_PENDING_REQUEST_EXPIRING -> {
+                    if (pendingOnline(booking) && booking.responsePaused()) {
+                        jobs.pause(context, BookingReminders.venuePendingRequestExpiringKey(booking.bookingId()));
+                    }
+                }
+                case REARM_VENUE_PENDING_REQUEST_EXPIRING -> {
+                    // at the stored deadline minus 3 minutes; a due time already past fires now
+                    if (pendingOnline(booking) && !booking.responsePaused()
+                            && booking.venueResponseExpiresAt() != null) {
+                        jobs.rearmIfHeld(context, BookingReminders.venuePendingRequestExpiringKey(booking.bookingId()),
+                                booking.venueResponseExpiresAt().minus(VenuePendingRequestExpiringHandler.LEAD));
                     }
                 }
                 case BOOKING_STARTS_SOON -> {

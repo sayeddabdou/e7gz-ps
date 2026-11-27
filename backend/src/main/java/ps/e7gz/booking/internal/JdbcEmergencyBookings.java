@@ -39,6 +39,7 @@ import ps.e7gz.inventory.ledger.api.ReservationLedger;
 import ps.e7gz.inventory.ledger.api.ReservationOwner;
 import ps.e7gz.loyalty.api.BookingFeeRefunds;
 import ps.e7gz.loyalty.api.BookingRewards;
+import ps.e7gz.messaging.api.IntegrationEvents;
 import ps.e7gz.messaging.api.Outbox;
 import ps.e7gz.operations.api.EmergencyBookings;
 import ps.e7gz.operations.api.ResponseTimerPauses;
@@ -599,8 +600,9 @@ class JdbcEmergencyBookings implements EmergencyBookings {
     }
 
     private void publishCancelled(CommandContext context, Facts booking, BookingTerminalReason reason) {
-        outbox.publish(context, booking.source() == BookingSource.ONLINE ? BookingEvents.cancelled(booking, reason)
-                : BookingEvents.manualCancelled(booking, reason));
+        outbox.publish(context, booking.source() == BookingSource.ONLINE ? BookingEvents.cancelled(booking, reason,
+                IntegrationEvents.CAUSE_CASCADE)
+                : BookingEvents.manualCancelled(booking, reason, IntegrationEvents.CAUSE_CASCADE));
     }
 
     /** The booking's own active BOOKING reservation over exactly its Resource and interval (D11, E7-47). */

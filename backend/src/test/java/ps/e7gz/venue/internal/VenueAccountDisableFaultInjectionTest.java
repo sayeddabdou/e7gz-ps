@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.SimpleDriverDataSource;
+import ps.e7gz.admin.api.AdminAlerts;
 import ps.e7gz.audit.AuditFixtures;
 import ps.e7gz.audit.api.AuditWriter;
 import ps.e7gz.booking.internal.BookingFlows;
@@ -96,6 +97,9 @@ class VenueAccountDisableFaultInjectionTest extends IntegrationTest {
             assertThat(statusOf(counted.awaiting())).isEqualTo("CANCELLED/VENUE_ACCOUNT_DISABLED");
             assertThat(statusOf(counted.active())).isEqualTo("ACTIVE/-");
             assertThat(accountStatus(counted)).isEqualTo("DISABLED");
+            // E7-80 (Spec v5 section 52.6 "Venue Account Disabled", Q1): one Admin Alert, in the disabling command
+            assertThat(count("SELECT count(*) FROM admin.admin_alert WHERE kind = 'VENUE_ACCOUNT_DISABLED'"
+                    + " AND subject_id = '" + counted.accountId() + "'")).isOne();
         }, 8, VenueAccountDisableFaultInjectionTest::nothingLeft);
     }
 
@@ -104,14 +108,16 @@ class VenueAccountDisableFaultInjectionTest extends IntegrationTest {
         VenueAccountCommands.DisableDeps real = new VenueAccountCommands.DisableDeps(
                 context.getBean(AccountDisableBookings.class), context.getBean(AccountDisableTournaments.class),
                 context.getBean(AccountRestrictions.class), context.getBean(AuditWriter.class),
-                context.getBean(Outbox.class), context.getBean(VenueBrowserPush.class));
+                context.getBean(Outbox.class), context.getBean(VenueBrowserPush.class),
+                context.getBean(AdminAlerts.class));
         VenueAccountCommands.DisableDeps faulty = new VenueAccountCommands.DisableDeps(
                 faults.wrap(AccountDisableBookings.class, real.bookings()),
                 faults.wrap(AccountDisableTournaments.class, real.tournaments()),
                 faults.wrap(AccountRestrictions.class, real.restrictions()),
                 faults.wrap(AuditWriter.class, real.audit()),
                 faults.wrap(Outbox.class, real.outbox()),
-                faults.wrap(VenueBrowserPush.class, real.browserPush()));
+                faults.wrap(VenueBrowserPush.class, real.browserPush()),
+                faults.wrap(AdminAlerts.class, real.alerts()));
         LockSet locks = runner.run(new VenueAccountCommands.PlanStatus(world.accountId(), world.venueId(),
                 VenueAccountStatus.DISABLED, real));
         runner.run(new VenueAccountCommands.SetAccountStatus(admin, CorrelationId.require(), world.accountId(),
@@ -121,6 +127,9 @@ class VenueAccountDisableFaultInjectionTest extends IntegrationTest {
     private static void nothingLeft(World world, int step) {
         String venue = world.venueId().toString();
         assertThat(accountStatus(world)).as("step %d: still ENABLED", step).isEqualTo("ENABLED");
+        assertThat(count("SELECT count(*) FROM admin.admin_alert WHERE kind = 'VENUE_ACCOUNT_DISABLED'"
+                + " AND subject_id = '" + world.accountId() + "'")).as("step %d: no admin alert (E7-80)", step)
+                .isZero();
         assertThat(count("SELECT count(*) FROM iam.venue_account_restriction_interval WHERE venue_id = '" + venue
                 + "'")).as("step %d: no restriction interval", step).isZero();
         assertThat(statusOf(world.pending())).as("step %d", step).isEqualTo("PENDING/-");
