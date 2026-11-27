@@ -1,9 +1,12 @@
 package ps.e7gz.tournament.internal;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import ps.e7gz.common.codes.ActorType;
+import ps.e7gz.common.codes.TournamentResourceRemovalCause;
 import ps.e7gz.common.codes.TournamentTerminalReason;
 import ps.e7gz.messaging.api.IntegrationEvents;
 import ps.e7gz.messaging.api.NewOutboxEvent;
@@ -45,6 +48,26 @@ final class TournamentAnswerEvents {
                                     TournamentTerminalReason reason, ActorType actor) {
         return event(IntegrationEvents.TOURNAMENT_CANCELLED, tournament, Objects.requireNonNull(actor, "actor"),
                 historySequence, Objects.requireNonNull(reason, "reason"));
+    }
+
+    /**
+     * E7-94 (FR-TRN-27): an ACTIVE Tournament lost {@code resourceId} and goes on with {@code remaining}. One event for
+     * the Tournament; E7-89 tells its Creator and current Participants.
+     */
+    static NewOutboxEvent resourceAvailabilityChanged(Tournaments.Current tournament, UUID resourceId,
+                                                      TournamentResourceRemovalCause cause, List<UUID> remaining) {
+        Objects.requireNonNull(tournament, "tournament");
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("tournamentId", tournament.id().toString());
+        payload.put("venueId", tournament.venueId().toString());
+        if (tournament.creatorUserId() != null) {
+            payload.put("creatorUserId", tournament.creatorUserId().toString());
+        }
+        payload.put("resourceId", Objects.requireNonNull(resourceId, "resourceId").toString());
+        payload.put("removalCause", Objects.requireNonNull(cause, "cause").name());
+        payload.put("remainingResourceIds", remaining.stream().map(UUID::toString).toList());
+        return new NewOutboxEvent(IntegrationEvents.TOURNAMENT_RESOURCE_AVAILABILITY_CHANGED,
+                Tournaments.SUBJECT_TYPE, tournament.id(), payload);
     }
 
     private static NewOutboxEvent event(String type, Tournaments.Current request, ActorType actor,

@@ -37,7 +37,6 @@ import ps.e7gz.resource.api.ResourceCatalog;
 import ps.e7gz.scheduling.api.NewJob;
 import ps.e7gz.scheduling.api.ScheduledJobs;
 import ps.e7gz.tournament.api.LiveTournament;
-import ps.e7gz.tournament.api.TournamentCascades;
 
 /**
  * The Tournament aggregate, early (E7-73, S4-E5; roadmap section 7 dependency note, arch 04 section 4.4): a Tournament
@@ -47,7 +46,8 @@ import ps.e7gz.tournament.api.TournamentCascades;
  * Venue's answer to a Player-hosted request - approve (its Approval Holds become Tournament Holds) and reject - and the
  * approval expiry (T7). E7-93 adds the lifecycle - the checkpoint (T8), the start and the completion (T9) - and
  * cancellations with an Owner Password check or a reason on their audit row; the participant rows are
- * {@link TournamentParticipants}'.
+ * {@link TournamentParticipants}'. The published system cascades ({@link ps.e7gz.tournament.api.TournamentCascades})
+ * are {@link TournamentSystemCascades}', built on this class (E7-94).
  *
  * <p>Explicit SQL on the caller's command transaction ({@link CommandContext#jdbc()}), inside
  * {@code tournament.begin_command} (arch 04 section 2.1). The database is the authority: its row guards refuse a bad
@@ -56,7 +56,7 @@ import ps.e7gz.tournament.api.TournamentCascades;
  * lacks a hold, a history row, its audit evidence or a live timer. No rule is checked twice here.
  */
 @Component
-class Tournaments implements TournamentCascades {
+class Tournaments {
 
     /** The four timers the aggregate requires while they are due (arch 08 section 1; T7-T9 and completion). */
     static final String APPROVAL_EXPIRY = "TOURNAMENT_APPROVAL_EXPIRY";
@@ -347,8 +347,7 @@ class Tournaments implements TournamentCascades {
 
     // ------------------------------------------------------------------------------------------------ cascades
 
-    @Override
-    public List<LiveTournament> liveAtVenue(CommandContext command, UUID venueId, Instant from, Instant to) {
+    List<LiveTournament> liveAtVenue(CommandContext command, UUID venueId, Instant from, Instant to) {
         Objects.requireNonNull(command, "command");
         Objects.requireNonNull(venueId, "venueId");
         requireWindow(from, to);
@@ -361,8 +360,7 @@ class Tournaments implements TournamentCascades {
                 .list());
     }
 
-    @Override
-    public List<LiveTournament> liveOnResources(CommandContext command, Collection<UUID> resourceIds, Instant from,
+    List<LiveTournament> liveOnResources(CommandContext command, Collection<UUID> resourceIds, Instant from,
                                                 Instant to) {
         Objects.requireNonNull(command, "command");
         Objects.requireNonNull(resourceIds, "resourceIds");
@@ -379,8 +377,8 @@ class Tournaments implements TournamentCascades {
                 .list());
     }
 
-    @Override
-    public boolean cancel(CommandContext command, UUID tournamentId, TournamentTerminalReason reason) {
+    /** By SYSTEM, released at the command instant; writes no event (see {@link TournamentSystemCascades#cancel}). */
+    boolean cancel(CommandContext command, UUID tournamentId, TournamentTerminalReason reason) {
         return cancel(command, tournamentId, reason, AuditActor.system());
     }
 
@@ -616,9 +614,16 @@ class Tournaments implements TournamentCascades {
         }
     }
 
-    @Override
-    public boolean removeResource(CommandContext command, UUID tournamentId, UUID resourceId,
-                                  TournamentResourceRemovalCause cause) {
+    /**
+     * FR-TRN-27, an ACTIVE Tournament only: the assignment of {@code resourceId} marked removed at
+     * {@link CommandContext#commandNow()} with {@code cause}, its hold released with the cause as release reason. The
+     * Tournament row - its stored venue cost among it (FR-TRN-28) - and the other assignments are not touched. The
+     * decision around it is {@link TournamentSystemCascades#loseResource}'s.
+     *
+     * @return {@code false}, changing nothing, when the Resource is not (or no longer) assigned to it
+     */
+    boolean removeResource(CommandContext command, UUID tournamentId, UUID resourceId,
+                           TournamentResourceRemovalCause cause) {
         Objects.requireNonNull(command, "command");
         Objects.requireNonNull(tournamentId, "tournamentId");
         Objects.requireNonNull(resourceId, "resourceId");
@@ -635,6 +640,11 @@ class Tournaments implements TournamentCascades {
             ledger.release(command, reservationId, command.commandNow(), cause.name());
         }
         return !reservations.isEmpty();
+    }
+
+    /** The Resources still assigned ({@code removed_at IS NULL}), in id order. */
+    List<UUID> liveResources(CommandContext command, UUID tournamentId) {
+        return command.jdbc().sql(LIVE_RESOURCES).param("id", tournamentId).query(UUID.class).list();
     }
 
     /** The Tournament as it is now in this command, or empty when it does not exist. */

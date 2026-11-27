@@ -29,10 +29,8 @@ import ps.e7gz.common.codes.BookingTerminalReason;
 import ps.e7gz.common.codes.EmergencyConversionTarget;
 import ps.e7gz.common.codes.EmergencyScope;
 import ps.e7gz.common.codes.EmergencyStatus;
-import ps.e7gz.common.codes.OperationalRestriction;
 import ps.e7gz.common.codes.ResourceBaseState;
 import ps.e7gz.common.codes.TournamentResourceRemovalCause;
-import ps.e7gz.common.codes.TournamentStatus;
 import ps.e7gz.common.codes.TournamentTerminalReason;
 import ps.e7gz.common.codes.VenueClosureKind;
 import ps.e7gz.common.command.Command;
@@ -1009,21 +1007,15 @@ final class EmergencyCommands {
                 if (deps.tournaments().cancel(context, tournament.id(), TournamentTerminalReason.EMERGENCY_CLOSURE)) {
                     cancelled.add(tournament.id());
                 }
-            } else if (tournament.status() == TournamentStatus.ACTIVE) {
-                // FR-TRN-27: an ACTIVE Tournament loses the resource and goes on while one operational resource remains
-                deps.tournaments().removeResource(context, tournament.id(), emergency.resourceId(),
-                        TournamentResourceRemovalCause.RESOURCE_EMERGENCY_OUTAGE);
-                trimmed.add(tournament.id());
-                boolean operational = tournament.resourceIds().stream()
-                        .filter(id -> !id.equals(emergency.resourceId()))
-                        .anyMatch(id -> operational(context, deps, id, now));
-                if (!operational && deps.tournaments().cancel(context, tournament.id(),
-                        TournamentTerminalReason.RESOURCE_EMERGENCY_OUTAGE)) {
-                    cancelled.add(tournament.id());
+            } else {
+                // FR-TRN-27 (E7-94, arch 06 section 3.5): before the start any loss cancels; an ACTIVE Tournament
+                // loses the resource and goes on while one operational resource remains
+                switch (deps.tournaments().loseResource(context, tournament.id(), emergency.resourceId(),
+                        TournamentResourceRemovalCause.RESOURCE_EMERGENCY_OUTAGE)) {
+                    case CANCELLED -> cancelled.add(tournament.id());
+                    case CONTINUES -> trimmed.add(tournament.id());
+                    case NOT_AFFECTED -> { }
                 }
-            } else if (deps.tournaments().cancel(context, tournament.id(),
-                    TournamentTerminalReason.RESOURCE_EMERGENCY_OUTAGE)) {
-                cancelled.add(tournament.id());
             }
         }
 
@@ -1057,14 +1049,6 @@ final class EmergencyCommands {
                     Map.of("emergencyId", emergency.id().toString()), false, BigDecimal.ZERO, correlationId);
         }
         return new Cascade(cascade.bookings(), List.copyOf(cancelled), List.copyOf(trimmed), paused.size());
-    }
-
-    static boolean operational(CommandContext context, Deps deps, UUID resourceId, Instant now) {
-        return deps.resources().find(context, resourceId)
-                .filter(room -> room.baseState() == ResourceBaseState.ACTIVE
-                        && room.restriction() == OperationalRestriction.NONE)
-                .isPresent() && !blocked(context, new Subject(deps.resources().find(context, resourceId)
-                .orElseThrow().venueId(), EmergencyScope.RESOURCE, resourceId));
     }
 
     static void interruption(CommandContext context, Deps deps, String subjectType, UUID subjectId,

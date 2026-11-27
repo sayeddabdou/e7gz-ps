@@ -85,6 +85,13 @@ class TournamentParticipants {
             RETURNING ineligible_reason
             """;
 
+    /** The guard keeps every other column and refuses this unless the account is anonymised. */
+    static final String RECLASSIFY_DELETED = """
+            UPDATE tournament.tournament_participant SET ineligible_reason = 'ACCOUNT_DELETED'
+             WHERE id = :id AND status = 'INELIGIBLE' AND ineligible_reason = 'BAN'
+            RETURNING ineligible_reason
+            """;
+
     private final AuditWriter audit;
     private final ActiveBans bans;
 
@@ -163,6 +170,17 @@ class TournamentParticipants {
     /** A Ban came into force: INELIGIBLE, the cause the guard's (BAN, or ACCOUNT_DELETED when that is true too). */
     void markIneligible(CommandContext command, Tournaments.Current tournament, Row row) {
         String cause = set(command, row, TournamentParticipantStatus.INELIGIBLE);
+        write(command, TournamentAuditAction.TOURNAMENT_PARTICIPANT_INELIGIBLE, AuditActor.system(), row.id(),
+                tournament, row.status(), TournamentParticipantStatus.INELIGIBLE, Map.of("ineligibleReason", cause));
+    }
+
+    /**
+     * E7-94, O19 over O14 (ADR-023): {@code INELIGIBLE/BAN -> INELIGIBLE/ACCOUNT_DELETED} once the account is
+     * anonymised - the cause alone, the status and its timestamp unchanged, the BAN-only reserved slot released. The
+     * only cause change the guard allows without a status transition; audited by SYSTEM with the new cause.
+     */
+    void reclassifyDeleted(CommandContext command, Tournaments.Current tournament, Row row) {
+        String cause = command.jdbc().sql(RECLASSIFY_DELETED).param("id", row.id()).query(String.class).single();
         write(command, TournamentAuditAction.TOURNAMENT_PARTICIPANT_INELIGIBLE, AuditActor.system(), row.id(),
                 tournament, row.status(), TournamentParticipantStatus.INELIGIBLE, Map.of("ineligibleReason", cause));
     }

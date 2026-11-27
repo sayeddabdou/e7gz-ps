@@ -26,7 +26,6 @@ import ps.e7gz.common.codes.OwnerReviewResolution;
 import ps.e7gz.common.codes.ReservationType;
 import ps.e7gz.common.codes.ResourceBaseState;
 import ps.e7gz.common.codes.TournamentResourceRemovalCause;
-import ps.e7gz.common.codes.TournamentStatus;
 import ps.e7gz.common.codes.TournamentTerminalReason;
 import ps.e7gz.common.command.Command;
 import ps.e7gz.common.command.CommandContext;
@@ -224,20 +223,13 @@ final class OwnerReviewCommands {
         List<UUID> cancelled = new ArrayList<>();
         List<UUID> trimmed = new ArrayList<>();
         for (LiveTournament tournament : reach.tournaments()) {
-            if (tournament.status() == TournamentStatus.ACTIVE) {
-                // FR-OPS-28, FR-TRN-27: it loses the Resource and goes on while one operational Resource remains
-                deps.tournaments().removeResource(context, tournament.id(), resourceId,
-                        TournamentResourceRemovalCause.RESOURCE_OWNER_REVIEW_REQUIRED);
-                trimmed.add(tournament.id());
-                boolean operational = tournament.resourceIds().stream().filter(id -> !id.equals(resourceId))
-                        .anyMatch(id -> EmergencyCommands.operational(context, deps, id, now));
-                if (!operational && deps.tournaments().cancel(context, tournament.id(),
-                        TournamentTerminalReason.RESOURCE_OWNER_REVIEW_REQUIRED)) {
-                    cancelled.add(tournament.id());
-                }
-            } else if (deps.tournaments().cancel(context, tournament.id(),
-                    TournamentTerminalReason.RESOURCE_OWNER_REVIEW_REQUIRED)) {
-                cancelled.add(tournament.id());
+            // FR-OPS-28, FR-TRN-27 (E7-94, arch 06 section 3.5): before the start any loss cancels; an ACTIVE
+            // Tournament loses the Resource and goes on while one operational Resource remains
+            switch (deps.tournaments().loseResource(context, tournament.id(), resourceId,
+                    TournamentResourceRemovalCause.RESOURCE_OWNER_REVIEW_REQUIRED)) {
+                case CANCELLED -> cancelled.add(tournament.id());
+                case CONTINUES -> trimmed.add(tournament.id());
+                case NOT_AFFECTED -> { }
             }
         }
 
