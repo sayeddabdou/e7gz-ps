@@ -11,6 +11,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import ps.e7gz.common.codes.VerifiedPlayerQualification;
 import ps.e7gz.common.command.CommandContext;
+import ps.e7gz.trust.api.TournamentParticipantCauses;
 import ps.e7gz.trust.api.TrustConsequenceUnavailableException;
 import ps.e7gz.trust.api.TrustReconciler;
 
@@ -109,17 +110,32 @@ class JdbcTrustReconciler implements TrustReconciler {
 
     private final ObjectProvider<BanReconciliation> bans;
     private final ObjectProvider<VerifiedPlayerReconciliation> verifiedPlayer;
+    private final ObjectProvider<TournamentParticipantCauses> participants;
 
     JdbcTrustReconciler(ObjectProvider<BanReconciliation> bans,
-                        ObjectProvider<VerifiedPlayerReconciliation> verifiedPlayer) {
+                        ObjectProvider<VerifiedPlayerReconciliation> verifiedPlayer,
+                        ObjectProvider<TournamentParticipantCauses> participants) {
         this.bans = bans;
         this.verifiedPlayer = verifiedPlayer;
+        this.participants = participants;
     }
 
     @Override
     public Reconciliation reconcile(CommandContext command, UUID userId) {
         Objects.requireNonNull(command, "command");
         Objects.requireNonNull(userId, "userId");
+        Reconciliation found = reconcileTrust(command, userId);
+        // E7-93 (ADR-023, arch 06 section 3.7): every Ban change of this command - an activation or extension here, an
+        // expiry, lift, correction or shortening by the caller - reaches the User's Tournament participations last, so
+        // they follow the Ban now in force; the Tournament module answers, and nothing changes when they already do
+        TournamentParticipantCauses tournaments = participants.getIfAvailable();
+        if (tournaments != null) {
+            tournaments.reconcileBans(command, userId);
+        }
+        return found;
+    }
+
+    private Reconciliation reconcileTrust(CommandContext command, UUID userId) {
         boolean refreshed = refreshIfStale(command, userId);
         Reconciliation found = inspect(command, userId, refreshed);
         if (found.settled()) {

@@ -19,7 +19,20 @@ enum TournamentAuditAction implements AuditAction {
      * A Customer joined, subject the participant row, at its {@code status_changed_at}
      * ({@code tournament.assert_participant_audit}). E7-73 writes it only for the participating Player Creator.
      */
-    TOURNAMENT_PARTICIPANT_JOINED("TOURNAMENT_PARTICIPANT", AuditPayloadAllowlist.of("tournamentId"));
+    TOURNAMENT_PARTICIPANT_JOINED("TOURNAMENT_PARTICIPANT", AuditPayloadAllowlist.of("tournamentId")),
+
+    /** E7-93: the Participant left, by themselves (CUSTOMER), before {@code startAt}. */
+    TOURNAMENT_PARTICIPANT_LEFT("TOURNAMENT_PARTICIPANT", AuditPayloadAllowlist.of("tournamentId")),
+
+    /** E7-93: the Organizer removed the Participant - the Player Creator (CUSTOMER) of a Player-hosted Tournament. */
+    TOURNAMENT_PARTICIPANT_REMOVED("TOURNAMENT_PARTICIPANT", AuditPayloadAllowlist.of("tournamentId")),
+
+    /** E7-93: {@code INELIGIBLE} with its cause, by SYSTEM - a Ban came into force (O14, ADR-023). */
+    TOURNAMENT_PARTICIPANT_INELIGIBLE("TOURNAMENT_PARTICIPANT",
+            AuditPayloadAllowlist.of("tournamentId", "ineligibleReason")),
+
+    /** E7-93: {@code INELIGIBLE/BAN -> JOINED} by SYSTEM - the Ban ended before {@code startAt} (FR-TRN-26). */
+    TOURNAMENT_PARTICIPANT_RESTORED("TOURNAMENT_PARTICIPANT", AuditPayloadAllowlist.of("tournamentId", "asOf"));
 
     private final String subjectType;
     private final AuditPayloadAllowlist payloadAllowlist;

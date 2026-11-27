@@ -34,8 +34,17 @@ final class TournamentAnswerEvents {
     /** A request cancelled by the system: the approval timeout (T7) or a Venue Account disable (FR-TRN-18). */
     static NewOutboxEvent cancelled(Tournaments.Current request, int historySequence,
                                     TournamentTerminalReason reason) {
-        return event(IntegrationEvents.TOURNAMENT_CANCELLED, request, ActorType.SYSTEM, historySequence,
-                Objects.requireNonNull(reason, "reason"));
+        return cancelled(request, historySequence, reason, ActorType.SYSTEM);
+    }
+
+    /**
+     * E7-93: a Player-hosted Tournament CANCELLED by {@code actor} - the system at a boundary (the checkpoint's
+     * {@code MINIMUM_PARTICIPANTS_NOT_REACHED} among them), its Creator, its Venue or a Platform Admin.
+     */
+    static NewOutboxEvent cancelled(Tournaments.Current tournament, int historySequence,
+                                    TournamentTerminalReason reason, ActorType actor) {
+        return event(IntegrationEvents.TOURNAMENT_CANCELLED, tournament, Objects.requireNonNull(actor, "actor"),
+                historySequence, Objects.requireNonNull(reason, "reason"));
     }
 
     private static NewOutboxEvent event(String type, Tournaments.Current request, ActorType actor,

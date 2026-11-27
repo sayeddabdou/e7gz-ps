@@ -17,4 +17,20 @@ public interface ActiveBans {
      * after it. Reads on the command's own transaction.
      */
     boolean bannedAt(CommandContext command, UUID userId, Instant at);
+
+    /**
+     * True when a Ban of the User was in force at {@code at} as its history records it - activated at or before it and
+     * ending after it - whatever its status is now: a lifted or corrected Ban ends at the instant it was lifted or
+     * corrected, an expired one at its {@code endsAt}. For a past Product boundary, which is decided as of the boundary
+     * and never as of the worker's time (arch 06 section 3.7, ADR-023 item 5; E7-93): the same test as
+     * {@code tournament.guard_tournament_due_boundary} at the checkpoint.
+     */
+    boolean effectiveAt(CommandContext command, UUID userId, Instant at);
+
+    /**
+     * As {@link #effectiveAt}, with a Ban that ends exactly at {@code at} counted as still in force: at a Tournament's
+     * {@code startAt} a Ban expiring or lifted at that very instant does not restore the Participant (Product section
+     * 37.11, FR-TRN-26; physical model v1.1.27, {@code tournament.guard_tournament_due_boundary} at the start).
+     */
+    boolean effectiveThrough(CommandContext command, UUID userId, Instant at);
 }

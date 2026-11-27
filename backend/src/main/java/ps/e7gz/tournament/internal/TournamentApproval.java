@@ -1,12 +1,9 @@
 package ps.e7gz.tournament.internal;
 
-import java.time.Instant;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import org.springframework.stereotype.Component;
-import ps.e7gz.audit.api.AuditActor;
 import ps.e7gz.common.codes.TournamentStatus;
 import ps.e7gz.common.codes.TournamentTerminalReason;
 import ps.e7gz.common.codes.VenueAccountStatus;
@@ -60,9 +57,12 @@ public class TournamentApproval {
     private final VenueEligibility venues;
     private final Outbox outbox;
     private final Tournaments tournaments;
+    private final TournamentBoundaries boundaries;
 
     TournamentApproval(CommandRunner runner, Idempotency idempotency, VenueAccountVenues accounts,
-                       VenueEligibility venues, Outbox outbox, Tournaments tournaments) {
+                       VenueEligibility venues, Outbox outbox, Tournaments tournaments,
+                       TournamentBoundaries boundaries) {
+        this.boundaries = boundaries;
         this.runner = runner;
         this.idempotency = idempotency;
         this.accounts = accounts;
@@ -101,23 +101,8 @@ public class TournamentApproval {
      * 2.2 on the state read now.
      */
     JobOutcome expire(CommandContext context, ScheduledJob job) {
-        Optional<Tournaments.Current> found = tournaments.current(context, job.subjectId());
-        if (found.isEmpty()) {
-            return JobOutcome.superseded("no such Tournament");
-        }
-        Tournaments.Current request = found.get();
-        if (request.status() != TournamentStatus.PENDING_VENUE_APPROVAL) {
-            return JobOutcome.superseded("no longer PENDING_VENUE_APPROVAL");
-        }
-        Instant deadline = request.approvalExpiresAt();
-        if (context.commandNow().isBefore(deadline)) {
-            return JobOutcome.rescheduleAt(deadline);
-        }
-        TournamentTerminalReason reason = TournamentTerminalReason.VENUE_DID_NOT_APPROVE_TOURNAMENT_IN_TIME;
-        int sequence = tournaments.cancelled(context, request.id(), reason, AuditActor.system(), deadline)
-                .orElseThrow(() -> new IllegalStateException("Tournament " + request.id() + " ended under its lock"));
-        outbox.publish(context, TournamentAnswerEvents.cancelled(request, sequence, reason));
-        return JobOutcome.done();
+        // E7-93: the boundaries' own rule, shared with every command that reaches a due deadline first
+        return boundaries.fire(context, job, Tournaments.APPROVAL_EXPIRY);
     }
 
     // ------------------------------------------------------------------------------------------------ the command
