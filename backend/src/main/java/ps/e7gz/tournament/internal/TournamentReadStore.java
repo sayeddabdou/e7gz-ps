@@ -90,10 +90,11 @@ class TournamentReadStore {
 
     /**
      * Discover candidates (FR-TRN-06, FR-TRN-07): PUBLIC, WAITING_FOR_PLAYERS or CONFIRMED, {@code now < startAt},
-     * by startAt then id, strictly after {@code after}. Whether the Venue is live is decided by the caller.
+     * by startAt then id, strictly after {@code after}. {@code venueIds}, when not null, keeps only those Venues
+     * (an Area's); whether a Venue is live is decided by the caller.
      */
-    List<TournamentRow> discover(CommandContext context, UUID viewer, Activity activity, TournamentCursor.Position after,
-                       int limit) {
+    List<TournamentRow> discover(CommandContext context, UUID viewer, Activity activity, List<UUID> venueIds,
+                                 TournamentCursor.Position after, int limit) {
         StringBuilder sql = new StringBuilder(SELECT).append("""
                  WHERE t.visibility = 'PUBLIC' AND t.status IN ('WAITING_FOR_PLAYERS', 'CONFIRMED')
                    AND t.start_at > CAST(:now AS timestamptz)
@@ -102,6 +103,10 @@ class TournamentReadStore {
         if (activity != null) {
             sql.append(" AND t.activity = :activity");
             params.put("activity", activity.name());
+        }
+        if (venueIds != null) {
+            sql.append(" AND t.venue_id IN (:venueIds)");
+            params.put("venueIds", venueIds);
         }
         return page(context, sql, params, viewer, after, "t.start_at", true, limit);
     }

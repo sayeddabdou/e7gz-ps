@@ -191,23 +191,27 @@ class TournamentReadsHttpTest extends IntegrationTest {
         UUID c = venueHosted(world, TournamentVisibility.PUBLIC, 16, hours(world, 3));
         String viewer = token(AuthSubjectType.CUSTOMER, aUser().verified().create().id());
 
-        List<UUID> seen = new ArrayList<>();
-        String cursor = null;
-        do {
-            var request = get(CUSTOMER).param("areaId", world.venue().areaId().toString()).param("limit", "1")
-                    .header("Authorization", viewer);
-            if (cursor != null) {
-                request = request.param("cursor", cursor);
-            }
-            JsonNode page = read(mvc.perform(request).andExpect(status().isOk()));
-            seen.addAll(ids(page));
-            cursor = page.at("/data/nextCursor").isNull() ? null : page.at("/data/nextCursor").asText();
-        } while (cursor != null);
-        assertThat(seen).containsExactly(a, b, c);
+        assertThat(allPages(world, viewer)).containsExactly(a, b, c);
 
         mvc.perform(get(CUSTOMER).param("cursor", "not-a-cursor").header("Authorization", viewer))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void discoverPagesPastATournamentOfAVenueThatIsNotLiveInTheSameArea() throws Exception {
+        World live = World.create();
+        World notLive = World.inArea(live.venue().areaId());
+        UUID a1 = venueHosted(live, TournamentVisibility.PUBLIC, 16, hours(live, -6));
+        venueHosted(notLive, TournamentVisibility.PUBLIC, 16, hours(live, -5));
+        UUID a2 = venueHosted(live, TournamentVisibility.PUBLIC, 16, hours(live, -3));
+        venueHosted(notLive, TournamentVisibility.PUBLIC, 16, hours(live, -2));
+        UUID a3 = venueHosted(live, TournamentVisibility.PUBLIC, 16, hours(live, 0));
+        OWNER.sql("UPDATE iam.venue_account SET account_status = 'DISABLED' WHERE id = :id")
+                .param("id", notLive.account().id()).update();
+        String viewer = token(AuthSubjectType.CUSTOMER, aUser().verified().create().id());
+
+        assertThat(allPages(live, viewer)).containsExactly(a1, a2, a3);
     }
 
     // ------------------------------------------------------------------------------------------------ mine + detail
@@ -456,6 +460,23 @@ class TournamentReadsHttpTest extends IntegrationTest {
         return read(mvc.perform(get(CUSTOMER).param("areaId", world.venue().areaId().toString())
                         .header("Authorization", token(AuthSubjectType.CUSTOMER, viewer)))
                 .andExpect(status().isOk()));
+    }
+
+    /** Every Discover page of the World's Area, one item a page. */
+    private List<UUID> allPages(World world, String viewer) throws Exception {
+        List<UUID> seen = new ArrayList<>();
+        String cursor = null;
+        do {
+            var request = get(CUSTOMER).param("areaId", world.venue().areaId().toString()).param("limit", "1")
+                    .header("Authorization", viewer);
+            if (cursor != null) {
+                request = request.param("cursor", cursor);
+            }
+            JsonNode page = read(mvc.perform(request).andExpect(status().isOk()));
+            seen.addAll(ids(page));
+            cursor = page.at("/data/nextCursor").isNull() ? null : page.at("/data/nextCursor").asText();
+        } while (cursor != null);
+        return seen;
     }
 
     private static List<UUID> ids(JsonNode page) {

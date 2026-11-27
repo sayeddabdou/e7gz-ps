@@ -4,10 +4,11 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import org.springframework.stereotype.Component;
@@ -32,6 +33,7 @@ import ps.e7gz.identity.api.CustomerContacts;
 import ps.e7gz.resource.api.ResourceCatalog;
 import ps.e7gz.venue.api.VenueAccountVenues;
 import ps.e7gz.venue.api.VenueContacts;
+import ps.e7gz.venue.api.VenueDiscovery;
 import ps.e7gz.venue.api.VenueEligibility;
 
 /**
@@ -58,10 +60,11 @@ public class TournamentReads {
     private final VenueContacts venues;
     private final CustomerContacts customers;
     private final ResourceCatalog resources;
+    private final VenueDiscovery discovery;
 
     TournamentReads(CommandRunner runner, TournamentReadStore store, VenueAccountVenues accounts,
                     VenueEligibility eligibility, VenueContacts venues, CustomerContacts customers,
-                    ResourceCatalog resources) {
+                    ResourceCatalog resources, VenueDiscovery discovery) {
         this.runner = runner;
         this.store = store;
         this.accounts = accounts;
@@ -69,6 +72,7 @@ public class TournamentReads {
         this.venues = venues;
         this.customers = customers;
         this.resources = resources;
+        this.discovery = discovery;
     }
 
     // ------------------------------------------------------------------------------------------------ views
@@ -124,16 +128,20 @@ public class TournamentReads {
         Objects.requireNonNull(customerId, "customerId");
         TournamentCursor.Position start = TournamentCursor.decode(cursor);
         int size = TournamentCursor.size(limit);
+        List<UUID> inArea = areaId == null ? null : venuesIn(areaId, activity);
+        if (inArea != null && inArea.isEmpty()) {
+            return new Page<>(List.of(), null);
+        }
         return runner.run(new Read<>(context -> {
             Map<UUID, Boolean> shown = new HashMap<>();
             List<TournamentRow> found = new ArrayList<>();
             TournamentCursor.Position after = start;
             int batch = Math.max(size + 1, DISCOVER_BATCH);
             while (found.size() <= size) {
-                List<TournamentRow> rows = store.discover(context, customerId, activity, after, batch);
+                List<TournamentRow> rows = store.discover(context, customerId, activity, inArea, after, batch);
                 for (TournamentRow row : rows) {
                     after = new TournamentCursor.Position(row.startAt(), row.id());
-                    if (shown.computeIfAbsent(row.venueId(), venue -> live(context, venue, areaId))) {
+                    if (shown.computeIfAbsent(row.venueId(), venue -> live(context, venue))) {
                         found.add(row);
                         if (found.size() > size) {
                             break;
@@ -144,7 +152,7 @@ public class TournamentReads {
                     break;
                 }
             }
-            return page(context, found, size, TournamentRow::startAt, false);
+            return page(new Lookups(context), found, size, TournamentRow::startAt, Shows.CUSTOMER_LIST);
         }));
     }
 
@@ -157,9 +165,9 @@ public class TournamentReads {
         boolean past = Boolean.TRUE.equals(ended);
         TournamentCursor.Position after = TournamentCursor.decode(cursor);
         int size = TournamentCursor.size(limit);
-        return runner.run(new Read<>(context -> page(context, store.mine(context, customerId,
+        return runner.run(new Read<>(context -> page(new Lookups(context), store.mine(context, customerId,
                 past ? TournamentReadStore.ENDED : TournamentReadStore.NOT_ENDED, !past, after, size + 1), size,
-                TournamentRow::startAt, false)));
+                TournamentRow::startAt, Shows.CUSTOMER_LIST)));
     }
 
     /**
@@ -179,9 +187,10 @@ public class TournamentReads {
             if (!visible) {
                 throw new ApiException(ApiErrorCode.NOT_FOUND);
             }
-            Item item = item(context, row, true, false, true);
+            Lookups lookups = new Lookups(context);
+            Item item = lookups.item(row, Shows.CUSTOMER_DETAIL);
             return creator
-                    ? new Detail(item, inviteCode(row), participants(context, row))
+                    ? new Detail(item, inviteCode(row), lookups.participants(row))
                     : new Detail(item, null, null);
         }));
     }
@@ -206,8 +215,9 @@ public class TournamentReads {
         if (states.isEmpty()) {
             return new Page<>(List.of(), null);
         }
-        return runner.run(new Read<>(context -> page(context,
-                store.ofVenue(context, venueId, states, !past, after, size + 1), size, TournamentRow::startAt, true)));
+        return runner.run(new Read<>(context -> page(new Lookups(context),
+                store.ofVenue(context, venueId, states, !past, after, size + 1), size, TournamentRow::startAt,
+                Shows.VENUE)));
     }
 
     /** One of the Venue's Tournaments in any state, with its participants and invite code; another's is NOT_FOUND. */
@@ -217,7 +227,8 @@ public class TournamentReads {
         return runner.run(new Read<>(context -> {
             TournamentRow row = store.find(context, tournamentId, null).filter(found -> found.venueId().equals(venueId))
                     .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND));
-            return new Detail(item(context, row, false, true, true), inviteCode(row), participants(context, row));
+            Lookups lookups = new Lookups(context);
+            return new Detail(lookups.item(row, Shows.VENUE), inviteCode(row), lookups.participants(row));
         }));
     }
 
@@ -231,7 +242,7 @@ public class TournamentReads {
         return runner.run(new Read<>(context -> {
             List<TournamentRow> rows = store.all(context, venueId, status, hostType, after, size + 1);
             List<TournamentRow> shown = rows.stream().limit(size).toList();
-            List<Item> items = shown.stream().map(row -> item(context, row, true, true, false)).toList();
+            List<Item> items = new Lookups(context).items(shown, Shows.ADMIN_LIST);
             return new Page<>(items, rows.size() > size
                     ? TournamentCursor.encode(new TournamentCursor.Position(shown.getLast().createdAt(),
                             shown.getLast().id()))
@@ -245,63 +256,116 @@ public class TournamentReads {
         return runner.run(new Read<>(context -> {
             TournamentRow row = store.find(context, tournamentId, null)
                     .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND));
-            return new Detail(item(context, row, true, true, true), inviteCode(row), participants(context, row));
+            Lookups lookups = new Lookups(context);
+            return new Detail(lookups.item(row, Shows.ADMIN_DETAIL), inviteCode(row), lookups.participants(row));
         }));
     }
 
     // ------------------------------------------------------------------------------------------------ helpers
 
-    /** Live for Discover, and in {@code areaId} when one is asked. */
-    private boolean live(CommandContext context, UUID venueId, UUID areaId) {
+    /** Live for Discover: Marketplace ACTIVE and Venue Account ENABLED, as a new Tournament needs. */
+    private boolean live(CommandContext context, UUID venueId) {
         return eligibility.find(context, venueId)
                 .filter(venue -> venue.marketplaceStatus() == MarketplaceStatus.ACTIVE)
                 .filter(venue -> venue.accountStatus() == VenueAccountStatus.ENABLED)
-                .filter(venue -> areaId == null || areaId.equals(venue.areaId()))
                 .isPresent();
     }
 
+    /**
+     * The Marketplace-ACTIVE Venues of {@code areaId} offering {@code activity}, or any activity when null - the only
+     * Venues whose Tournaments Discover can show there, pushed into its SQL so a quiet Area never scans the city.
+     */
+    private List<UUID> venuesIn(UUID areaId, Activity activity) {
+        List<Activity> activities = activity != null ? List.of(activity) : List.of(Activity.values());
+        Set<UUID> ids = new LinkedHashSet<>();
+        for (Activity each : activities) {
+            discovery.inArea(areaId, each).forEach(venue -> ids.add(venue.venueId()));
+        }
+        return List.copyOf(ids);
+    }
+
     /** The first {@code size} of {@code rows} (read with one more) and the cursor after the last one shown. */
-    private Page<Item> page(CommandContext context, List<TournamentRow> rows, int size, Function<TournamentRow, Instant> order,
-                            boolean venueSurface) {
+    private static Page<Item> page(Lookups lookups, List<TournamentRow> rows, int size,
+                                   Function<TournamentRow, Instant> order, Shows shows) {
         List<TournamentRow> shown = rows.stream().limit(size).toList();
-        List<Item> items = shown.stream()
-                .map(row -> item(context, row, !venueSurface, venueSurface, venueSurface)).toList();
-        return new Page<>(items, rows.size() > size
+        return new Page<>(lookups.items(shown, shows), rows.size() > size
                 ? TournamentCursor.encode(new TournamentCursor.Position(order.apply(shown.getLast()),
                         shown.getLast().id()))
                 : null);
     }
 
-    private Item item(CommandContext context, TournamentRow row, boolean withVenueName, boolean withCreator,
-                      boolean withRooms) {
-        String venueName = withVenueName ? venues.find(context, row.venueId())
-                .map(VenueContacts.Contact::name)
-                .orElseThrow(() -> new IllegalStateException("Venue " + row.venueId() + " vanished")) : null;
-        String creator = withCreator && row.creatorUserId() != null ? username(context, row.creatorUserId()) : null;
-        List<Room> rooms = withRooms ? rooms(context, row.id()) : List.of();
-        return new Item(row, venueName, creator, rooms);
+    /** What a surface adds to the rows it shows. */
+    private record Shows(boolean venueName, boolean creator, boolean rooms) {
+
+        static final Shows CUSTOMER_LIST = new Shows(true, false, false);
+        static final Shows CUSTOMER_DETAIL = new Shows(true, false, true);
+        static final Shows VENUE = new Shows(false, true, true);
+        static final Shows ADMIN_LIST = new Shows(true, true, false);
+        static final Shows ADMIN_DETAIL = new Shows(true, true, true);
     }
 
-    private List<Room> rooms(CommandContext context, UUID tournamentId) {
-        return store.rooms(context, List.of(tournamentId)).stream()
-                .map(room -> new Room(room.resourceId(), resources.name(context, room.resourceId())
-                        .orElseThrow(() -> new IllegalStateException("Resource " + room.resourceId() + " vanished")),
-                        room.consoleType(), room.hourlyPrice()))
-                .sorted(Comparator.comparing(Room::name).thenComparing(Room::resourceId))
-                .toList();
-    }
+    /**
+     * The other modules' facts one read needs - Venue names, usernames, Resource names - each read once per read and
+     * kept for the rest of it, and the rooms of a whole page in one query. The phone of a Contact never leaves here
+     * (arch 09 section 1.1).
+     */
+    private final class Lookups {
 
-    private List<Participant> participants(CommandContext context, TournamentRow row) {
-        return store.participants(context, row.id()).stream()
-                .map(p -> new Participant(p.userId(), username(context, p.userId()), p.status(), p.joinedAt()))
-                .toList();
-    }
+        private final CommandContext context;
+        private final Map<UUID, String> venueNames = new HashMap<>();
+        private final Map<UUID, String> usernames = new HashMap<>();
+        private final Map<UUID, String> resourceNames = new HashMap<>();
 
-    private String username(CommandContext context, UUID userId) {
-        // the stored username only: the phone of the Contact never leaves this method (arch 09 section 1.1)
-        Optional<CustomerContacts.Contact> contact = customers.find(context, userId);
-        return contact.map(CustomerContacts.Contact::username)
-                .orElseThrow(() -> new IllegalStateException("User " + userId + " vanished"));
+        Lookups(CommandContext context) {
+            this.context = context;
+        }
+
+        List<Item> items(List<TournamentRow> rows, Shows shows) {
+            Map<UUID, List<Room>> rooms = shows.rooms() ? rooms(rows) : Map.of();
+            return rows.stream().map(row -> new Item(row,
+                    shows.venueName() ? venueName(row.venueId()) : null,
+                    shows.creator() && row.creatorUserId() != null ? username(row.creatorUserId()) : null,
+                    rooms.getOrDefault(row.id(), List.of()))).toList();
+        }
+
+        Item item(TournamentRow row, Shows shows) {
+            return items(List.of(row), shows).getFirst();
+        }
+
+        List<Participant> participants(TournamentRow row) {
+            return store.participants(context, row.id()).stream()
+                    .map(p -> new Participant(p.userId(), username(p.userId()), p.status(), p.joinedAt()))
+                    .toList();
+        }
+
+        private Map<UUID, List<Room>> rooms(List<TournamentRow> rows) {
+            Map<UUID, List<Room>> byTournament = new HashMap<>();
+            for (TournamentReadStore.RoomRow room : store.rooms(context,
+                    rows.stream().map(TournamentRow::id).toList())) {
+                byTournament.computeIfAbsent(room.tournamentId(), id -> new ArrayList<>()).add(new Room(
+                        room.resourceId(), resourceName(room.resourceId()), room.consoleType(), room.hourlyPrice()));
+            }
+            byTournament.values().forEach(list ->
+                    list.sort(Comparator.comparing(Room::name).thenComparing(Room::resourceId)));
+            return byTournament;
+        }
+
+        private String venueName(UUID venueId) {
+            return venueNames.computeIfAbsent(venueId, id -> venues.find(context, id)
+                    .map(VenueContacts.Contact::name)
+                    .orElseThrow(() -> new IllegalStateException("Venue " + id + " vanished")));
+        }
+
+        private String username(UUID userId) {
+            return usernames.computeIfAbsent(userId, id -> customers.find(context, id)
+                    .map(CustomerContacts.Contact::username)
+                    .orElseThrow(() -> new IllegalStateException("User " + id + " vanished")));
+        }
+
+        private String resourceName(UUID resourceId) {
+            return resourceNames.computeIfAbsent(resourceId, id -> resources.name(context, id)
+                    .orElseThrow(() -> new IllegalStateException("Resource " + id + " vanished")));
+        }
     }
 
     /** A PRIVATE Tournament's code once the Venue accepted it (FR-TRN-06, FR-TRN-07); null otherwise. */
