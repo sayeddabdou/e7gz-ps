@@ -63,7 +63,7 @@ class TournamentReadStore {
     private static final String ROOMS = """
             SELECT tr.tournament_id, tr.resource_id, tr.console_type_snapshot, tr.hourly_price_snapshot
               FROM tournament.tournament_resource tr
-             WHERE tr.tournament_id IN (:ids) AND tr.removed_at IS NULL
+             WHERE tr.tournament_id IN (:ids) AND (CAST(:withRemoved AS boolean) OR tr.removed_at IS NULL)
              ORDER BY tr.tournament_id, tr.resource_id
             """;
 
@@ -74,7 +74,7 @@ class TournamentReadStore {
              ORDER BY p.joined_at, p.user_id
             """;
 
-    /** An assignment still in the Tournament (not removed by a Resource loss, FR-TRN-27), with its snapshots. */
+    /** An assignment of the Tournament, with its snapshots. */
     record RoomRow(UUID tournamentId, UUID resourceId, ConsoleType consoleType, Money hourlyPrice) {
     }
 
@@ -152,12 +152,15 @@ class TournamentReadStore {
         return page(context, sql, params, null, after, "t.created_at", false, limit);
     }
 
-    /** The assignments of {@code tournamentIds} still in play, by Tournament then Resource id. */
-    List<RoomRow> rooms(CommandContext context, Collection<UUID> tournamentIds) {
+    /**
+     * The assignments of {@code tournamentIds}, by Tournament then Resource id: every one with {@code withRemoved},
+     * otherwise only those still in play (a Resource lost while ACTIVE is removed, FR-TRN-27).
+     */
+    List<RoomRow> rooms(CommandContext context, Collection<UUID> tournamentIds, boolean withRemoved) {
         if (tournamentIds.isEmpty()) {
             return List.of();
         }
-        return context.jdbc().sql(ROOMS).param("ids", tournamentIds)
+        return context.jdbc().sql(ROOMS).param("ids", tournamentIds).param("withRemoved", withRemoved)
                 .query((rs, n) -> new RoomRow(rs.getObject("tournament_id", UUID.class),
                         rs.getObject("resource_id", UUID.class),
                         rs.getString("console_type_snapshot") == null ? null

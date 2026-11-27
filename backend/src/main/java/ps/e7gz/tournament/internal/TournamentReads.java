@@ -39,8 +39,10 @@ import ps.e7gz.venue.api.VenueEligibility;
 /**
  * The tournament reads of the three surfaces (E7-126, S6-E5; SPRINT-6-CONTRACT.md section 2, arch 09 sections 3.4,
  * 4.1 and 5): Discover, the Customer's own list and detail, the Venue's list and detail, the Admin's list and detail.
- * Each is one read-only command - one snapshot and the database's command instant, no locks, no writes - so time
- * comes from the database, never from the device or the worker (arch 04 section 2.1).
+ * Each is one read-only command - one READ COMMITTED transaction at one database command instant, no locks, no
+ * writes - so time comes from the database, never from the device or the worker (arch 04 section 2.1). Each
+ * statement sees what was committed when it ran: a Join committing between two statements of one read may show in
+ * one and not the other (a read decides nothing, so no lock is worth taking for it).
  *
  * <p>Who sees what (FR-TRN-06, FR-TRN-07, FR-TRN-12): a Tournament a caller may not see is NOT_FOUND, never
  * FORBIDDEN, so its existence is not revealed. Usernames, Venue names and Resource names are read through their
@@ -102,7 +104,7 @@ public class TournamentReads {
         }
     }
 
-    /** A Resource still in the Tournament: its current name (FR-VEN-41) and its snapshots. */
+    /** A Resource assigned to the Tournament: its current name (FR-VEN-41) and its snapshots. */
     public record Room(UUID resourceId, String name, ConsoleType consoleType, Money hourlyPrice) {
     }
 
@@ -294,14 +296,18 @@ public class TournamentReads {
                 : null);
     }
 
-    /** What a surface adds to the rows it shows. */
-    private record Shows(boolean venueName, boolean creator, boolean rooms) {
+    /**
+     * What a surface adds to the rows it shows. {@code lostRooms}: also the Resources lost while ACTIVE (FR-TRN-27) -
+     * the Venue and the Admin see every assigned room, the ones the venue cost was computed from (FR-TRN-28); the
+     * Customer sees the rooms still in play.
+     */
+    private record Shows(boolean venueName, boolean creator, boolean rooms, boolean lostRooms) {
 
-        static final Shows CUSTOMER_LIST = new Shows(true, false, false);
-        static final Shows CUSTOMER_DETAIL = new Shows(true, false, true);
-        static final Shows VENUE = new Shows(false, true, true);
-        static final Shows ADMIN_LIST = new Shows(true, true, false);
-        static final Shows ADMIN_DETAIL = new Shows(true, true, true);
+        static final Shows CUSTOMER_LIST = new Shows(true, false, false, false);
+        static final Shows CUSTOMER_DETAIL = new Shows(true, false, true, false);
+        static final Shows VENUE = new Shows(false, true, true, true);
+        static final Shows ADMIN_LIST = new Shows(true, true, false, false);
+        static final Shows ADMIN_DETAIL = new Shows(true, true, true, true);
     }
 
     /**
@@ -321,7 +327,7 @@ public class TournamentReads {
         }
 
         List<Item> items(List<TournamentRow> rows, Shows shows) {
-            Map<UUID, List<Room>> rooms = shows.rooms() ? rooms(rows) : Map.of();
+            Map<UUID, List<Room>> rooms = shows.rooms() ? rooms(rows, shows.lostRooms()) : Map.of();
             return rows.stream().map(row -> new Item(row,
                     shows.venueName() ? venueName(row.venueId()) : null,
                     shows.creator() && row.creatorUserId() != null ? username(row.creatorUserId()) : null,
@@ -338,10 +344,10 @@ public class TournamentReads {
                     .toList();
         }
 
-        private Map<UUID, List<Room>> rooms(List<TournamentRow> rows) {
+        private Map<UUID, List<Room>> rooms(List<TournamentRow> rows, boolean withRemoved) {
             Map<UUID, List<Room>> byTournament = new HashMap<>();
             for (TournamentReadStore.RoomRow room : store.rooms(context,
-                    rows.stream().map(TournamentRow::id).toList())) {
+                    rows.stream().map(TournamentRow::id).toList(), withRemoved)) {
                 byTournament.computeIfAbsent(room.tournamentId(), id -> new ArrayList<>()).add(new Room(
                         room.resourceId(), resourceName(room.resourceId()), room.consoleType(), room.hourlyPrice()));
             }
@@ -373,9 +379,14 @@ public class TournamentReads {
         return row.visibility() == TournamentVisibility.PRIVATE && row.accepted() ? row.inviteCode() : null;
     }
 
-    /** A read-only command: one snapshot and the database's instant, no locks. */
+    /** A read-only command: the database's command instant, no locks, no writes. */
     private record Read<R>(Function<CommandContext, R> body) implements Command<R> {
 
+        /**
+         * Nominal: a read starts no marketplace activity and honours no commitment, so no venue-eligibility rule
+         * applies to it; the runner only requires a category. B is what every other read in the code base declares
+         * (VenueBookings, TournamentLookup).
+         */
         @Override
         public EligibilityCategory eligibilityCategory() {
             return EligibilityCategory.B_EXISTING_COMMITMENT_OPERATIONAL;

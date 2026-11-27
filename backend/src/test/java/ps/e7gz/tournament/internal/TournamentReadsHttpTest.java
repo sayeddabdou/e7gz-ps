@@ -403,6 +403,38 @@ class TournamentReadsHttpTest extends IntegrationTest {
                 .andExpect(status().isOk())))).containsExactly(ended);
     }
 
+    /**
+     * A Resource lost while ACTIVE (FR-TRN-27) leaves the Customer's room list, but the Venue and the Admin keep every
+     * assigned room: the venue cost was computed from all of them (FR-TRN-28) and stays as it was.
+     */
+    @Test
+    void aLostRoomLeavesTheCustomersListButNotTheVenueOrAdminHistory() throws Exception {
+        World world = World.create();
+        UUID id = venueHosted(world, TournamentVisibility.PUBLIC, 16, world.startAt());
+        UUID lost = world.rooms().getFirst();
+        TournamentParticipantsIntegrationTest.Shift.withoutTriggers(jdbc -> jdbc.sql("""
+                        UPDATE tournament.tournament_resource
+                           SET removed_at = now(), removal_cause = 'RESOURCE_EMERGENCY_OUTAGE'
+                         WHERE tournament_id = :t AND resource_id = :r""")
+                .param("t", id).param("r", lost).update());
+        String venue = token(AuthSubjectType.VENUE, world.account().id());
+        String admin = token(AuthSubjectType.ADMIN, AuditFixtures.admin());
+
+        mvc.perform(get(CUSTOMER + "/" + id)
+                        .header("Authorization", token(AuthSubjectType.CUSTOMER, aUser().verified().create().id())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rooms.length()").value(1))
+                .andExpect(jsonPath("$.data.rooms[0].resourceId").value(world.rooms().get(1).toString()));
+        mvc.perform(get(VENUE + "/" + id).header("Authorization", venue))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rooms.length()").value(2));
+        JsonNode list = read(mvc.perform(get(VENUE).header("Authorization", venue)).andExpect(status().isOk()));
+        assertThat(list.at("/data/items/0/roomNames")).hasSize(2);
+        mvc.perform(get(ADMIN + "/" + id).header("Authorization", admin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.roomNames.length()").value(2));
+    }
+
     // ------------------------------------------------------------------------------------------------ admin
 
     @Test
