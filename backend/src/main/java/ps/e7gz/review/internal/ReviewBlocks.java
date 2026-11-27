@@ -77,18 +77,21 @@ public class ReviewBlocks {
                     .update();
             return open(context.jdbc(), customerId, author).orElseThrow();
         }));
-        return new BlockedUser(author, named == null ? "" : named.username(), block.blockedAt());
+        return new BlockedUser(block.id(), named == null ? "" : named.username(), block.blockedAt());
     }
 
-    /** {@code POST /customer/blocked-users/{userId}/unblock}: the block in force, if any, ends now. */
-    public void unblock(UUID customerId, UUID blockedUserId) {
+    /**
+     * {@code POST /customer/blocked-users/{blockId}/unblock}: that block of the Customer, if still in force, ends now.
+     * Another Customer's block, a lifted one or an unknown id changes nothing (and tells nothing).
+     */
+    public void unblock(UUID customerId, UUID blockId) {
         Objects.requireNonNull(customerId, "customerId");
-        Objects.requireNonNull(blockedUserId, "blockedUserId");
+        Objects.requireNonNull(blockId, "blockId");
         CommandScope scope = CommandScope.shared(LockSet.builder().users(customerId).build());
         runner.run(new ReviewCommand<>(scope, context -> context.jdbc().sql("""
                         UPDATE review.review_author_block SET unblocked_at = tournament.command_now()
-                         WHERE customer_user_id = :customer AND blocked_user_id = :blocked AND unblocked_at IS NULL""")
-                .param("customer", customerId).param("blocked", blockedUserId)
+                         WHERE id = :block AND customer_user_id = :customer AND unblocked_at IS NULL""")
+                .param("block", blockId).param("customer", customerId)
                 .update()));
     }
 
@@ -111,7 +114,7 @@ public class ReviewBlocks {
         Map<UUID, TrustCustomers.Customer> named = customers.of(page.stream().map(Block::blockedUserId).toList());
         List<BlockedUser> items = page.stream()
                 .filter(row -> named.containsKey(row.blockedUserId()) && !named.get(row.blockedUserId()).deleted())
-                .map(row -> new BlockedUser(row.blockedUserId(), named.get(row.blockedUserId()).username(),
+                .map(row -> new BlockedUser(row.id(), named.get(row.blockedUserId()).username(),
                         row.blockedAt()))
                 .toList();
         return new ReviewPage<>(items, more ? new ReviewCursor(page.getLast().blockedAt(), page.getLast().id()).encode()
@@ -131,7 +134,10 @@ public class ReviewBlocks {
     private record Block(UUID id, UUID blockedUserId, Instant blockedAt) {
     }
 
-    /** A User the Customer blocked, by current username (PCR-014 item 5). */
-    public record BlockedUser(UUID userId, String username, Instant blockedAt) {
+    /**
+     * A User the Customer blocked, by current username (PCR-014 item 5), addressed by the block's own id: no user id
+     * leaves the server (arch 10 section 5.3, public payloads carry the username only).
+     */
+    public record BlockedUser(UUID blockId, String username, Instant blockedAt) {
     }
 }

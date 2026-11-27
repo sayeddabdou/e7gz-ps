@@ -63,11 +63,12 @@ class CustomerReviewBlockHttpTest extends IntegrationTest {
         Object[] firstRating = rating(first);
         Object[] secondRating = rating(second);
 
-        http.blockAuthor(a.id(), bOnFirst)
+        UUID block = blockId(http.blockAuthor(a.id(), bOnFirst)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.userId").value(b.id().toString()))
+                .andExpect(jsonPath("$.data.blockId").isNotEmpty())
                 .andExpect(jsonPath("$.data.username").value(b.username()))
-                .andExpect(jsonPath("$.data.blockedAt").isNotEmpty());
+                .andExpect(jsonPath("$.data.blockedAt").isNotEmpty())
+                .andExpect(jsonPath("$.data.userId").doesNotExist()));   // arch 10 section 5.3: no user id
 
         http.list(a.id(), first, "")
                 .andExpect(jsonPath("$.data.items.length()").value(1))
@@ -81,7 +82,7 @@ class CustomerReviewBlockHttpTest extends IntegrationTest {
         assertThat(rating(second)).containsExactly(secondRating);
         assertThat(ReviewHttpSupport.status(bOnFirst)).isEqualTo("ACTIVE");
 
-        http.unblock(a.id(), b.id()).andExpect(status().isNoContent());
+        http.unblock(a.id(), block).andExpect(status().isNoContent());
         http.list(a.id(), first, "").andExpect(jsonPath("$.data.items.length()").value(2));
         http.list(a.id(), second, "").andExpect(jsonPath("$.data.items.length()").value(1));
     }
@@ -104,14 +105,16 @@ class CustomerReviewBlockHttpTest extends IntegrationTest {
     /** Blocking twice keeps one block; unblocking twice is fine; a Customer cannot block themself. */
     @Test
     void blockAndUnblockAreIdempotentAndNobodyBlocksThemself() throws Exception {
-        http.blockAuthor(a.id(), bOnFirst).andExpect(status().isOk());
-        http.blockAuthor(a.id(), bOnSecond).andExpect(status().isOk());
+        UUID block = blockId(http.blockAuthor(a.id(), bOnFirst).andExpect(status().isOk()));
+        assertThat(blockId(http.blockAuthor(a.id(), bOnSecond).andExpect(status().isOk()))).isEqualTo(block);
         assertThat(openBlocks(a.id(), b.id())).isEqualTo(1);
 
-        http.unblock(a.id(), b.id()).andExpect(status().isNoContent());
-        http.unblock(a.id(), b.id()).andExpect(status().isNoContent());
+        http.unblock(c.id(), block).andExpect(status().isNoContent());      // someone else's block: nothing happens
+        assertThat(openBlocks(a.id(), b.id())).isEqualTo(1);
+        http.unblock(a.id(), block).andExpect(status().isNoContent());
+        http.unblock(a.id(), block).andExpect(status().isNoContent());
         assertThat(openBlocks(a.id(), b.id())).isZero();
-        http.blockAuthor(a.id(), bOnFirst).andExpect(status().isOk());
+        assertThat(blockId(http.blockAuthor(a.id(), bOnFirst).andExpect(status().isOk()))).isNotEqualTo(block);
         assertThat(openBlocks(a.id(), b.id())).isEqualTo(1);
 
         http.blockAuthor(b.id(), bOnFirst)
@@ -126,25 +129,31 @@ class CustomerReviewBlockHttpTest extends IntegrationTest {
     /** PCR-014 item 5: Profile lists the blocked users, newest first; an unblocked one leaves the list. */
     @Test
     void theBlockerListsTheirBlockedUsers() throws Exception {
-        http.blockAuthor(a.id(), bOnFirst).andExpect(status().isOk());
+        UUID bBlock = blockId(http.blockAuthor(a.id(), bOnFirst).andExpect(status().isOk()));
         UUID cReview = OWNER.sql("SELECT id FROM review.review WHERE user_id = :u").param("u", c.id())
                 .query(java.util.UUID.class).single();
-        http.blockAuthor(a.id(), cReview).andExpect(status().isOk());
+        UUID cBlock = blockId(http.blockAuthor(a.id(), cReview).andExpect(status().isOk()));
 
         http.blocked(a.id(), "?limit=1")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items.length()").value(1))
-                .andExpect(jsonPath("$.data.items[0].userId").value(c.id().toString()))
+                .andExpect(jsonPath("$.data.items[0].blockId").value(cBlock.toString()))
                 .andExpect(jsonPath("$.data.items[0].username").value(c.username()))
+                .andExpect(jsonPath("$.data.items[0].userId").doesNotExist())
                 .andExpect(jsonPath("$.data.nextCursor").isNotEmpty());
         http.blocked(a.id(), "")
                 .andExpect(jsonPath("$.data.items.length()").value(2))
-                .andExpect(jsonPath("$.data.items[1].userId").value(b.id().toString()));
-        http.unblock(a.id(), c.id()).andExpect(status().isNoContent());
+                .andExpect(jsonPath("$.data.items[1].blockId").value(bBlock.toString()));
+        http.unblock(a.id(), cBlock).andExpect(status().isNoContent());
         http.blocked(a.id(), "")
                 .andExpect(jsonPath("$.data.items.length()").value(1))
-                .andExpect(jsonPath("$.data.items[0].userId").value(b.id().toString()));
+                .andExpect(jsonPath("$.data.items[0].blockId").value(bBlock.toString()));
         http.blocked(b.id(), "").andExpect(jsonPath("$.data.items.length()").value(0));
+    }
+
+    private static UUID blockId(org.springframework.test.web.servlet.ResultActions answer) throws Exception {
+        return UUID.fromString(com.jayway.jsonpath.JsonPath.read(answer.andReturn().getResponse().getContentAsString(),
+                "$.data.blockId"));
     }
 
     private static long openBlocks(UUID customer, UUID blocked) {

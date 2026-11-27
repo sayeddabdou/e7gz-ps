@@ -173,12 +173,13 @@ public class CustomerReviewController {
                 page.nextCursor()));
     }
 
-    @PostMapping("/blocked-users/{userId}/unblock")
+    @PostMapping("/blocked-users/{blockId}/unblock")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(operationId = "customerUnblockUser", summary = "Unblock a User (PCR-014 item 5)",
-            description = "Their Reviews are shown again. Unblocking a User not blocked does nothing.")
-    public void unblock(@PathVariable UUID userId, @AuthenticationPrincipal AuthenticatedSubject customer) {
-        blocks.unblock(customer.id(), userId);
+            description = "The blocked User's Reviews are shown again. A block already lifted, or not yours, changes "
+                    + "nothing.")
+    public void unblock(@PathVariable UUID blockId, @AuthenticationPrincipal AuthenticatedSubject customer) {
+        blocks.unblock(customer.id(), blockId);
     }
 
     @Schema(name = "CustomerReviewReportRequest")
@@ -193,12 +194,12 @@ public class CustomerReviewController {
 
     @Schema(name = "CustomerBlockedUser")
     public record CustomerBlockedUser(
-            @NotNull UUID userId,
+            @NotNull @Schema(description = "The block itself; unblock with it. No user id is ever shown.") UUID blockId,
             @NotNull @Schema(example = "omar_k") String username,
             @NotNull Instant blockedAt) {
 
         static CustomerBlockedUser of(ReviewBlocks.BlockedUser user) {
-            return new CustomerBlockedUser(user.userId(), user.username(), user.blockedAt());
+            return new CustomerBlockedUser(user.blockId(), user.username(), user.blockedAt());
         }
     }
 

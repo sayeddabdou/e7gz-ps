@@ -83,8 +83,8 @@ final class ReviewHttpSupport {
         return mvc.perform(get("/api/v1/customer/blocked-users" + query).header("Authorization", customer(customer)));
     }
 
-    ResultActions unblock(UUID customer, UUID blockedUser) throws Exception {
-        return mvc.perform(post("/api/v1/customer/blocked-users/{u}/unblock", blockedUser)
+    ResultActions unblock(UUID customer, UUID block) throws Exception {
+        return mvc.perform(post("/api/v1/customer/blocked-users/{b}/unblock", block)
                 .header("Authorization", customer(customer)));
     }
 

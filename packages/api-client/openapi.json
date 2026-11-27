@@ -2915,12 +2915,13 @@
       },
       "CustomerBlockedUser": {
         "properties": {
-          "blockedAt": {
-            "format": "date-time",
+          "blockId": {
+            "description": "The block itself; unblock with it. No user id is ever shown.",
+            "format": "uuid",
             "type": "string"
           },
-          "userId": {
-            "format": "uuid",
+          "blockedAt": {
+            "format": "date-time",
             "type": "string"
           },
           "username": {
@@ -2929,8 +2930,8 @@
           }
         },
         "required": [
+          "blockId",
           "blockedAt",
-          "userId",
           "username"
         ],
         "type": "object"
@@ -35718,14 +35719,14 @@
         ]
       }
     },
-    "/api/v1/customer/blocked-users/{userId}/unblock": {
+    "/api/v1/customer/blocked-users/{blockId}/unblock": {
       "post": {
-        "description": "Their Reviews are shown again. Unblocking a User not blocked does nothing.",
+        "description": "The blocked User's Reviews are shown again. A block already lifted, or not yours, changes nothing.",
         "operationId": "customerUnblockUser",
         "parameters": [
           {
             "in": "path",
-            "name": "userId",
+            "name": "blockId",
             "required": true,
             "schema": {
               "format": "uuid",

@@ -149,7 +149,7 @@ class IdempotencyScopeTest {
                     "delete /api/v1/customer/venues/{venueId}/review",
                     "post /api/v1/customer/reviews/{reviewId}/report",
                     "post /api/v1/customer/reviews/{reviewId}/block-author",
-                    "post /api/v1/customer/blocked-users/{userId}/unblock",
+                    "post /api/v1/customer/blocked-users/{blockId}/unblock",
                     "post /api/v1/admin/reviews/{reviewId}/approve", "post /api/v1/admin/reviews/{reviewId}/hide",
                     "post /api/v1/admin/reviews/{reviewId}/restore", "post /api/v1/admin/reviews/{reviewId}/remove",
                     "post /api/v1/admin/review-reports/{reportId}/resolve"));
