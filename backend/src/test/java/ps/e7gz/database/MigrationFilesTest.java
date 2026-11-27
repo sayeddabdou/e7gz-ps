@@ -646,6 +646,53 @@ class MigrationFilesTest {
                 .doesNotContain("TRIGGER");
     }
 
+    /**
+     * v1.1.47 (E7-102, PCR-014): the migration is the model's own block, byte for byte; the model has the new table
+     * with its keys, checks, partial unique index, foreign keys and relationships; one new function (the guard), no
+     * grant (the security baseline grants every review table), no change to an existing table and no trigger off.
+     */
+    @Test
+    void reviewAuthorBlockMigrationIsTheModelsV1147Block() throws IOException {
+        String model = docs("E7GZ-PS-Database-v1.1.27-REVIEW-FIXES.dbm");
+        String open = "<genericsql name=\"v1_1_47_review_author_block\">\n\t<definition> <![CDATA[\n";
+        int start = model.indexOf(open);
+        assertThat(start).as("v1.1.47 block in the .dbm").isPositive();
+        String block = model.substring(start + open.length(), model.indexOf("]]> </definition>", start));
+        String migration = classpath("db/migration/V202611271200__review_author_block.sql");
+        assertThat(migration).isEqualTo(block);
+
+        int tableStart = model.indexOf("<table name=\"review_author_block\" layers");
+        assertThat(tableStart).as("the new table in the model").isPositive();
+        String table = model.substring(tableStart, model.indexOf("</table>", tableStart));
+        assertThat(table).contains("<schema name=\"review\"/>")
+                .contains("<column name=\"id\" not-null=\"true\">")
+                .contains("<column name=\"customer_user_id\" not-null=\"true\">")
+                .contains("<column name=\"blocked_user_id\" not-null=\"true\">")
+                .contains("<column name=\"blocked_at\" not-null=\"true\">")
+                .contains("<column name=\"unblocked_at\">")
+                .contains("<constraint name=\"review_author_block_pk\" type=\"pk-constr\"")
+                .contains("<constraint name=\"ck_review_author_block_self\" type=\"ck-constr\"")
+                .contains("<constraint name=\"ck_review_author_block_window\" type=\"ck-constr\"");
+        assertThat(model).contains("<index name=\"ux_review_author_block_open\"")
+                .contains("<constraint name=\"fk_review_author_block_customer\" type=\"fk-constr\"")
+                .contains("<constraint name=\"fk_review_author_block_blocked\" type=\"fk-constr\"")
+                .contains("reference-fk=\"fk_review_author_block_customer\"")
+                .contains("reference-fk=\"fk_review_author_block_blocked\"");
+        assertThat(migration).contains("CREATE TABLE review.review_author_block (")
+                .contains("CONSTRAINT review_author_block_pk PRIMARY KEY (id)")
+                .contains("CONSTRAINT ck_review_author_block_self CHECK (customer_user_id <> blocked_user_id)")
+                .contains("CREATE UNIQUE INDEX ux_review_author_block_open ON review.review_author_block")
+                .contains("WHERE (unblocked_at IS NULL)")
+                .contains("ADD CONSTRAINT fk_review_author_block_customer FOREIGN KEY (customer_user_id)")
+                .contains("ADD CONSTRAINT fk_review_author_block_blocked FOREIGN KEY (blocked_user_id)")
+                .contains("CREATE OR REPLACE FUNCTION review.guard_review_author_block()")
+                .doesNotContain("GRANT")
+                .doesNotContain("DISABLE TRIGGER")
+                .doesNotContain("ALTER TABLE review.review ")
+                .doesNotContain("DROP ");
+        assertThat(migration.split("CREATE OR REPLACE FUNCTION", -1)).as("one new function only").hasSize(2);
+    }
+
     private static void assertAddedLinesOnly(String earlier, String migration, String open, String... lines) {
         String migrated = function(migration, open);
         String stripped = migrated;

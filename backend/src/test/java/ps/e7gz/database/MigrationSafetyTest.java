@@ -226,6 +226,16 @@ class MigrationSafetyTest {
                      + (SELECT count(*) FROM operations.venue_closure
                          WHERE id = '5afe0000-0000-4000-8000-000000000292' AND deleted_at IS NOT NULL)"""))
                 .as("the seeded deletions survived every later migration").isEqualTo(2L);
+        // v1.1.47 (E7-102, PCR-014): the seeded blocks - one lifted, one open - survived every later migration.
+        assertThat(count("""
+                SELECT count(*) FROM review.review_author_block
+                 WHERE customer_user_id = '5afe0000-0000-4000-8000-000000000241'
+                   AND blocked_user_id = '5afe0000-0000-4000-8000-000000000041'"""))
+                .as("both seeded blocks survived").isEqualTo(2L);
+        assertThat(count("""
+                SELECT count(*) FROM review.review_author_block
+                 WHERE customer_user_id = '5afe0000-0000-4000-8000-000000000241' AND unblocked_at IS NULL"""))
+                .as("one block is still open").isEqualTo(1L);
     }
 
     private static long count(String sql) throws SQLException {
