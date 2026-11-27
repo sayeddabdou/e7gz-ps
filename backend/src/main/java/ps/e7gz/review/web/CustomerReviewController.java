@@ -33,6 +33,8 @@ import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.PageView;
 import ps.e7gz.common.web.ResponseMetaFactory;
 import ps.e7gz.review.internal.CustomerReviews;
+import ps.e7gz.review.internal.ReviewBlocks;
+import ps.e7gz.review.internal.ReviewReports;
 import ps.e7gz.review.internal.ReviewRow;
 
 /**
@@ -51,10 +53,15 @@ import ps.e7gz.review.internal.ReviewRow;
 public class CustomerReviewController {
 
     private final CustomerReviews reviews;
+    private final ReviewReports reports;
+    private final ReviewBlocks blocks;
     private final ResponseMetaFactory meta;
 
-    CustomerReviewController(CustomerReviews reviews, ResponseMetaFactory meta) {
+    CustomerReviewController(CustomerReviews reviews, ReviewReports reports, ReviewBlocks blocks,
+                             ResponseMetaFactory meta) {
         this.reviews = reviews;
+        this.reports = reports;
+        this.blocks = blocks;
         this.meta = meta;
     }
 
@@ -122,6 +129,77 @@ public class CustomerReviewController {
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
     public void delete(@PathVariable UUID venueId, @AuthenticationPrincipal AuthenticatedSubject customer) {
         reviews.delete(customer.id(), venueId);
+    }
+
+    @PostMapping("/reviews/{reviewId}/report")
+    @ResponseStatus(HttpStatus.CREATED)
+    @Operation(operationId = "customerReportReview", summary = "Report a public Review (FR-REV-11, PCR-003)",
+            description = "A reason and optional details. Only a Review the Customer can see: ACTIVE and not by an "
+                    + "author they blocked; otherwise NOT_FOUND. The report never changes the Review or the rating "
+                    + "(ADR-025). One open report per Customer per Review.")
+    @ApiError(status = 400, codes = ApiErrorCode.VALIDATION_FAILED)
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
+    @ApiError(status = 422, codes = ApiErrorCode.REVIEW_REPORT_ALREADY_OPEN)
+    public DataResponse<CustomerReviewReport> report(@PathVariable UUID reviewId,
+                                                     @Valid @RequestBody CustomerReviewReportRequest request,
+                                                     @AuthenticationPrincipal AuthenticatedSubject customer) {
+        ReviewReports.SubmittedReport report = reports.report(customer.id(), reviewId, request.reason(),
+                request.details());
+        return meta.data(new CustomerReviewReport(report.reportId(), report.reviewId(), report.createdAt()));
+    }
+
+    @PostMapping("/reviews/{reviewId}/block-author")
+    @Operation(operationId = "customerBlockReviewAuthor", summary = "Block the author of a Review (PCR-014)",
+            description = "The Customer then sees no Review by that User, on any Venue. Nobody else is affected and "
+                    + "the author is never told. Blocking a User already blocked answers the same block. Your own "
+                    + "Review is VALIDATION_FAILED; a Review you cannot see is NOT_FOUND.")
+    @ApiError(status = 400, codes = ApiErrorCode.VALIDATION_FAILED)
+    @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
+    public DataResponse<CustomerBlockedUser> blockAuthor(@PathVariable UUID reviewId,
+                                                         @AuthenticationPrincipal AuthenticatedSubject customer) {
+        return meta.data(CustomerBlockedUser.of(blocks.blockAuthor(customer.id(), reviewId)));
+    }
+
+    @GetMapping("/blocked-users")
+    @Operation(operationId = "customerListBlockedUsers", summary = "The Users I blocked (PCR-014 item 5)",
+            description = "Blocks in force, newest first, cursor paging; current username only.")
+    @ApiError(status = 400, codes = ApiErrorCode.VALIDATION_FAILED)
+    public DataResponse<PageView<CustomerBlockedUser>> blockedUsers(
+            @RequestParam(required = false) String cursor,
+            @RequestParam(required = false) @Min(1) @Max(100) Integer limit,
+            @AuthenticationPrincipal AuthenticatedSubject customer) {
+        var page = blocks.list(customer.id(), cursor, limit);
+        return meta.data(new PageView<>(page.items().stream().map(CustomerBlockedUser::of).toList(),
+                page.nextCursor()));
+    }
+
+    @PostMapping("/blocked-users/{userId}/unblock")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(operationId = "customerUnblockUser", summary = "Unblock a User (PCR-014 item 5)",
+            description = "Their Reviews are shown again. Unblocking a User not blocked does nothing.")
+    public void unblock(@PathVariable UUID userId, @AuthenticationPrincipal AuthenticatedSubject customer) {
+        blocks.unblock(customer.id(), userId);
+    }
+
+    @Schema(name = "CustomerReviewReportRequest")
+    public record CustomerReviewReportRequest(
+            @NotBlank @Size(max = 500) @Schema(example = "Abusive language") String reason,
+            @Size(max = 2000) @Schema(nullable = true, example = "Insults the staff by name.") String details) {
+    }
+
+    @Schema(name = "CustomerReviewReport")
+    public record CustomerReviewReport(@NotNull UUID reportId, @NotNull UUID reviewId, @NotNull Instant createdAt) {
+    }
+
+    @Schema(name = "CustomerBlockedUser")
+    public record CustomerBlockedUser(
+            @NotNull UUID userId,
+            @NotNull @Schema(example = "omar_k") String username,
+            @NotNull Instant blockedAt) {
+
+        static CustomerBlockedUser of(ReviewBlocks.BlockedUser user) {
+            return new CustomerBlockedUser(user.userId(), user.username(), user.blockedAt());
+        }
     }
 
     @Schema(name = "CustomerReviewRequest")
