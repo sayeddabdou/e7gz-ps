@@ -141,7 +141,18 @@ class IdempotencyScopeTest {
                     "post /api/v1/customer/notifications/devices/{deviceId}/revoke",
                     "post /api/v1/venue/push-subscriptions",
                     "post /api/v1/venue/push-subscriptions/{subscriptionId}/revoke",
-                    "post /api/v1/venue/notifications/{notificationId}/read"));             // E7-55
+                    "post /api/v1/venue/notifications/{notificationId}/read"),              // E7-55
+            "reviews, reports, blocks and moderation (E7-102: no booking, commitment, money or points; a repeat is "
+                    + "REVIEW_ALREADY_EXISTS, REVIEW_REPORT_ALREADY_OPEN or the same block, a repeated moderation is "
+                    + "refused, a repeated resolution answers the same Report)", List.of(
+                    "post /api/v1/customer/venues/{venueId}/review", "patch /api/v1/customer/venues/{venueId}/review",
+                    "delete /api/v1/customer/venues/{venueId}/review",
+                    "post /api/v1/customer/reviews/{reviewId}/report",
+                    "post /api/v1/customer/reviews/{reviewId}/block-author",
+                    "post /api/v1/customer/blocked-users/{userId}/unblock",
+                    "post /api/v1/admin/reviews/{reviewId}/approve", "post /api/v1/admin/reviews/{reviewId}/hide",
+                    "post /api/v1/admin/reviews/{reviewId}/restore", "post /api/v1/admin/reviews/{reviewId}/remove",
+                    "post /api/v1/admin/review-reports/{reportId}/resolve"));
 
     private JsonNode contract;
 
