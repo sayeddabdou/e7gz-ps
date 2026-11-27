@@ -12,6 +12,7 @@ import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,16 +28,19 @@ import ps.e7gz.common.codes.TournamentStatus;
 import ps.e7gz.common.codes.TournamentTerminalReason;
 import ps.e7gz.common.codes.TournamentVisibility;
 import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
 import ps.e7gz.common.web.MoneyView;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.PageView;
+import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.tournament.internal.TournamentReads;
+import ps.e7gz.tournament.internal.TournamentRow;
 
 /**
  * Customer — reading tournaments (arch 09 §3.4; FR-TRN-06, FR-TRN-07, FR-TRN-12, FR-TRN-13). Sprint 6 contract (E7-88),
- * stubs answering 501 until E7-126 implements them. The writes (create, join, leave, remove, cancel) are in
+ * implemented by E7-126 (S6-E5) on {@link TournamentReads}. The writes (create, join, leave, remove, cancel) are in
  * {@link CustomerTournamentController} (E7-91, E7-93); the reads sit here so the contract does not touch those files.
  * GET {@code /customer/tournaments} is arch 09's public Discover; {@code /mine} and {@code /{tournamentId}} are added by
  * the PO decision of 26 Nov 2026 (E7-88: the app shows its own tournaments and a detail screen, and FR-TRN-07 lets the
@@ -48,6 +52,14 @@ import ps.e7gz.common.web.PageView;
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 @Validated
 public class CustomerTournamentQueryController {
+
+    private final TournamentReads reads;
+    private final ResponseMetaFactory meta;
+
+    public CustomerTournamentQueryController(TournamentReads reads, ResponseMetaFactory meta) {
+        this.reads = reads;
+        this.meta = meta;
+    }
 
     @GetMapping
     @Operation(operationId = "customerDiscoverTournaments",
@@ -63,8 +75,9 @@ public class CustomerTournamentQueryController {
             @RequestParam(required = false) UUID areaId,
             @Parameter(description = "Only this activity.") @RequestParam(required = false) Activity activity,
             @RequestParam(required = false) String cursor,
-            @RequestParam(required = false) @Min(1) @Max(100) Integer limit) {
-        throw NotImplementedYet.stub();
+            @RequestParam(required = false) @Min(1) @Max(100) Integer limit,
+            @AuthenticationPrincipal AuthenticatedSubject customer) {
+        return meta.data(listing(customer, reads.discover(customer.id(), areaId, activity, cursor, limit)));
     }
 
     @GetMapping("/mine")
@@ -79,8 +92,9 @@ public class CustomerTournamentQueryController {
             @Parameter(description = "false (default): not yet ended; true: ended.")
             @RequestParam(required = false) Boolean ended,
             @RequestParam(required = false) String cursor,
-            @RequestParam(required = false) @Min(1) @Max(100) Integer limit) {
-        throw NotImplementedYet.stub();
+            @RequestParam(required = false) @Min(1) @Max(100) Integer limit,
+            @AuthenticationPrincipal AuthenticatedSubject customer) {
+        return meta.data(listing(customer, reads.mine(customer.id(), ended, cursor, limit)));
     }
 
     @GetMapping("/{tournamentId}")
@@ -94,8 +108,15 @@ public class CustomerTournamentQueryController {
                     + "code and removes participants); null for everyone else. An INELIGIBLE participant shows as "
                     + "INELIGIBLE only: its cause is never answered (arch 09 §3.4, PCR-001).")
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
-    public DataResponse<CustomerTournamentDetail> get(@PathVariable UUID tournamentId) {
-        throw NotImplementedYet.stub();
+    public DataResponse<CustomerTournamentDetail> get(@PathVariable UUID tournamentId,
+                                                     @AuthenticationPrincipal AuthenticatedSubject customer) {
+        return meta.data(CustomerTournamentDetail.of(customer.id(), reads.customerDetail(customer.id(), tournamentId)));
+    }
+
+    private static PageView<CustomerTournamentListing> listing(AuthenticatedSubject customer,
+                                                               TournamentReads.Page<TournamentReads.Item> page) {
+        return new PageView<>(page.items().stream().map(item -> CustomerTournamentListing.of(customer.id(), item))
+                .toList(), page.nextCursor());
     }
 
     /** One row of Discover or of the customer's own list. */
@@ -121,6 +142,13 @@ public class CustomerTournamentQueryController {
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true,
                     description = "The signed-in customer's own participation; null when they have none.")
             TournamentParticipantStatus myParticipantStatus) {
+
+        static CustomerTournamentListing of(UUID me, TournamentReads.Item item) {
+            TournamentRow t = item.row();
+            return new CustomerTournamentListing(t.id(), t.venueId(), item.venueName(), t.hostType(), t.status(),
+                    t.activity(), t.playMode(), t.capacity(), t.capacityOccupied(), t.startAt(), t.endAt(),
+                    MoneyView.of(t.entryFee()), MoneyView.of(t.prize()), me.equals(t.creatorUserId()), t.myStatus());
+        }
     }
 
     /** The tournament detail screen. */
@@ -162,6 +190,22 @@ public class CustomerTournamentQueryController {
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, nullable = true,
                     description = "To the creator only (FR-TRN-12: the organizer removes participants); null for "
                             + "everyone else.") List<CustomerTournamentParticipant> participants) {
+
+        static CustomerTournamentDetail of(UUID me, TournamentReads.Detail detail) {
+            TournamentReads.Item item = detail.item();
+            TournamentRow t = item.row();
+            return new CustomerTournamentDetail(t.id(), t.venueId(), item.venueName(), t.hostType(), t.status(),
+                    t.terminalReason(), t.activity(), t.playMode(), t.visibility(), t.capacity(),
+                    t.capacityOccupied(), t.startAt(), t.endAt(), t.durationMinutes(), t.checkpointAt(),
+                    item.approvalExpiresAt(), MoneyView.of(t.entryFee()), MoneyView.of(t.prize()),
+                    me.equals(t.creatorUserId()), Boolean.TRUE.equals(t.creatorParticipates()), t.myStatus(),
+                    detail.inviteCode(),
+                    item.rooms().stream().map(r -> new CustomerTournamentRoom(r.resourceId(), r.name(),
+                            r.consoleType())).toList(),
+                    detail.participants() == null ? null : detail.participants().stream()
+                            .map(p -> new CustomerTournamentParticipant(p.userId(), p.username(), p.status(),
+                                    p.joinedAt())).toList());
+        }
     }
 
     @Schema(name = "CustomerTournamentRoom")

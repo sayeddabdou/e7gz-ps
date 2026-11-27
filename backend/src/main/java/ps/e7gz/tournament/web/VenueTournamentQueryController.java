@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,16 +29,19 @@ import ps.e7gz.common.codes.TournamentStatus;
 import ps.e7gz.common.codes.TournamentTerminalReason;
 import ps.e7gz.common.codes.TournamentVisibility;
 import ps.e7gz.common.error.ApiErrorCode;
+import ps.e7gz.common.security.AuthenticatedSubject;
 import ps.e7gz.common.web.ApiError;
 import ps.e7gz.common.web.DataResponse;
 import ps.e7gz.common.web.MoneyView;
-import ps.e7gz.common.web.NotImplementedYet;
 import ps.e7gz.common.web.OpenApiConfig;
 import ps.e7gz.common.web.PageView;
+import ps.e7gz.common.web.ResponseMetaFactory;
+import ps.e7gz.tournament.internal.TournamentReads;
+import ps.e7gz.tournament.internal.TournamentRow;
 
 /**
  * Venue Dashboard — reading the venue's tournaments (arch 09 §4.1 {@code GET /venue/tournaments}; FR-TRN-06,
- * FR-TRN-07, FR-TRN-10, FR-TRN-12). Sprint 6 contract (E7-88), stubs answering 501 until E7-126 implements them. The
+ * FR-TRN-07, FR-TRN-10, FR-TRN-12). Sprint 6 contract (E7-88), implemented by E7-126 (S6-E5) on {@link TournamentReads}. The
  * writes (create, approve, reject, cancel, operational-termination) are in {@link VenueTournamentController} (E7-91,
  * E7-92, E7-93). {@code /{tournamentId}} (with its participants) is added by the PO decision of 26 Nov 2026 (E7-88:
  * the Dashboard's participants view, E7-96). Only the signed-in venue's own tournaments; Venue DTOs only (arch 09
@@ -49,6 +53,14 @@ import ps.e7gz.common.web.PageView;
 @SecurityRequirement(name = OpenApiConfig.BEARER)
 @Validated
 public class VenueTournamentQueryController {
+
+    private final TournamentReads reads;
+    private final ResponseMetaFactory meta;
+
+    public VenueTournamentQueryController(TournamentReads reads, ResponseMetaFactory meta) {
+        this.reads = reads;
+        this.meta = meta;
+    }
 
     @GetMapping
     @Operation(operationId = "venueListTournaments",
@@ -63,8 +75,11 @@ public class VenueTournamentQueryController {
             @RequestParam(required = false) Boolean ended,
             @Parameter(description = "Only this state.") @RequestParam(required = false) TournamentStatus status,
             @RequestParam(required = false) String cursor,
-            @RequestParam(required = false) @Min(1) @Max(100) Integer limit) {
-        throw NotImplementedYet.stub();
+            @RequestParam(required = false) @Min(1) @Max(100) Integer limit,
+            @AuthenticationPrincipal AuthenticatedSubject venue) {
+        TournamentReads.Page<TournamentReads.Item> page = reads.venueList(venue.id(), ended, status, cursor, limit);
+        return meta.data(new PageView<>(page.items().stream().map(VenueTournamentListing::of).toList(),
+                page.nextCursor()));
     }
 
     @GetMapping("/{tournamentId}")
@@ -75,8 +90,9 @@ public class VenueTournamentQueryController {
                     + "once accepted, to copy and share (FR-TRN-06). An INELIGIBLE participant shows as INELIGIBLE "
                     + "only; its cause is never answered (arch 09 §3.4, PCR-001). Implemented by E7-126.")
     @ApiError(status = 404, codes = ApiErrorCode.NOT_FOUND)
-    public DataResponse<VenueTournamentDetail> get(@PathVariable UUID tournamentId) {
-        throw NotImplementedYet.stub();
+    public DataResponse<VenueTournamentDetail> get(@PathVariable UUID tournamentId,
+                                                  @AuthenticationPrincipal AuthenticatedSubject venue) {
+        return meta.data(VenueTournamentDetail.of(reads.venueDetail(venue.id(), tournamentId)));
     }
 
     /** One row of the Dashboard's tournament list. */
@@ -108,6 +124,14 @@ public class VenueTournamentQueryController {
                     example = "omar_k") String creatorUsername,
             @NotNull @Schema(example = "[\"Room 2\", \"Room 3\"]") List<String> roomNames,
             @NotNull @Valid @Schema(description = "Fixed at creation (FR-TRN-28).") MoneyView venueCost) {
+
+        static VenueTournamentListing of(TournamentReads.Item item) {
+            TournamentRow t = item.row();
+            return new VenueTournamentListing(t.id(), t.hostType(), t.status(), t.terminalReason(), t.activity(),
+                    t.playMode(), t.visibility(), t.capacity(), t.capacityOccupied(), t.startAt(), t.endAt(),
+                    t.checkpointAt(), item.approvalExpiresAt(), t.businessDate(), item.creatorUsername(),
+                    item.rooms().stream().map(TournamentReads.Room::name).toList(), MoneyView.of(t.venueCost()));
+        }
     }
 
     /** The Dashboard's tournament page. */
@@ -142,6 +166,20 @@ public class VenueTournamentQueryController {
             @NotNull @Valid MoneyView prize,
             @NotNull List<VenueTournamentRoom> rooms,
             @NotNull List<VenueTournamentParticipant> participants) {
+
+        static VenueTournamentDetail of(TournamentReads.Detail detail) {
+            TournamentReads.Item item = detail.item();
+            TournamentRow t = item.row();
+            return new VenueTournamentDetail(t.id(), t.hostType(), t.status(), t.terminalReason(), t.activity(),
+                    t.playMode(), t.visibility(), t.capacity(), t.capacityOccupied(), t.startAt(), t.endAt(),
+                    t.durationMinutes(), t.checkpointAt(), item.approvalExpiresAt(), t.createdAt(), t.businessDate(),
+                    item.creatorUsername(), t.creatorParticipates(), detail.inviteCode(), MoneyView.of(t.venueCost()),
+                    MoneyView.of(t.entryFee()), MoneyView.of(t.prize()),
+                    item.rooms().stream().map(r -> new VenueTournamentRoom(r.resourceId(), r.name(), r.consoleType(),
+                            MoneyView.of(r.hourlyPrice()))).toList(),
+                    detail.participants().stream().map(p -> new VenueTournamentParticipant(p.userId(), p.username(),
+                            p.status(), p.joinedAt())).toList());
+        }
     }
 
     @Schema(name = "VenueTournamentRoom")

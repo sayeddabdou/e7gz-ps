@@ -470,7 +470,17 @@ class TournamentsIntegrationTest extends IntegrationTest {
         }
 
         static World create(Duration lead) {
-            Fixtures.Venue venue = aVenue().active().offering(Activity.PLAYSTATION).create();
+            return create(lead, null);
+        }
+
+        /** As {@link #create()}, with the Venue in {@code areaId} (a fresh Area when null). */
+        static World inArea(UUID areaId) {
+            return create(null, areaId);
+        }
+
+        private static World create(Duration lead, UUID areaId) {
+            var builder = aVenue().active().offering(Activity.PLAYSTATION);
+            Fixtures.Venue venue = (areaId == null ? builder : builder.inArea(areaId)).create();
             Fixtures.VenueAccount account = aVenueAccount().forVenue(venue).create();
             List<UUID> rooms = List.of(
                     aResource().at(venue).playStation(ConsoleType.PS5).create().id(),
