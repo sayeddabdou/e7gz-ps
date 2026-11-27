@@ -398,6 +398,22 @@ No table, column, constraint, trigger or grant changes; `tr_05_booking_ban_eligi
 
 - Tests: `TimerPausesIntegrationTest` (a T1 that fired during the pause and ended FAILED is re-armed on resume and expires the booking once at the moved deadline); `ScheduledJobLifecycleTest` (a re-armed FAILED job starts at attempt 0 and can be leased, a re-armed PAUSED one keeps its count, a plain UPDATE still cannot reset it); the `.dbm`/migration identity and changed-lines checks in `MigrationFilesTest`.
 
+### v1.1.47 — a Customer blocks the author of a Review (E7-102, 27 Nov 2026)
+
+**Product Owner decision, 16 Nov 2026 (Sayed), PCR-014 (FR-REV-12)**: a signed-in Customer can block the author of a Review; that Customer then sees none of the author's Reviews, on any Venue; nobody else is affected (not the Review's status, the Venue's rating, other readers, the Venue or moderation) and the author is never told; the Customer can list and unblock. "A new migration: one table (the Customer, the blocked User, the instant)". `.dbm` block `v1_1_47_review_author_block` = Flyway `V202611271200__review_author_block.sql`, byte for byte; the `.dbm` models the new table `review.review_author_block` with `review_author_block_pk`, `ck_review_author_block_self`, `ck_review_author_block_window`, the indexes `ux_review_author_block_open` and `ix_fk_review_author_block_blocked_user_id`, the foreign keys `fk_review_author_block_customer` and `fk_review_author_block_blocked` and the relationships `rel_review_author_block_customer` and `rel_review_author_block_blocked`. Amr Heiba's delegated decisions for E7-102 on the shape below. **Waiting for the Product Owner's review.**
+
+| Object | Change |
+|---|---|
+| `review.review_author_block` | New: `id`, `customer_user_id`, `blocked_user_id`, `blocked_at`, `unblocked_at`. An unblock sets `unblocked_at` once instead of deleting the row (nothing is hard-deleted, and the runtime roles have no DELETE on this schema); a later block of the same User is a new row. A Customer cannot block themself (`ck_review_author_block_self`) |
+| `ux_review_author_block_open` | New, unique on `(customer_user_id, blocked_user_id) WHERE unblocked_at IS NULL`: one block in force per pair; it also serves the "leave out the Reviews of Users I blocked" filter of every Customer read |
+| `ix_fk_review_author_block_blocked_user_id` | New: the foreign-key index of `blocked_user_id`, as for every other foreign key of the model |
+| `review.guard_review_author_block()` + `tr_147_review_author_block_guard` | New. DELETE is refused. An INSERT is open and dated the command instant (`tournament.command_now()`), so only a command writes it. The only UPDATE is the unblock: once, at the command instant; identity and `blocked_at` never change |
+| `tr_147_review_author_block_no_truncate` | New: `technical.reject_truncate()` |
+
+**Existing data.** A new table; no existing row changes and no backfill. When either account is deleted (PCR-002) the row is kept and simply has no further effect (PCR-014 item 8): the application leaves anonymised Users out of the blocked list, and their Reviews are already REMOVED. No audit and no notification (PCR-014 items 4 and 7). Grants: the security baseline already grants SELECT/INSERT/UPDATE on every `review` table to both runtime roles. Upgrade seed `upgrade-seed/V202611271200.sql`: a lifted block and an open one between the two seed Customers.
+
+- Tests: `CustomerReviewBlockHttpTest` (A blocks B: A sees no Review by B on any Venue, C still sees them and the rating is the same; after the unblock A sees them again; blocking is idempotent, a self-block is refused, the list and the unblock); `ReviewAuthorBlockDbTest` (the guard: no delete, no second open block, no change after the unblock, no write outside a command); `MigrationSafetyTest` (the seeded blocks survive); the `.dbm`/migration identity check in `MigrationFilesTest`.
+
 ## Product Owner decisions (26 Sep 2026)
 
 A1 overlapping Maintenance allowed · A2 booking horizon is a deployment setting, default 120 days · A4 rate-limit table approved · A5 reports FR-AUD-11/12 at launch · A6 venue alerts = live + Web Push + audible alert · A8 configurable = fees and points only · A9 Venue never returns to ONBOARDING · A10 login limits stored as `LOGIN` rate-limit rows · A11 read-only customer wallet screen (PCR-004, no DB change) · review self-reporting allowed, duplicate open reports blocked.
