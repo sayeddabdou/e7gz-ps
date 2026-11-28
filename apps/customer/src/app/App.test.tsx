@@ -40,15 +40,15 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks());
 
 describe("Customer app shell", () => {
-  it("hides Tournaments until E7-95 and shows the three available tabs", async () => {
+  it("shows the four customer tabs including Tournaments", async () => {
     render(<App config={config} tokenStore={tokenStore} profileApi={profileApi} />);
 
     await waitFor(() => expect(screen.getByText("Home")).toBeTruthy());
-    expect(screen.queryByText("Tournaments")).toBeNull();
+    expect(screen.getByText("Tournaments")).toBeTruthy();
     expect(screen.getByText("Bookings")).toBeTruthy();
     expect(screen.getByText("Profile")).toBeTruthy();
     expect(screen.getAllByTestId("tab-icon-home").length).toBeGreaterThan(0);
-    expect(screen.queryByTestId("tab-icon-tournaments")).toBeNull();
+    expect(screen.getAllByTestId("tab-icon-tournaments").length).toBeGreaterThan(0);
     expect(screen.getAllByTestId("tab-icon-bookings").length).toBeGreaterThan(0);
     expect(screen.getAllByTestId("tab-icon-profile").length).toBeGreaterThan(0);
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
