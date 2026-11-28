@@ -13,6 +13,7 @@ import { DiscoveryScreen } from "../features/discovery";
 import { AuthFlow, createCustomerAuthApi } from "../features/auth";
 import type { CustomerAuthApi } from "../features/auth/api";
 import { MyBookingsScreen } from "../features/my-bookings";
+import { TournamentsScreen } from "../features/tournaments";
 import { AccountStandingScreen, PointsScreen, ReferralsScreen, WalletScreen } from "../features/rewards";
 import { createCustomerProfileApi, PasswordResetFlow, ProfileScreen, type CustomerProfileApi } from "../features/profile";
 import {
@@ -26,6 +27,7 @@ import { en as t } from "../i18n/en";
 
 type RootTabs = {
   home: undefined;
+  tournaments: undefined;
   bookings: undefined;
   profile: undefined;
 };
@@ -63,6 +65,7 @@ function tabIcon(
 }
 
 const homeIcon = tabIcon("tab-icon-home", "home", "home-outline");
+const tournamentsIcon = tabIcon("tab-icon-tournaments", "trophy", "trophy-outline");
 const bookingsIcon = tabIcon("tab-icon-bookings", "calendar", "calendar-outline");
 const profileIcon = tabIcon("tab-icon-profile", "person", "person-outline");
 
@@ -103,6 +106,20 @@ function BookingsScreen({
         openBookingId={openBookingId}
         onOpenBookingConsumed={onOpenBookingConsumed}
       />
+    </SafeAreaView>
+  );
+}
+
+function TournamentsTabScreen({ api }: { api: ApiClient }) {
+  const [focusVersion, setFocusVersion] = useState(0);
+  const initialFocus = useRef(true);
+  useFocusEffect(useCallback(() => {
+    if (initialFocus.current) initialFocus.current = false;
+    else setFocusVersion((version) => version + 1);
+  }, []));
+  return (
+    <SafeAreaView edges={["top"]} style={styles.screen}>
+      <TournamentsScreen api={api} focusVersion={focusVersion} />
     </SafeAreaView>
   );
 }
@@ -303,6 +320,16 @@ export function App({
               }}
             >
               {() => <HomeScreen api={api} onOpenMyBookings={() => navigationRef.navigate("bookings")} onOpenProfile={() => navigationRef.navigate("profile")} />}
+            </Tab.Screen>
+            <Tab.Screen
+              name="tournaments"
+              options={{
+                tabBarIcon: tournamentsIcon,
+                tabBarLabel: t.tabs.tournaments,
+                title: t.tabs.tournaments,
+              }}
+            >
+              {() => <TournamentsTabScreen api={api} />}
             </Tab.Screen>
             <Tab.Screen
               name="bookings"
